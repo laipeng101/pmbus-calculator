@@ -1,13 +1,2 @@
-# macOS
 .DS_Store
-
-# PMBus specification PDFs
 *.pdf
-
-# Temporary files
-sections.txt
-
-# Ignore everything except the calculator
-**/*
-!pmbus计算器.html
-!.gitignore
