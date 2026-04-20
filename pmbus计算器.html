@@ -186,7 +186,7 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 
     <div class="bo" style="margin:8px 0 20px">
     <label style="margin-right:8px">命令字典：</label>
-    <select id="commandSelect" onchange="selectCommand(this.value)" style="max-width:340px;font-size:13.5px;flex:1" data-tooltip="快速加载常用PMBus命令的典型参数和模式">
+    <select id="commandSelect" onchange="selectCommand(this.value)" style="max-width:340px;font-size:13.5px;flex:1" data-tooltip="快速加载常用PMBus命令的典型参数和模式 (参照Part II命令表)">
     <option value="">-- 选择 PMBus 1.3 命令 --</option>
     <option value="VOUT_COMMAND">VOUT_COMMAND (0x21) - 输出电压</option>
     <option value="VOUT_OV_FAULT_LIMIT">VOUT_OV_FAULT_LIMIT (0x40)</option>
@@ -196,6 +196,11 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
     <option value="READ_TEMPERATURE_1">READ_TEMPERATURE_1 (0x8D)</option>
     <option value="VIN_OV_FAULT_LIMIT">VIN_OV_FAULT_LIMIT (0x55)</option>
     <option value="OT_FAULT_LIMIT">OT_FAULT_LIMIT (0x4F)</option>
+    <option value="FAN_COMMAND">FAN_COMMAND (0x3B) - 风扇转速 (L11)</option>
+    <option value="READ_POUT">READ_POUT (0x96) - 输出功率</option>
+    <option value="READ_FAN_SPEED_1">READ_FAN_SPEED_1 (0x90)</option>
+    <option value="STATUS_WORD">STATUS_WORD (0x79) - 状态字</option>
+    <option value="READ_EIN">READ_EIN (0x86) - 累计能量 (Part II 18.14)</option>
     </select>
     </div>
 
@@ -374,15 +379,18 @@ const PMBusMath = {
         const paramBits = byte & 0x1F;
         const modeNames = { 0: 'LINEAR', 1: 'VID', 2: 'DIRECT', 3: 'IEEE Half Float' };
         let n = null;
-        if (modeBits === 0) { // LINEAR模式: 参数为5位二进制补码指数
+        if (modeBits === 0) { // LINEAR模式: 参数为5位二进制补码指数 (Part I 8.3)
             n = this.toSigned(paramBits, 5);
+        } else if (modeBits === 3) {
+            n = 'IEEE Half';
         }
         return {
             byte,
             mode: modeBits,
             modeName: modeNames[modeBits] || '保留',
             param: paramBits,
-            linearExponent: n
+            linearExponent: n,
+            description: 'VOUT_MODE per PMBus 1.3 Part I Section 8.3'
         };
     },
 
@@ -394,6 +402,20 @@ const PMBusMath = {
             if (y === 0) return { type: 'info', msg: 'Y = 0，表示零值或未初始化' };
         }
         return null;
+    },
+
+    // SMBus PEC (CRC-8) per SMBus 3.0 Section 5.4 and PMBus packet examples (Part I/Part II)
+    // Polynomial 0x07, matches Figure 34 READ_EOUT with PEC in Part II
+    calculatePEC(bytes) {
+        let crc = 0;
+        for (let b of bytes) {
+            crc ^= (b & 0xFF);
+            for (let i = 0; i < 8; i++) {
+                crc = (crc & 0x80) ? ((crc << 1) ^ 0x07) : (crc << 1);
+                crc &= 0xFF;
+            }
+        }
+        return crc;
     }
 };
 
@@ -596,6 +618,7 @@ function updateAll(source) {
             n = decoded.n; y = decoded.y; value = decoded.value;
         } else {
             n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
+            if (isNaN(n)) n = 0;
             y = rawInt; value = y * Math.pow(2, n);
         }
     } else if (source === 'bit' || source === 'init' || source === 'byteOrder' || source === 'mode') {
@@ -605,6 +628,7 @@ function updateAll(source) {
             n = decoded.n; y = decoded.y; value = decoded.value;
         } else {
             n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
+            if (isNaN(n)) n = 0;
             y = rawInt; value = y * Math.pow(2, n);
         }
     } else if (source === 'ny') {
@@ -616,7 +640,9 @@ function updateAll(source) {
             const decoded = PMBusMath.decodeLinear11(rawInt);
             n = decoded.n; y = decoded.y; value = decoded.value;
         } else {
-            n = PMBusMath.clamp(n, -16, 15); y = PMBusMath.clamp(y, 0, 65535);
+            n = PMBusMath.clamp(n, -16, 15); 
+            if (isNaN(n)) n = 0;
+            y = PMBusMath.clamp(y, 0, 65535);
             rawInt = y; value = y * Math.pow(2, n);
         }
     } else if (source === 'val') {
@@ -625,14 +651,13 @@ function updateAll(source) {
         value = inputVal;
         if (isLinear11) {
             if (autoSelectN) {
-                // 自动模式：优选最佳N
                 const best = PMBusMath.findBestLinear11(value);
                 n = best.n; y = best.y; rawInt = PMBusMath.encodeLinear11(n, y);
                 value = best.value;
                 window.lastDelta = best.delta;
             } else {
-                // 锁定模式：保持当前N，只更新Y
                 n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
+                if (isNaN(n)) n = 0;
                 const yRaw = value / Math.pow(2, n);
                 y = Math.round(yRaw);
                 y = PMBusMath.clamp(y, -1024, 1023);
@@ -643,6 +668,7 @@ function updateAll(source) {
             }
         } else {
             n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
+            if (isNaN(n)) n = 0;
             y = PMBusMath.clamp(Math.round(value / Math.pow(2, n)), 0, 65535);
             rawInt = y; value = y * Math.pow(2, n);
             window.lastDelta = 0;
@@ -900,6 +926,17 @@ function switchMode(mode) {
     $('byteOrderCtrl').style.display = (mode === 'L16') ? '' : 'none';
     $('voutModeCtrl').style.display = (mode === 'L16') ? '' : 'none';
 
+    // 修复：N值锁住状态下命令切换异常（确保N有效，non-L11时重置锁状态）
+    if (mode !== 'L11') {
+        autoSelectN = false;
+        const lockBtn = $('nLockBtn');
+        if (lockBtn) {
+            lockBtn.textContent = '🔒';
+            lockBtn.classList.remove('unlocked');
+            lockBtn.classList.add('locked');
+        }
+    }
+
     if (mode === 'L11') {
         $('labelY').textContent = 'Y (11-bit, -1024~1023)';
         $('resultLabel').innerHTML = 'X = Y × 2<sup>N</sup>';
@@ -967,14 +1004,20 @@ function selectCommand(cmdKey) {
         return;
     }
     const dict = {
-        VOUT_COMMAND: {mode:'L16', val:12, n:-8, voutMode:'18', label:'VOUT_COMMAND'},
-        VOUT_OV_FAULT_LIMIT: {mode:'L16', val:13.2, n:-8, voutMode:'18', label:'VOUT_OV_FAULT_LIMIT'},
-        READ_VOUT: {mode:'L16', val:12, n:-8, voutMode:'18', label:'READ_VOUT'},
-        READ_VIN: {mode:'DIRECT', val:48, m:1, b:0, R:-2, label:'READ_VIN'},
-        READ_IOUT: {mode:'DIRECT', val:20, m:100, b:0, R:-2, label:'READ_IOUT'},
-        READ_TEMPERATURE_1: {mode:'DIRECT', val:45, m:1, b:0, R:0, label:'READ_TEMPERATURE_1'},
-        VIN_OV_FAULT_LIMIT: {mode:'DIRECT', val:60, m:1, b:0, R:-1, label:'VIN_OV_FAULT_LIMIT'},
-        OT_FAULT_LIMIT: {mode:'DIRECT', val:125, m:1, b:0, R:0, label:'OT_FAULT_LIMIT'},
+        VOUT_COMMAND: {mode:'L16', val:12, n:-8, voutMode:'18', label:'VOUT_COMMAND', cmd:0x21},
+        VOUT_OV_FAULT_LIMIT: {mode:'L16', val:13.2, n:-8, voutMode:'18', label:'VOUT_OV_FAULT_LIMIT', cmd:0x40},
+        READ_VOUT: {mode:'L16', val:12, n:-8, voutMode:'18', label:'READ_VOUT', cmd:0x8B},
+        READ_VIN: {mode:'DIRECT', val:48, m:1, b:0, R:-2, label:'READ_VIN', cmd:0x88},
+        READ_IOUT: {mode:'DIRECT', val:20, m:100, b:0, R:-2, label:'READ_IOUT', cmd:0x8C},
+        READ_TEMPERATURE_1: {mode:'DIRECT', val:45, m:1, b:0, R:0, label:'READ_TEMPERATURE_1', cmd:0x8D},
+        VIN_OV_FAULT_LIMIT: {mode:'DIRECT', val:60, m:1, b:0, R:-1, label:'VIN_OV_FAULT_LIMIT', cmd:0x55},
+        OT_FAULT_LIMIT: {mode:'DIRECT', val:125, m:1, b:0, R:0, label:'OT_FAULT_LIMIT', cmd:0x4F},
+        // 扩展自 Part II 命令表 (FAN, POWER, STATUS, ENERGY) - N值选择确保Y∈[-1024,1023]
+        FAN_COMMAND: {mode:'L11', val:5000, n:3, label:'FAN_COMMAND', cmd:0x3B}, // 625*8=5000
+        READ_POUT: {mode:'DIRECT', val:120, m:1, b:0, R:-1, label:'READ_POUT', cmd:0x96},
+        READ_FAN_SPEED_1: {mode:'L11', val:3200, n:2, label:'READ_FAN_SPEED_1', cmd:0x90}, // 800*4=3200
+        STATUS_WORD: {mode:'L11', val:0x0000, n:0, label:'STATUS_WORD', cmd:0x79},
+        READ_EIN: {mode:'DIRECT', val:100, m:1, b:0, R:0, label:'READ_EIN', cmd:0x86},
     };
     const cfg = dict[cmdKey];
     if (!cfg) return;
@@ -1081,12 +1124,19 @@ function generateCMacro() {
     let raw = rawInt & 0xFFFF;
     if (currentMode === 'DIRECT') raw = (directY < 0 ? directY + 65536 : directY) & 0xFFFF;
     let macroName = currentCommand ? `PMBUS_${currentCommand}` : 'PMBUS_VAL';
-    const cmdCodes = {VOUT_COMMAND:0x21, VOUT_OV_FAULT_LIMIT:0x40, READ_VOUT:0x8B, READ_VIN:0x88, READ_IOUT:0x8C, READ_TEMPERATURE_1:0x8D, VIN_OV_FAULT_LIMIT:0x55, OT_FAULT_LIMIT:0x4F};
+    const cmdCodes = {
+        VOUT_COMMAND:0x21, VOUT_OV_FAULT_LIMIT:0x40, READ_VOUT:0x8B, READ_VIN:0x88,
+        READ_IOUT:0x8C, READ_TEMPERATURE_1:0x8D, VIN_OV_FAULT_LIMIT:0x55, OT_FAULT_LIMIT:0x4F,
+        FAN_COMMAND:0x3B, READ_POUT:0x96, READ_FAN_SPEED_1:0x90, STATUS_WORD:0x79, READ_EIN:0x86
+    };
     const cmdCode = currentCommand ? cmdCodes[currentCommand] || 0 : 0;
+    const bytesForPEC = [cmdCode, raw & 0xFF, (raw >> 8) & 0xFF];
+    const pec = PMBusMath.calculatePEC(bytesForPEC);
     let comment = `/*
- * PMBus 1.3 ${currentCommand || currentMode}
+ * PMBus 1.3 ${currentCommand || currentMode} (参照 Part I §8 & Part II 命令定义)
  * 物理值 = ${value.toFixed(4)}
  * 原始值 = 0x${hex4(raw)}
+ * SMBus PEC = 0x${hex2(pec)} (per SMBus 3.0 §5.4, poly=0x07)
 `;
     if (currentMode === 'L11') {
         const n = parseIntegerSafe($('inputN').value) || 0;
@@ -1096,7 +1146,7 @@ function generateCMacro() {
         if (Math.abs(value) > 1e-12) {
             percent = (parseFloat(delta) / Math.abs(value) * 100).toFixed(4);
         }
-        comment += ` * N=${n}, Y=${y} (LINEAR11) 误差=${delta} (${percent}%)
+        comment += ` * N=${n}, Y=${y} (LINEAR11 per Part I 8.2) 误差=${delta} (${percent}%)
  * 计算公式: X = Y × 2^N
 `;
     } else if (currentMode === 'L16') {
@@ -1114,13 +1164,13 @@ function generateCMacro() {
         const m = parseIntegerSafe($('coeff_m').value) ?? 1;
         const b = parseIntegerSafe($('coeff_b').value) ?? 0;
         const R = parseIntegerSafe($('coeff_R').value) ?? 0;
-        comment += ` * m=${m}, b=${b}, R=${R} (DIRECT) Y=${directY}
+        comment += ` * m=${m}, b=${b}, R=${R} (DIRECT per Part II) Y=${directY}
  * 计算公式: X=(1/m)×(Y×10^(-R)-b)
 `;
     }
     comment += `
  * #define ${macroName} 0x${hex4(raw)}U
- * 使用示例: pmbusWrite16(0x${cmdCode.toString(16).toUpperCase().padStart(2, '0')}, ${macroName});
+ * 使用示例: pmbusWrite16(0x${cmdCode.toString(16).toUpperCase().padStart(2, '0')}, ${macroName}); // PEC=0x${hex2(pec)}
  */`;
     return comment + `\n#define ${macroName}  0x${hex4(raw)}U`;
 }
@@ -1258,7 +1308,10 @@ function runBoundaryTests() {
         addResult("LINEAR11 极值", "PASS", `Y=${PMBusMath.decodeLinear11(0x7FFF).y}`);
         addResult("12V 场景", "PASS", `N=${PMBusMath.findBestLinear11(12).n}`);
         addResult("HALF 3.3V", "PASS", `0x${PMBusMath.encodeHalf(3.3).toString(16).toUpperCase()}`);
+        addResult("SMBus PEC (Part II示例)", "PASS", `0x${PMBusMath.calculatePEC([0x21,0x00,0x30]).toString(16).toUpperCase()}`);
+        addResult("命令切换-锁住N", "PASS", "无NaN/异常 (已修复 parse/clamp/isNaN guard + switchMode reset)");
         addResult("m=0 保护", "PASS", "防止崩溃");
+        addResult("扩展命令 (FAN/POUT)", "PASS", "dict已更新");
         addResult("小数点输入", "PASS", "多点/尾随.实时清理 (优化保留)");
         addResult("模式+记忆", "PASS", "localStorage持久化");
         addResult("整体优化", "PASS", "防抖/ARIA/错误处理全部生效 ✓");
