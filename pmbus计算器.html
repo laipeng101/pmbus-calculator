@@ -175,14 +175,14 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 </style>
 </head>
 <body>
-<div class="w">
-<h2>PMBus 协议计算器</h2>
-    <div class="tabs">
-    <button class="tab on" data-mode="L11" onclick="switchMode('L11')" data-tooltip="LINEAR11 格式：X = Y × 2^N (最常用)">线性11 (LINEAR11)</button>
-    <button class="tab" data-mode="L16" onclick="switchMode('L16')" data-tooltip="LINEAR16 格式：主要用于 VOUT 电压命令">线性16 (VOUT)</button>
-    <button class="tab" data-mode="DIRECT" onclick="switchMode('DIRECT')" data-tooltip="DIRECT 格式：需设置 m、b、R 三个系数">DIRECT格式</button>
-    <button class="tab" data-mode="HALF" onclick="switchMode('HALF')" data-tooltip="IEEE 754 半精度浮点 (16位)">IEEE半精度</button>
-    </div>
+<main class="w" role="main">
+<h1>PMBus 协议计算器</h1>
+    <nav class="tabs" role="tablist" aria-label="PMBus/SMBus 数据格式模式">
+    <button class="tab on" data-mode="L11" onclick="switchMode('L11')" role="tab" aria-selected="true" aria-controls="linearSection" data-tooltip="LINEAR11 格式：X = Y × 2^N (最常用) (Part I §8.2)">线性11 (LINEAR11)</button>
+    <button class="tab" data-mode="L16" onclick="switchMode('L16')" role="tab" aria-selected="false" aria-controls="linearSection" data-tooltip="LINEAR16 格式：主要用于 VOUT 电压命令 (Part I §8.3)">线性16 (VOUT)</button>
+    <button class="tab" data-mode="DIRECT" onclick="switchMode('DIRECT')" role="tab" aria-selected="false" aria-controls="directSection" data-tooltip="DIRECT 格式：需设置 m、b、R 三个系数 (Part II)">DIRECT格式</button>
+    <button class="tab" data-mode="HALF" onclick="switchMode('HALF')" role="tab" aria-selected="false" aria-controls="linearSection" data-tooltip="IEEE 754 半精度浮点 (16位)">IEEE半精度</button>
+    </nav>
 
     <div class="bo" style="margin:8px 0 20px">
     <label style="margin-right:8px">命令字典：</label>
@@ -249,7 +249,7 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 <div class="ig" id="grpDirectY" style="display:none"><label>Y (16-bit 有符号)</label><input id="inputDirectY" class="fixed-num" inputmode="numeric"></div>
 <div class="ig fw"><label id="labelValue">物理值 (Value)</label><input id="inputValue" inputmode="decimal"></div>
 </div>
-    <div class="rb" id="resultBox">
+    <div class="rb" id="resultBox" role="region" aria-live="polite" aria-label="计算结果">
     <!-- 工具栏 -->
     <div class="result-toolbar">
       <div class="hex-group">
@@ -262,21 +262,22 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
     </div>
 
     <label id="resultLabel" class="result-label">X = Y × 2<sup>N</sup></label>
-    <div class="vd" id="displayValue">56</div>
+    <output class="vd" id="displayValue">56</output>
     <div class="fm" id="resultFormula"></div>
     <div class="fm" id="deltaError" style="display:block;">误差: <span style="color:#10b981">+0.000000</span> <span style="font-size:10px">(0.0000%)</span></div>
     <div class="fm" id="halfNote" style="display:none;">Note: IEEE Half ~3.3 decimal digits precision</div>
     <div class="warn-banner" id="overflowWarn">⚠ 溢出警告: 值超出 LINEAR11 表示范围</div>
     <div class="warn-banner" id="specialWarn"></div>
     </div>
-<div class="infoBar" id="infoBar"></div>
+    <div class="infoBar" id="infoBar" aria-live="polite" role="status"></div>
     <div class="tip">Hex右侧小按钮(0x/␣) · 颜色区分状态 · 复制C代码 · Ctrl+1/2/3/4切换模式 · 点击字节复制</div>
     <button onclick="runBoundaryTests()" style="margin-top:12px;padding:8px 16px;background:#10b981;color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 2px 4px rgba(16,185,129,0.3);">🧪 全面边界测试 & 优化验证</button>
 
-</div>
+</main>
 
 <!-- 自定义Tooltip -->
 <div id="customTooltip" class="tooltip"></div>
+
 
 <script>
 // ==================== PMBus 数学计算核心层 (纯函数，无DOM依赖) ====================
@@ -916,7 +917,10 @@ function applyProfile(name) {
 function switchMode(mode) {
     const prev = currentMode;
     currentMode = mode;
-    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+    document.querySelectorAll('.tab').forEach(b => {
+      b.classList.toggle('on', b.dataset.mode === mode);
+      b.setAttribute('aria-selected', (b.dataset.mode === mode).toString());
+    });
     const isDirect = (mode === 'DIRECT');
     $('linearSection').style.display = isDirect ? 'none' : '';
     $('directSection').style.display = isDirect ? '' : 'none';
