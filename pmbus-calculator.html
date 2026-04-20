@@ -11,7 +11,7 @@
 .dark{--p:#60a5fa;--bg:#0f172a;--surface:#1e2937;--text-primary:#e2e8f0;--text-secondary:#94a3b8;--text-muted:#cbd5e1;--border:#475569;--input-bg:#334155;--input-border:#475569;--input-text:#e2e8f0;--hover-bg:#334155;--warning-bg:#451a03;--error-bg:#450a0a;--focus-ring:rgba(147,197,253,0.25);--bl:#60a5fa;--gn:#34d399;--am:#fbbf24;--rd:#f87171;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3)}}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text-primary);padding:24px 16px;display:flex;justify-content:center;min-height:100vh}
-.w{width:100%;max-width:780px;background:var(--surface);padding:32px 28px;border-radius:20px;box-shadow:var(--shadow);border:1px solid var(--border)}
+.w{width:100%;max-width:780px;background:var(--surface);padding:32px 28px;border-radius:20px;box-shadow:var(--shadow);border:1px solid var(--border);position:relative}
 h2{margin:0 0 24px;font-size:1.75rem;font-weight:700;text-align:center;color:var(--p);letter-spacing:-0.5px}
 h3{font-size:.9rem;color:var(--text-secondary);margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
 .tabs{display:flex;gap:8px;margin-bottom:24px;justify-content:center;flex-wrap:wrap}
@@ -183,7 +183,7 @@ hr.d{border:0;border-top:1px solid var(--border);margin:18px 0}
 <body>
 <main class="w" role="main">
 <h1>PMBus 协议计算器</h1>
-<button id="themeToggle" class="toggle-small" style="position:absolute;top:24px;right:28px;font-size:18px" data-tooltip="切换亮色/暗黑模式 (支持prefers-color-scheme)">☀️</button>
+<button id="themeToggle" class="toggle-small" style="position:absolute;top:24px;right:28px;font-size:18px;z-index:30" data-tooltip="切换亮色/暗黑模式 (支持prefers-color-scheme)">☀️</button>
     <nav class="tabs" role="tablist" aria-label="PMBus/SMBus 数据格式模式">
     <button class="tab on" data-mode="L11" onclick="switchMode('L11')" role="tab" aria-selected="true" aria-controls="linearSection" data-tooltip="LINEAR11 格式：X = Y × 2^N (最常用) (Part I §8.2)">线性11 (LINEAR11)</button>
     <button class="tab" data-mode="L16" onclick="switchMode('L16')" role="tab" aria-selected="false" aria-controls="linearSection" data-tooltip="LINEAR16 格式：主要用于 VOUT 电压命令 (Part I §8.3)">线性16 (VOUT)</button>
