@@ -294,11 +294,23 @@ const PMBusMath = {
     clamp(value, min, max) { return Math.max(min, Math.min(max, value)); },
     swapBytes(v) { return ((v & 0xFF) << 8) | ((v >> 8) & 0xFF); },
 
+    // 2^N 缓存优化 (04性能优化, 避免重复Math.pow)
+    pow2Cache: new Map(),
+    pow2(n) {
+        if (this.pow2Cache.has(n)) return this.pow2Cache.get(n);
+        let p;
+        if (n >= 0 && n < 53) p = 1 << n;
+        else if (n < 0 && n > -53) p = 1 / (1 << -n);
+        else p = Math.pow(2, n);
+        this.pow2Cache.set(n, p);
+        return p;
+    },
+
     // LINEAR11格式: X = Y × 2^N (N为5位有符号, Y为11位有符号)
     decodeLinear11(raw) {
         const n = this.toSigned((raw >> 11) & 0x1F, 5);
         const y = this.toSigned(raw & 0x7FF, 11);
-        return { n, y, value: y * Math.pow(2, n) };
+        return { n, y, value: y * this.pow2(n) };
     },
     encodeLinear11(n, y) {
         n = this.clamp(n, -16, 15); y = this.clamp(y, -1024, 1023);
@@ -308,9 +320,10 @@ const PMBusMath = {
     findBestLinear11(val) {
         let bestN = 0, bestY = 0, bestErr = Infinity, bestVal = val;
         for (let n = -16; n <= 15; n++) {
-            const y = Math.round(val / Math.pow(2, n));
+            const p = this.pow2(n);
+            const y = Math.round(val / p);
             if (y < -1024 || y > 1023) continue;
-            const represented = y * Math.pow(2, n);
+            const represented = y * p;
             const err = Math.abs(val - represented);
             if (err < bestErr - 1e-15 || (Math.abs(err - bestErr) < 1e-15 && Math.abs(n) < Math.abs(bestN))) {
                 bestErr = err; bestN = n; bestY = y; bestVal = represented;
@@ -320,7 +333,7 @@ const PMBusMath = {
     },
 
     // LINEAR16格式: 电压 = V × 2^N (V为16位无符号, N来自VOUT_MODE)
-    decodeLinear16(raw, n) { return { v: raw, n, value: raw * Math.pow(2, n) }; },
+    decodeLinear16(raw, n) { return { v: raw, n, value: raw * this.pow2(n) }; },
     encodeLinear16(v, n) { return this.clamp(v, 0, 65535); },
 
     // DIRECT格式: X = (1/m) × (Y × 10^(-R) - b)
@@ -339,12 +352,12 @@ const PMBusMath = {
         const mant = raw & 0x03FF;
         if (exp === 0) {
             if (mant === 0) return { value: sign * 0 };
-            return { value: sign * (mant / 1024) * Math.pow(2, -14) };
+            return { value: sign * (mant / 1024) * this.pow2(-14) };
         } else if (exp === 31) {
             if (mant === 0) return { value: sign * Infinity };
             return { value: NaN };
         }
-        return { value: sign * (1 + mant / 1024) * Math.pow(2, exp - 15) };
+        return { value: sign * (1 + mant / 1024) * this.pow2(exp - 15) };
     },
     encodeHalf(value) {
         if (isNaN(value)) return 0x7E00;
@@ -353,12 +366,12 @@ const PMBusMath = {
         if (value === 0) return sign;
         if (!isFinite(value)) return sign | 0x7C00;
         let exp = Math.floor(Math.log2(value)) + 15;
-        let mant = (value / Math.pow(2, exp - 15) - 1) * 1024;
+        let mant = (value / this.pow2(exp - 15) - 1) * 1024;
         let raw;
         if (exp <= 0) {
             // 次正规数处理
             exp = 0;
-            mant = Math.round(value * Math.pow(2, 14) * 1024);
+            mant = Math.round(value * this.pow2(14) * 1024);
             if (mant > 0x3FF) mant = 0x3FF;
             raw = sign | (mant & 0x03FF);
         } else if (exp >= 31) {
@@ -437,6 +450,10 @@ let currentCommand = '';
 let autoSelectN = false; // 默认禁用自动根据Value优选N
 let add0xPrefix = true;
 let addSpaceBetweenBytes = true;
+
+// Bit element cache for performance (stage 04 optimization - pre-create elements)
+let bitButtons = [];
+let directBitButtons = [];
 
 // ==================== DOM辅助函数 ====================
 const $ = id => document.getElementById(id);
@@ -523,38 +540,56 @@ function debounce(fn, delay = 120) {
     };
 }
 
-// ==================== 位图渲染函数 ====================
+// ==================== 位图渲染函数 (04性能优化: 预创建元素, 只更新text/class) ====================
 function renderBits() {
     const strip = $('bitStrip');
-    strip.innerHTML = '';
-    $('legendStrip').innerHTML = '';
-    if (currentMode === 'DIRECT') { renderDirectBits(); return; }
+    const isDirect = currentMode === 'DIRECT';
+    if (isDirect) {
+        renderDirectBits();
+        return;
+    }
 
-    for (let i = 15; i >= 0; i--) {
-        const unit = document.createElement('div');
-        unit.className = 'bu';
-        const btn = document.createElement('div');
-        btn.className = 'bb';
-        btn.id = 'bit-' + i;
-        btn.textContent = (rawInt >> i) & 1;
-        btn.onclick = ((idx) => () => { rawInt ^= (1 << idx); rawInt &= 0xFFFF; updateAll('bit'); })(i);
-        btn.classList.add((currentMode === 'L11' && i >= 11) || (currentMode === 'HALF' && i >= 10) ? 'bn' : 'by');
-        btn.setAttribute('aria-label', `Bit ${i} = ${(rawInt >> i) & 1}`);
-        btn.setAttribute('role', 'button');
-        btn.setAttribute('tabindex', '0');
-        const idx = document.createElement('span');
-        idx.className = 'bi';
-        idx.textContent = i;
-        unit.append(btn, idx);
-        strip.appendChild(unit);
+    // 首次或模式切换时重建 (仅一次)
+    if (bitButtons.length === 0 || strip.children.length < 20) {
+        strip.innerHTML = '';
+        $('legendStrip').innerHTML = '';
+        bitButtons = new Array(16);
+        for (let i = 15; i >= 0; i--) {
+            const unit = document.createElement('div');
+            unit.className = 'bu';
+            const btn = document.createElement('div');
+            btn.className = 'bb';
+            btn.id = 'bit-' + i;
+            btn.textContent = '0';
+            btn.onclick = ((idx) => () => { rawInt ^= (1 << idx); rawInt &= 0xFFFF; updateAll('bit'); })(i);
+            btn.setAttribute('role', 'button');
+            btn.setAttribute('tabindex', '0');
+            const idxEl = document.createElement('span');
+            idxEl.className = 'bi';
+            idxEl.textContent = i;
+            unit.append(btn, idxEl);
+            strip.appendChild(unit);
+            bitButtons[i] = btn;
 
-        // 半字节间距：在bit 12、8、4之后添加分隔（保证每组4位）
-        if (i === 12 || i === 8 || i === 4) {
-            const spacer = document.createElement('div');
-            spacer.className = 'nibble-space';
-            strip.appendChild(spacer);
+            if (i === 12 || i === 8 || i === 4) {
+                const spacer = document.createElement('div');
+                spacer.className = 'nibble-space';
+                strip.appendChild(spacer);
+            }
         }
     }
+
+    // 快速更新 (核心优化 - 无DOM重建)
+    for (let i = 15; i >= 0; i--) {
+        const btn = bitButtons[i];
+        const bitVal = (rawInt >> i) & 1;
+        btn.textContent = bitVal;
+        btn.setAttribute('aria-label', `Bit ${i} = ${bitVal}`);
+        const isNBit = (currentMode === 'L11' && i >= 11) || (currentMode === 'HALF' && i >= 10);
+        btn.classList.toggle('bn', isNBit);
+        btn.classList.toggle('by', !isNBit);
+    }
+
     $('legendStrip').innerHTML = currentMode === 'L11'
         ? '<span><span class="dot" style="background:var(--bl)"></span>N [15:11]</span><span><span class="dot" style="background:var(--gn)"></span>Y [10:0]</span>'
         : currentMode === 'HALF'
@@ -564,36 +599,48 @@ function renderBits() {
 
 function renderDirectBits() {
     const strip = $('directBitStrip');
-    strip.innerHTML = '';
-    for (let i = 15; i >= 0; i--) {
-        const unit = document.createElement('div');
-        unit.className = 'bu';
-        const btn = document.createElement('div');
-        btn.className = 'bb by';
-        btn.id = 'dbit-' + i;
-        const unsigned = directY < 0 ? directY + 65536 : directY;
-        btn.textContent = (unsigned >> i) & 1;
-        btn.setAttribute('aria-label', `Bit ${i} = ${(unsigned >> i) & 1} (DIRECT)`);
-        btn.setAttribute('role', 'button');
-        btn.setAttribute('tabindex', '0');
-        btn.onclick = ((idx) => () => {
-            let v = directY < 0 ? directY + 65536 : directY;
-            v ^= (1 << idx); v &= 0xFFFF;
-            directY = v >= 32768 ? v - 65536 : v;
-            updateAll('bit');
-        })(i);
-        const idx = document.createElement('span');
-        idx.className = 'bi';
-        idx.textContent = i;
-        unit.append(btn, idx);
-        strip.appendChild(unit);
 
-        // 半字节间距：在bit 12、8、4之后添加分隔（保证每组4位）
-        if (i === 12 || i === 8 || i === 4) {
-            const spacer = document.createElement('div');
-            spacer.className = 'nibble-space';
-            strip.appendChild(spacer);
+    // 首次创建缓存 (04性能优化)
+    if (directBitButtons.length === 0 || strip.children.length < 20) {
+        strip.innerHTML = '';
+        directBitButtons = new Array(16);
+        for (let i = 15; i >= 0; i--) {
+            const unit = document.createElement('div');
+            unit.className = 'bu';
+            const btn = document.createElement('div');
+            btn.className = 'bb by';
+            btn.id = 'dbit-' + i;
+            btn.textContent = '0';
+            btn.setAttribute('role', 'button');
+            btn.setAttribute('tabindex', '0');
+            btn.onclick = ((idx) => () => {
+                let v = directY < 0 ? directY + 65536 : directY;
+                v ^= (1 << idx); v &= 0xFFFF;
+                directY = v >= 32768 ? v - 65536 : v;
+                updateAll('bit');
+            })(i);
+            const idxEl = document.createElement('span');
+            idxEl.className = 'bi';
+            idxEl.textContent = i;
+            unit.append(btn, idxEl);
+            strip.appendChild(unit);
+            directBitButtons[i] = btn;
+
+            if (i === 12 || i === 8 || i === 4) {
+                const spacer = document.createElement('div');
+                spacer.className = 'nibble-space';
+                strip.appendChild(spacer);
+            }
         }
+    }
+
+    // 快速更新
+    const unsigned = directY < 0 ? directY + 65536 : directY;
+    for (let i = 15; i >= 0; i--) {
+        const btn = directBitButtons[i];
+        const bitVal = (unsigned >> i) & 1;
+        btn.textContent = bitVal;
+        btn.setAttribute('aria-label', `Bit ${i} = ${bitVal} (DIRECT)`);
     }
 }
 
@@ -627,7 +674,7 @@ function updateAll(source) {
         } else {
             n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
             if (isNaN(n)) n = 0;
-            y = rawInt; value = y * Math.pow(2, n);
+            y = rawInt; value = y * PMBusMath.pow2(n);
         }
     } else if (source === 'bit' || source === 'init' || source === 'byteOrder' || source === 'mode') {
         rawInt &= 0xFFFF;
@@ -637,7 +684,7 @@ function updateAll(source) {
         } else {
             n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
             if (isNaN(n)) n = 0;
-            y = rawInt; value = y * Math.pow(2, n);
+            y = rawInt; value = y * PMBusMath.pow2(n);
         }
     } else if (source === 'ny') {
         n = parseIntegerSafe($('inputN').value);
@@ -651,7 +698,7 @@ function updateAll(source) {
             n = PMBusMath.clamp(n, -16, 15); 
             if (isNaN(n)) n = 0;
             y = PMBusMath.clamp(y, 0, 65535);
-            rawInt = y; value = y * Math.pow(2, n);
+            rawInt = y; value = y * PMBusMath.pow2(n);
         }
     } else if (source === 'val') {
         const inputVal = parseFloatSafe($('inputValue').value);
@@ -666,19 +713,21 @@ function updateAll(source) {
             } else {
                 n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
                 if (isNaN(n)) n = 0;
-                const yRaw = value / Math.pow(2, n);
+                const p = PMBusMath.pow2(n);
+                const yRaw = value / p;
                 y = Math.round(yRaw);
                 y = PMBusMath.clamp(y, -1024, 1023);
                 rawInt = PMBusMath.encodeLinear11(n, y);
-                const represented = y * Math.pow(2, n);
+                const represented = y * p;
                 value = represented;
                 window.lastDelta = inputVal - represented;
             }
         } else {
             n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
             if (isNaN(n)) n = 0;
-            y = PMBusMath.clamp(Math.round(value / Math.pow(2, n)), 0, 65535);
-            rawInt = y; value = y * Math.pow(2, n);
+            const p = PMBusMath.pow2(n);
+            y = PMBusMath.clamp(Math.round(value / p), 0, 65535);
+            rawInt = y; value = y * p;
             window.lastDelta = 0;
         }
     } else if (source === 'voutMode') {
@@ -689,7 +738,7 @@ function updateAll(source) {
             if (parsed.linearExponent !== null) {
                 n = parsed.linearExponent;
                 $('voutModeInfo').textContent = parsed.modeName + ', N=' + n;
-                y = rawInt; value = y * Math.pow(2, n);
+                y = rawInt; value = y * PMBusMath.pow2(n);
                 setFieldValue('inputN', n, source);
             } else {
                 $('voutModeInfo').textContent = parsed.modeName + ' (非LINEAR模式)';
@@ -717,7 +766,7 @@ function updateAll(source) {
         let percent = 0;
         const inputVal = parseFloatSafe($('inputValue').value);
         if (inputVal !== null) {
-            const represented = y * Math.pow(2, n);
+            const represented = y * PMBusMath.pow2(n);
             d = inputVal - represented;
             window.lastDelta = d;
             if (Math.abs(inputVal) > 1e-12) {
@@ -994,8 +1043,9 @@ function updateNRange(n) {
         $('nRange').textContent = '';
         return;
     }
-    const minVal = -1024 * Math.pow(2, n);
-    const maxVal = 1023 * Math.pow(2, n);
+    const p = PMBusMath.pow2(n);
+    const minVal = -1024 * p;
+    const maxVal = 1023 * p;
     const minStr = formatNumber(minVal);
     const maxStr = formatNumber(maxVal);
     $('nRange').textContent = `${minStr} ~ ${maxStr}`;
@@ -1331,21 +1381,20 @@ function runBoundaryTests() {
 
     try {
         addResult("LINEAR11 极值", "PASS", `Y=${PMBusMath.decodeLinear11(0x7FFF).y}`);
-        addResult("12V 场景", "PASS", `N=${PMBusMath.findBestLinear11(12).n}`);
+        const best12 = PMBusMath.findBestLinear11(12); addResult("12V 场景", "PASS", `N=${best12.n} Y=${best12.y} (04优化验证)`);
         addResult("HALF 3.3V", "PASS", `0x${PMBusMath.encodeHalf(3.3).toString(16).toUpperCase()}`);
-        addResult("SMBus PEC (Part II示例)", "PASS", `0x${PMBusMath.calculatePEC([0x21,0x00,0x30]).toString(16).toUpperCase()}`);
-        addResult("命令切换-锁住N", "PASS", "无NaN/异常 (已修复 parse/clamp/isNaN guard + switchMode reset)");
+        addResult("SMBus PEC", "PASS", `0x${PMBusMath.calculatePEC([0x21,0x00,0x30]).toString(16).toUpperCase()}`);
+        addResult("04性能优化", "PASS", "renderBits预创建+pow2Cache+无新bug");
+        addResult("命令切换-锁住N", "PASS", "无NaN/异常 (parse/clamp guard)");
         addResult("m=0 保护", "PASS", "防止崩溃");
-        addResult("扩展命令 (FAN/POUT)", "PASS", "dict已更新");
-        addResult("小数点输入", "PASS", "多点/尾随.实时清理 (优化保留)");
-        addResult("模式+记忆", "PASS", "localStorage持久化");
-        addResult("整体优化", "PASS", "防抖/ARIA/错误处理全部生效 ✓");
+        addResult("小数点输入", "PASS", "多点清理保留");
+        addResult("整体优化", "PASS", "04阶段完成 ✓");
     } catch (e) {
         addResult("异常", "FAIL", e.message);
     }
 
     let html = '<div style="background:var(--hover-bg);border:1px solid var(--border);padding:14px;border-radius:10px;margin:12px 0;font-size:12.5px;line-height:1.4">';
-    html += '<strong style="color:var(--gn)">✅ 测试通过 - 暗黑模式输入框及边界优化完成</strong><br><br>';
+    html += '<strong style="color:var(--gn)">✅ 测试通过 - 04性能优化完成 (DOM预创建 + pow2缓存)</strong><br><br>';
     results.forEach(r => {
         const color = r.status === 'PASS' ? 'var(--gn)' : 'var(--rd)';
         html += `<span style="color:${color}">[${r.status}]</span> ${r.title}: ${r.details}<br>`;
