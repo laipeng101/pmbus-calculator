@@ -52,9 +52,14 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 .hd b{font-weight:700;color:var(--t)}
 .bo{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:12px;font-size:12px;color:#64748b;flex-wrap:wrap}
 .bo label{font-weight:600}.bo select{padding:4px 8px;border:1px solid var(--b);border-radius:4px;font-size:12px}
-.copy-btn{position:absolute;top:8px;right:8px;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--p);cursor:pointer;font-weight:600;transition:.15s}
+.copy-btn{position:absolute;top:8px;right:72px;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--p);cursor:pointer;font-weight:600;transition:.15s;height:36px;display:flex;align-items:center;justify-content:center}
 .copy-btn:hover{background:rgba(37,99,235,.2)}
 .copy-btn.copied{background:var(--gn);color:#fff;border-color:var(--gn)}
+.toggle-small{position:absolute;width:22px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;transition:all .2s;border:1px solid;line-height:1}
+#toggle0xBtn{right:47px;top:8px;height:16px}
+#toggleSpaceBtn{right:47px;top:27px;height:16px}
+.toggle-small.active{background:#10b981;color:#fff;border-color:#10b981}
+.toggle-small:not(.active){background:#e2e8f0;color:#64748b;border-color:#cbd5e1}
 .warn-banner{background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--rd);margin-top:8px;display:none}
 .warn-banner.show{display:block}
 .profile-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
@@ -144,8 +149,10 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 </div>
     <div class="rb" id="resultBox">
     <button class="copy-btn" id="copyHexBtn" title="复制 Hex">📋 Hex</button>
-    <button class="copy-btn" id="copyValBtn" title="复制值" style="right:85px">📋 值</button>
-    <button class="copy-btn" id="copyCBtn" style="right:155px" title="生成 C 宏代码">复制 C 代码</button>
+    <button class="toggle-small active" id="toggle0xBtn" title="点击切换是否添加 0x 前缀">0x</button>
+    <button class="toggle-small active" id="toggleSpaceBtn" title="点击切换字节间是否添加空格">␣</button>
+    <button class="copy-btn" id="copyValBtn" title="复制值" style="right:165px">📋 值</button>
+    <button class="copy-btn" id="copyCBtn" style="right:235px" title="生成 C 宏代码">复制 C 代码</button>
     <label id="resultLabel">X=Y×2<sup>N</sup></label>
     <div class="vd" id="displayValue">0</div>
     <div class="fm" id="resultFormula"></div>
@@ -155,7 +162,7 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
     <div class="warn-banner" id="specialWarn"></div>
     </div>
 <div class="infoBar" id="infoBar"></div>
-    <div class="tip">误差 · 复制C代码 · 命令字典 · IEEE半精度 · Ctrl+1/2/3/4切换模式 · 实时计算 · 点击字节复制</div>
+    <div class="tip">Hex右侧小按钮(0x/␣) · 颜色区分状态 · 复制C代码 · Ctrl+1/2/3/4切换模式 · 点击字节复制</div>
 
 </div>
 <script>
@@ -290,6 +297,8 @@ let directY = 0;
 let editingField = null;
 let currentCommand = '';
 let autoSelectN = false; // 默认禁用自动根据Value优选N
+let add0xPrefix = true;
+let addSpaceBetweenBytes = true;
 
 // ==================== DOM辅助函数 ====================
 const $ = id => document.getElementById(id);
@@ -850,6 +859,84 @@ function copyToClipboard(text, btnEl) {
     }).catch(() => {});
 }
 
+function getHexCopyText() {
+    let hex = ($('inputHex').value || '0000').trim();
+    let text = hex;
+    if (addSpaceBetweenBytes && hex.length >= 2) {
+        text = hex.match(/.{1,2}/g).join(' ');
+    }
+    if (add0xPrefix) {
+        text = '0x' + text;
+    }
+    return text;
+}
+
+function toggle0xPrefix() {
+    add0xPrefix = !add0xPrefix;
+    const btn = $('toggle0xBtn');
+    const copyBtn = $('copyHexBtn');
+    if (add0xPrefix) {
+        btn.classList.add('active');
+        btn.title = '已启用 0x 前缀 (点击关闭)';
+        if (copyBtn) copyBtn.title = '复制 Hex (带0x)';
+    } else {
+        btn.classList.remove('active');
+        btn.title = '已禁用 0x 前缀 (点击开启)';
+        if (copyBtn) copyBtn.title = '复制 Hex (不带0x)';
+    }
+    localStorage.setItem('pmbus_add0x', add0xPrefix.toString());
+}
+
+function toggleSpace() {
+    addSpaceBetweenBytes = !addSpaceBetweenBytes;
+    const btn = $('toggleSpaceBtn');
+    if (addSpaceBetweenBytes) {
+        btn.classList.add('active');
+        btn.title = '已启用字节空格 (点击关闭)';
+    } else {
+        btn.classList.remove('active');
+        btn.title = '已禁用字节空格 (点击开启)';
+    }
+    localStorage.setItem('pmbus_space', addSpaceBetweenBytes.toString());
+}
+
+function loadPreferences() {
+    // 0x 前缀
+    const saved0x = localStorage.getItem('pmbus_add0x');
+    if (saved0x !== null) add0xPrefix = saved0x === 'true';
+    
+    // 空格设置
+    const savedSpace = localStorage.getItem('pmbus_space');
+    if (savedSpace !== null) addSpaceBetweenBytes = savedSpace === 'true';
+
+    // 更新 0x 按钮（固定显示0x，只改颜色）
+    const oxBtn = $('toggle0xBtn');
+    const copyBtn = $('copyHexBtn');
+    if (oxBtn) {
+        if (add0xPrefix) {
+            oxBtn.classList.add('active');
+            if (copyBtn) copyBtn.title = '复制 Hex (带0x)';
+            oxBtn.title = '已启用 0x 前缀 (点击关闭)';
+        } else {
+            oxBtn.classList.remove('active');
+            if (copyBtn) copyBtn.title = '复制 Hex (不带0x)';
+            oxBtn.title = '已禁用 0x 前缀 (点击开启)';
+        }
+    }
+
+    // 更新空格按钮（固定显示␣，只改颜色）
+    const spaceBtn = $('toggleSpaceBtn');
+    if (spaceBtn) {
+        if (addSpaceBetweenBytes) {
+            spaceBtn.classList.add('active');
+            spaceBtn.title = '已启用字节空格 (点击关闭)';
+        } else {
+            spaceBtn.classList.remove('active');
+            spaceBtn.title = '已禁用字节空格 (点击开启)';
+        }
+    }
+}
+
 function generateCMacro() {
     const value = parseFloatSafe($('inputValue').value) || 0;
     let raw = rawInt & 0xFFFF;
@@ -962,12 +1049,15 @@ function init() {
     wireField('coeff_R', 'coeff', 'int');
     initVoutMode();
 
+    // 复制设置记忆（0x前缀 + 字节空格）
+    loadPreferences();
+
     // N值自动优选开关
     $('nLockBtn').addEventListener('click', toggleAutoN);
 
     // 复制按钮事件
     $('copyHexBtn').addEventListener('click', () => {
-        copyToClipboard('0x' + $('inputHex').value, $('copyHexBtn'));
+        copyToClipboard(getHexCopyText(), $('copyHexBtn'));
     });
     $('copyValBtn').addEventListener('click', () => {
         copyToClipboard($('inputValue').value, $('copyValBtn'));
@@ -976,6 +1066,8 @@ function init() {
         const code = generateCMacro();
         copyToClipboard(code, $('copyCBtn'));
     });
+    $('toggle0xBtn').addEventListener('click', toggle0xPrefix);
+    $('toggleSpaceBtn').addEventListener('click', toggleSpace);
     $('byteDisplay').addEventListener('click', () => {
         const text = $('byteDisplay').textContent.replace(/点击复制/, '').trim();
         navigator.clipboard.writeText(text);
