@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PMBus 协议计算器 (L11/L16/DIRECT)</title>
+<style>
+:root{--p:#2563eb;--bg:#f8fafc;--c:#fff;--t:#1e293b;--b:#e2e8f0;--bl:#3b82f6;--gn:#10b981;--am:#f59e0b;--rd:#ef4444;--pu:#8b5cf6}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--t);padding:20px 16px;display:flex;justify-content:center}
+.w{width:100%;max-width:720px;background:var(--c);padding:28px;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,.05);border:1px solid var(--b)}
+h2{margin:0 0 20px;font-size:1.4rem;text-align:center;color:var(--p)}
+h3{font-size:.85rem;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px}
+.tabs{display:flex;gap:8px;margin-bottom:20px;justify-content:center;flex-wrap:wrap}
+.tab{padding:8px 18px;border:2px solid var(--b);background:#fff;border-radius:20px;cursor:pointer;font-weight:600;font-size:13px;transition:.15s}
+.tab:hover{border-color:var(--p)}.tab.on{background:var(--p);color:#fff;border-color:var(--p)}
+.bits{display:flex;gap:2px;justify-content:center;margin-bottom:8px;flex-wrap:wrap}
+.bu{display:flex;flex-direction:column;align-items:center;gap:2px}
+.bb{width:30px;height:38px;border:1px solid var(--b);background:#f1f5f9;border-radius:4px;display:flex;align-items:center;justify-content:center;font:700 14px/1 monospace;cursor:pointer;user-select:none;transition:.1s}
+.bb:hover{background:#e2e8f0}
+.bb.bn{background:var(--bl)!important;color:#fff;border-color:var(--bl)}
+.bb.by{background:var(--gn)!important;color:#fff;border-color:var(--gn)}
+.bi{font-size:9px;color:#94a3b8}
+.nibble-space{width:8px}
+.leg{display:flex;gap:14px;justify-content:center;font-size:11px;margin:6px 0 16px;flex-wrap:wrap}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:3px;vertical-align:middle}
+hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.ig{display:flex;flex-direction:column;gap:5px}
+.ig label{font-size:12px;font-weight:600;color:#64748b}
+.ig input,.ig select{padding:10px;border:1px solid var(--b);border-radius:8px;font:15px/1.2 monospace;outline:none;width:100%;transition:.15s}
+.ig input:focus,.ig select:focus{border-color:var(--p);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.ig input.ed{border-color:var(--am)!important;box-shadow:0 0 0 3px rgba(245,158,11,.15);background:#fffbeb}
+.ig input.bad{border-color:var(--rd);background:#fef2f2}
+.fw{grid-column:span 2}
+.hx{display:flex;border:1px solid var(--b);border-radius:8px;overflow:hidden;background:#fff}
+.hx:focus-within{border-color:var(--p);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.hx.ed{border-color:var(--am)!important;box-shadow:0 0 0 3px rgba(245,158,11,.15);background:#fffbeb}
+.hp{padding:0 10px;background:#f1f5f9;color:#64748b;display:flex;align-items:center;font:700 14px monospace;border-right:1px solid var(--b)}
+.hx input{border:0;box-shadow:none;outline:none;text-transform:uppercase;border-radius:0;background:transparent}
+.rb{background:#eff6ff;border:1px dashed var(--p);padding:18px;border-radius:8px;text-align:center;margin-bottom:12px;position:relative}
+.rb.dr{background:#fef3c7;border-color:var(--am)}
+.vd{font-size:1.8rem;font-weight:800;color:var(--p);margin:8px 0;word-break:break-all}
+.rb.dr .vd{color:#92400e}
+.fm{font:12px monospace;color:#64748b;margin-top:4px}
+.ib{background:#f1f5f9;border-radius:8px;padding:12px;font-size:12px;color:#475569;line-height:1.6;min-height:48px}
+.ib .w{color:var(--rd);font-weight:600}.ib .o{color:var(--gn);font-weight:600}.ib .a{color:var(--am);font-weight:600}
+.cs{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:16px}
+.cs h3{color:#92400e;margin-bottom:10px}
+.hd{font:13px monospace;color:#64748b;text-align:center;margin-top:6px;cursor:pointer;transition:.15s}
+.hd:hover{color:var(--p)}
+.hd b{font-weight:700;color:var(--t)}
+.bo{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:12px;font-size:12px;color:#64748b;flex-wrap:wrap}
+.bo label{font-weight:600}.bo select{padding:4px 8px;border:1px solid var(--b);border-radius:4px;font-size:12px}
+.copy-btn{position:absolute;top:8px;right:8px;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--p);cursor:pointer;font-weight:600;transition:.15s}
+.copy-btn:hover{background:rgba(37,99,235,.2)}
+.copy-btn.copied{background:var(--gn);color:#fff;border-color:var(--gn)}
+.warn-banner{background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--rd);margin-top:8px;display:none}
+.warn-banner.show{display:block}
+.profile-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.profile-btn{padding:4px 10px;border:1px solid #d97706;background:#fffbeb;border-radius:12px;cursor:pointer;font-size:11px;color:#92400e;transition:.15s}
+.profile-btn:hover{background:#fde68a}
+.tip{text-align:center;font-size:11px;color:#94a3b8;margin-top:16px}
+@media(max-width:500px){.g{grid-template-columns:1fr}.fw{grid-column:span 1}.bb{width:24px;height:32px;font-size:12px}.tab{padding:6px 12px;font-size:12px}.nibble-space{width:4px}}
+</style>
+</head>
+<body>
+<div class="w">
+<h2>PMBus 协议计算器</h2>
+<div class="tabs">
+<button class="tab on" data-mode="L11" onclick="switchMode('L11')">LINEAR11</button>
+<button class="tab" data-mode="L16" onclick="switchMode('L16')">LINEAR16 (VOUT)</button>
+<button class="tab" data-mode="DIRECT" onclick="switchMode('DIRECT')">DIRECT</button>
+</div>
+
+<div id="linearSection">
+<div class="bo" id="byteOrderCtrl" style="display:none"><label>字节序:</label><select id="byteOrderSelect" onchange="onByteOrderChange()"><option value="le">低字节在前 (PMBus标准)</option><option value="be">高字节在前</option></select></div>
+<div class="bo" id="voutModeCtrl" style="display:none"><label>VOUT_MODE (0x20):</label><input id="voutModeHex" maxlength="2" autocomplete="off" style="width:60px;text-transform:uppercase" inputmode="text"><span id="voutModeInfo" style="margin-left:4px"></span></div>
+<div class="bits" id="bitStrip"></div>
+<div class="leg" id="legendStrip"></div>
+</div>
+
+<div id="directSection" style="display:none">
+<div class="cs"><h3>DIRECT 格式系数</h3>
+<div class="g">
+<div class="ig"><label>m (斜率, -32768~32767)</label><input id="coeff_m" inputmode="numeric"></div>
+<div class="ig"><label>b (偏移, -32768~32767)</label><input id="coeff_b" inputmode="numeric"></div>
+<div class="ig"><label>R (指数, -128~127)</label><input id="coeff_R" inputmode="numeric"></div>
+</div>
+<div class="fm" style="margin-top:8px">读取: X=(1/m)×(Y×10<sup>-R</sup>-b) | 写入: Y=(m×X+b)×10<sup>R</sup></div>
+<div class="profile-row"><span style="font-size:11px;color:#92400e;font-weight:600">预设:</span>
+<button class="profile-btn" onclick="applyProfile('vout_12v')">12V 输出</button>
+<button class="profile-btn" onclick="applyProfile('vout_5v')">5V 输出</button>
+<button class="profile-btn" onclick="applyProfile('iout_30a')">30A 电流</button>
+<button class="profile-btn" onclick="applyProfile('temp_125')">125°C 温度</button>
+</div>
+</div>
+<div class="bits" id="directBitStrip"></div>
+<div class="leg"><span><span class="dot" style="background:var(--gn)"></span>Y (16位有符号)</span></div>
+</div>
+
+<hr class="d">
+<div class="g">
+<div class="ig fw"><label id="hexLabel">原始值 (Hex)</label>
+<div class="hx" id="hexWrapper"><span class="hp">0x</span><input id="inputHex" maxlength="4" autocomplete="off" spellcheck="false" inputmode="text"></div>
+<div class="hd" id="byteDisplay" title="点击复制字节序列"></div>
+</div>
+<div class="ig" id="grpN"><label id="labelN">N (5-bit 有符号, -16~15)</label><input id="inputN" inputmode="numeric"></div>
+<div class="ig" id="grpY"><label id="labelY">Y (11-bit 有符号, -1024~1023)</label><input id="inputY" inputmode="numeric"></div>
+<div class="ig" id="grpDirectY" style="display:none"><label>Y (16-bit 有符号)</label><input id="inputDirectY" inputmode="numeric"></div>
+<div class="ig fw"><label id="labelValue">物理值 (Value)</label><input id="inputValue" inputmode="decimal"></div>
+</div>
+<div class="rb" id="resultBox">
+<button class="copy-btn" id="copyHexBtn" title="复制 Hex">📋 Hex</button>
+<button class="copy-btn" id="copyValBtn" title="复制值" style="right:70px">📋 值</button>
+<label id="resultLabel">X=Y×2<sup>N</sup></label>
+<div class="vd" id="displayValue">0</div>
+<div class="fm" id="resultFormula"></div>
+<div class="warn-banner" id="overflowWarn">⚠ 溢出警告: 值超出 LINEAR11 表示范围</div>
+<div class="warn-banner" id="specialWarn"></div>
+</div>
+<div class="infoBar" id="infoBar"></div>
+<div class="tip">所有输入框实时计算 · 光标不跳动 · 失焦/回车确认 · Ctrl+1/2/3 切换 · 点击字节可复制</div>
+</div>
+<script>
+// ==================== PMBus Math Layer (pure, no DOM) ====================
+const PMBusMath = {
+    toSigned(value, bits) { const max = 1 << bits; return value >= max / 2 ? value - max : value; },
+    fromSigned(value, bits) { const max = 1 << bits; return value < 0 ? value + max : value; },
+    clamp(value, min, max) { return Math.max(min, Math.min(max, value)); },
+    swapBytes(v) { return ((v & 0xFF) << 8) | ((v >> 8) & 0xFF); },
+
+    // LINEAR11: X = Y × 2^N (5-bit N, 11-bit Y, both signed)
+    decodeLinear11(raw) {
+        const n = this.toSigned((raw >> 11) & 0x1F, 5);
+        const y = this.toSigned(raw & 0x7FF, 11);
+        return { n, y, value: y * Math.pow(2, n) };
+    },
+    encodeLinear11(n, y) {
+        n = this.clamp(n, -16, 15); y = this.clamp(y, -1024, 1023);
+        return ((this.fromSigned(n, 5) & 0x1F) << 11) | (this.fromSigned(y, 11) & 0x7FF);
+    },
+    // Find best N for a given physical value in LINEAR11
+    findBestLinear11(val) {
+        let bestN = 0, bestY = 0, bestErr = Infinity;
+        for (let n = -16; n <= 15; n++) {
+            const y = Math.round(val / Math.pow(2, n));
+            if (y < -1024 || y > 1023) continue;
+            const err = Math.abs(val - y * Math.pow(2, n));
+            if (err < bestErr - 1e-15 || (Math.abs(err - bestErr) < 1e-15 && Math.abs(n) < Math.abs(bestN))) {
+                bestErr = err; bestN = n; bestY = y;
+            }
+        }
+        return { n: bestN, y: bestY, value: bestY * Math.pow(2, bestN) };
+    },
+
+    // LINEAR16: Voltage = V × 2^N (16-bit unsigned V, 5-bit signed N from VOUT_MODE)
+    decodeLinear16(raw, n) { return { v: raw, n, value: raw * Math.pow(2, n) }; },
+    encodeLinear16(v, n) { return this.clamp(v, 0, 65535); },
+
+    // DIRECT: X = (1/m) × (Y × 10^(-R) - b)
+    decodeDirect(y, m, b, R) {
+        if (m === 0) return { value: NaN };
+        return { value: (1 / m) * (y * Math.pow(10, -R) - b) };
+    },
+    encodeDirect(value, m, b, R) {
+        return this.clamp(Math.round((m * value + b) * Math.pow(10, R)), -32768, 32767);
+    },
+
+    // VOUT_MODE parsing (Section 8.3 of PMBus 1.3)
+    parseVoutMode(byte) {
+        byte = byte & 0xFF;
+        const modeBits = (byte >> 5) & 0x07;
+        const paramBits = byte & 0x1F;
+        const absBit = (byte >> 7) & 1;
+        const modeNames = { 0: 'LINEAR', 1: 'VID', 2: 'DIRECT', 3: 'IEEE Half Float' };
+        let n = null;
+        if (modeBits === 0) { // LINEAR: param = 5-bit two's complement exponent
+            n = this.toSigned(paramBits, 5);
+        }
+        return {
+            byte,
+            mode: modeBits,
+            modeName: modeNames[modeBits] || 'Reserved',
+            param: paramBits,
+            absolute: absBit === 0,
+            relative: absBit === 1,
+            linearExponent: n
+        };
+    },
+
+    // Check for special values
+    checkSpecial(raw, mode) {
+        if (mode === 'L11') {
+            const y = this.toSigned(raw & 0x7FF, 11);
+            if (y === 1023 || y === -1024) return { type: 'overflow', msg: 'Y 接近极值 (±1023/±1024)，可能是饱和/溢出标记' };
+            if (y === 0) return { type: 'info', msg: 'Y = 0，表示零值或未初始化' };
+        }
+        return null;
+    }
+};
+
+// ==================== State ====================
+let currentMode = 'L11';
+let rawInt = 0xE380;
+let byteOrder = 'le';
+let directY = 0;
+let editingField = null;
+
+// ==================== DOM Helpers ====================
+const $ = id => document.getElementById(id);
+const hex2 = v => (v & 0xFF).toString(16).toUpperCase().padStart(2, '0');
+const hex4 = v => (v & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+const formatNumber = v => Number.isInteger(v) ? v.toString() : parseFloat(v.toPrecision(12)).toString();
+
+function displayHex(v) {
+    return (currentMode === 'L16' && byteOrder === 'be') ? hex4(PMBusMath.swapBytes(v)) : hex4(v);
+}
+
+// ==================== Safe Parsing ====================
+function parseIntegerSafe(s) {
+    s = String(s).trim();
+    if (!s || s === '-' || s === '+') return null;
+    if (!/^-?\d+$/.test(s)) return null;
+    const n = parseInt(s, 10);
+    return isNaN(n) ? null : n;
+}
+
+function parseFloatSafe(s) {
+    s = String(s).trim();
+    if (!s) return null;
+    while (s.length > 0 && /[-+]$/.test(s)) s = s.slice(0, -1);
+    if (!s) return null;
+    const n = parseFloat(s);
+    return isNaN(n) ? null : n;
+}
+
+function fixOnBlur(value, kind) {
+    value = String(value).trim();
+    if (!value) return kind === 'hex' ? '0' : '0';
+    if (kind === 'float') {
+        if ('.+-.'.includes(value) && value.length <= 2) return '0';
+        if (value === '-' || value === '+') return '0';
+        return value;
+    }
+    if (kind === 'int') return (value === '-' || value === '+') ? '0' : value;
+    if (kind === 'hex') return value.replace(/[^0-9a-fA-F]/g, '') || '0';
+    return value;
+}
+
+function sanitizeInput(value, kind) {
+    value = value.replace(/[^\d.eE\-+]/g, '');
+    if (kind === 'hex') return value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+    if (kind === 'int') {
+        value = value.replace(/[.eE]/g, '');
+        if (value.length > 1) value = value[0] + value.slice(1).replace(/[-+]/g, '');
+        return value;
+    }
+    // float
+    const dotIdx = value.indexOf('.');
+    if (dotIdx >= 0) value = value.slice(0, dotIdx + 1) + value.slice(dotIdx + 1).replace(/\./g, '');
+    let result = '';
+    for (let i = 0; i < value.length; i++) {
+        if ((value[i] === '-' || value[i] === '+') && i > 0 && value[i-1] !== 'e' && value[i-1] !== 'E') continue;
+        result += value[i];
+    }
+    return result;
+}
+
+// ==================== Bit Rendering ====================
+function renderBits() {
+    const strip = $('bitStrip');
+    strip.innerHTML = '';
+    $('legendStrip').innerHTML = '';
+    if (currentMode === 'DIRECT') { renderDirectBits(); return; }
+
+    for (let i = 15; i >= 0; i--) {
+        // Nibble spacing: add space after bits 12, 8, 4
+        if (i === 12 || i === 8 || i === 4) {
+            const spacer = document.createElement('div');
+            spacer.className = 'nibble-space';
+            strip.appendChild(spacer);
+        }
+        const unit = document.createElement('div');
+        unit.className = 'bu';
+        const btn = document.createElement('div');
+        btn.className = 'bb';
+        btn.id = 'bit-' + i;
+        btn.textContent = (rawInt >> i) & 1;
+        btn.onclick = ((idx) => () => { rawInt ^= (1 << idx); rawInt &= 0xFFFF; updateAll('bit'); })(i);
+        btn.classList.add(currentMode === 'L11' ? (i >= 11 ? 'bn' : 'by') : 'by');
+        const idx = document.createElement('span');
+        idx.className = 'bi';
+        idx.textContent = i;
+        unit.append(btn, idx);
+        strip.appendChild(unit);
+    }
+    $('legendStrip').innerHTML = currentMode === 'L11'
+        ? '<span><span class="dot" style="background:var(--bl)"></span>N [15:11]</span><span><span class="dot" style="background:var(--gn)"></span>Y [10:0]</span>'
+        : '<span><span class="dot" style="background:var(--gn)"></span>V [15:0]</span>';
+}
+
+function renderDirectBits() {
+    const strip = $('directBitStrip');
+    strip.innerHTML = '';
+    for (let i = 15; i >= 0; i--) {
+        if (i === 12 || i === 8 || i === 4) {
+            const spacer = document.createElement('div');
+            spacer.className = 'nibble-space';
+            strip.appendChild(spacer);
+        }
+        const unit = document.createElement('div');
+        unit.className = 'bu';
+        const btn = document.createElement('div');
+        btn.className = 'bb by';
+        btn.id = 'dbit-' + i;
+        const unsigned = directY < 0 ? directY + 65536 : directY;
+        btn.textContent = (unsigned >> i) & 1;
+        btn.onclick = ((idx) => () => {
+            let v = directY < 0 ? directY + 65536 : directY;
+            v ^= (1 << idx); v &= 0xFFFF;
+            directY = v >= 32768 ? v - 65536 : v;
+            updateAll('bit');
+        })(i);
+        const idx = document.createElement('span');
+        idx.className = 'bi';
+        idx.textContent = i;
+        unit.append(btn, idx);
+        strip.appendChild(unit);
+    }
+}
+
+// ==================== Field Setter (skip editing field) ====================
+function setFieldValue(id, value, source) {
+    if (editingField === id) return;
+    const el = $(id);
+    if (el && String(el.value) !== String(value)) el.value = value;
+}
+
+// ==================== Core Update ====================
+function updateAll(source) {
+    if (currentMode === 'DIRECT') return updateDirect(source);
+    const isLinear11 = (currentMode === 'L11');
+    let n, y, value;
+
+    if (source === 'hex') {
+        const hexStr = ($('inputHex').value || '').replace(/[^0-9a-fA-F]/g, '');
+        rawInt = hexStr ? parseInt(hexStr, 16) & 0xFFFF : 0;
+        if (isLinear11) {
+            const decoded = PMBusMath.decodeLinear11(rawInt);
+            n = decoded.n; y = decoded.y; value = decoded.value;
+        } else {
+            n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
+            y = rawInt; value = y * Math.pow(2, n);
+        }
+    } else if (source === 'bit' || source === 'init' || source === 'byteOrder' || source === 'mode') {
+        rawInt &= 0xFFFF;
+        if (isLinear11) {
+            const decoded = PMBusMath.decodeLinear11(rawInt);
+            n = decoded.n; y = decoded.y; value = decoded.value;
+        } else {
+            n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
+            y = rawInt; value = y * Math.pow(2, n);
+        }
+    } else if (source === 'ny') {
+        n = parseIntegerSafe($('inputN').value);
+        y = parseIntegerSafe($('inputY').value);
+        if (n === null || y === null) return;
+        if (isLinear11) {
+            rawInt = PMBusMath.encodeLinear11(n, y);
+            const decoded = PMBusMath.decodeLinear11(rawInt);
+            n = decoded.n; y = decoded.y; value = decoded.value;
+        } else {
+            n = PMBusMath.clamp(n, -16, 15); y = PMBusMath.clamp(y, 0, 65535);
+            rawInt = y; value = y * Math.pow(2, n);
+        }
+    } else if (source === 'val') {
+        value = parseFloatSafe($('inputValue').value);
+        if (value === null) return;
+        if (isLinear11) {
+            const best = PMBusMath.findBestLinear11(value);
+            n = best.n; y = best.y; rawInt = PMBusMath.encodeLinear11(n, y);
+            value = best.value;
+        } else {
+            n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
+            y = PMBusMath.clamp(Math.round(value / Math.pow(2, n)), 0, 65535);
+            rawInt = y; value = y * Math.pow(2, n);
+        }
+    } else if (source === 'voutMode') {
+        // VOUT_MODE changed: update N for LINEAR16
+        const hex = ($('voutModeHex').value || '').replace(/[^0-9a-fA-F]/g, '');
+        if (hex) {
+            const parsed = PMBusMath.parseVoutMode(parseInt(hex, 16));
+            if (parsed.linearExponent !== null) {
+                n = parsed.linearExponent;
+                $('voutModeInfo').textContent = parsed.modeName + ', N=' + n + (parsed.relative ? ' (相对)' : ' (绝对)');
+                // Update N field and recompute
+                y = rawInt; value = y * Math.pow(2, n);
+                setFieldValue('inputN', n, source);
+            } else {
+                $('voutModeInfo').textContent = parsed.modeName + ' (非LINEAR模式)';
+                return;
+            }
+        } else {
+            $('voutModeInfo').textContent = '';
+            return;
+        }
+    }
+
+    // Write back fields
+    setFieldValue('inputHex', displayHex(rawInt), source);
+    if (isLinear11 || source === 'voutMode') setFieldValue('inputN', n, source);
+    setFieldValue('inputY', y, source);
+    setFieldValue('inputValue', formatNumber(value), source);
+    $('displayValue').textContent = value.toLocaleString(undefined, { maximumFractionDigits: 10 });
+
+    // Update bits
+    for (let i = 0; i < 16; i++) {
+        const btn = $('bit-' + i);
+        if (btn) btn.textContent = (rawInt >> i) & 1;
+    }
+
+    // Byte display
+    const lo = rawInt & 0xFF, hi = (rawInt >> 8) & 0xFF;
+    const isBE = currentMode === 'L16' && byteOrder === 'be';
+    $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(isBE ? hi : lo) + '</b> <b>[1]' + hex2(isBE ? lo : hi) + '</b> (' + (isBE ? '高' : '低') + '字节在前) <span style="color:#94a3b8;font-size:11px">点击复制</span>';
+
+    // Validation
+    $('inputN').classList.toggle('bad', isLinear11 && (n < -16 || n > 15));
+    $('inputY').classList.toggle('bad', (isLinear11 && (y < -1024 || y > 1023)) || (!isLinear11 && (y < 0 || y > 65535)));
+
+    // Overflow / special value warnings
+    const special = PMBusMath.checkSpecial(rawInt, currentMode);
+    if (special) {
+        $('specialWarn').textContent = (special.type === 'overflow' ? '⚠ ' : 'ℹ ') + special.msg;
+        $('specialWarn').className = 'warn-banner show';
+    } else {
+        $('specialWarn').className = 'warn-banner';
+    }
+    $('overflowWarn').className = 'warn-banner' + (!isLinear11 && (value > 65535 * 32768 || value < 0) ? ' show' : '');
+
+    // Info bar
+    const info = $('infoBar');
+    if (isLinear11) {
+        const nOk = n >= -16 && n <= 15, yOk = y >= -1024 && y <= 1023;
+        info.innerHTML = 'N=' + n + ' <span class="' + (nOk ? 'o' : 'w') + '">[' + ((PMBusMath.fromSigned(n, 5) & 0x1F).toString(2).padStart(5, '0')) + ']</span> ' +
+            'Y=' + y + ' <span class="' + (yOk ? 'o' : 'w') + '">[' + ((PMBusMath.fromSigned(y, 11) & 0x7FF).toString(2).padStart(11, '0')) + ']</span><br>' +
+            '0x' + hex4(rawInt) + ' | ' + y + '×2<sup>' + n + '</sup>=<strong>' + formatNumber(value) + '</strong>';
+    } else {
+        const yOk = y >= 0 && y <= 65535;
+        info.innerHTML = 'N=' + n + ' (VOUT_MODE) V=' + y + ' <span class="' + (yOk ? 'o' : 'w') + '">[16-bit]</span><br>' +
+            '0x' + hex4(rawInt) + ' | V×2<sup>' + n + '</sup>=<strong>' + formatNumber(value) + ' V</strong>';
+    }
+    $('resultFormula').textContent = '';
+    $('resultBox').classList.remove('direct-mode');
+}
+
+function updateDirect(source) {
+    const m = parseIntegerSafe($('coeff_m').value) ?? 1;
+    const b = parseIntegerSafe($('coeff_b').value) ?? 0;
+    const R = parseIntegerSafe($('coeff_R').value) ?? 0;
+    let value;
+
+    if (source === 'hex') {
+        const hexStr = ($('inputHex').value || '').replace(/[^0-9a-fA-F]/g, '');
+        let p = hexStr ? parseInt(hexStr, 16) & 0xFFFF : 0;
+        directY = p >= 32768 ? p - 65536 : p;
+    } else if (source === 'directY') {
+        const v = parseIntegerSafe($('inputDirectY').value);
+        if (v === null) return;
+        directY = PMBusMath.clamp(v, -32768, 32767);
+    } else if (source === 'val') {
+        value = parseFloatSafe($('inputValue').value);
+        if (value === null) return;
+        directY = PMBusMath.encodeDirect(value, m, b, R);
+    }
+
+    const decoded = PMBusMath.decodeDirect(directY, m, b, R);
+    value = decoded.value;
+
+    setFieldValue('inputHex', hex4(directY < 0 ? directY + 65536 : directY), source);
+    setFieldValue('inputDirectY', directY, source);
+    setFieldValue('inputValue', isNaN(value) ? '' : formatNumber(value), source);
+    $('displayValue').textContent = isNaN(value) ? 'm = 0 (除零)' : value.toLocaleString(undefined, { maximumFractionDigits: 10 });
+
+    const unsigned = directY < 0 ? directY + 65536 : directY;
+    for (let i = 0; i < 16; i++) {
+        const btn = $('dbit-' + i);
+        if (btn) btn.textContent = (unsigned >> i) & 1;
+    }
+
+    $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(unsigned & 0xFF) + '</b> <b>[1]' + hex2((unsigned >> 8) & 0xFF) + '</b> (低字节在前) <span style="color:#94a3b8;font-size:11px">点击复制</span>';
+    $('resultBox').classList.add('direct-mode');
+    $('resultFormula').textContent = isNaN(value) ? '' : 'X=(1/' + m + ')×(' + directY + '×10^' + (-R) + '-' + b + ')=' + formatNumber(value);
+
+    const info = $('infoBar');
+    if (m === 0) {
+        info.innerHTML = '<span class="w">⚠ m=0 除零错误！</span>';
+    } else {
+        info.innerHTML = 'Y=' + directY + ' | 0x' + hex4(unsigned) + ' | m=' + m + ',b=' + b + ',R=' + R +
+            '<br>读: X=(1/' + m + ')×(' + directY + '×10<sup>' + (-R) + '</sup>-' + b + ')=<strong>' + formatNumber(value) + '</strong>' +
+            '<br>写: Y=(' + m + '×X+' + b + ')×10<sup>' + R + '</sup>';
+    }
+}
+
+// ==================== VOUT_MODE ====================
+function initVoutMode() {
+    const vm = $('voutModeHex');
+    vm.addEventListener('mousedown', () => { editingField = 'voutModeHex'; vm.classList.add('ed'); });
+    vm.addEventListener('focus', () => { editingField = 'voutModeHex'; vm.classList.add('ed'); });
+    vm.addEventListener('blur', () => { editingField = null; vm.classList.remove('ed'); updateAll('voutMode'); });
+    vm.addEventListener('input', () => {
+        vm.value = vm.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+        updateAll('voutMode');
+    });
+    vm.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); vm.blur(); } });
+}
+
+// ==================== DIRECT Profiles ====================
+function applyProfile(name) {
+    const profiles = {
+        'vout_12v': { m: 3200, b: 0, R: -2, desc: '12V 输出电压 (m=3200,b=0,R=-2)' },
+        'vout_5v':  { m: 1280, b: 0, R: -2, desc: '5V 输出电压 (m=1280,b=0,R=-2)' },
+        'iout_30a': { m: 160, b: 0, R: -1, desc: '30A 输出电流 (m=160,b=0,R=-1)' },
+        'temp_125': { m: 1, b: 0, R: 0, desc: '温度 (m=1,b=0,R=0, 直接值)' },
+    };
+    const p = profiles[name];
+    if (!p) return;
+    $('coeff_m').value = p.m;
+    $('coeff_b').value = p.b;
+    $('coeff_R').value = p.R;
+    updateAll('coeff');
+}
+
+// ==================== Mode Switch ====================
+function switchMode(mode) {
+    const prev = currentMode;
+    currentMode = mode;
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+    const isDirect = (mode === 'DIRECT');
+    $('linearSection').style.display = isDirect ? 'none' : '';
+    $('directSection').style.display = isDirect ? '' : 'none';
+    $('grpN').style.display = (mode === 'L11') ? '' : 'none';
+    $('grpY').style.display = isDirect ? 'none' : '';
+    $('grpDirectY').style.display = isDirect ? '' : 'none';
+    $('byteOrderCtrl').style.display = (mode === 'L16') ? '' : 'none';
+    $('voutModeCtrl').style.display = (mode === 'L16') ? '' : 'none';
+
+    if (mode === 'L11') {
+        $('labelY').textContent = 'Y (11-bit, -1024~1023)';
+        $('resultLabel').innerHTML = 'X = Y × 2<sup>N</sup>';
+        $('hexLabel').textContent = '原始值 (Hex)';
+    } else if (mode === 'L16') {
+        $('labelY').textContent = 'V (16-bit, 0~65535)';
+        $('resultLabel').innerHTML = 'V × 2<sup>N</sup>';
+        $('hexLabel').textContent = 'VOUT_COMMAND (Hex)';
+    } else {
+        $('resultLabel').innerHTML = 'DIRECT 格式';
+        $('hexLabel').textContent = 'Y (Hex, 有符号)';
+    }
+    if (prev === 'DIRECT' && !isDirect) { $('resultFormula').textContent = ''; $('resultBox').classList.remove('direct-mode'); }
+    if (prev !== 'DIRECT' && isDirect) { $('resultFormula').textContent = ''; $('resultBox').classList.add('direct-mode'); }
+    renderBits();
+    updateAll('mode');
+}
+
+function onByteOrderChange() {
+    byteOrder = $('byteOrderSelect').value;
+    updateAll('byteOrder');
+}
+
+// ==================== Copy to Clipboard ====================
+function copyToClipboard(text, btnEl) {
+    navigator.clipboard.writeText(text).then(() => {
+        btnEl.classList.add('copied');
+        const orig = btnEl.textContent;
+        btnEl.textContent = '✓ 已复制';
+        setTimeout(() => { btnEl.classList.remove('copied'); btnEl.textContent = orig; }, 1200);
+    }).catch(() => {});
+}
+
+// ==================== Field Wiring ====================
+function wireField(id, source, kind) {
+    const el = $(id);
+    if (!el) return;
+    const hexWrapper = $('hexWrapper');
+
+    function markEditing() {
+        editingField = id;
+        el.classList.add('ed');
+        if (hexWrapper && id === 'inputHex') hexWrapper.classList.add('ed');
+    }
+    function unmarkEditing() {
+        editingField = null;
+        el.classList.remove('ed');
+        if (hexWrapper && id === 'inputHex') hexWrapper.classList.remove('ed');
+    }
+
+    el.addEventListener('mousedown', markEditing);
+    el.addEventListener('touchstart', markEditing, { passive: true });
+    el.addEventListener('focus', markEditing);
+
+    el.addEventListener('blur', function () {
+        unmarkEditing();
+        const fixed = fixOnBlur(el.value, kind);
+        if (fixed !== el.value) el.value = fixed;
+        updateAll(source);
+    });
+
+    el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+    });
+
+    el.addEventListener('input', function () {
+        const before = el.value;
+        const clean = sanitizeInput(before, kind);
+        if (clean !== before) el.value = clean;
+        updateAll(source);
+    });
+}
+
+// ==================== Init ====================
+function init() {
+    wireField('inputHex', 'hex', 'hex');
+    wireField('inputN', 'ny', 'int');
+    wireField('inputY', 'ny', 'int');
+    wireField('inputDirectY', 'directY', 'int');
+    wireField('inputValue', 'val', 'float');
+    wireField('coeff_m', 'coeff', 'int');
+    wireField('coeff_b', 'coeff', 'int');
+    wireField('coeff_R', 'coeff', 'int');
+    initVoutMode();
+
+    // Copy buttons
+    $('copyHexBtn').addEventListener('click', () => {
+        copyToClipboard('0x' + $('inputHex').value, $('copyHexBtn'));
+    });
+    $('copyValBtn').addEventListener('click', () => {
+        copyToClipboard($('inputValue').value, $('copyValBtn'));
+    });
+    $('byteDisplay').addEventListener('click', () => {
+        const text = $('byteDisplay').textContent.replace(/点击复制/, '').trim();
+        navigator.clipboard.writeText(text);
+    });
+
+    renderBits();
+    updateAll('init');
+}
+
+document.addEventListener('keydown', e => {
+    if (e.ctrlKey && !e.metaKey) {
+        if (e.key === '1') { e.preventDefault(); switchMode('L11'); }
+        if (e.key === '2') { e.preventDefault(); switchMode('L16'); }
+        if (e.key === '3') { e.preventDefault(); switchMode('DIRECT'); }
+    }
+});
+
+init();
+</script>
+</body>
+</html>
