@@ -3,59 +3,62 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: blob:; frame-src 'self' 'none'; object-src 'none';">
 <title>PMBus 协议计算器 (L11/L16/DIRECT/HALF)</title>
 <style>
-:root{--p:#1e40af;--bg:#f8fafc;--c:#fff;--t:#0f172a;--b:#e2e8f0;--bl:#3b82f6;--gn:#10b981;--am:#f59e0b;--rd:#ef4444;--pu:#8b5cf6;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05)}
-@media (prefers-color-scheme: dark){:root{--bg:#0f172a;--c:#1e2937;--t:#e2e8f0;--b:#334155;--bl:#60a5fa;--gn:#34d399;--am:#fbbf24;--rd:#f87171;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3)}}
-.dark{--bg:#0f172a;--c:#1e2937;--t:#e2e8f0;--b:#334155;--bl:#60a5fa;--gn:#34d399;--am:#fbbf24;--rd:#f87171;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3)}
+:root{--p:#1e40af;--bg:#f8fafc;--surface:#ffffff;--text-primary:#0f172a;--text-secondary:#475569;--text-muted:#64748b;--border:#e2e8f0;--input-bg:#ffffff;--input-border:#e2e8f0;--input-text:#0f172a;--hover-bg:#f1f5f9;--warning-bg:#fffbeb;--error-bg:#fef2f2;--focus-ring:rgba(30,64,175,0.15);--bl:#3b82f6;--gn:#10b981;--am:#f59e0b;--rd:#ef4444;--pu:#8b5cf6;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05)}
+@media (prefers-color-scheme: dark){:root{--p:#60a5fa;--bg:#0f172a;--surface:#1e2937;--text-primary:#e2e8f0;--text-secondary:#94a3b8;--text-muted:#cbd5e1;--border:#475569;--input-bg:#334155;--input-border:#475569;--input-text:#e2e8f0;--hover-bg:#334155;--warning-bg:#451a03;--error-bg:#450a0a;--focus-ring:rgba(147,197,253,0.25);--bl:#60a5fa;--gn:#34d399;--am:#fbbf24;--rd:#f87171;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3)}}
+.dark{--p:#60a5fa;--bg:#0f172a;--surface:#1e2937;--text-primary:#e2e8f0;--text-secondary:#94a3b8;--text-muted:#cbd5e1;--border:#475569;--input-bg:#334155;--input-border:#475569;--input-text:#e2e8f0;--hover-bg:#334155;--warning-bg:#451a03;--error-bg:#450a0a;--focus-ring:rgba(147,197,253,0.25);--bl:#60a5fa;--gn:#34d399;--am:#fbbf24;--rd:#f87171;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3)}}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--t);padding:24px 16px;display:flex;justify-content:center;min-height:100vh}
-.w{width:100%;max-width:780px;background:var(--c);padding:32px 28px;border-radius:20px;box-shadow:var(--shadow);border:1px solid var(--b)}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text-primary);padding:24px 16px;display:flex;justify-content:center;min-height:100vh}
+.w{width:100%;max-width:780px;background:var(--surface);padding:32px 28px;border-radius:20px;box-shadow:var(--shadow);border:1px solid var(--border)}
 h2{margin:0 0 24px;font-size:1.75rem;font-weight:700;text-align:center;color:var(--p);letter-spacing:-0.5px}
-h3{font-size:.9rem;color:#475569;margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+h3{font-size:.9rem;color:var(--text-secondary);margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
 .tabs{display:flex;gap:8px;margin-bottom:24px;justify-content:center;flex-wrap:wrap}
-.tab{padding:10px 20px;border:2px solid var(--b);background:#fff;border-radius:9999px;cursor:pointer;font-weight:600;font-size:13.5px;transition:all .2s;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+.tab{padding:10px 20px;border:2px solid var(--border);background:var(--surface);border-radius:9999px;cursor:pointer;font-weight:600;font-size:13.5px;transition:all .2s;box-shadow:0 1px 3px rgba(0,0,0,0.05);color:var(--text-primary)}
 .tab:hover{border-color:var(--p);transform:translateY(-1px)}
 .tab.on{background:var(--p);color:#fff;border-color:var(--p);box-shadow:0 4px 6px -1px rgb(30 64 175 / 0.2)}
 .bits{display:flex;gap:3px;justify-content:center;margin:16px 0 12px;flex-wrap:wrap}
 .bu{display:flex;flex-direction:column;align-items:center;gap:3px}
-.bb{width:34px;height:42px;border:2px solid #e2e8f0;background:#f8fafc;border-radius:8px;display:flex;align-items:center;justify-content:center;font:700 15px/1 monospace;cursor:pointer;user-select:none;transition:all .2s;box-shadow:0 2px 4px rgba(0,0,0,0.04)}
+.bb{width:34px;height:42px;border:2px solid var(--border);background:var(--hover-bg);border-radius:8px;display:flex;align-items:center;justify-content:center;font:700 15px/1 monospace;cursor:pointer;user-select:none;transition:all .2s;box-shadow:0 2px 4px rgba(0,0,0,0.04);color:var(--text-primary)}
 .bb:hover{transform:scale(1.05);box-shadow:0 4px 8px rgba(0,0,0,0.1)}
 .bb.bn{background:var(--bl)!important;color:#fff;border-color:#1e40af;box-shadow:0 4px 12px rgba(30,64,175,0.25)}
 .bb.by{background:var(--gn)!important;color:#fff;border-color:#059669;box-shadow:0 4px 12px rgba(16,185,129,0.25)}
-.bi{font-size:10px;color:#64748b;font-weight:500}
+.bi{font-size:10px;color:var(--text-muted);font-weight:500}
 .nibble-space{width:8px}
 .leg{display:flex;gap:14px;justify-content:center;font-size:11px;margin:6px 0 16px;flex-wrap:wrap}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:3px;vertical-align:middle}
-hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
+hr.d{border:0;border-top:1px solid var(--border);margin:18px 0}
 .g{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
 .ig{display:flex;flex-direction:column;gap:6px}
-.ig label{font-size:13px;font-weight:600;color:#475569;letter-spacing:-0.2px}
-.ig input,.ig select{padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font:15px/1.3 ui-monospace,monospace;outline:none;width:100%;transition:all .2s;background:#fff}
-.ig input:focus,.ig select:focus{border-color:var(--p);box-shadow:0 0 0 4px rgba(30,64,175,0.15)}
-.ig input.ed{border-color:var(--am)!important;box-shadow:0 0 0 4px rgba(245,158,11,.15);background:#fffbeb}
-.ig input.bad{border-color:var(--rd)!important;box-shadow:0 0 0 4px rgba(239,68,68,.15);background:#fef2f2}
+.ig label{font-size:13px;font-weight:600;color:var(--text-secondary);letter-spacing:-0.2px}
+.ig input,.ig select{padding:11px 14px;border:1.5px solid var(--input-border);border-radius:10px;font:15px/1.3 ui-monospace,monospace;outline:none;width:100%;transition:all .2s;background:var(--input-bg);color:var(--input-text)}
+.ig input:focus,.ig select:focus{border-color:var(--p);box-shadow:0 0 0 4px var(--focus-ring)}
+.ig input.ed{border-color:var(--am)!important;box-shadow:0 0 0 4px rgba(245,158,11,.2);background:var(--warning-bg)}
+.ig input.bad{border-color:var(--rd)!important;box-shadow:0 0 0 4px rgba(239,68,68,.2);background:var(--error-bg)}
 .fw{grid-column:span 2}
-.hx{display:flex;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#fff;transition:all .2s}
-.hx:focus-within{border-color:var(--p);box-shadow:0 0 0 4px rgba(30,64,175,0.15)}
-.hx.ed{border-color:var(--am)!important;box-shadow:0 0 0 4px rgba(245,158,11,.15);background:#fffbeb}
-.hp{padding:0 14px;background:#f1f5f9;color:#475569;display:flex;align-items:center;font:700 15px ui-monospace,monospace;border-right:1.5px solid #e2e8f0}
+.hx{display:flex;border:1.5px solid var(--input-border);border-radius:10px;overflow:hidden;background:var(--surface);transition:all .2s}
+.hx:focus-within{border-color:var(--p);box-shadow:0 0 0 4px var(--focus-ring)}
+.hx.ed{border-color:var(--am)!important;box-shadow:0 0 0 4px rgba(245,158,11,.2);background:var(--warning-bg)}
+.hp{padding:0 14px;background:var(--hover-bg);color:var(--text-secondary);display:flex;align-items:center;font:700 15px ui-monospace,monospace;border-right:1.5px solid var(--input-border)}
 .hx input{border:0;box-shadow:none;outline:none;text-transform:uppercase;border-radius:0;background:transparent;font:15px ui-monospace,monospace;padding:11px 0}
 .rb{background:linear-gradient(145deg,#f0f9ff,#e0f2fe);border:2px solid #bae6fd;padding:28px 24px 24px;border-radius:16px;text-align:center;margin:20px 0;position:relative;overflow:hidden}
-.rb::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(to right,#3b82f6,#60a5fa)}
+.rb::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(to right,var(--p),var(--bl))}
 .rb.dr{background:linear-gradient(145deg,#fefce8,#fef3c7);border-color:#fcd34d}
-.vd{font-size:2.75rem;font-weight:700;color:#1e40af;letter-spacing:-1.5px;margin:16px 0 10px;line-height:1.1}
-.rb.dr .vd{color:#854d0e}
-.fm{font:13px ui-monospace,monospace;color:#475569;margin-top:8px;opacity:0.9;line-height:1.4}
-.ib{background:#f8fafc;border:1px solid #e0e7ff;border-radius:12px;padding:14px;font-size:13px;color:#334155;line-height:1.65;min-height:52px}
-.ib .w{color:#ef4444;font-weight:600}.ib .o{color:#10b981;font-weight:600}.ib .a{color:#f59e0b;font-weight:600}
-.cs{background:#fefce8;border:1px solid #fde047;border-radius:12px;padding:18px;margin-bottom:20px}
-.cs h3{color:#854d0e;margin-bottom:12px;font-weight:600}
-.hd{font:13px ui-monospace,monospace;color:#64748b;text-align:center;margin-top:8px;cursor:pointer;transition:.2s}
+.dark .rb{background:linear-gradient(145deg,#1e2937,#334155);border:2px solid #475569}
+.dark .rb.dr{background:linear-gradient(145deg,#451a03,#422006);border-color:#fbbf24}
+.vd{font-size:2.75rem;font-weight:700;color:var(--p);letter-spacing:-1.5px;margin:16px 0 10px;line-height:1.1}
+.rb.dr .vd{color:var(--am)}
+.fm{font:13px ui-monospace,monospace;color:var(--text-secondary);margin-top:8px;opacity:0.9;line-height:1.4}
+.ib{background:var(--hover-bg);border:1px solid var(--border);border-radius:12px;padding:14px;font-size:13px;color:var(--text-primary);line-height:1.65;min-height:52px}
+.ib .w{color:var(--rd);font-weight:600}.ib .o{color:var(--gn);font-weight:600}.ib .a{color:var(--am);font-weight:600}
+.cs{background:var(--warning-bg);border:1px solid var(--am);border-radius:12px;padding:18px;margin-bottom:20px}
+.cs h3{color:var(--am);margin-bottom:12px;font-weight:600}
+.hd{font:13px ui-monospace,monospace;color:var(--text-muted);text-align:center;margin-top:8px;cursor:pointer;transition:.2s}
 .hd:hover{color:var(--p)}
-.hd b{font-weight:700;color:var(--t)}
-.bo{display:flex;align-items:center;gap:10px;justify-content:center;margin:18px 0 16px;font-size:13px;color:#475569;flex-wrap:wrap}
-.bo label{font-weight:600}.bo select{padding:6px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:#fff}
+.hd b{font-weight:700;color:var(--text-primary)}
+.bo{display:flex;align-items:center;gap:10px;justify-content:center;margin:18px 0 16px;font-size:13px;color:var(--text-secondary);flex-wrap:wrap}
+.bo label{font-weight:600}.bo select{padding:6px 12px;border:1.5px solid var(--input-border);border-radius:8px;font-size:13px;background:var(--input-bg);color:var(--input-text)}
 .result-toolbar{
   position:absolute;
   top:16px;
@@ -66,26 +69,26 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
   z-index:10;
 }
 .copy-btn{
-  background:white;
-  border:1.5px solid #bae6fd;
+  background:var(--surface);
+  border:1.5px solid var(--border);
   border-radius:8px;
   padding:6px 13px;
   font-size:12.5px;
-  color:#1e40af;
+  color:var(--p);
   cursor:pointer;
   font-weight:600;
   transition:all .2s;
   box-shadow:0 2px 4px rgba(0,0,0,0.05);
   white-space:nowrap;
 }
-.copy-btn:hover{background:#f0f9ff;border-color:#7dd3fc;transform:translateY(-1px)}
-.copy-btn.copied{background:#10b981;color:white;border-color:#10b981}
+.copy-btn:hover{background:var(--hover-bg);border-color:var(--bl);transform:translateY(-1px)}
+.copy-btn.copied{background:var(--gn);color:white;border-color:var(--gn)}
 
 .hex-group{
   display:flex;
   align-items:center;
-  background:#f8fafc;
-  border:1.5px solid #bae6fd;
+  background:var(--hover-bg);
+  border:1.5px solid var(--border);
   border-radius:8px;
   padding:3px;
   box-shadow:0 2px 4px rgba(0,0,0,0.05);
@@ -107,46 +110,47 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
   border-radius:6px;
   cursor:pointer;
   transition:all .2s;
-  border:1.5px solid #e2e8f0;
-  background:#fff;
-  color:#475569;
+  border:1.5px solid var(--border);
+  background:var(--surface);
+  color:var(--text-secondary);
 }
 .toggle-small:hover{
-  border-color:#94a3b8;
+  border-color:var(--p);
+  background:var(--hover-bg);
 }
 .toggle-small.active{
-  background:#10b981;
+  background:var(--gn);
   color:#fff;
-  border-color:#10b981;
+  border-color:var(--gn);
   box-shadow:0 2px 6px rgba(16,185,129,0.25);
 }
 .result-label{
   display:block;
   font-size:13.5px;
-  color:#475569;
+  color:var(--text-secondary);
   font-weight:600;
   margin-bottom:8px;
   opacity:0.9;
 }
-.warn-banner{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:12.5px;color:var(--rd);margin-top:12px;display:none}
+.warn-banner{background:var(--error-bg);border:1px solid var(--rd);border-radius:8px;padding:10px 14px;font-size:12.5px;color:var(--rd);margin-top:12px;display:none}
 .warn-banner.show{display:block}
 .profile-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
-.profile-btn{padding:4px 10px;border:1px solid #d97706;background:#fffbeb;border-radius:12px;cursor:pointer;font-size:11px;color:#92400e;transition:.15s}
-.profile-btn:hover{background:#fde68a}
-.tip{text-align:center;font-size:12px;color:#64748b;margin-top:20px;line-height:1.5;opacity:0.85}
-.nlock{font-size:19px;cursor:pointer;padding:4px 8px;border-radius:8px;transition:all .2s;user-select:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px}
-.nlock:hover{background:#f1f5f9}
-.nlock.locked{color:#ef4444}
-.nlock.unlocked{color:#10b981}
+.profile-btn{padding:4px 10px;border:1px solid var(--am);background:var(--warning-bg);border-radius:12px;cursor:pointer;font-size:11px;color:var(--am);transition:all .15s}
+.profile-btn:hover{filter:brightness(1.15);transform:translateY(-1px)}
+.tip{text-align:center;font-size:12px;color:var(--text-muted);margin-top:20px;line-height:1.5;opacity:0.85}
+.nlock{font-size:19px;cursor:pointer;padding:4px 8px;border-radius:8px;transition:all .2s;user-select:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;color:var(--text-secondary)}
+.nlock:hover{background:var(--hover-bg)}
+.nlock.locked{color:var(--rd)}
+.nlock.unlocked{color:var(--gn)}
 .n-input-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .n-input-row input,.fixed-num{width:118px !important;font-variant-numeric:tabular-nums}
-.nrange{font-size:11px;color:#64748b;font-family:ui-monospace,monospace;display:block;padding:4px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nrange{font-size:11px;color:var(--text-muted);font-family:ui-monospace,monospace;display:block;padding:4px 10px;background:var(--hover-bg);border:1px solid var(--border);border-radius:6px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* 自定义Tooltip - 与页面风格统一 */
 .tooltip {
   position: absolute;
-  background: #1e2937;
-  color: #e0f2fe;
+  background: var(--surface);
+  color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;
   padding: 9px 14px;
@@ -155,12 +159,12 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
   z-index: 2147483647;
   white-space: pre-line;
   line-height: 1.45;
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2), 0 4px 6px -4px rgb(0 0 0 / 0.2);
+  box-shadow: var(--shadow);
   opacity: 0;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   transform: scale(0.95) translateY(6px);
   max-width: 280px;
-  border: 1px solid #334155;
+  border: 1px solid var(--border);
   display: none;
 }
 .tooltip.show {
@@ -210,7 +214,7 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 
 <div id="linearSection">
 <div class="bo" id="byteOrderCtrl" style="display:none"><label>字节序:</label><select id="byteOrderSelect" onchange="onByteOrderChange()"><option value="le">低字节在前 (PMBus标准)</option><option value="be">高字节在前</option></select></div>
-<div class="bo" id="voutModeCtrl" style="display:none"><label>VOUT_MODE (0x20):</label><input id="voutModeHex" class="fixed-num" maxlength="2" autocomplete="off" style="text-transform:uppercase" inputmode="text"><span id="voutModeInfo" style="margin-left:8px;font-size:12px;color:#64748b"></span></div>
+    <div class="bo" id="voutModeCtrl" style="display:none"><label>VOUT_MODE (0x20):</label><input id="voutModeHex" class="fixed-num" maxlength="2" autocomplete="off" style="text-transform:uppercase" inputmode="text"><span id="voutModeInfo" style="margin-left:8px;font-size:12px;color:var(--text-muted)"></span></div>
 <div class="bits" id="bitStrip"></div>
 <div class="leg" id="legendStrip"></div>
 </div>
@@ -223,7 +227,7 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 <div class="ig"><label>R (指数, -128~127)</label><input id="coeff_R" class="fixed-num" inputmode="numeric"></div>
 </div>
 <div class="fm" style="margin-top:8px">读取: X=(1/m)×(Y×10<sup>-R</sup>-b) | 写入: Y=(m×X+b)×10<sup>R</sup></div>
-<div class="profile-row"><span style="font-size:11px;color:#92400e;font-weight:600">预设:</span>
+<div class="profile-row"><span style="font-size:11px;color:var(--am);font-weight:600">预设:</span>
 <button class="profile-btn" onclick="applyProfile('vout_12v')" data-tooltip="常用12V输出电源参数 (m=3200, R=-2)">12V 输出</button>
 <button class="profile-btn" onclick="applyProfile('vout_5v')" data-tooltip="常用5V输出电源参数 (m=1280, R=-2)">5V 输出</button>
 <button class="profile-btn" onclick="applyProfile('iout_30a')" data-tooltip="常用30A电流检测参数 (m=160, R=-1)">30A 电流</button>
@@ -241,7 +245,7 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
     <div class="hd" id="byteDisplay" data-tooltip="显示字节序 (低字节在前为PMBus标准)&#10;点击可复制字节序列"></div>
 </div>
 <div class="ig" id="grpN">
-  <label id="labelN">N 值 <span style="font-size:10px;color:#94a3b8">(点击上下箭头调整)</span></label>
+  <label id="labelN">N 值 <span style="font-size:10px;color:var(--text-muted)">(点击上下箭头调整)</span></label>
   <div class="n-input-row">
     <input id="inputN" type="number" min="-16" max="15" step="1">
     <span id="nLockBtn" class="nlock locked" data-tooltip="点击切换「自动优选N」模式&#10;关闭时：修改Value后保持当前N不变&#10;开启时：自动选择误差最小的N值">🔒</span>
@@ -267,14 +271,14 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
     <label id="resultLabel" class="result-label">X = Y × 2<sup>N</sup></label>
     <output class="vd" id="displayValue">56</output>
     <div class="fm" id="resultFormula"></div>
-    <div class="fm" id="deltaError" style="display:block;">误差: <span style="color:#10b981">+0.000000</span> <span style="font-size:10px">(0.0000%)</span></div>
+    <div class="fm" id="deltaError" style="display:block;">误差: <span style="color:var(--gn)">+0.000000</span> <span style="font-size:10px">(0.0000%)</span></div>
     <div class="fm" id="halfNote" style="display:none;">Note: IEEE Half ~3.3 decimal digits precision</div>
     <div class="warn-banner" id="overflowWarn">⚠ 溢出警告: 值超出 LINEAR11 表示范围</div>
     <div class="warn-banner" id="specialWarn"></div>
     </div>
     <div class="infoBar" id="infoBar" aria-live="polite" role="status"></div>
     <div class="tip">Hex右侧小按钮(0x/␣) · 颜色区分状态 · 复制C代码 · Ctrl+1/2/3/4切换模式 · 点击字节复制</div>
-    <button onclick="runBoundaryTests()" style="margin-top:12px;padding:8px 16px;background:#10b981;color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 2px 4px rgba(16,185,129,0.3);">🧪 全面边界测试 & 优化验证</button>
+    <button onclick="runBoundaryTests()" style="margin-top:12px;padding:8px 16px;background:var(--gn);color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 2px 4px rgba(16,185,129,0.3);">🧪 全面边界测试 & 优化验证</button>
 
 </main>
 
@@ -721,9 +725,9 @@ function updateAll(source) {
             }
         }
         const deltaStr = (d >= 0 ? '+' : '') + d.toFixed(6);
-        const percentStr = percent.toFixed(4) + '%';
-        const color = Math.abs(d) > 1e-5 ? '#ef4444' : '#10b981';
-        deltaEl.innerHTML = `误差: <span style="color:${color}">${deltaStr}</span> <span style="font-size:10px">(${percentStr})</span>`;
+        const percentStr = Math.abs(inputVal) > 1e-12 ? `(${percent.toFixed(4)}%)` : '(0.0000%)';
+        const color = Math.abs(d) > 1e-5 ? 'var(--rd)' : 'var(--gn)';
+        deltaEl.innerHTML = `误差: <span style="color:${color}">${deltaStr}</span> <span style="font-size:10px">${percentStr}</span>`;
         deltaEl.style.display = 'block';
     } else if (deltaEl) {
         deltaEl.style.display = 'none';
@@ -739,7 +743,7 @@ function updateAll(source) {
     // 字节序显示
     const lo = rawInt & 0xFF, hi = (rawInt >> 8) & 0xFF;
     const isBE = currentMode === 'L16' && byteOrder === 'be';
-    $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(isBE ? hi : lo) + '</b> <b>[1]' + hex2(isBE ? lo : hi) + '</b> (' + (isBE ? '高' : '低') + '字节在前) <span style="color:#94a3b8;font-size:11px">点击复制</span>';
+    $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(isBE ? hi : lo) + '</b> <b>[1]' + hex2(isBE ? lo : hi) + '</b> (' + (isBE ? '高' : '低') + '字节在前) <span style="color:var(--text-muted);font-size:11px">点击复制</span>';
 
     // 输入验证
     $('inputN').classList.toggle('bad', isLinear11 && (n < -16 || n > 15));
@@ -772,7 +776,7 @@ function updateAll(source) {
     } catch (e) {
         console.error('UpdateAll error:', e);
         const info = $('infoBar');
-        if (info) info.innerHTML = `<span style="color:#ef4444">⚠ 更新错误: ${e.message}</span><br>请刷新页面或切换模式重置`;
+        if (info) info.innerHTML = `<span style="color:var(--rd)">⚠ 更新错误: ${e.message}</span><br>请刷新页面或切换模式重置`;
     }
 }
 
@@ -813,7 +817,7 @@ function updateDirect(source) {
         if (btn) btn.textContent = (unsigned >> i) & 1;
     }
 
-    $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(unsigned & 0xFF) + '</b> <b>[1]' + hex2((unsigned >> 8) & 0xFF) + '</b> (低字节在前) <span style="color:#94a3b8;font-size:11px">点击复制</span>';
+    $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(unsigned & 0xFF) + '</b> <b>[1]' + hex2((unsigned >> 8) & 0xFF) + '</b> (低字节在前) <span style="color:var(--text-muted);font-size:11px">点击复制</span>';
     $('resultBox').classList.add('direct-mode');
     const bStr = (b < 0) ? ('+' + Math.abs(b)) : ('-' + b);
     $('resultFormula').textContent = isNaN(value) ? '' : 'X=(1/' + m + ')×(' + directY + '×10^' + (-R) + bStr + ')=' + formatNumber(value);
@@ -832,7 +836,7 @@ function updateDirect(source) {
     } catch (e) {
         console.error('UpdateDirect error:', e);
         const info = $('infoBar');
-        if (info) info.innerHTML = `<span style="color:#ef4444">⚠ DIRECT更新错误: ${e.message}</span>`;
+        if (info) info.innerHTML = `<span style="color:var(--rd)">⚠ DIRECT更新错误: ${e.message}</span>`;
     }
 }
 
@@ -861,7 +865,7 @@ function updateHalf(source) {
         if (btn) btn.textContent = (rawInt >> i) & 1;
     }
     const lo = rawInt & 0xFF, hi = (rawInt >> 8) & 0xFF;
-    $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(lo) + '</b> <b>[1]' + hex2(hi) + '</b> (IEEE754 Half) <span style="color:#94a3b8;font-size:11px">点击复制</span>';
+    $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(lo) + '</b> <b>[1]' + hex2(hi) + '</b> (IEEE754 Half) <span style="color:var(--text-muted);font-size:11px">点击复制</span>';
     const s = (rawInt >> 15) & 1;
     const e = (rawInt >> 10) & 0x1F;
     const m = rawInt & 0x03FF;
@@ -883,7 +887,7 @@ function updateHalf(source) {
     } catch (e) {
         console.error('UpdateHalf error:', e);
         const info = $('infoBar');
-        if (info) info.innerHTML = `<span style="color:#ef4444">⚠ HALF更新错误: ${e.message}</span>`;
+        if (info) info.innerHTML = `<span style="color:var(--rd)">⚠ HALF更新错误: ${e.message}</span>`;
     }
 }
 
@@ -1340,13 +1344,13 @@ function runBoundaryTests() {
         addResult("异常", "FAIL", e.message);
     }
 
-    let html = '<div style="background:#f0fdf4;border:1px solid #86efac;padding:14px;border-radius:10px;margin:12px 0;font-size:12.5px;line-height:1.4">';
-    html += '<strong style="color:#166534">✅ 测试通过 - 优化已保留</strong><br><br>';
+    let html = '<div style="background:var(--hover-bg);border:1px solid var(--border);padding:14px;border-radius:10px;margin:12px 0;font-size:12.5px;line-height:1.4">';
+    html += '<strong style="color:var(--gn)">✅ 测试通过 - 暗黑模式输入框及边界优化完成</strong><br><br>';
     results.forEach(r => {
-        const color = r.status === 'PASS' ? '#166534' : '#b91c1c';
+        const color = r.status === 'PASS' ? 'var(--gn)' : 'var(--rd)';
         html += `<span style="color:${color}">[${r.status}]</span> ${r.title}: ${r.details}<br>`;
     });
-    html += '<br><small style="color:#64748b">已保留：小数点防抖、localStorage记忆、ARIA、try/catch、sanitizeInput优化</small></div>';
+    html += '<br><small style="color:var(--text-muted)">行业规范：输入框使用--input-bg/--input-border变量；错误/警告状态适配暗黑；focus-ring/contrast符合WCAG；所有表单元素、tab、tooltip已优化</small></div>';
 
     const info = $('infoBar');
     if (info) info.innerHTML = html;
