@@ -6,6 +6,8 @@
 <title>PMBus 协议计算器 (L11/L16/DIRECT/HALF)</title>
 <style>
 :root{--p:#1e40af;--bg:#f8fafc;--c:#fff;--t:#0f172a;--b:#e2e8f0;--bl:#3b82f6;--gn:#10b981;--am:#f59e0b;--rd:#ef4444;--pu:#8b5cf6;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05)}
+@media (prefers-color-scheme: dark){:root{--bg:#0f172a;--c:#1e2937;--t:#e2e8f0;--b:#334155;--bl:#60a5fa;--gn:#34d399;--am:#fbbf24;--rd:#f87171;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3)}}
+.dark{--bg:#0f172a;--c:#1e2937;--t:#e2e8f0;--b:#334155;--bl:#60a5fa;--gn:#34d399;--am:#fbbf24;--rd:#f87171;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3)}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--t);padding:24px 16px;display:flex;justify-content:center;min-height:100vh}
 .w{width:100%;max-width:780px;background:var(--c);padding:32px 28px;border-radius:20px;box-shadow:var(--shadow);border:1px solid var(--b)}
@@ -177,6 +179,7 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 <body>
 <main class="w" role="main">
 <h1>PMBus 协议计算器</h1>
+<button id="themeToggle" class="toggle-small" style="position:absolute;top:24px;right:28px;font-size:18px" data-tooltip="切换亮色/暗黑模式 (支持prefers-color-scheme)">☀️</button>
     <nav class="tabs" role="tablist" aria-label="PMBus/SMBus 数据格式模式">
     <button class="tab on" data-mode="L11" onclick="switchMode('L11')" role="tab" aria-selected="true" aria-controls="linearSection" data-tooltip="LINEAR11 格式：X = Y × 2^N (最常用) (Part I §8.2)">线性11 (LINEAR11)</button>
     <button class="tab" data-mode="L16" onclick="switchMode('L16')" role="tab" aria-selected="false" aria-controls="linearSection" data-tooltip="LINEAR16 格式：主要用于 VOUT 电压命令 (Part I §8.3)">线性16 (VOUT)</button>
@@ -1248,6 +1251,20 @@ function init() {
 
     // 复制设置记忆（0x前缀 + 字节空格）
     loadPreferences();
+
+    // 暗黑模式 (阶段05 UI现代化, 支持prefers-color-scheme + manual toggle)
+    const themeToggle = $('themeToggle');
+    let isDark = localStorage.getItem('pmbus_theme') === 'dark' || (!localStorage.getItem('pmbus_theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (isDark) {
+        document.documentElement.classList.add('dark');
+        themeToggle.textContent = '☽';
+    }
+    themeToggle.addEventListener('click', () => {
+        isDark = !isDark;
+        document.documentElement.classList.toggle('dark', isDark);
+        themeToggle.textContent = isDark ? '☽' : '☀️';
+        localStorage.setItem('pmbus_theme', isDark ? 'dark' : 'light');
+    });
 
     // 恢复用户上次使用的模式和值 (提升实际体验)
     const lastMode = localStorage.getItem('pmbus_last_mode');
