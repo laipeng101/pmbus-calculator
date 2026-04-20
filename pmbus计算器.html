@@ -5,91 +5,188 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PMBus 协议计算器 (L11/L16/DIRECT/HALF)</title>
 <style>
-:root{--p:#2563eb;--bg:#f8fafc;--c:#fff;--t:#1e293b;--b:#e2e8f0;--bl:#3b82f6;--gn:#10b981;--am:#f59e0b;--rd:#ef4444;--pu:#8b5cf6}
+:root{--p:#1e40af;--bg:#f8fafc;--c:#fff;--t:#0f172a;--b:#e2e8f0;--bl:#3b82f6;--gn:#10b981;--am:#f59e0b;--rd:#ef4444;--pu:#8b5cf6;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05)}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--t);padding:20px 16px;display:flex;justify-content:center}
-.w{width:100%;max-width:720px;background:var(--c);padding:28px;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,.05);border:1px solid var(--b)}
-h2{margin:0 0 20px;font-size:1.4rem;text-align:center;color:var(--p)}
-h3{font-size:.85rem;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px}
-.tabs{display:flex;gap:8px;margin-bottom:20px;justify-content:center;flex-wrap:wrap}
-.tab{padding:8px 18px;border:2px solid var(--b);background:#fff;border-radius:20px;cursor:pointer;font-weight:600;font-size:13px;transition:.15s}
-.tab:hover{border-color:var(--p)}.tab.on{background:var(--p);color:#fff;border-color:var(--p)}
-.bits{display:flex;gap:2px;justify-content:center;margin-bottom:8px;flex-wrap:wrap}
-.bu{display:flex;flex-direction:column;align-items:center;gap:2px}
-.bb{width:30px;height:38px;border:1px solid var(--b);background:#f1f5f9;border-radius:4px;display:flex;align-items:center;justify-content:center;font:700 14px/1 monospace;cursor:pointer;user-select:none;transition:.1s}
-.bb:hover{background:#e2e8f0}
-.bb.bn{background:var(--bl)!important;color:#fff;border-color:var(--bl)}
-.bb.by{background:var(--gn)!important;color:#fff;border-color:var(--gn)}
-.bi{font-size:9px;color:#94a3b8}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--t);padding:24px 16px;display:flex;justify-content:center;min-height:100vh}
+.w{width:100%;max-width:780px;background:var(--c);padding:32px 28px;border-radius:20px;box-shadow:var(--shadow);border:1px solid var(--b)}
+h2{margin:0 0 24px;font-size:1.75rem;font-weight:700;text-align:center;color:var(--p);letter-spacing:-0.5px}
+h3{font-size:.9rem;color:#475569;margin-bottom:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+.tabs{display:flex;gap:8px;margin-bottom:24px;justify-content:center;flex-wrap:wrap}
+.tab{padding:10px 20px;border:2px solid var(--b);background:#fff;border-radius:9999px;cursor:pointer;font-weight:600;font-size:13.5px;transition:all .2s;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+.tab:hover{border-color:var(--p);transform:translateY(-1px)}
+.tab.on{background:var(--p);color:#fff;border-color:var(--p);box-shadow:0 4px 6px -1px rgb(30 64 175 / 0.2)}
+.bits{display:flex;gap:3px;justify-content:center;margin:16px 0 12px;flex-wrap:wrap}
+.bu{display:flex;flex-direction:column;align-items:center;gap:3px}
+.bb{width:34px;height:42px;border:2px solid #e2e8f0;background:#f8fafc;border-radius:8px;display:flex;align-items:center;justify-content:center;font:700 15px/1 monospace;cursor:pointer;user-select:none;transition:all .2s;box-shadow:0 2px 4px rgba(0,0,0,0.04)}
+.bb:hover{transform:scale(1.05);box-shadow:0 4px 8px rgba(0,0,0,0.1)}
+.bb.bn{background:var(--bl)!important;color:#fff;border-color:#1e40af;box-shadow:0 4px 12px rgba(30,64,175,0.25)}
+.bb.by{background:var(--gn)!important;color:#fff;border-color:#059669;box-shadow:0 4px 12px rgba(16,185,129,0.25)}
+.bi{font-size:10px;color:#64748b;font-weight:500}
 .nibble-space{width:8px}
 .leg{display:flex;gap:14px;justify-content:center;font-size:11px;margin:6px 0 16px;flex-wrap:wrap}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:3px;vertical-align:middle}
 hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
-.g{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
-.ig{display:flex;flex-direction:column;gap:5px}
-.ig label{font-size:12px;font-weight:600;color:#64748b}
-.ig input,.ig select{padding:10px;border:1px solid var(--b);border-radius:8px;font:15px/1.2 monospace;outline:none;width:100%;transition:.15s}
-.ig input:focus,.ig select:focus{border-color:var(--p);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
-.ig input.ed{border-color:var(--am)!important;box-shadow:0 0 0 3px rgba(245,158,11,.15);background:#fffbeb}
-.ig input.bad{border-color:var(--rd);background:#fef2f2}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.ig{display:flex;flex-direction:column;gap:6px}
+.ig label{font-size:13px;font-weight:600;color:#475569;letter-spacing:-0.2px}
+.ig input,.ig select{padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font:15px/1.3 ui-monospace,monospace;outline:none;width:100%;transition:all .2s;background:#fff}
+.ig input:focus,.ig select:focus{border-color:var(--p);box-shadow:0 0 0 4px rgba(30,64,175,0.15)}
+.ig input.ed{border-color:var(--am)!important;box-shadow:0 0 0 4px rgba(245,158,11,.15);background:#fffbeb}
+.ig input.bad{border-color:var(--rd)!important;box-shadow:0 0 0 4px rgba(239,68,68,.15);background:#fef2f2}
 .fw{grid-column:span 2}
-.hx{display:flex;border:1px solid var(--b);border-radius:8px;overflow:hidden;background:#fff}
-.hx:focus-within{border-color:var(--p);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
-.hx.ed{border-color:var(--am)!important;box-shadow:0 0 0 3px rgba(245,158,11,.15);background:#fffbeb}
-.hp{padding:0 10px;background:#f1f5f9;color:#64748b;display:flex;align-items:center;font:700 14px monospace;border-right:1px solid var(--b)}
-.hx input{border:0;box-shadow:none;outline:none;text-transform:uppercase;border-radius:0;background:transparent}
-.rb{background:#eff6ff;border:1px dashed var(--p);padding:18px;border-radius:8px;text-align:center;margin-bottom:12px;position:relative}
-.rb.dr{background:#fef3c7;border-color:var(--am)}
-.vd{font-size:1.8rem;font-weight:800;color:var(--p);margin:8px 0;word-break:break-all}
-.rb.dr .vd{color:#92400e}
-.fm{font:12px monospace;color:#64748b;margin-top:4px}
-.ib{background:#f1f5f9;border-radius:8px;padding:12px;font-size:12px;color:#475569;line-height:1.6;min-height:48px}
-.ib .w{color:var(--rd);font-weight:600}.ib .o{color:var(--gn);font-weight:600}.ib .a{color:var(--am);font-weight:600}
-.cs{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:16px}
-.cs h3{color:#92400e;margin-bottom:10px}
-.hd{font:13px monospace;color:#64748b;text-align:center;margin-top:6px;cursor:pointer;transition:.15s}
+.hx{display:flex;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#fff;transition:all .2s}
+.hx:focus-within{border-color:var(--p);box-shadow:0 0 0 4px rgba(30,64,175,0.15)}
+.hx.ed{border-color:var(--am)!important;box-shadow:0 0 0 4px rgba(245,158,11,.15);background:#fffbeb}
+.hp{padding:0 14px;background:#f1f5f9;color:#475569;display:flex;align-items:center;font:700 15px ui-monospace,monospace;border-right:1.5px solid #e2e8f0}
+.hx input{border:0;box-shadow:none;outline:none;text-transform:uppercase;border-radius:0;background:transparent;font:15px ui-monospace,monospace;padding:11px 0}
+.rb{background:linear-gradient(145deg,#f0f9ff,#e0f2fe);border:2px solid #bae6fd;padding:28px 24px 24px;border-radius:16px;text-align:center;margin:20px 0;position:relative;overflow:hidden}
+.rb::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(to right,#3b82f6,#60a5fa)}
+.rb.dr{background:linear-gradient(145deg,#fefce8,#fef3c7);border-color:#fcd34d}
+.vd{font-size:2.75rem;font-weight:700;color:#1e40af;letter-spacing:-1.5px;margin:16px 0 10px;line-height:1.1}
+.rb.dr .vd{color:#854d0e}
+.fm{font:13px ui-monospace,monospace;color:#475569;margin-top:8px;opacity:0.9;line-height:1.4}
+.ib{background:#f8fafc;border:1px solid #e0e7ff;border-radius:12px;padding:14px;font-size:13px;color:#334155;line-height:1.65;min-height:52px}
+.ib .w{color:#ef4444;font-weight:600}.ib .o{color:#10b981;font-weight:600}.ib .a{color:#f59e0b;font-weight:600}
+.cs{background:#fefce8;border:1px solid #fde047;border-radius:12px;padding:18px;margin-bottom:20px}
+.cs h3{color:#854d0e;margin-bottom:12px;font-weight:600}
+.hd{font:13px ui-monospace,monospace;color:#64748b;text-align:center;margin-top:8px;cursor:pointer;transition:.2s}
 .hd:hover{color:var(--p)}
 .hd b{font-weight:700;color:var(--t)}
-.bo{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:12px;font-size:12px;color:#64748b;flex-wrap:wrap}
-.bo label{font-weight:600}.bo select{padding:4px 8px;border:1px solid var(--b);border-radius:4px;font-size:12px}
-.copy-btn{position:absolute;top:8px;right:72px;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--p);cursor:pointer;font-weight:600;transition:.15s;height:36px;display:flex;align-items:center;justify-content:center}
-.copy-btn:hover{background:rgba(37,99,235,.2)}
-.copy-btn.copied{background:var(--gn);color:#fff;border-color:var(--gn)}
-.toggle-small{position:absolute;width:22px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;transition:all .2s;border:1px solid;line-height:1}
-#toggle0xBtn{right:47px;top:8px;height:16px}
-#toggleSpaceBtn{right:47px;top:27px;height:16px}
-.toggle-small.active{background:#10b981;color:#fff;border-color:#10b981}
-.toggle-small:not(.active){background:#e2e8f0;color:#64748b;border-color:#cbd5e1}
-.warn-banner{background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--rd);margin-top:8px;display:none}
+.bo{display:flex;align-items:center;gap:10px;justify-content:center;margin:18px 0 16px;font-size:13px;color:#475569;flex-wrap:wrap}
+.bo label{font-weight:600}.bo select{padding:6px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:#fff}
+.result-toolbar{
+  position:absolute;
+  top:16px;
+  right:16px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  z-index:10;
+}
+.copy-btn{
+  background:white;
+  border:1.5px solid #bae6fd;
+  border-radius:8px;
+  padding:6px 13px;
+  font-size:12.5px;
+  color:#1e40af;
+  cursor:pointer;
+  font-weight:600;
+  transition:all .2s;
+  box-shadow:0 2px 4px rgba(0,0,0,0.05);
+  white-space:nowrap;
+}
+.copy-btn:hover{background:#f0f9ff;border-color:#7dd3fc;transform:translateY(-1px)}
+.copy-btn.copied{background:#10b981;color:white;border-color:#10b981}
+
+.hex-group{
+  display:flex;
+  align-items:center;
+  background:#f8fafc;
+  border:1.5px solid #bae6fd;
+  border-radius:8px;
+  padding:3px;
+  box-shadow:0 2px 4px rgba(0,0,0,0.05);
+}
+.hex-group .copy-btn{
+  margin-right:4px;
+  border:1.5px solid transparent;
+  box-shadow:none;
+  padding:5px 11px;
+}
+.toggle-small{
+  width:26px;
+  height:26px;
+  font-size:11.5px;
+  font-weight:700;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:6px;
+  cursor:pointer;
+  transition:all .2s;
+  border:1.5px solid #e2e8f0;
+  background:#fff;
+  color:#475569;
+}
+.toggle-small:hover{
+  border-color:#94a3b8;
+}
+.toggle-small.active{
+  background:#10b981;
+  color:#fff;
+  border-color:#10b981;
+  box-shadow:0 2px 6px rgba(16,185,129,0.25);
+}
+.result-label{
+  display:block;
+  font-size:13.5px;
+  color:#475569;
+  font-weight:600;
+  margin-bottom:8px;
+  opacity:0.9;
+}
+.warn-banner{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:12.5px;color:var(--rd);margin-top:12px;display:none}
 .warn-banner.show{display:block}
 .profile-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
 .profile-btn{padding:4px 10px;border:1px solid #d97706;background:#fffbeb;border-radius:12px;cursor:pointer;font-size:11px;color:#92400e;transition:.15s}
 .profile-btn:hover{background:#fde68a}
-.tip{text-align:center;font-size:11px;color:#94a3b8;margin-top:16px}
-.nlock{font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all .2s;user-select:none;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px}
+.tip{text-align:center;font-size:12px;color:#64748b;margin-top:20px;line-height:1.5;opacity:0.85}
+.nlock{font-size:19px;cursor:pointer;padding:4px 8px;border-radius:8px;transition:all .2s;user-select:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px}
 .nlock:hover{background:#f1f5f9}
 .nlock.locked{color:#ef4444}
 .nlock.unlocked{color:#10b981}
-.n-input-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
-.n-input-row input,.fixed-num{width:110px !important;font-variant-numeric:tabular-nums}
-.nrange{font-size:10.5px;color:#64748b;font-family:monospace;display:block;padding:2px 6px;background:#f8fafc;border-radius:4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media(max-width:500px){.g{grid-template-columns:1fr}.fw{grid-column:span 1}.bb{width:24px;height:32px;font-size:12px}.tab{padding:6px 12px;font-size:12px}.nibble-space{width:4px}
-.n-input-row input,.fixed-num{width:88px !important}}
+.n-input-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.n-input-row input,.fixed-num{width:118px !important;font-variant-numeric:tabular-nums}
+.nrange{font-size:11px;color:#64748b;font-family:ui-monospace,monospace;display:block;padding:4px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* 自定义Tooltip - 与页面风格统一 */
+.tooltip {
+  position: absolute;
+  background: #1e2937;
+  color: #e0f2fe;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 9px 14px;
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 2147483647;
+  white-space: pre-line;
+  line-height: 1.45;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2), 0 4px 6px -4px rgb(0 0 0 / 0.2);
+  opacity: 0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: scale(0.95) translateY(6px);
+  max-width: 280px;
+  border: 1px solid #334155;
+  display: none;
+}
+.tooltip.show {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  display: block;
+}
+@media (max-width: 560px) {
+  .tooltip { font-size: 12px; padding: 7px 11px; max-width: 240px; }
+}
+@media(max-width:560px) {
+  .tooltip { font-size: 12px; max-width: 220px; padding: 5px 10px; }
+}
 </style>
 </head>
 <body>
 <div class="w">
 <h2>PMBus 协议计算器</h2>
     <div class="tabs">
-    <button class="tab on" data-mode="L11" onclick="switchMode('L11')">线性11 (LINEAR11)</button>
-    <button class="tab" data-mode="L16" onclick="switchMode('L16')">线性16 (VOUT)</button>
-    <button class="tab" data-mode="DIRECT" onclick="switchMode('DIRECT')">DIRECT格式</button>
-    <button class="tab" data-mode="HALF" onclick="switchMode('HALF')">IEEE半精度</button>
+    <button class="tab on" data-mode="L11" onclick="switchMode('L11')" data-tooltip="LINEAR11 格式：X = Y × 2^N (最常用)">线性11 (LINEAR11)</button>
+    <button class="tab" data-mode="L16" onclick="switchMode('L16')" data-tooltip="LINEAR16 格式：主要用于 VOUT 电压命令">线性16 (VOUT)</button>
+    <button class="tab" data-mode="DIRECT" onclick="switchMode('DIRECT')" data-tooltip="DIRECT 格式：需设置 m、b、R 三个系数">DIRECT格式</button>
+    <button class="tab" data-mode="HALF" onclick="switchMode('HALF')" data-tooltip="IEEE 754 半精度浮点 (16位)">IEEE半精度</button>
     </div>
 
-    <div class="bo" style="margin:16px 0 12px">
-    <label>命令字典：</label>
-    <select id="commandSelect" onchange="selectCommand(this.value)" style="max-width:320px;font-size:13px">
+    <div class="bo" style="margin:8px 0 20px">
+    <label style="margin-right:8px">命令字典：</label>
+    <select id="commandSelect" onchange="selectCommand(this.value)" style="max-width:340px;font-size:13.5px;flex:1" data-tooltip="快速加载常用PMBus命令的典型参数和模式">
     <option value="">-- 选择 PMBus 1.3 命令 --</option>
     <option value="VOUT_COMMAND">VOUT_COMMAND (0x21) - 输出电压</option>
     <option value="VOUT_OV_FAULT_LIMIT">VOUT_OV_FAULT_LIMIT (0x40)</option>
@@ -119,10 +216,10 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 </div>
 <div class="fm" style="margin-top:8px">读取: X=(1/m)×(Y×10<sup>-R</sup>-b) | 写入: Y=(m×X+b)×10<sup>R</sup></div>
 <div class="profile-row"><span style="font-size:11px;color:#92400e;font-weight:600">预设:</span>
-<button class="profile-btn" onclick="applyProfile('vout_12v')">12V 输出</button>
-<button class="profile-btn" onclick="applyProfile('vout_5v')">5V 输出</button>
-<button class="profile-btn" onclick="applyProfile('iout_30a')">30A 电流</button>
-<button class="profile-btn" onclick="applyProfile('temp_125')">125°C 温度</button>
+<button class="profile-btn" onclick="applyProfile('vout_12v')" data-tooltip="常用12V输出电源参数 (m=3200, R=-2)">12V 输出</button>
+<button class="profile-btn" onclick="applyProfile('vout_5v')" data-tooltip="常用5V输出电源参数 (m=1280, R=-2)">5V 输出</button>
+<button class="profile-btn" onclick="applyProfile('iout_30a')" data-tooltip="常用30A电流检测参数 (m=160, R=-1)">30A 电流</button>
+<button class="profile-btn" onclick="applyProfile('temp_125')" data-tooltip="温度检测参数 (m=1, R=0)">125°C 温度</button>
 </div>
 </div>
 <div class="bits" id="directBitStrip"></div>
@@ -133,31 +230,37 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 <div class="g">
 <div class="ig fw"><label id="hexLabel">原始值 (Hex)</label>
 <div class="hx" id="hexWrapper"><span class="hp">0x</span><input id="inputHex" maxlength="4" autocomplete="off" spellcheck="false" inputmode="text"></div>
-<div class="hd" id="byteDisplay" title="点击复制字节序列"></div>
+    <div class="hd" id="byteDisplay" data-tooltip="显示字节序 (低字节在前为PMBus标准)&#10;点击可复制字节序列"></div>
 </div>
 <div class="ig" id="grpN">
   <label id="labelN">N 值 <span style="font-size:10px;color:#94a3b8">(点击上下箭头调整)</span></label>
   <div class="n-input-row">
     <input id="inputN" type="number" min="-16" max="15" step="1">
-    <span id="nLockBtn" class="nlock locked" title="点击切换自动优选N (默认禁用)">🔒</span>
+    <span id="nLockBtn" class="nlock locked" data-tooltip="点击切换「自动优选N」模式&#10;关闭时：修改Value后保持当前N不变&#10;开启时：自动选择误差最小的N值">🔒</span>
   </div>
-  <span id="nRange" class="nrange" title="当前N可表示的物理值范围 (Y∈[-1024,1023])"></span>
+    <span id="nRange" class="nrange" data-tooltip="当前N可表示的物理值范围 (Y∈[-1024,1023])"></span>
 </div>
 <div class="ig" id="grpY"><label id="labelY">Y (11-bit 有符号, -1024~1023)</label><input id="inputY" class="fixed-num" inputmode="numeric"></div>
 <div class="ig" id="grpDirectY" style="display:none"><label>Y (16-bit 有符号)</label><input id="inputDirectY" class="fixed-num" inputmode="numeric"></div>
 <div class="ig fw"><label id="labelValue">物理值 (Value)</label><input id="inputValue" inputmode="decimal"></div>
 </div>
     <div class="rb" id="resultBox">
-    <button class="copy-btn" id="copyHexBtn" title="复制 Hex">📋 Hex</button>
-    <button class="toggle-small active" id="toggle0xBtn" title="点击切换是否添加 0x 前缀">0x</button>
-    <button class="toggle-small active" id="toggleSpaceBtn" title="点击切换字节间是否添加空格">␣</button>
-    <button class="copy-btn" id="copyValBtn" title="复制值" style="right:165px">📋 值</button>
-    <button class="copy-btn" id="copyCBtn" style="right:235px" title="生成 C 宏代码">复制 C 代码</button>
-    <label id="resultLabel">X=Y×2<sup>N</sup></label>
-    <div class="vd" id="displayValue">0</div>
+    <!-- 工具栏 -->
+    <div class="result-toolbar">
+      <div class="hex-group">
+        <button class="copy-btn" id="copyHexBtn" data-tooltip="点击复制 Hex 值" data-original="📋 Hex">📋 Hex</button>
+        <button class="toggle-small" id="toggle0xBtn" data-tooltip="切换是否在复制时添加 0x 前缀">0x</button>
+        <button class="toggle-small" id="toggleSpaceBtn" data-tooltip="切换复制时字节之间是否加空格">␣</button>
+      </div>
+      <button class="copy-btn" id="copyValBtn" data-tooltip="点击复制物理值" data-original="📋 值">📋 值</button>
+      <button class="copy-btn" id="copyCBtn" data-tooltip="点击生成并复制 C 语言宏定义代码" data-original="C 代码">C 代码</button>
+    </div>
+
+    <label id="resultLabel" class="result-label">X = Y × 2<sup>N</sup></label>
+    <div class="vd" id="displayValue">56</div>
     <div class="fm" id="resultFormula"></div>
-    <div class="fm" id="deltaError" style="color:#64748b;font-size:11px;margin-top:3px;display:none;">误差: 0.000000 (0.0000%)</div>
-    <div class="fm" id="halfNote" style="color:#64748b;font-size:11px;margin-top:3px;display:none;">Note: IEEE Half ~3.3 decimal digits precision</div>
+    <div class="fm" id="deltaError" style="display:block;">误差: <span style="color:#10b981">+0.000000</span> <span style="font-size:10px">(0.0000%)</span></div>
+    <div class="fm" id="halfNote" style="display:none;">Note: IEEE Half ~3.3 decimal digits precision</div>
     <div class="warn-banner" id="overflowWarn">⚠ 溢出警告: 值超出 LINEAR11 表示范围</div>
     <div class="warn-banner" id="specialWarn"></div>
     </div>
@@ -165,6 +268,10 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
     <div class="tip">Hex右侧小按钮(0x/␣) · 颜色区分状态 · 复制C代码 · Ctrl+1/2/3/4切换模式 · 点击字节复制</div>
 
 </div>
+
+<!-- 自定义Tooltip -->
+<div id="customTooltip" class="tooltip"></div>
+
 <script>
 // ==================== PMBus 数学计算核心层 (纯函数，无DOM依赖) ====================
 const PMBusMath = {
@@ -786,12 +893,10 @@ function toggleAutoN() {
         btn.textContent = '🔓';
         btn.classList.remove('locked');
         btn.classList.add('unlocked');
-        btn.title = '自动优选N已启用 (修改Value时将自动选择最佳N)';
     } else {
         btn.textContent = '🔒';
         btn.classList.remove('unlocked');
         btn.classList.add('locked');
-        btn.title = '自动优选N已禁用 (修改Value时保持当前N不变)';
     }
 }
 
@@ -805,7 +910,7 @@ function updateNRange(n) {
     const minStr = formatNumber(minVal);
     const maxStr = formatNumber(maxVal);
     $('nRange').textContent = `${minStr} ~ ${maxStr}`;
-    $('nRange').title = `N=${n} 时可表示范围 (Y=-1024~1023)`;
+    $('nRange').dataset.tooltip = `N=${n} 时可表示范围\n${minStr} ~ ${maxStr}\n(Y∈[-1024,1023])`;
 }
 
 function onByteOrderChange() {
@@ -852,11 +957,19 @@ function selectCommand(cmdKey) {
 // ==================== 剪贴板复制功能 ====================
 function copyToClipboard(text, btnEl) {
     navigator.clipboard.writeText(text).then(() => {
+        const originalText = btnEl.getAttribute('data-original') || btnEl.textContent;
+        btnEl.setAttribute('data-original', originalText);
+        
         btnEl.classList.add('copied');
-        const orig = btnEl.textContent;
         btnEl.textContent = '✓ 已复制';
-        setTimeout(() => { btnEl.classList.remove('copied'); btnEl.textContent = orig; }, 1200);
-    }).catch(() => {});
+        
+        setTimeout(() => {
+            btnEl.classList.remove('copied');
+            btnEl.textContent = originalText;
+        }, 1500);
+    }).catch(() => {
+        console.error('复制失败');
+    });
 }
 
 function getHexCopyText() {
@@ -874,15 +987,10 @@ function getHexCopyText() {
 function toggle0xPrefix() {
     add0xPrefix = !add0xPrefix;
     const btn = $('toggle0xBtn');
-    const copyBtn = $('copyHexBtn');
     if (add0xPrefix) {
         btn.classList.add('active');
-        btn.title = '已启用 0x 前缀 (点击关闭)';
-        if (copyBtn) copyBtn.title = '复制 Hex (带0x)';
     } else {
         btn.classList.remove('active');
-        btn.title = '已禁用 0x 前缀 (点击开启)';
-        if (copyBtn) copyBtn.title = '复制 Hex (不带0x)';
     }
     localStorage.setItem('pmbus_add0x', add0xPrefix.toString());
 }
@@ -892,10 +1000,8 @@ function toggleSpace() {
     const btn = $('toggleSpaceBtn');
     if (addSpaceBetweenBytes) {
         btn.classList.add('active');
-        btn.title = '已启用字节空格 (点击关闭)';
     } else {
         btn.classList.remove('active');
-        btn.title = '已禁用字节空格 (点击开启)';
     }
     localStorage.setItem('pmbus_space', addSpaceBetweenBytes.toString());
 }
@@ -909,30 +1015,22 @@ function loadPreferences() {
     const savedSpace = localStorage.getItem('pmbus_space');
     if (savedSpace !== null) addSpaceBetweenBytes = savedSpace === 'true';
 
-    // 更新 0x 按钮（固定显示0x，只改颜色）
+    // 更新 0x 和空格按钮激活状态
     const oxBtn = $('toggle0xBtn');
-    const copyBtn = $('copyHexBtn');
     if (oxBtn) {
         if (add0xPrefix) {
             oxBtn.classList.add('active');
-            if (copyBtn) copyBtn.title = '复制 Hex (带0x)';
-            oxBtn.title = '已启用 0x 前缀 (点击关闭)';
         } else {
             oxBtn.classList.remove('active');
-            if (copyBtn) copyBtn.title = '复制 Hex (不带0x)';
-            oxBtn.title = '已禁用 0x 前缀 (点击开启)';
         }
     }
 
-    // 更新空格按钮（固定显示␣，只改颜色）
     const spaceBtn = $('toggleSpaceBtn');
     if (spaceBtn) {
         if (addSpaceBetweenBytes) {
             spaceBtn.classList.add('active');
-            spaceBtn.title = '已启用字节空格 (点击关闭)';
         } else {
             spaceBtn.classList.remove('active');
-            spaceBtn.title = '已禁用字节空格 (点击开启)';
         }
     }
 }
@@ -1087,6 +1185,55 @@ document.addEventListener('keydown', e => {
 });
 
 init();
+</script>
+
+<script>
+// ==================== 自定义Tooltip ====================
+function initTooltips() {
+    const tooltip = document.getElementById('customTooltip');
+    if (!tooltip) return;
+    let timeoutId = null;
+
+    // 清除原生 title 属性
+    document.querySelectorAll('[data-tooltip]').forEach(el => {
+        if (el.hasAttribute('title')) el.removeAttribute('title');
+    });
+
+    function show(el) {
+        clearTimeout(timeoutId);
+        tooltip.textContent = el.dataset.tooltip.replace(/\\n/g, '\n');
+        tooltip.style.display = 'block';
+        tooltip.offsetHeight;
+
+        const rect = el.getBoundingClientRect();
+        let top = rect.bottom + window.scrollY + 12;
+        let left = rect.left + window.scrollX + (rect.width / 2) - (tooltip.offsetWidth / 2 || 120);
+
+        if (left < 12) left = 12;
+        if (left + tooltip.offsetWidth > window.innerWidth - 12) left = window.innerWidth - tooltip.offsetWidth - 12;
+
+        tooltip.style.top = `${top}px`;
+        tooltip.style.left = `${left}px`;
+        tooltip.classList.add('show');
+    }
+
+    function hide() {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+            tooltip.classList.remove('show');
+            setTimeout(() => tooltip.style.display = 'none', 160);
+        }, 70);
+    }
+
+    document.querySelectorAll('[data-tooltip]').forEach(el => {
+        el.addEventListener('mouseenter', () => show(el));
+        el.addEventListener('mouseleave', hide);
+    });
+}
+
+// 初始化
+window.addEventListener('load', () => setTimeout(initTooltips, 100));
+
 </script>
 </body>
 </html>
