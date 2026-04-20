@@ -68,17 +68,17 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 <div class="w">
 <h2>PMBus 协议计算器</h2>
     <div class="tabs">
-    <button class="tab on" data-mode="L11" onclick="switchMode('L11')">LINEAR11</button>
-    <button class="tab" data-mode="L16" onclick="switchMode('L16')">LINEAR16 (VOUT)</button>
-    <button class="tab" data-mode="DIRECT" onclick="switchMode('DIRECT')">DIRECT</button>
-    <button class="tab" data-mode="HALF" onclick="switchMode('HALF')">IEEE Half Float</button>
+    <button class="tab on" data-mode="L11" onclick="switchMode('L11')">线性11 (LINEAR11)</button>
+    <button class="tab" data-mode="L16" onclick="switchMode('L16')">线性16 (VOUT)</button>
+    <button class="tab" data-mode="DIRECT" onclick="switchMode('DIRECT')">DIRECT格式</button>
+    <button class="tab" data-mode="HALF" onclick="switchMode('HALF')">IEEE半精度</button>
     </div>
 
     <div class="bo" style="margin:16px 0 12px">
-    <label>Command Dictionary:</label>
+    <label>命令字典：</label>
     <select id="commandSelect" onchange="selectCommand(this.value)" style="max-width:320px;font-size:13px">
-    <option value="">-- Select PMBus 1.3 Command --</option>
-    <option value="VOUT_COMMAND">VOUT_COMMAND (0x21) - Voltage</option>
+    <option value="">-- 选择 PMBus 1.3 命令 --</option>
+    <option value="VOUT_COMMAND">VOUT_COMMAND (0x21) - 输出电压</option>
     <option value="VOUT_OV_FAULT_LIMIT">VOUT_OV_FAULT_LIMIT (0x40)</option>
     <option value="READ_VOUT">READ_VOUT (0x8B)</option>
     <option value="READ_VIN">READ_VIN (0x88)</option>
@@ -140,17 +140,18 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
     <div class="warn-banner" id="specialWarn"></div>
     </div>
 <div class="infoBar" id="infoBar"></div>
-<div class="tip">Δ Error · Copy C Code · Command Dictionary · IEEE Half · Ctrl+1/2/3/4 切换 · 实时计算 · 点击字节复制</div>
+    <div class="tip">Δ Error · 复制C代码 · 命令字典 · IEEE半精度 · Ctrl+1/2/3/4切换模式 · 实时计算 · 点击字节复制</div>
+
 </div>
 <script>
-// ==================== PMBus Math Layer (pure, no DOM) ====================
+// ==================== PMBus 数学计算核心层 (纯函数，无DOM依赖) ====================
 const PMBusMath = {
     toSigned(value, bits) { const max = 1 << bits; return value >= max / 2 ? value - max : value; },
     fromSigned(value, bits) { const max = 1 << bits; return value < 0 ? value + max : value; },
     clamp(value, min, max) { return Math.max(min, Math.min(max, value)); },
     swapBytes(v) { return ((v & 0xFF) << 8) | ((v >> 8) & 0xFF); },
 
-    // LINEAR11: X = Y × 2^N (5-bit N, 11-bit Y, both signed)
+    // LINEAR11格式: X = Y × 2^N (N为5位有符号, Y为11位有符号)
     decodeLinear11(raw) {
         const n = this.toSigned((raw >> 11) & 0x1F, 5);
         const y = this.toSigned(raw & 0x7FF, 11);
@@ -160,7 +161,7 @@ const PMBusMath = {
         n = this.clamp(n, -16, 15); y = this.clamp(y, -1024, 1023);
         return ((this.fromSigned(n, 5) & 0x1F) << 11) | (this.fromSigned(y, 11) & 0x7FF);
     },
-    // Find best N for a given physical value in LINEAR11
+    // 为给定物理值寻找LINEAR11最佳N值
     findBestLinear11(val) {
         let bestN = 0, bestY = 0, bestErr = Infinity, bestVal = val;
         for (let n = -16; n <= 15; n++) {
@@ -175,11 +176,11 @@ const PMBusMath = {
         return { n: bestN, y: bestY, value: bestVal, delta: val - bestVal };
     },
 
-    // LINEAR16: Voltage = V × 2^N (16-bit unsigned V, 5-bit signed N from VOUT_MODE)
+    // LINEAR16格式: 电压 = V × 2^N (V为16位无符号, N来自VOUT_MODE)
     decodeLinear16(raw, n) { return { v: raw, n, value: raw * Math.pow(2, n) }; },
     encodeLinear16(v, n) { return this.clamp(v, 0, 65535); },
 
-    // DIRECT: X = (1/m) × (Y × 10^(-R) - b)
+    // DIRECT格式: X = (1/m) × (Y × 10^(-R) - b)
     decodeDirect(y, m, b, R) {
         if (m === 0) return { value: NaN };
         return { value: (1 / m) * (y * Math.pow(10, -R) - b) };
@@ -188,7 +189,7 @@ const PMBusMath = {
         return this.clamp(Math.round((m * value + b) * Math.pow(10, R)), -32768, 32767);
     },
 
-    // IEEE 754 Half Precision (binary16): sign(1), exp(5,bias15), mant(10)
+    // IEEE 754半精度浮点 (binary16): 符号1位, 指数5位(偏移15), 尾数10位
     decodeHalf(raw) {
         const sign = ((raw >> 15) & 1) ? -1 : 1;
         const exp = (raw >> 10) & 0x1F;
@@ -212,7 +213,7 @@ const PMBusMath = {
         let mant = (value / Math.pow(2, exp - 15) - 1) * 1024;
         let raw;
         if (exp <= 0) {
-            // subnormal
+            // 次正规数处理
             exp = 0;
             mant = Math.round(value * Math.pow(2, 14) * 1024);
             if (mant > 0x3FF) mant = 0x3FF;
@@ -236,29 +237,26 @@ const PMBusMath = {
         return raw;
     },
 
-    // VOUT_MODE parsing (Section 8.3 of PMBus 1.3)
+    // 解析VOUT_MODE字节 (参考PMBus 1.3规范第8.3节)
     parseVoutMode(byte) {
         byte = byte & 0xFF;
         const modeBits = (byte >> 5) & 0x07;
         const paramBits = byte & 0x1F;
-        const absBit = (byte >> 7) & 1;
         const modeNames = { 0: 'LINEAR', 1: 'VID', 2: 'DIRECT', 3: 'IEEE Half Float' };
         let n = null;
-        if (modeBits === 0) { // LINEAR: param = 5-bit two's complement exponent
+        if (modeBits === 0) { // LINEAR模式: 参数为5位二进制补码指数
             n = this.toSigned(paramBits, 5);
         }
         return {
             byte,
             mode: modeBits,
-            modeName: modeNames[modeBits] || 'Reserved',
+            modeName: modeNames[modeBits] || '保留',
             param: paramBits,
-            absolute: absBit === 0,
-            relative: absBit === 1,
             linearExponent: n
         };
     },
 
-    // Check for special values
+    // 检查特殊值 (溢出、零值等)
     checkSpecial(raw, mode) {
         if (mode === 'L11') {
             const y = this.toSigned(raw & 0x7FF, 11);
@@ -269,7 +267,7 @@ const PMBusMath = {
     }
 };
 
-// ==================== State ====================
+// ==================== 全局状态变量 ====================
 let currentMode = 'L11';
 let rawInt = 0xE380;
 let byteOrder = 'le';
@@ -277,7 +275,7 @@ let directY = 0;
 let editingField = null;
 let currentCommand = '';
 
-// ==================== DOM Helpers ====================
+// ==================== DOM辅助函数 ====================
 const $ = id => document.getElementById(id);
 const hex2 = v => (v & 0xFF).toString(16).toUpperCase().padStart(2, '0');
 const hex4 = v => (v & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
@@ -287,7 +285,7 @@ function displayHex(v) {
     return (currentMode === 'L16' && byteOrder === 'be') ? hex4(PMBusMath.swapBytes(v)) : hex4(v);
 }
 
-// ==================== Safe Parsing ====================
+// ==================== 安全解析函数 ====================
 function parseIntegerSafe(s) {
     s = String(s).trim();
     if (!s || s === '-' || s === '+') return null;
@@ -299,6 +297,15 @@ function parseIntegerSafe(s) {
 function parseFloatSafe(s) {
     s = String(s).trim();
     if (!s) return null;
+    const lower = s.toLowerCase();
+    if (lower === 'nan') return NaN;
+    if (lower === 'infinity' || lower === '+infinity') return Infinity;
+    if (lower === '-infinity') return -Infinity;
+    if (s === '.' || s === '-.' || s === '+.') return 0;
+    if (s.endsWith('.')) {
+        const num = parseFloat(s);
+        return isNaN(num) ? 0 : num;
+    }
     while (s.length > 0 && /[-+]$/.test(s)) s = s.slice(0, -1);
     if (!s) return null;
     const n = parseFloat(s);
@@ -319,6 +326,14 @@ function fixOnBlur(value, kind) {
 }
 
 function sanitizeInput(value, kind) {
+    if (kind === 'float') {
+        value = value.replace(/[^0-9.eE\-+]/g, '');
+        const firstDot = value.indexOf('.');
+        if (firstDot !== -1) {
+            value = value.slice(0, firstDot + 1) + value.slice(firstDot + 1).replace(/\./g, '');
+        }
+        return value;
+    }
     value = value.replace(/[^\d.eE\-+]/g, '');
     if (kind === 'hex') return value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
     if (kind === 'int') {
@@ -326,18 +341,10 @@ function sanitizeInput(value, kind) {
         if (value.length > 1) value = value[0] + value.slice(1).replace(/[-+]/g, '');
         return value;
     }
-    // float
-    const dotIdx = value.indexOf('.');
-    if (dotIdx >= 0) value = value.slice(0, dotIdx + 1) + value.slice(dotIdx + 1).replace(/\./g, '');
-    let result = '';
-    for (let i = 0; i < value.length; i++) {
-        if ((value[i] === '-' || value[i] === '+') && i > 0 && value[i-1] !== 'e' && value[i-1] !== 'E') continue;
-        result += value[i];
-    }
-    return result;
+    return value;
 }
 
-// ==================== Bit Rendering ====================
+// ==================== 位图渲染函数 ====================
 function renderBits() {
     const strip = $('bitStrip');
     strip.innerHTML = '';
@@ -345,7 +352,7 @@ function renderBits() {
     if (currentMode === 'DIRECT') { renderDirectBits(); return; }
 
     for (let i = 15; i >= 0; i--) {
-        // Nibble spacing: add space after bits 12, 8, 4
+        // 半字节间距：在bit 12、8、4后添加空格
         if (i === 12 || i === 8 || i === 4) {
             const spacer = document.createElement('div');
             spacer.className = 'nibble-space';
@@ -402,14 +409,15 @@ function renderDirectBits() {
     }
 }
 
-// ==================== Field Setter (skip editing field) ====================
+// ==================== 字段值设置器 (跳过当前编辑字段) ====================
 function setFieldValue(id, value, source) {
     if (editingField === id) return;
     const el = $(id);
-    if (el && String(el.value) !== String(value)) el.value = value;
+    if (!el) return;
+    if (String(el.value) !== String(value)) el.value = value;
 }
 
-// ==================== Core Update ====================
+// ==================== 核心更新函数 ====================
 function updateAll(source) {
     if (currentMode === 'DIRECT') return updateDirect(source);
     if (currentMode === 'HALF') return updateHalf(source);
@@ -418,7 +426,12 @@ function updateAll(source) {
 
     if (source === 'hex') {
         const hexStr = ($('inputHex').value || '').replace(/[^0-9a-fA-F]/g, '');
-        rawInt = hexStr ? parseInt(hexStr, 16) & 0xFFFF : 0;
+        let parsedHex = hexStr ? parseInt(hexStr, 16) & 0xFFFF : 0;
+        if (currentMode === 'L16' && byteOrder === 'be') {
+            rawInt = PMBusMath.swapBytes(parsedHex);
+        } else {
+            rawInt = parsedHex;
+        }
         if (isLinear11) {
             const decoded = PMBusMath.decodeLinear11(rawInt);
             n = decoded.n; y = decoded.y; value = decoded.value;
@@ -463,14 +476,13 @@ function updateAll(source) {
             window.lastDelta = 0;
         }
     } else if (source === 'voutMode') {
-        // VOUT_MODE changed: update N for LINEAR16
+        // VOUT_MODE变更：更新LINEAR16的N值
         const hex = ($('voutModeHex').value || '').replace(/[^0-9a-fA-F]/g, '');
         if (hex) {
             const parsed = PMBusMath.parseVoutMode(parseInt(hex, 16));
             if (parsed.linearExponent !== null) {
                 n = parsed.linearExponent;
-                $('voutModeInfo').textContent = parsed.modeName + ', N=' + n + (parsed.relative ? ' (相对)' : ' (绝对)');
-                // Update N field and recompute
+                $('voutModeInfo').textContent = parsed.modeName + ', N=' + n;
                 y = rawInt; value = y * Math.pow(2, n);
                 setFieldValue('inputN', n, source);
             } else {
@@ -483,14 +495,15 @@ function updateAll(source) {
         }
     }
 
-    // Write back fields
     setFieldValue('inputHex', displayHex(rawInt), source);
     if (isLinear11 || source === 'voutMode') setFieldValue('inputN', n, source);
     setFieldValue('inputY', y, source);
-    setFieldValue('inputValue', formatNumber(value), source);
+    if (source !== 'val') {
+        setFieldValue('inputValue', formatNumber(value), source);
+    }
     $('displayValue').textContent = value.toLocaleString(undefined, { maximumFractionDigits: 10 });
 
-    // Delta Error for LINEAR11 (quantization vs inputValue)
+    // LINEAR11的量化误差显示
     const deltaEl = $('deltaError');
     if (isLinear11 && deltaEl) {
         let d = 0;
@@ -509,22 +522,22 @@ function updateAll(source) {
     }
     const hn = $('halfNote'); if (hn) hn.style.display = (currentMode === 'HALF') ? 'block' : 'none';
 
-    // Update bits
+    // 更新位图显示
     for (let i = 0; i < 16; i++) {
         const btn = $('bit-' + i);
         if (btn) btn.textContent = (rawInt >> i) & 1;
     }
 
-    // Byte display
+    // 字节序显示
     const lo = rawInt & 0xFF, hi = (rawInt >> 8) & 0xFF;
     const isBE = currentMode === 'L16' && byteOrder === 'be';
     $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(isBE ? hi : lo) + '</b> <b>[1]' + hex2(isBE ? lo : hi) + '</b> (' + (isBE ? '高' : '低') + '字节在前) <span style="color:#94a3b8;font-size:11px">点击复制</span>';
 
-    // Validation
+    // 输入验证
     $('inputN').classList.toggle('bad', isLinear11 && (n < -16 || n > 15));
     $('inputY').classList.toggle('bad', (isLinear11 && (y < -1024 || y > 1023)) || (!isLinear11 && (y < 0 || y > 65535)));
 
-    // Overflow / special value warnings
+    // 溢出和特殊值警告
     const special = PMBusMath.checkSpecial(rawInt, currentMode);
     if (special) {
         $('specialWarn').textContent = (special.type === 'overflow' ? '⚠ ' : 'ℹ ') + special.msg;
@@ -534,7 +547,7 @@ function updateAll(source) {
     }
     $('overflowWarn').className = 'warn-banner' + (!isLinear11 && (value > 65535 * 32768 || value < 0) ? ' show' : '');
 
-    // Info bar
+    // 信息栏
     const info = $('infoBar');
     if (isLinear11) {
         const nOk = n >= -16 && n <= 15, yOk = y >= -1024 && y <= 1023;
@@ -575,7 +588,9 @@ function updateDirect(source) {
 
     setFieldValue('inputHex', hex4(directY < 0 ? directY + 65536 : directY), source);
     setFieldValue('inputDirectY', directY, source);
-    setFieldValue('inputValue', isNaN(value) ? '' : formatNumber(value), source);
+    if (source !== 'val') {
+        setFieldValue('inputValue', isNaN(value) ? '' : formatNumber(value), source);
+    }
     $('displayValue').textContent = isNaN(value) ? 'm = 0 (除零)' : value.toLocaleString(undefined, { maximumFractionDigits: 10 });
 
     const unsigned = directY < 0 ? directY + 65536 : directY;
@@ -586,14 +601,16 @@ function updateDirect(source) {
 
     $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(unsigned & 0xFF) + '</b> <b>[1]' + hex2((unsigned >> 8) & 0xFF) + '</b> (低字节在前) <span style="color:#94a3b8;font-size:11px">点击复制</span>';
     $('resultBox').classList.add('direct-mode');
-    $('resultFormula').textContent = isNaN(value) ? '' : 'X=(1/' + m + ')×(' + directY + '×10^' + (-R) + '-' + b + ')=' + formatNumber(value);
+    const bStr = (b < 0) ? ('+' + Math.abs(b)) : ('-' + b);
+    $('resultFormula').textContent = isNaN(value) ? '' : 'X=(1/' + m + ')×(' + directY + '×10^' + (-R) + bStr + ')=' + formatNumber(value);
 
     const info = $('infoBar');
     if (m === 0) {
         info.innerHTML = '<span class="w">⚠ m=0 除零错误！</span>';
     } else {
+        const bStrInfo = (b < 0) ? ('+' + Math.abs(b)) : ('-' + b);
         info.innerHTML = 'Y=' + directY + ' | 0x' + hex4(unsigned) + ' | m=' + m + ',b=' + b + ',R=' + R +
-            '<br>读: X=(1/' + m + ')×(' + directY + '×10<sup>' + (-R) + '</sup>-' + b + ')=<strong>' + formatNumber(value) + '</strong>' +
+            '<br>读: X=(1/' + m + ')×(' + directY + '×10<sup>' + (-R) + '</sup>' + bStrInfo + ')=<strong>' + formatNumber(value) + '</strong>' +
             '<br>写: Y=(' + m + '×X+' + b + ')×10<sup>' + R + '</sup>';
     }
     const deltaEl = $('deltaError'); if (deltaEl) deltaEl.style.display = 'none';
@@ -614,7 +631,9 @@ function updateHalf(source) {
         value = decoded.value;
     }
     setFieldValue('inputHex', displayHex(rawInt), source);
-    setFieldValue('inputValue', isNaN(value) ? 'NaN' : formatNumber(value), source);
+    if (source !== 'val') {
+        setFieldValue('inputValue', isNaN(value) ? 'NaN' : formatNumber(value), source);
+    }
     const disp = isNaN(value) ? 'NaN' : (!isFinite(value) ? (value < 0 ? '-∞' : '∞') : value.toLocaleString(undefined, { maximumFractionDigits: 10 }));
     $('displayValue').textContent = disp;
     for (let i = 0; i < 16; i++) {
@@ -656,7 +675,7 @@ function updateHalf(source) {
     vm.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); vm.blur(); } });
 }
 
-// ==================== DIRECT Profiles ====================
+// ==================== 预设配置 (DIRECT模式) ====================
 function applyProfile(name) {
     const profiles = {
         'vout_12v': { m: 3200, b: 0, R: -2, desc: '12V 输出电压 (m=3200,b=0,R=-2)' },
@@ -672,7 +691,7 @@ function applyProfile(name) {
     updateAll('coeff');
 }
 
-// ==================== Mode Switch ====================
+// ==================== 模式切换函数 ====================
 function switchMode(mode) {
     const prev = currentMode;
     currentMode = mode;
@@ -741,6 +760,7 @@ function selectCommand(cmdKey) {
     currentCommand = cmdKey;
     if ((cfg.mode === 'L16' || cfg.mode === 'L11') && cfg.voutMode) {
         $('voutModeHex').value = cfg.voutMode;
+        updateAll('voutMode');  // 确保 VOUT_MODE 提示文字同步更新
     }
     $('inputValue').value = cfg.val;
     if (cfg.n !== undefined) $('inputN').value = cfg.n;
@@ -753,7 +773,7 @@ function selectCommand(cmdKey) {
     $('resultLabel').innerHTML = `${cfg.label} <span style="font-size:0.85em;opacity:0.7">(${cmdKey})</span>`;
 }
 
-// ==================== Copy to Clipboard ====================
+// ==================== 剪贴板复制功能 ====================
 function copyToClipboard(text, btnEl) {
     navigator.clipboard.writeText(text).then(() => {
         btnEl.classList.add('copied');
@@ -772,43 +792,43 @@ function generateCMacro() {
     const cmdCode = currentCommand ? cmdCodes[currentCommand] || 0 : 0;
     let comment = `/*
  * PMBus 1.3 ${currentCommand || currentMode}
- * Value = ${value.toFixed(4)}
- * Raw = 0x${hex4(raw)}
+ * 物理值 = ${value.toFixed(4)}
+ * 原始值 = 0x${hex4(raw)}
 `;
     if (currentMode === 'L11') {
         const n = parseIntegerSafe($('inputN').value) || 0;
         const y = parseIntegerSafe($('inputY').value) || 0;
         const delta = (typeof window.lastDelta !== 'undefined') ? window.lastDelta.toFixed(6) : '0.000000';
-        comment += ` * N=${n}, Y=${y} (LINEAR11) ΔError=${delta}
- * X = Y × 2^N
+        comment += ` * N=${n}, Y=${y} (LINEAR11) 误差=${delta}
+ * 计算公式: X = Y × 2^N
 `;
     } else if (currentMode === 'L16') {
         const n = parseIntegerSafe($('inputN').value) || 0;
-        comment += ` * N=${n} (from VOUT_MODE=0x${$('voutModeHex') ? $('voutModeHex').value : '00'}), V=${raw} (L16)
+        comment += ` * N=${n} (来自VOUT_MODE=0x${$('voutModeHex') ? $('voutModeHex').value : '00'}), V=${raw} (LINEAR16)
 `;
     } else if (currentMode === 'HALF') {
         const s = (raw >> 15) & 1;
         const e = (raw >> 10) & 0x1F;
         const m = raw & 0x03FF;
-        comment += ` * S=${s} E=${e} M=0x${m.toString(16).toUpperCase().padStart(3,'0')} (IEEE Half)
- * Note: ~3.3 decimal digits precision
+        comment += ` * S=${s} E=${e} M=0x${m.toString(16).toUpperCase().padStart(3,'0')} (IEEE Half Float)
+ * 说明: 约3.3位十进制精度
 `;
     } else {
         const m = parseIntegerSafe($('coeff_m').value) ?? 1;
         const b = parseIntegerSafe($('coeff_b').value) ?? 0;
         const R = parseIntegerSafe($('coeff_R').value) ?? 0;
         comment += ` * m=${m}, b=${b}, R=${R} (DIRECT) Y=${directY}
- * X=(1/m)×(Y×10^(-R)-b)
+ * 计算公式: X=(1/m)×(Y×10^(-R)-b)
 `;
     }
     comment += `
  * #define ${macroName} 0x${hex4(raw)}U
- * Usage: pmbusWrite16(0x${cmdCode.toString(16).toUpperCase().padStart(2, '0')}, ${macroName});
+ * 使用示例: pmbusWrite16(0x${cmdCode.toString(16).toUpperCase().padStart(2, '0')}, ${macroName});
  */`;
     return comment + `\n#define ${macroName}  0x${hex4(raw)}U`;
 }
 
-// ==================== Field Wiring ====================
+// ==================== 字段事件绑定 ====================
 function wireField(id, source, kind) {
     const el = $(id);
     if (!el) return;
@@ -841,14 +861,25 @@ function wireField(id, source, kind) {
     });
 
     el.addEventListener('input', function () {
-        const before = el.value;
+        if (kind === 'float') {
+            updateAll(source);
+            return;
+        }
+        const start = this.selectionStart ?? 0;
+        const end = this.selectionEnd ?? 0;
+        const before = this.value;
         const clean = sanitizeInput(before, kind);
-        if (clean !== before) el.value = clean;
+        if (clean !== before) {
+            this.value = clean;
+            const lenDiff = before.length - clean.length;
+            this.selectionStart = Math.max(0, start - lenDiff);
+            this.selectionEnd = Math.max(0, end - lenDiff);
+        }
         updateAll(source);
     });
 }
 
-// ==================== Init ====================
+// ==================== 初始化函数 ====================
 function init() {
     wireField('inputHex', 'hex', 'hex');
     wireField('inputN', 'ny', 'int');
@@ -860,7 +891,7 @@ function init() {
     wireField('coeff_R', 'coeff', 'int');
     initVoutMode();
 
-    // Copy buttons
+    // 复制按钮事件
     $('copyHexBtn').addEventListener('click', () => {
         copyToClipboard('0x' + $('inputHex').value, $('copyHexBtn'));
     });
