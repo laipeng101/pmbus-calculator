@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PMBus 协议计算器 (L11/L16/DIRECT)</title>
+<title>PMBus 协议计算器 (L11/L16/DIRECT/HALF)</title>
 <style>
 :root{--p:#2563eb;--bg:#f8fafc;--c:#fff;--t:#1e293b;--b:#e2e8f0;--bl:#3b82f6;--gn:#10b981;--am:#f59e0b;--rd:#ef4444;--pu:#8b5cf6}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -67,11 +67,28 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 <body>
 <div class="w">
 <h2>PMBus 协议计算器</h2>
-<div class="tabs">
-<button class="tab on" data-mode="L11" onclick="switchMode('L11')">LINEAR11</button>
-<button class="tab" data-mode="L16" onclick="switchMode('L16')">LINEAR16 (VOUT)</button>
-<button class="tab" data-mode="DIRECT" onclick="switchMode('DIRECT')">DIRECT</button>
-</div>
+    <div class="tabs">
+    <button class="tab on" data-mode="L11" onclick="switchMode('L11')">LINEAR11</button>
+    <button class="tab" data-mode="L16" onclick="switchMode('L16')">LINEAR16 (VOUT)</button>
+    <button class="tab" data-mode="DIRECT" onclick="switchMode('DIRECT')">DIRECT</button>
+    <button class="tab" data-mode="HALF" onclick="switchMode('HALF')">IEEE Half Float</button>
+    </div>
+
+    <div class="bo" style="margin:16px 0 12px">
+    <label>Command Dictionary:</label>
+    <select id="commandSelect" onchange="selectCommand(this.value)" style="max-width:320px;font-size:13px">
+    <option value="">-- Select PMBus 1.3 Command --</option>
+    <option value="VOUT_COMMAND">VOUT_COMMAND (0x21) - Voltage</option>
+    <option value="VOUT_OV_FAULT_LIMIT">VOUT_OV_FAULT_LIMIT (0x40)</option>
+    <option value="READ_VOUT">READ_VOUT (0x8B)</option>
+    <option value="READ_VIN">READ_VIN (0x88)</option>
+    <option value="READ_IOUT">READ_IOUT (0x8C)</option>
+    <option value="READ_TEMPERATURE_1">READ_TEMPERATURE_1 (0x8D)</option>
+    <option value="VIN_OV_FAULT_LIMIT">VIN_OV_FAULT_LIMIT (0x55)</option>
+    <option value="OT_FAULT_LIMIT">OT_FAULT_LIMIT (0x4F)</option>
+    </select>
+    </div>
+
 
 <div id="linearSection">
 <div class="bo" id="byteOrderCtrl" style="display:none"><label>字节序:</label><select id="byteOrderSelect" onchange="onByteOrderChange()"><option value="le">低字节在前 (PMBus标准)</option><option value="be">高字节在前</option></select></div>
@@ -110,17 +127,20 @@ hr.d{border:0;border-top:1px solid #eee;margin:18px 0}
 <div class="ig" id="grpDirectY" style="display:none"><label>Y (16-bit 有符号)</label><input id="inputDirectY" inputmode="numeric"></div>
 <div class="ig fw"><label id="labelValue">物理值 (Value)</label><input id="inputValue" inputmode="decimal"></div>
 </div>
-<div class="rb" id="resultBox">
-<button class="copy-btn" id="copyHexBtn" title="复制 Hex">📋 Hex</button>
-<button class="copy-btn" id="copyValBtn" title="复制值" style="right:70px">📋 值</button>
-<label id="resultLabel">X=Y×2<sup>N</sup></label>
-<div class="vd" id="displayValue">0</div>
-<div class="fm" id="resultFormula"></div>
-<div class="warn-banner" id="overflowWarn">⚠ 溢出警告: 值超出 LINEAR11 表示范围</div>
-<div class="warn-banner" id="specialWarn"></div>
-</div>
+    <div class="rb" id="resultBox">
+    <button class="copy-btn" id="copyHexBtn" title="复制 Hex">📋 Hex</button>
+    <button class="copy-btn" id="copyValBtn" title="复制值" style="right:85px">📋 值</button>
+    <button class="copy-btn" id="copyCBtn" style="right:155px" title="生成 C 宏代码">复制 C 代码</button>
+    <label id="resultLabel">X=Y×2<sup>N</sup></label>
+    <div class="vd" id="displayValue">0</div>
+    <div class="fm" id="resultFormula"></div>
+    <div class="fm" id="deltaError" style="color:#64748b;font-size:11px;margin-top:3px;display:none;">Δ Error: 0.000000</div>
+    <div class="fm" id="halfNote" style="color:#64748b;font-size:11px;margin-top:3px;display:none;">Note: IEEE Half ~3.3 decimal digits precision</div>
+    <div class="warn-banner" id="overflowWarn">⚠ 溢出警告: 值超出 LINEAR11 表示范围</div>
+    <div class="warn-banner" id="specialWarn"></div>
+    </div>
 <div class="infoBar" id="infoBar"></div>
-<div class="tip">所有输入框实时计算 · 光标不跳动 · 失焦/回车确认 · Ctrl+1/2/3 切换 · 点击字节可复制</div>
+<div class="tip">Δ Error · Copy C Code · Command Dictionary · IEEE Half · Ctrl+1/2/3/4 切换 · 实时计算 · 点击字节复制</div>
 </div>
 <script>
 // ==================== PMBus Math Layer (pure, no DOM) ====================
@@ -142,16 +162,17 @@ const PMBusMath = {
     },
     // Find best N for a given physical value in LINEAR11
     findBestLinear11(val) {
-        let bestN = 0, bestY = 0, bestErr = Infinity;
+        let bestN = 0, bestY = 0, bestErr = Infinity, bestVal = val;
         for (let n = -16; n <= 15; n++) {
             const y = Math.round(val / Math.pow(2, n));
             if (y < -1024 || y > 1023) continue;
-            const err = Math.abs(val - y * Math.pow(2, n));
+            const represented = y * Math.pow(2, n);
+            const err = Math.abs(val - represented);
             if (err < bestErr - 1e-15 || (Math.abs(err - bestErr) < 1e-15 && Math.abs(n) < Math.abs(bestN))) {
-                bestErr = err; bestN = n; bestY = y;
+                bestErr = err; bestN = n; bestY = y; bestVal = represented;
             }
         }
-        return { n: bestN, y: bestY, value: bestY * Math.pow(2, bestN) };
+        return { n: bestN, y: bestY, value: bestVal, delta: val - bestVal };
     },
 
     // LINEAR16: Voltage = V × 2^N (16-bit unsigned V, 5-bit signed N from VOUT_MODE)
@@ -165,6 +186,54 @@ const PMBusMath = {
     },
     encodeDirect(value, m, b, R) {
         return this.clamp(Math.round((m * value + b) * Math.pow(10, R)), -32768, 32767);
+    },
+
+    // IEEE 754 Half Precision (binary16): sign(1), exp(5,bias15), mant(10)
+    decodeHalf(raw) {
+        const sign = ((raw >> 15) & 1) ? -1 : 1;
+        const exp = (raw >> 10) & 0x1F;
+        const mant = raw & 0x03FF;
+        if (exp === 0) {
+            if (mant === 0) return { value: sign * 0 };
+            return { value: sign * (mant / 1024) * Math.pow(2, -14) };
+        } else if (exp === 31) {
+            if (mant === 0) return { value: sign * Infinity };
+            return { value: NaN };
+        }
+        return { value: sign * (1 + mant / 1024) * Math.pow(2, exp - 15) };
+    },
+    encodeHalf(value) {
+        if (isNaN(value)) return 0x7E00;
+        let sign = (value < 0 || Object.is(value, -0)) ? 0x8000 : 0;
+        value = Math.abs(value);
+        if (value === 0) return sign;
+        if (!isFinite(value)) return sign | 0x7C00;
+        let exp = Math.floor(Math.log2(value)) + 15;
+        let mant = (value / Math.pow(2, exp - 15) - 1) * 1024;
+        let raw;
+        if (exp <= 0) {
+            // subnormal
+            exp = 0;
+            mant = Math.round(value * Math.pow(2, 14) * 1024);
+            if (mant > 0x3FF) mant = 0x3FF;
+            raw = sign | (mant & 0x03FF);
+        } else if (exp >= 31) {
+            raw = sign | 0x7C00;
+        } else {
+            mant = Math.round(mant);
+            if (mant >= 1024) {
+                mant = 0;
+                exp += 1;
+                if (exp >= 31) {
+                    raw = sign | 0x7C00;
+                } else {
+                    raw = sign | (exp << 10);
+                }
+            } else {
+                raw = sign | (exp << 10) | (mant & 0x03FF);
+            }
+        }
+        return raw;
     },
 
     // VOUT_MODE parsing (Section 8.3 of PMBus 1.3)
@@ -206,6 +275,7 @@ let rawInt = 0xE380;
 let byteOrder = 'le';
 let directY = 0;
 let editingField = null;
+let currentCommand = '';
 
 // ==================== DOM Helpers ====================
 const $ = id => document.getElementById(id);
@@ -288,7 +358,7 @@ function renderBits() {
         btn.id = 'bit-' + i;
         btn.textContent = (rawInt >> i) & 1;
         btn.onclick = ((idx) => () => { rawInt ^= (1 << idx); rawInt &= 0xFFFF; updateAll('bit'); })(i);
-        btn.classList.add(currentMode === 'L11' ? (i >= 11 ? 'bn' : 'by') : 'by');
+        btn.classList.add((currentMode === 'L11' && i >= 11) || (currentMode === 'HALF' && i >= 10) ? 'bn' : 'by');
         const idx = document.createElement('span');
         idx.className = 'bi';
         idx.textContent = i;
@@ -297,6 +367,8 @@ function renderBits() {
     }
     $('legendStrip').innerHTML = currentMode === 'L11'
         ? '<span><span class="dot" style="background:var(--bl)"></span>N [15:11]</span><span><span class="dot" style="background:var(--gn)"></span>Y [10:0]</span>'
+        : currentMode === 'HALF'
+        ? '<span><span class="dot" style="background:var(--bl)"></span>S+Exp [15:10]</span><span><span class="dot" style="background:var(--gn)"></span>Mant [9:0]</span>'
         : '<span><span class="dot" style="background:var(--gn)"></span>V [15:0]</span>';
 }
 
@@ -340,6 +412,7 @@ function setFieldValue(id, value, source) {
 // ==================== Core Update ====================
 function updateAll(source) {
     if (currentMode === 'DIRECT') return updateDirect(source);
+    if (currentMode === 'HALF') return updateHalf(source);
     const isLinear11 = (currentMode === 'L11');
     let n, y, value;
 
@@ -375,16 +448,19 @@ function updateAll(source) {
             rawInt = y; value = y * Math.pow(2, n);
         }
     } else if (source === 'val') {
-        value = parseFloatSafe($('inputValue').value);
-        if (value === null) return;
+        const inputVal = parseFloatSafe($('inputValue').value);
+        if (inputVal === null) return;
+        value = inputVal;
         if (isLinear11) {
             const best = PMBusMath.findBestLinear11(value);
             n = best.n; y = best.y; rawInt = PMBusMath.encodeLinear11(n, y);
             value = best.value;
+            window.lastDelta = best.delta;
         } else {
             n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15);
             y = PMBusMath.clamp(Math.round(value / Math.pow(2, n)), 0, 65535);
             rawInt = y; value = y * Math.pow(2, n);
+            window.lastDelta = 0;
         }
     } else if (source === 'voutMode') {
         // VOUT_MODE changed: update N for LINEAR16
@@ -413,6 +489,25 @@ function updateAll(source) {
     setFieldValue('inputY', y, source);
     setFieldValue('inputValue', formatNumber(value), source);
     $('displayValue').textContent = value.toLocaleString(undefined, { maximumFractionDigits: 10 });
+
+    // Delta Error for LINEAR11 (quantization vs inputValue)
+    const deltaEl = $('deltaError');
+    if (isLinear11 && deltaEl) {
+        let d = 0;
+        const inputVal = parseFloatSafe($('inputValue').value);
+        if (inputVal !== null) {
+            const represented = y * Math.pow(2, n);
+            d = inputVal - represented;
+            window.lastDelta = d;
+        }
+        const deltaStr = (d >= 0 ? '+' : '') + d.toFixed(6);
+        const color = Math.abs(d) > 1e-5 ? '#ef4444' : '#10b981';
+        deltaEl.innerHTML = `Δ Error: <span style="color:${color}">${deltaStr}</span>`;
+        deltaEl.style.display = 'block';
+    } else if (deltaEl) {
+        deltaEl.style.display = 'none';
+    }
+    const hn = $('halfNote'); if (hn) hn.style.display = (currentMode === 'HALF') ? 'block' : 'none';
 
     // Update bits
     for (let i = 0; i < 16; i++) {
@@ -501,10 +596,55 @@ function updateDirect(source) {
             '<br>读: X=(1/' + m + ')×(' + directY + '×10<sup>' + (-R) + '</sup>-' + b + ')=<strong>' + formatNumber(value) + '</strong>' +
             '<br>写: Y=(' + m + '×X+' + b + ')×10<sup>' + R + '</sup>';
     }
+    const deltaEl = $('deltaError'); if (deltaEl) deltaEl.style.display = 'none';
+    const hn = $('halfNote'); if (hn) hn.style.display = 'none';
+}
+
+function updateHalf(source) {
+    let value;
+    if (source === 'hex' || source === 'bit' || source === 'init' || source === 'mode') {
+        rawInt &= 0xFFFF;
+        const decoded = PMBusMath.decodeHalf(rawInt);
+        value = decoded.value;
+    } else if (source === 'val') {
+        const inputVal = parseFloatSafe($('inputValue').value);
+        if (inputVal === null) return;
+        rawInt = PMBusMath.encodeHalf(inputVal);
+        const decoded = PMBusMath.decodeHalf(rawInt);
+        value = decoded.value;
+    }
+    setFieldValue('inputHex', displayHex(rawInt), source);
+    setFieldValue('inputValue', isNaN(value) ? 'NaN' : formatNumber(value), source);
+    const disp = isNaN(value) ? 'NaN' : (!isFinite(value) ? (value < 0 ? '-∞' : '∞') : value.toLocaleString(undefined, { maximumFractionDigits: 10 }));
+    $('displayValue').textContent = disp;
+    for (let i = 0; i < 16; i++) {
+        const btn = $('bit-' + i);
+        if (btn) btn.textContent = (rawInt >> i) & 1;
+    }
+    const lo = rawInt & 0xFF, hi = (rawInt >> 8) & 0xFF;
+    $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(lo) + '</b> <b>[1]' + hex2(hi) + '</b> (IEEE754 Half) <span style="color:#94a3b8;font-size:11px">点击复制</span>';
+    const s = (rawInt >> 15) & 1;
+    const e = (rawInt >> 10) & 0x1F;
+    const m = rawInt & 0x03FF;
+    let typ = (e === 0 && m === 0) ? '零' : (e === 0 ? '次正规' : (e === 31 ? (m ? 'NaN' : (s ? '-Inf' : '+Inf')) : '正规'));
+    const info = $('infoBar');
+    info.innerHTML = 'S=' + s + ' E=' + e + ' M=0x' + m.toString(16).toUpperCase().padStart(3,'0') +
+        '<br>0x' + hex4(rawInt) + ' | <strong>' + formatNumber(value) + '</strong> (' + typ + ')';
+    $('resultFormula').textContent = '';
+    $('resultBox').classList.remove('direct-mode');
+    const hn = $('halfNote'); if (hn) hn.style.display = 'block';
+    const special = $('specialWarn');
+    if (isNaN(value) || !isFinite(value)) {
+        special.textContent = '⚠ ' + (isNaN(value) ? 'NaN' : (value < 0 ? '-Inf' : '+Inf'));
+        special.className = 'warn-banner show';
+    } else {
+        special.className = 'warn-banner';
+    }
+    $('overflowWarn').className = 'warn-banner';
 }
 
 // ==================== VOUT_MODE ====================
-function initVoutMode() {
+    function initVoutMode() {
     const vm = $('voutModeHex');
     vm.addEventListener('mousedown', () => { editingField = 'voutModeHex'; vm.classList.add('ed'); });
     vm.addEventListener('focus', () => { editingField = 'voutModeHex'; vm.classList.add('ed'); });
@@ -541,7 +681,7 @@ function switchMode(mode) {
     $('linearSection').style.display = isDirect ? 'none' : '';
     $('directSection').style.display = isDirect ? '' : 'none';
     $('grpN').style.display = (mode === 'L11') ? '' : 'none';
-    $('grpY').style.display = isDirect ? 'none' : '';
+    $('grpY').style.display = (mode === 'L11' || mode === 'L16') ? '' : 'none';
     $('grpDirectY').style.display = isDirect ? '' : 'none';
     $('byteOrderCtrl').style.display = (mode === 'L16') ? '' : 'none';
     $('voutModeCtrl').style.display = (mode === 'L16') ? '' : 'none';
@@ -550,14 +690,23 @@ function switchMode(mode) {
         $('labelY').textContent = 'Y (11-bit, -1024~1023)';
         $('resultLabel').innerHTML = 'X = Y × 2<sup>N</sup>';
         $('hexLabel').textContent = '原始值 (Hex)';
+        $('labelValue').textContent = '物理值 (Value)';
     } else if (mode === 'L16') {
         $('labelY').textContent = 'V (16-bit, 0~65535)';
         $('resultLabel').innerHTML = 'V × 2<sup>N</sup>';
         $('hexLabel').textContent = 'VOUT_COMMAND (Hex)';
+        $('labelValue').textContent = '物理值 (Value)';
+    } else if (mode === 'HALF') {
+        $('resultLabel').innerHTML = 'IEEE 754 Half Float';
+        $('hexLabel').textContent = 'Half Float (Hex)';
+        $('labelValue').textContent = 'Float 值';
     } else {
         $('resultLabel').innerHTML = 'DIRECT 格式';
         $('hexLabel').textContent = 'Y (Hex, 有符号)';
+        $('labelValue').textContent = '物理值 (Value)';
     }
+    const hn = $('halfNote'); if (hn) hn.style.display = (mode === 'HALF') ? 'block' : 'none';
+    currentCommand = '';
     if (prev === 'DIRECT' && !isDirect) { $('resultFormula').textContent = ''; $('resultBox').classList.remove('direct-mode'); }
     if (prev !== 'DIRECT' && isDirect) { $('resultFormula').textContent = ''; $('resultBox').classList.add('direct-mode'); }
     renderBits();
@@ -569,6 +718,41 @@ function onByteOrderChange() {
     updateAll('byteOrder');
 }
 
+function selectCommand(cmdKey) {
+    if (!cmdKey) {
+        currentCommand = '';
+        const baseLabel = currentMode === 'L11' ? 'X = Y × 2<sup>N</sup>' : (currentMode === 'L16' ? 'V × 2<sup>N</sup>' : (currentMode === 'HALF' ? 'IEEE 754 Half Float' : 'DIRECT 格式'));
+        $('resultLabel').innerHTML = baseLabel;
+        return;
+    }
+    const dict = {
+        VOUT_COMMAND: {mode:'L16', val:12, n:-8, voutMode:'18', label:'VOUT_COMMAND'},
+        VOUT_OV_FAULT_LIMIT: {mode:'L16', val:13.2, n:-8, voutMode:'18', label:'VOUT_OV_FAULT_LIMIT'},
+        READ_VOUT: {mode:'L16', val:12, n:-8, voutMode:'18', label:'READ_VOUT'},
+        READ_VIN: {mode:'DIRECT', val:48, m:1, b:0, R:-2, label:'READ_VIN'},
+        READ_IOUT: {mode:'DIRECT', val:20, m:100, b:0, R:-2, label:'READ_IOUT'},
+        READ_TEMPERATURE_1: {mode:'DIRECT', val:45, m:1, b:0, R:0, label:'READ_TEMPERATURE_1'},
+        VIN_OV_FAULT_LIMIT: {mode:'DIRECT', val:60, m:1, b:0, R:-1, label:'VIN_OV_FAULT_LIMIT'},
+        OT_FAULT_LIMIT: {mode:'DIRECT', val:125, m:1, b:0, R:0, label:'OT_FAULT_LIMIT'},
+    };
+    const cfg = dict[cmdKey];
+    if (!cfg) return;
+    switchMode(cfg.mode);
+    currentCommand = cmdKey;
+    if ((cfg.mode === 'L16' || cfg.mode === 'L11') && cfg.voutMode) {
+        $('voutModeHex').value = cfg.voutMode;
+    }
+    $('inputValue').value = cfg.val;
+    if (cfg.n !== undefined) $('inputN').value = cfg.n;
+    if (cfg.mode === 'DIRECT') {
+        if (cfg.m !== undefined) $('coeff_m').value = cfg.m;
+        if (cfg.b !== undefined) $('coeff_b').value = cfg.b;
+        if (cfg.R !== undefined) $('coeff_R').value = cfg.R;
+    }
+    updateAll('val');
+    $('resultLabel').innerHTML = `${cfg.label} <span style="font-size:0.85em;opacity:0.7">(${cmdKey})</span>`;
+}
+
 // ==================== Copy to Clipboard ====================
 function copyToClipboard(text, btnEl) {
     navigator.clipboard.writeText(text).then(() => {
@@ -577,6 +761,51 @@ function copyToClipboard(text, btnEl) {
         btnEl.textContent = '✓ 已复制';
         setTimeout(() => { btnEl.classList.remove('copied'); btnEl.textContent = orig; }, 1200);
     }).catch(() => {});
+}
+
+function generateCMacro() {
+    const value = parseFloatSafe($('inputValue').value) || 0;
+    let raw = rawInt & 0xFFFF;
+    if (currentMode === 'DIRECT') raw = (directY < 0 ? directY + 65536 : directY) & 0xFFFF;
+    let macroName = currentCommand ? `PMBUS_${currentCommand}` : 'PMBUS_VAL';
+    const cmdCodes = {VOUT_COMMAND:0x21, VOUT_OV_FAULT_LIMIT:0x40, READ_VOUT:0x8B, READ_VIN:0x88, READ_IOUT:0x8C, READ_TEMPERATURE_1:0x8D, VIN_OV_FAULT_LIMIT:0x55, OT_FAULT_LIMIT:0x4F};
+    const cmdCode = currentCommand ? cmdCodes[currentCommand] || 0 : 0;
+    let comment = `/*
+ * PMBus 1.3 ${currentCommand || currentMode}
+ * Value = ${value.toFixed(4)}
+ * Raw = 0x${hex4(raw)}
+`;
+    if (currentMode === 'L11') {
+        const n = parseIntegerSafe($('inputN').value) || 0;
+        const y = parseIntegerSafe($('inputY').value) || 0;
+        const delta = (typeof window.lastDelta !== 'undefined') ? window.lastDelta.toFixed(6) : '0.000000';
+        comment += ` * N=${n}, Y=${y} (LINEAR11) ΔError=${delta}
+ * X = Y × 2^N
+`;
+    } else if (currentMode === 'L16') {
+        const n = parseIntegerSafe($('inputN').value) || 0;
+        comment += ` * N=${n} (from VOUT_MODE=0x${$('voutModeHex') ? $('voutModeHex').value : '00'}), V=${raw} (L16)
+`;
+    } else if (currentMode === 'HALF') {
+        const s = (raw >> 15) & 1;
+        const e = (raw >> 10) & 0x1F;
+        const m = raw & 0x03FF;
+        comment += ` * S=${s} E=${e} M=0x${m.toString(16).toUpperCase().padStart(3,'0')} (IEEE Half)
+ * Note: ~3.3 decimal digits precision
+`;
+    } else {
+        const m = parseIntegerSafe($('coeff_m').value) ?? 1;
+        const b = parseIntegerSafe($('coeff_b').value) ?? 0;
+        const R = parseIntegerSafe($('coeff_R').value) ?? 0;
+        comment += ` * m=${m}, b=${b}, R=${R} (DIRECT) Y=${directY}
+ * X=(1/m)×(Y×10^(-R)-b)
+`;
+    }
+    comment += `
+ * #define ${macroName} 0x${hex4(raw)}U
+ * Usage: pmbusWrite16(0x${cmdCode.toString(16).toUpperCase().padStart(2, '0')}, ${macroName});
+ */`;
+    return comment + `\n#define ${macroName}  0x${hex4(raw)}U`;
 }
 
 // ==================== Field Wiring ====================
@@ -638,6 +867,10 @@ function init() {
     $('copyValBtn').addEventListener('click', () => {
         copyToClipboard($('inputValue').value, $('copyValBtn'));
     });
+    $('copyCBtn').addEventListener('click', () => {
+        const code = generateCMacro();
+        copyToClipboard(code, $('copyCBtn'));
+    });
     $('byteDisplay').addEventListener('click', () => {
         const text = $('byteDisplay').textContent.replace(/点击复制/, '').trim();
         navigator.clipboard.writeText(text);
@@ -652,6 +885,7 @@ document.addEventListener('keydown', e => {
         if (e.key === '1') { e.preventDefault(); switchMode('L11'); }
         if (e.key === '2') { e.preventDefault(); switchMode('L16'); }
         if (e.key === '3') { e.preventDefault(); switchMode('DIRECT'); }
+        if (e.key === '4') { e.preventDefault(); switchMode('HALF'); }
     }
 });
 
