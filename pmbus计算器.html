@@ -352,12 +352,6 @@ function renderBits() {
     if (currentMode === 'DIRECT') { renderDirectBits(); return; }
 
     for (let i = 15; i >= 0; i--) {
-        // 半字节间距：在bit 12、8、4后添加空格
-        if (i === 12 || i === 8 || i === 4) {
-            const spacer = document.createElement('div');
-            spacer.className = 'nibble-space';
-            strip.appendChild(spacer);
-        }
         const unit = document.createElement('div');
         unit.className = 'bu';
         const btn = document.createElement('div');
@@ -371,6 +365,13 @@ function renderBits() {
         idx.textContent = i;
         unit.append(btn, idx);
         strip.appendChild(unit);
+
+        // 半字节间距：在bit 12、8、4之后添加分隔（保证每组4位）
+        if (i === 12 || i === 8 || i === 4) {
+            const spacer = document.createElement('div');
+            spacer.className = 'nibble-space';
+            strip.appendChild(spacer);
+        }
     }
     $('legendStrip').innerHTML = currentMode === 'L11'
         ? '<span><span class="dot" style="background:var(--bl)"></span>N [15:11]</span><span><span class="dot" style="background:var(--gn)"></span>Y [10:0]</span>'
@@ -383,11 +384,6 @@ function renderDirectBits() {
     const strip = $('directBitStrip');
     strip.innerHTML = '';
     for (let i = 15; i >= 0; i--) {
-        if (i === 12 || i === 8 || i === 4) {
-            const spacer = document.createElement('div');
-            spacer.className = 'nibble-space';
-            strip.appendChild(spacer);
-        }
         const unit = document.createElement('div');
         unit.className = 'bu';
         const btn = document.createElement('div');
@@ -406,6 +402,13 @@ function renderDirectBits() {
         idx.textContent = i;
         unit.append(btn, idx);
         strip.appendChild(unit);
+
+        // 半字节间距：在bit 12、8、4之后添加分隔（保证每组4位）
+        if (i === 12 || i === 8 || i === 4) {
+            const spacer = document.createElement('div');
+            spacer.className = 'nibble-space';
+            strip.appendChild(spacer);
+        }
     }
 }
 
