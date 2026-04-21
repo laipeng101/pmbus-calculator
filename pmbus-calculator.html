@@ -30,8 +30,69 @@ h3{font-size:.9rem;color:var(--text-secondary);margin-bottom:12px;font-weight:60
 .bb.bn{background:var(--bl)!important;color:#fff;border-color:#1e40af;box-shadow:0 4px 12px rgba(30,64,175,0.25)}
 .bb.by{background:var(--gn)!important;color:#fff;border-color:#059669;box-shadow:0 4px 12px rgba(16,185,129,0.25)}
 .bi{font-size:10px;color:var(--text-muted);font-weight:500}
-.nibble-space{width:8px}
 .leg{display:flex;gap:14px;justify-content:center;font-size:11px;margin:6px 0 16px;flex-wrap:wrap}
+
+/* =========================================
+   寄存器位视图 - 语义化网格布局 (Nibble Chunking)
+   ========================================= */
+.bit-grid {
+  display: grid;
+  grid-template-columns: repeat(4, auto); /* 默认宽屏：一行16位 (4个半字节) */
+  gap: 12px 16px;
+  justify-content: center;
+  margin: 16px 0 16px;
+}
+
+/* 4位一组的视觉卡片 */
+.nibble-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+  transition: all 0.2s;
+}
+.nibble-group:hover {
+  border-color: var(--p);
+  box-shadow: 0 4px 12px var(--focus-ring);
+}
+
+/* 顶部的 Hex 实时显示器 */
+.nibble-hex {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--p);
+  margin-bottom: 8px;
+  font-family: ui-monospace, monospace;
+  background: var(--hover-bg);
+  padding: 2px 16px;
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+  letter-spacing: 1px;
+}
+
+/* 内部保持 4个 Bit 横排 */
+.nibble-bits {
+  display: flex;
+  gap: 4px;
+}
+
+/* 响应式降级：严格遵守 2的幂次 */
+@media (max-width: 680px) {
+  .bit-grid { 
+    grid-template-columns: repeat(2, auto); /* 中屏：一行8位 (2个半字节) */
+    gap: 14px 12px;
+  }
+}
+@media (max-width: 380px) {
+  .bit-grid { 
+    grid-template-columns: repeat(1, auto); /* 极窄屏：一行4位 (1个半字节) */
+    gap: 12px;
+  }
+}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:3px;vertical-align:middle}
 hr.d{border:0;border-top:1px solid var(--border);margin:18px 0}
 .g{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
@@ -276,12 +337,20 @@ hr.d{border:0;border-top:1px solid var(--border);margin:18px 0}
     border-radius: 7px;
   }
 
-  .bits {
-    gap: 3px;
+  .bit-grid {
     margin: 14px 0 10px;
+    gap: 10px 8px;
   }
 
-  .nibble-space { width: 5px; }
+  .nibble-group {
+    padding: 6px;
+    border-radius: 10px;
+  }
+
+  .nibble-hex {
+    font-size: 13px;
+    padding: 1px 10px;
+  }
 
   /* 表单与控制区 - 统一行高与间距 */
   .g {
@@ -408,6 +477,242 @@ hr.d{border:0;border-top:1px solid var(--border);margin:18px 0}
   .rb { top: 8px; padding: 16px 14px; }
   .bb { --bit-size: 29px; }
 }
+
+/* =========================================
+   优雅表单布局优化 (Elegant Form)
+   ========================================= */
+.elegant-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.ef-row {
+  display: flex;
+  gap: 16px;
+}
+
+.ef-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0; /* 防止 flex 子项溢出 */
+}
+
+.ef-col.full {
+  width: 100%;
+}
+
+.ef-col label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.ef-label-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.ef-label-flex .hd {
+  margin-top: 0;
+  padding: 0;
+  background: transparent;
+}
+
+/* 强制所有输入框拉满父容器，覆盖之前的 max-width 限制 */
+.elegant-form input:not([type="checkbox"]),
+.elegant-form .hx,
+.elegant-form select {
+  width: 100% !important;
+  max-width: none !important;
+  box-sizing: border-box;
+}
+
+/* 计算核心区卡片化 */
+.ef-calc-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: var(--hover-bg);
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px dashed var(--border);
+}
+
+/* 符号居中 */
+.ef-operator {
+  margin-top: 36px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-size: 16px;
+  user-select: none;
+}
+
+/* 输入框内嵌图标布局 */
+.ef-input-icon-wrap {
+  position: relative;
+  display: flex;
+  width: 100%;
+}
+
+.ef-input-icon-wrap input {
+  padding-right: 40px !important; /* 给锁图标留出右侧空间 */
+}
+
+.ef-input-icon-wrap .nlock {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  background: transparent;
+  padding: 0;
+  border-radius: 6px;
+}
+
+/* 幽灵占位符：与左侧 nRange 高度一致但不可见 */
+.ef-ghost {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 物理值高亮 */
+.ef-highlight-input {
+  font-size: 16px !important;
+  font-weight: 600;
+  color: var(--p) !important;
+  background: var(--surface) !important;
+  border-color: var(--p) !important;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+@media (max-width: 640px) {
+  .ef-calc-box {
+    flex-direction: column;
+    padding: 14px;
+    gap: 12px;
+  }
+  .ef-operator {
+    display: none;
+  }
+  .ef-ghost {
+    display: none;
+  }
+}
+
+/* =========================================
+   消除原生 number 丑陋的上下箭头
+   ========================================= */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* =========================================
+   沉浸式公式 UI (Y × 2^N)
+   ========================================= */
+.formula-mode {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 20px 20px;
+  background: linear-gradient(135deg, var(--hover-bg), var(--surface));
+}
+
+.formula-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.fc-term {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+
+.y-term {
+  flex: 1.2;
+  max-width: 220px;
+}
+
+.n-term {
+  flex: 1;
+  max-width: 160px;
+  transform: translateY(-16px);
+}
+
+.direct-term {
+  flex: 1;
+  width: 100%;
+}
+
+.fc-term label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* N 值输入框内的特殊排版 */
+.text-center { text-align: center !important; }
+.n-term .ef-input-icon-wrap input { padding-right: 36px !important; }
+.n-term .nlock { width: 30px; height: 30px; right: 4px; }
+
+/* 数学运算符样式 */
+.fc-math {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-muted);
+  user-select: none;
+  margin-top: 22px;
+}
+
+.fc-math.base {
+  font-size: 34px;
+  color: var(--text-primary);
+  margin-right: -4px;
+  font-family: ui-monospace, monospace;
+}
+
+/* 底部 N 范围说明 */
+.formula-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 5%;
+  margin-top: 4px;
+}
+
+.formula-footer .nrange {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+}
+
+/* 智能显隐机制 */
+.formula-mode:has(#grpN[style*="display: none"]) .fc-math,
+.formula-mode:has(#grpN[style*="display: none"]) .formula-footer {
+  display: none !important;
+}
+
+/* 移动端微调 */
+@media (max-width: 480px) {
+  .formula-container { gap: 8px; }
+  .fc-math.base { font-size: 28px; }
+  .n-term { transform: translateY(-10px); }
+  .formula-footer { padding-right: 0; justify-content: center; }
+}
 </style>
 </head>
 <body>
@@ -469,22 +774,55 @@ hr.d{border:0;border-top:1px solid var(--border);margin:18px 0}
 </div>
 
 <hr class="d">
-<div class="g">
-<div class="ig fw"><label id="hexLabel">原始值 (Hex)</label>
-<div class="hx" id="hexWrapper"><span class="hp">0x</span><input id="inputHex" maxlength="4" autocomplete="off" spellcheck="false" inputmode="text" autocapitalize="characters"></div>
-    <div class="hd" id="byteDisplay" data-tooltip="显示字节序 (低字节在前为PMBus标准)&#10;点击可复制字节序列"></div>
-</div>
-<div class="ig" id="grpN">
-  <label id="labelN">N 值 <span style="font-size:10px;color:var(--text-muted)">（点箭头调整）</span></label>
-  <div class="n-input-row">
-    <input id="inputN" type="number" min="-16" max="15" step="1">
-    <span id="nLockBtn" class="nlock locked" data-tooltip="点击切换「自动优选N」模式&#10;关闭时：修改Value后保持当前N不变&#10;开启时：自动选择误差最小的N值">🔒</span>
+<div class="elegant-form">
+  <div class="ef-row">
+    <div class="ef-col full">
+      <div class="ef-label-flex">
+        <label id="hexLabel">原始值 (Hex)</label>
+        <div class="hd" id="byteDisplay" data-tooltip="显示字节序 (低字节在前为PMBus标准)&#10;点击可复制字节序列"></div>
+      </div>
+      <div class="hx" id="hexWrapper">
+        <span class="hp">0x</span>
+        <input id="inputHex" maxlength="4" autocomplete="off" spellcheck="false" inputmode="text" autocapitalize="characters">
+      </div>
+    </div>
   </div>
-    <span id="nRange" class="nrange" data-tooltip="当前N可表示的物理值范围 (Y∈[-1024,1023])"></span>
+
+  <div class="ef-calc-box formula-mode">
+  <div class="formula-container">
+    <div class="fc-term y-term" id="grpY">
+      <label id="labelY">Y (11-bit ±1023)</label>
+      <input id="inputY" class="fixed-num" inputmode="numeric">
+    </div>
+
+    <div class="fc-math">×</div>
+    <div class="fc-math base">2</div>
+
+    <div class="fc-term n-term" id="grpN">
+      <label id="labelN">N 值 (指数)</label>
+      <div class="ef-input-icon-wrap">
+        <input id="inputN" type="number" min="-16" max="15" step="1" class="fixed-num text-center">
+        <span id="nLockBtn" class="nlock locked" data-tooltip="点击切换「自动优选N」模式">🔒</span>
+      </div>
+    </div>
+    
+    <div class="fc-term direct-term" id="grpDirectY" style="display:none">
+      <label>Y (16-bit 有符号)</label>
+      <input id="inputDirectY" class="fixed-num" inputmode="numeric">
+    </div>
+  </div>
+  
+  <div class="formula-footer">
+    <span id="nRange" class="nrange" data-tooltip=""></span>
+  </div>
 </div>
-<div class="ig" id="grpY"><label id="labelY">Y (±1023)</label><input id="inputY" class="fixed-num" inputmode="numeric"></div>
-<div class="ig" id="grpDirectY" style="display:none"><label>Y (16-bit 有符号)</label><input id="inputDirectY" class="fixed-num" inputmode="numeric"></div>
-<div class="ig fw"><label id="labelValue">物理值 (Value)</label><input id="inputValue" class="fixed-num" inputmode="decimal"></div>
+
+  <div class="ef-row">
+    <div class="ef-col full">
+      <label id="labelValue">物理值 (Value)</label>
+      <input id="inputValue" class="fixed-num ef-highlight-input" inputmode="decimal">
+    </div>
+  </div>
 </div>
     <div class="rb" id="resultBox" role="region" aria-live="polite" aria-label="计算结果">
     <!-- 工具栏 -->
@@ -684,6 +1022,8 @@ let addSpaceBetweenBytes = true;
 // Bit element cache for performance (stage 04 optimization - pre-create elements)
 let bitButtons = [];
 let directBitButtons = [];
+let nibbleHexEls = [];
+let directNibbleHexEls = [];
 
 // ==================== DOM辅助函数 ====================
 const $ = id => document.getElementById(id);
@@ -770,46 +1110,65 @@ function debounce(fn, delay = 120) {
     };
 }
 
-// ==================== 位图渲染函数 (04性能优化: 预创建元素, 只更新text/class) ====================
+// ==================== 位图渲染函数 (Nibble分组 + Hex实时显示，解决窄屏错乱) ====================
 function renderBits() {
     const strip = $('bitStrip');
-    const isDirect = currentMode === 'DIRECT';
-    if (isDirect) {
+    if (currentMode === 'DIRECT') {
         renderDirectBits();
         return;
     }
 
-    // 首次或模式切换时重建 (仅一次)
-    if (bitButtons.length === 0 || strip.children.length < 20) {
+    // 首次重建 DOM
+    if (bitButtons.length === 0 || strip.className !== 'bit-grid') {
         strip.innerHTML = '';
+        strip.className = 'bit-grid';
         $('legendStrip').innerHTML = '';
+        
         bitButtons = new Array(16);
-        for (let i = 15; i >= 0; i--) {
-            const unit = document.createElement('div');
-            unit.className = 'bu';
-            const btn = document.createElement('div');
-            btn.className = 'bb';
-            btn.id = 'bit-' + i;
-            btn.textContent = '0';
-            btn.onclick = ((idx) => () => { rawInt ^= (1 << idx); rawInt &= 0xFFFF; updateAll('bit'); })(i);
-            btn.setAttribute('role', 'button');
-            btn.setAttribute('tabindex', '0');
-            const idxEl = document.createElement('span');
-            idxEl.className = 'bi';
-            idxEl.textContent = i;
-            unit.append(btn, idxEl);
-            strip.appendChild(unit);
-            bitButtons[i] = btn;
+        nibbleHexEls = new Array(4);
 
-            if (i === 12 || i === 8 || i === 4) {
-                const spacer = document.createElement('div');
-                spacer.className = 'nibble-space';
-                strip.appendChild(spacer);
+        // 以 4位 (Nibble) 为单位进行外层循环 (3, 2, 1, 0)
+        for (let group = 3; group >= 0; group--) {
+            const nGroup = document.createElement('div');
+            nGroup.className = 'nibble-group';
+
+            const nHex = document.createElement('div');
+            nHex.className = 'nibble-hex';
+            nHex.textContent = '0';
+            nHex.id = `hex-group-${group}`;
+            nibbleHexEls[group] = nHex;
+
+            const nBits = document.createElement('div');
+            nBits.className = 'nibble-bits';
+
+            // 内部渲染 4 个 Bit
+            for (let i = 3; i >= 0; i--) {
+                const bitIdx = group * 4 + i;
+                const unit = document.createElement('div');
+                unit.className = 'bu';
+                
+                const btn = document.createElement('div');
+                btn.className = 'bb';
+                btn.id = 'bit-' + bitIdx;
+                btn.textContent = '0';
+                btn.setAttribute('role', 'button');
+                btn.setAttribute('tabindex', '0');
+                btn.onclick = ((idx) => () => { rawInt ^= (1 << idx); rawInt &= 0xFFFF; updateAll('bit'); })(bitIdx);
+                
+                const idxEl = document.createElement('span');
+                idxEl.className = 'bi';
+                idxEl.textContent = bitIdx;
+                
+                unit.append(btn, idxEl);
+                nBits.appendChild(unit);
+                bitButtons[bitIdx] = btn;
             }
+            nGroup.append(nHex, nBits);
+            strip.appendChild(nGroup);
         }
     }
 
-    // 快速更新 (核心优化 - 无DOM重建)
+    // 快速更新样式 (无 DOM 重建)
     for (let i = 15; i >= 0; i--) {
         const btn = bitButtons[i];
         const bitVal = (rawInt >> i) & 1;
@@ -818,6 +1177,14 @@ function renderBits() {
         const isNBit = (currentMode === 'L11' && i >= 11) || (currentMode === 'HALF' && i >= 10);
         btn.classList.toggle('bn', isNBit);
         btn.classList.toggle('by', !isNBit);
+    }
+    
+    // 快速更新顶部的 Nibble Hex
+    for (let group = 0; group < 4; group++) {
+        const nibbleVal = (rawInt >> (group * 4)) & 0xF;
+        if(nibbleHexEls[group]) {
+            nibbleHexEls[group].textContent = nibbleVal.toString(16).toUpperCase();
+        }
     }
 
     $('legendStrip').innerHTML = currentMode === 'L11'
@@ -830,37 +1197,53 @@ function renderBits() {
 function renderDirectBits() {
     const strip = $('directBitStrip');
 
-    // 首次创建缓存 (04性能优化)
-    if (directBitButtons.length === 0 || strip.children.length < 20) {
+    // 首次创建缓存
+    if (directBitButtons.length === 0 || strip.className !== 'bit-grid') {
         strip.innerHTML = '';
+        strip.className = 'bit-grid';
         directBitButtons = new Array(16);
-        for (let i = 15; i >= 0; i--) {
-            const unit = document.createElement('div');
-            unit.className = 'bu';
-            const btn = document.createElement('div');
-            btn.className = 'bb by';
-            btn.id = 'dbit-' + i;
-            btn.textContent = '0';
-            btn.setAttribute('role', 'button');
-            btn.setAttribute('tabindex', '0');
-            btn.onclick = ((idx) => () => {
-                let v = directY < 0 ? directY + 65536 : directY;
-                v ^= (1 << idx); v &= 0xFFFF;
-                directY = v >= 32768 ? v - 65536 : v;
-                updateAll('bit');
-            })(i);
-            const idxEl = document.createElement('span');
-            idxEl.className = 'bi';
-            idxEl.textContent = i;
-            unit.append(btn, idxEl);
-            strip.appendChild(unit);
-            directBitButtons[i] = btn;
+        directNibbleHexEls = new Array(4);
 
-            if (i === 12 || i === 8 || i === 4) {
-                const spacer = document.createElement('div');
-                spacer.className = 'nibble-space';
-                strip.appendChild(spacer);
+        for (let group = 3; group >= 0; group--) {
+            const nGroup = document.createElement('div');
+            nGroup.className = 'nibble-group';
+
+            const nHex = document.createElement('div');
+            nHex.className = 'nibble-hex';
+            nHex.textContent = '0';
+            directNibbleHexEls[group] = nHex;
+
+            const nBits = document.createElement('div');
+            nBits.className = 'nibble-bits';
+
+            for (let i = 3; i >= 0; i--) {
+                const bitIdx = group * 4 + i;
+                const unit = document.createElement('div');
+                unit.className = 'bu';
+                
+                const btn = document.createElement('div');
+                btn.className = 'bb by';
+                btn.id = 'dbit-' + bitIdx;
+                btn.textContent = '0';
+                btn.setAttribute('role', 'button');
+                btn.setAttribute('tabindex', '0');
+                btn.onclick = ((idx) => () => {
+                    let v = directY < 0 ? directY + 65536 : directY;
+                    v ^= (1 << idx); v &= 0xFFFF;
+                    directY = v >= 32768 ? v - 65536 : v;
+                    updateAll('bit');
+                })(bitIdx);
+                
+                const idxEl = document.createElement('span');
+                idxEl.className = 'bi';
+                idxEl.textContent = bitIdx;
+                
+                unit.append(btn, idxEl);
+                nBits.appendChild(unit);
+                directBitButtons[bitIdx] = btn;
             }
+            nGroup.append(nHex, nBits);
+            strip.appendChild(nGroup);
         }
     }
 
@@ -871,6 +1254,14 @@ function renderDirectBits() {
         const bitVal = (unsigned >> i) & 1;
         btn.textContent = bitVal;
         btn.setAttribute('aria-label', `Bit ${i} = ${bitVal} (DIRECT)`);
+    }
+    
+    // 更新 Direct 模式的 Nibble Hex
+    for (let group = 0; group < 4; group++) {
+        const nibbleVal = (unsigned >> (group * 4)) & 0xF;
+        if(directNibbleHexEls[group]) {
+            directNibbleHexEls[group].textContent = nibbleVal.toString(16).toUpperCase();
+        }
     }
 }
 
@@ -1013,10 +1404,9 @@ function updateAll(source) {
     }
     const hn = $('halfNote'); if (hn) hn.style.display = (currentMode === 'HALF') ? 'block' : 'none';
 
-    // 更新位图显示
-    for (let i = 0; i < 16; i++) {
-        const btn = $('bit-' + i);
-        if (btn) btn.textContent = (rawInt >> i) & 1;
+    // 复用封装好的快速更新逻辑（更新 Bit 和对应的 Hex块）
+    if (currentMode !== 'DIRECT') {
+        renderBits();
     }
 
     // 字节序显示
@@ -1090,11 +1480,8 @@ function updateDirect(source) {
     }
     $('displayValue').textContent = isNaN(value) ? 'm = 0 (除零)' : value.toLocaleString(undefined, { maximumFractionDigits: 10 });
 
-    const unsigned = directY < 0 ? directY + 65536 : directY;
-    for (let i = 0; i < 16; i++) {
-        const btn = $('dbit-' + i);
-        if (btn) btn.textContent = (unsigned >> i) & 1;
-    }
+    // 触发 Direct 模式的 DOM 极速刷新
+    renderDirectBits();
 
     $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(unsigned & 0xFF) + '</b> <b>[1]' + hex2((unsigned >> 8) & 0xFF) + '</b> (低字节在前) <span style="color:var(--text-muted);font-size:11px">点击复制</span>';
     $('resultBox').classList.add('direct-mode');
@@ -1139,10 +1526,7 @@ function updateHalf(source) {
     }
     const disp = isNaN(value) ? 'NaN' : (!isFinite(value) ? (value < 0 ? '-∞' : '∞') : value.toLocaleString(undefined, { maximumFractionDigits: 10 }));
     $('displayValue').textContent = disp;
-    for (let i = 0; i < 16; i++) {
-        const btn = $('bit-' + i);
-        if (btn) btn.textContent = (rawInt >> i) & 1;
-    }
+    renderBits();
     const lo = rawInt & 0xFF, hi = (rawInt >> 8) & 0xFF;
     $('byteDisplay').innerHTML = '字节: <b>[0]' + hex2(lo) + '</b> <b>[1]' + hex2(hi) + '</b> (IEEE754 Half) <span style="color:var(--text-muted);font-size:11px">点击复制</span>';
     const s = (rawInt >> 15) & 1;
