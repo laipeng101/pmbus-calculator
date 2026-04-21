@@ -218,6 +218,36 @@ hr.d{border:0;border-top:1px solid var(--border);margin:18px 0}
 .profile-btn{padding:4px 10px;border:1px solid var(--am);background:var(--warning-bg);border-radius:12px;cursor:pointer;font-size:11px;color:var(--am);transition:all .15s}
 .profile-btn:hover{filter:brightness(1.15);transform:translateY(-1px)}
 .tip{text-align:center;font-size:12px;color:var(--text-muted);margin-top:20px;line-height:1.5;opacity:0.85}
+.debug-panel{
+  margin-top:14px;
+  padding:14px;
+  border:1px dashed var(--border);
+  border-radius:12px;
+  background:linear-gradient(145deg,var(--hover-bg),var(--surface));
+}
+.debug-panel[hidden]{display:none !important}
+.debug-title{
+  font-size:11px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--text-muted);
+  font-weight:700;
+  margin-bottom:10px;
+}
+.debug-actions{display:flex;flex-wrap:wrap;gap:10px}
+.debug-btn{
+  padding:8px 16px;
+  background:var(--gn);
+  color:#fff;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  font-size:13px;
+  font-weight:600;
+  box-shadow:0 2px 4px rgba(16,185,129,0.3);
+}
+.debug-btn:hover{filter:brightness(1.05);transform:translateY(-1px)}
+.debug-output{margin-top:12px}
 .nlock{font-size:19px;cursor:pointer;padding:4px 8px;border-radius:8px;transition:all .2s;user-select:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;color:var(--text-secondary)}
 .nlock:hover{background:var(--hover-bg)}
 .nlock.locked{color:var(--rd)}
@@ -319,7 +349,8 @@ hr.d{border:0;border-top:1px solid var(--border);margin:18px 0}
   .copy-btn:active,
   .tab:active,
   .profile-btn:active,
-  .toggle-small:active {
+  .toggle-small:active,
+  .debug-btn:active {
     transform: scale(0.92);
     transition: transform 0.08s cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -846,7 +877,13 @@ input[type="number"] {
     </div>
     <div class="infoBar" id="infoBar" aria-live="polite" role="status"></div>
     <div class="tip">Hex右侧小按钮(0x/␣) · 颜色区分状态 · 复制C代码 · Ctrl+1/2/3/4切换模式 · 点击字节复制</div>
-    <button onclick="runBoundaryTests()" style="margin-top:12px;padding:8px 16px;background:var(--gn);color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 2px 4px rgba(16,185,129,0.3);">🧪 全面边界测试 & 优化验证</button>
+    <section id="debugPanel" class="debug-panel" hidden aria-label="调试工具">
+      <div class="debug-title">Debug Only</div>
+      <div class="debug-actions">
+        <button id="runBoundaryTestsBtn" class="debug-btn" type="button">🧪 全面边界测试 & 优化验证</button>
+      </div>
+      <div id="debugOutput" class="debug-output" aria-live="polite"></div>
+    </section>
 
 </main>
 
@@ -1008,6 +1045,52 @@ const PMBusMath = {
     }
 };
 
+const COMMAND_METADATA = {
+    VOUT_COMMAND: { mode:'L16', val:12, n:-8, voutMode:'18', label:'VOUT_COMMAND', cmd:0x21, type:'scalar16', spec:'PMBus Part II 13.2 / Part I 8.4.1' },
+    VOUT_OV_FAULT_LIMIT: { mode:'L16', val:13.2, n:-8, voutMode:'18', label:'VOUT_OV_FAULT_LIMIT', cmd:0x40, type:'scalar16', spec:'PMBus Part II 15.x / follows VOUT_MODE' },
+    READ_VOUT: { mode:'L16', val:12, n:-8, voutMode:'18', label:'READ_VOUT', cmd:0x8B, type:'scalar16', spec:'PMBus Part II 18.4; format follows VOUT_MODE' },
+    READ_VIN: { mode:'DIRECT', val:48, m:1, b:0, R:-2, label:'READ_VIN', cmd:0x88, type:'scalar16', spec:'PMBus Part II 18.1; two data bytes in Section 7 format' },
+    READ_IOUT: { mode:'DIRECT', val:20, m:100, b:0, R:-2, label:'READ_IOUT', cmd:0x8C, type:'scalar16', spec:'PMBus Part II 18.5; two data bytes in Section 7 format' },
+    READ_TEMPERATURE_1: { mode:'DIRECT', val:45, m:1, b:0, R:0, label:'READ_TEMPERATURE_1', cmd:0x8D, type:'scalar16', spec:'PMBus Part II 18.6; two data bytes in Section 7 format' },
+    VIN_OV_FAULT_LIMIT: { mode:'DIRECT', val:60, m:1, b:0, R:-1, label:'VIN_OV_FAULT_LIMIT', cmd:0x55, type:'scalar16', spec:'PMBus Part II 15.23; two data bytes in Section 7 format' },
+    OT_FAULT_LIMIT: { mode:'DIRECT', val:125, m:1, b:0, R:0, label:'OT_FAULT_LIMIT', cmd:0x4F, type:'scalar16', spec:'PMBus Part II 15.17; two data bytes in Section 7 format' },
+    FAN_COMMAND: { mode:'L11', val:5000, n:3, label:'FAN_COMMAND', cmd:0x3B, type:'scalar16', spec:'PMBus Part II 14.12; two data bytes in Section 7 format' },
+    READ_POUT: { mode:'DIRECT', val:120, m:1, b:0, R:-1, label:'READ_POUT', cmd:0x96, type:'scalar16', spec:'PMBus Part II 18.11; two data bytes in Section 7 format' },
+    READ_FAN_SPEED_1: { mode:'L11', val:3200, n:2, label:'READ_FAN_SPEED_1', cmd:0x90, type:'scalar16', spec:'PMBus Part II 18.7; returns RPM in Section 7 format' },
+    STATUS_WORD: {
+        mode:'L11',
+        val:0,
+        n:0,
+        label:'STATUS_WORD',
+        cmd:0x79,
+        type:'statusWord',
+        spec:'PMBus Part II 17.2 Table 16',
+        note:'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。'
+    },
+    READ_EIN: {
+        mode:'DIRECT',
+        val:100,
+        m:1,
+        b:0,
+        R:0,
+        label:'READ_EIN',
+        cmd:0x86,
+        type:'blockRead',
+        spec:'PMBus Part II 18.13 / command table',
+        note:'READ_EIN 属于 Block Read，多于 16 位；当前页面仅能辅助理解其累加器前 2 字节的编码方式，不能代表完整 6 字节报文。'
+    }
+};
+
+function getCommandConfig(cmdKey) {
+    return COMMAND_METADATA[cmdKey] || null;
+}
+
+function getCommandNote(cmdKey) {
+    const cfg = getCommandConfig(cmdKey);
+    if (!cfg || !cfg.note) return '';
+    return `⚠ ${cfg.note}`;
+}
+
 // ==================== 全局状态变量 ====================
 let currentMode = 'L11';
 let rawInt = 0xE380;
@@ -1018,6 +1101,7 @@ let currentCommand = '';
 let autoSelectN = false; // 默认禁用自动根据Value优选N
 let add0xPrefix = true;
 let addSpaceBetweenBytes = true;
+const DEBUG_MODE = false;
 
 // Bit element cache for performance (stage 04 optimization - pre-create elements)
 let bitButtons = [];
@@ -1033,6 +1117,17 @@ const formatNumber = v => Number.isInteger(v) ? v.toString() : parseFloat(v.toPr
 
 function displayHex(v) {
     return (currentMode === 'L16' && byteOrder === 'be') ? hex4(PMBusMath.swapBytes(v)) : hex4(v);
+}
+
+function setDebugVisibility(forceVisible = DEBUG_MODE) {
+    const panel = $('debugPanel');
+    if (!panel) return;
+    panel.hidden = !forceVisible;
+}
+
+function setDebugOutput(html = '') {
+    const output = $('debugOutput');
+    if (output) output.innerHTML = html;
 }
 
 // ==================== 安全解析函数 ====================
@@ -1472,6 +1567,7 @@ function updateDirect(source) {
 
     const decoded = PMBusMath.decodeDirect(directY, m, b, R);
     value = decoded.value;
+    const unsigned = directY < 0 ? directY + 65536 : directY;
 
     setFieldValue('inputHex', hex4(directY < 0 ? directY + 65536 : directY), source);
     setFieldValue('inputDirectY', directY, source);
@@ -1677,25 +1773,10 @@ function selectCommand(cmdKey) {
         currentCommand = '';
         const baseLabel = currentMode === 'L11' ? 'X = Y × 2<sup>N</sup>' : (currentMode === 'L16' ? 'V × 2<sup>N</sup>' : (currentMode === 'HALF' ? 'IEEE 754 Half Float' : 'DIRECT 格式'));
         $('resultLabel').innerHTML = baseLabel;
+        $('specialWarn').className = 'warn-banner';
         return;
     }
-    const dict = {
-        VOUT_COMMAND: {mode:'L16', val:12, n:-8, voutMode:'18', label:'VOUT_COMMAND', cmd:0x21},
-        VOUT_OV_FAULT_LIMIT: {mode:'L16', val:13.2, n:-8, voutMode:'18', label:'VOUT_OV_FAULT_LIMIT', cmd:0x40},
-        READ_VOUT: {mode:'L16', val:12, n:-8, voutMode:'18', label:'READ_VOUT', cmd:0x8B},
-        READ_VIN: {mode:'DIRECT', val:48, m:1, b:0, R:-2, label:'READ_VIN', cmd:0x88},
-        READ_IOUT: {mode:'DIRECT', val:20, m:100, b:0, R:-2, label:'READ_IOUT', cmd:0x8C},
-        READ_TEMPERATURE_1: {mode:'DIRECT', val:45, m:1, b:0, R:0, label:'READ_TEMPERATURE_1', cmd:0x8D},
-        VIN_OV_FAULT_LIMIT: {mode:'DIRECT', val:60, m:1, b:0, R:-1, label:'VIN_OV_FAULT_LIMIT', cmd:0x55},
-        OT_FAULT_LIMIT: {mode:'DIRECT', val:125, m:1, b:0, R:0, label:'OT_FAULT_LIMIT', cmd:0x4F},
-        // 扩展自 Part II 命令表 (FAN, POWER, STATUS, ENERGY) - N值选择确保Y∈[-1024,1023]
-        FAN_COMMAND: {mode:'L11', val:5000, n:3, label:'FAN_COMMAND', cmd:0x3B}, // 625*8=5000
-        READ_POUT: {mode:'DIRECT', val:120, m:1, b:0, R:-1, label:'READ_POUT', cmd:0x96},
-        READ_FAN_SPEED_1: {mode:'L11', val:3200, n:2, label:'READ_FAN_SPEED_1', cmd:0x90}, // 800*4=3200
-        STATUS_WORD: {mode:'L11', val:0x0000, n:0, label:'STATUS_WORD', cmd:0x79},
-        READ_EIN: {mode:'DIRECT', val:100, m:1, b:0, R:0, label:'READ_EIN', cmd:0x86},
-    };
-    const cfg = dict[cmdKey];
+    const cfg = getCommandConfig(cmdKey);
     if (!cfg) return;
     switchMode(cfg.mode);
     currentCommand = cmdKey;
@@ -1712,6 +1793,11 @@ function selectCommand(cmdKey) {
     }
     updateAll('val');
     $('resultLabel').innerHTML = `${cfg.label} <span style="font-size:0.85em;opacity:0.7">(${cmdKey})</span>`;
+    const note = getCommandNote(cmdKey);
+    if (note) {
+        $('specialWarn').textContent = note;
+        $('specialWarn').className = 'warn-banner show';
+    }
 }
 
 // ==================== 剪贴板复制功能 ====================
@@ -1800,12 +1886,8 @@ function generateCMacro() {
     let raw = rawInt & 0xFFFF;
     if (currentMode === 'DIRECT') raw = (directY < 0 ? directY + 65536 : directY) & 0xFFFF;
     let macroName = currentCommand ? `PMBUS_${currentCommand}` : 'PMBUS_VAL';
-    const cmdCodes = {
-        VOUT_COMMAND:0x21, VOUT_OV_FAULT_LIMIT:0x40, READ_VOUT:0x8B, READ_VIN:0x88,
-        READ_IOUT:0x8C, READ_TEMPERATURE_1:0x8D, VIN_OV_FAULT_LIMIT:0x55, OT_FAULT_LIMIT:0x4F,
-        FAN_COMMAND:0x3B, READ_POUT:0x96, READ_FAN_SPEED_1:0x90, STATUS_WORD:0x79, READ_EIN:0x86
-    };
-    const cmdCode = currentCommand ? cmdCodes[currentCommand] || 0 : 0;
+    const cfg = currentCommand ? getCommandConfig(currentCommand) : null;
+    const cmdCode = cfg ? cfg.cmd || 0 : 0;
     const bytesForPEC = [cmdCode, raw & 0xFF, (raw >> 8) & 0xFF];
     const pec = PMBusMath.calculatePEC(bytesForPEC);
     let comment = `/*
@@ -1917,6 +1999,7 @@ function wireField(id, source, kind) {
 
 // ==================== 初始化函数 ====================
 function init() {
+    setDebugVisibility();
     wireField('inputHex', 'hex', 'hex');
     wireField('inputN', 'ny', 'int');
     wireField('inputY', 'ny', 'int');
@@ -1968,6 +2051,10 @@ function init() {
         const code = generateCMacro();
         copyToClipboard(code, $('copyCBtn'));
     });
+    const runBoundaryTestsBtn = $('runBoundaryTestsBtn');
+    if (runBoundaryTestsBtn) {
+        runBoundaryTestsBtn.addEventListener('click', runBoundaryTests);
+    }
     $('toggle0xBtn').addEventListener('click', toggle0xPrefix);
     $('toggleSpaceBtn').addEventListener('click', toggleSpace);
     $('byteDisplay').addEventListener('click', () => {
@@ -2005,42 +2092,283 @@ window.addEventListener('resize', () => {
   }, 150);
 });
 
-// ==================== 边界测试函数 (已清理) ====================
+// ==================== 边界测试函数 (按 PDF 规范 + 用户操作) ====================
 function runBoundaryTests() {
     if (typeof PMBusMath === 'undefined' || typeof $ === 'undefined') {
         alert('核心函数未加载，请刷新页面');
         return;
     }
+
     const results = [];
-    const addResult = (title, status, details) => results.push({title, status, details});
+    const failures = [];
+    const addPass = (title, details) => results.push({ title, status: 'PASS', details });
+    const addFail = (title, details) => {
+        results.push({ title, status: 'FAIL', details });
+        failures.push(`${title}: ${details}`);
+    };
+    const assert = (condition, title, details) => {
+        if (!condition) throw new Error(details || title);
+    };
+    const test = (title, fn) => {
+        try {
+            const details = fn();
+            addPass(title, details || 'OK');
+        } catch (e) {
+            addFail(title, e.message || String(e));
+        }
+    };
+    const approx = (actual, expected, eps = 1e-9) => Math.abs(actual - expected) <= eps;
+
+    const savedState = {
+        currentMode,
+        rawInt,
+        byteOrder,
+        directY,
+        currentCommand,
+        autoSelectN,
+        add0xPrefix,
+        addSpaceBetweenBytes,
+        storage: {
+            pmbus_add0x: localStorage.getItem('pmbus_add0x'),
+            pmbus_space: localStorage.getItem('pmbus_space')
+        },
+        fields: {
+            inputHex: $('inputHex').value,
+            inputN: $('inputN').value,
+            inputY: $('inputY').value,
+            inputDirectY: $('inputDirectY').value,
+            inputValue: $('inputValue').value,
+            coeff_m: $('coeff_m').value,
+            coeff_b: $('coeff_b').value,
+            coeff_R: $('coeff_R').value,
+            voutModeHex: $('voutModeHex').value,
+            commandSelect: $('commandSelect').value
+        }
+    };
 
     try {
-        addResult("LINEAR11 极值", "PASS", `Y=${PMBusMath.decodeLinear11(0x7FFF).y}`);
-        const best12 = PMBusMath.findBestLinear11(12); addResult("12V 场景", "PASS", `N=${best12.n} Y=${best12.y} (04优化验证)`);
-        addResult("HALF 3.3V", "PASS", `0x${PMBusMath.encodeHalf(3.3).toString(16).toUpperCase()}`);
-        addResult("SMBus PEC", "PASS", `0x${PMBusMath.calculatePEC([0x21,0x00,0x30]).toString(16).toUpperCase()}`);
-        addResult("04性能优化", "PASS", "renderBits预创建+pow2Cache+无新bug");
-        addResult("命令切换-锁住N", "PASS", "无NaN/异常 (parse/clamp guard)");
-        addResult("m=0 保护", "PASS", "防止崩溃");
-        addResult("小数点输入", "PASS", "多点清理保留");
-        addResult("整体优化", "PASS", "04阶段完成 ✓");
-    } catch (e) {
-        addResult("异常", "FAIL", e.message);
+        test('LINEAR11 极值编码符合 Part I 7.x / 8.x', () => {
+            const max = PMBusMath.decodeLinear11(PMBusMath.encodeLinear11(15, 1023));
+            const min = PMBusMath.decodeLinear11(PMBusMath.encodeLinear11(-16, -1024));
+            assert(max.n === 15 && max.y === 1023, 'LINEAR11 上界错误', `期待 N=15,Y=1023, 实际 N=${max.n},Y=${max.y}`);
+            assert(min.n === -16 && min.y === -1024, 'LINEAR11 下界错误', `期待 N=-16,Y=-1024, 实际 N=${min.n},Y=${min.y}`);
+            return '验证 11-bit mantissa 与 5-bit exponent 双补码极值';
+        });
+
+        test('LINEAR11 自动选 N 覆盖 12V 场景', () => {
+            const best = PMBusMath.findBestLinear11(12);
+            assert(best.n >= -16 && best.n <= 15, 'N 越界', `N=${best.n}`);
+            assert(best.y >= -1024 && best.y <= 1023, 'Y 越界', `Y=${best.y}`);
+            assert(approx(best.value, 12, 1e-9), '12V 表示值错误', `represented=${best.value}`);
+            return `N=${best.n}, Y=${best.y}, represented=${best.value}`;
+        });
+
+        test('LINEAR16 / VOUT_MODE 解析符合 Part I 8.3', () => {
+            const parsed = PMBusMath.parseVoutMode(0x18);
+            assert(parsed.modeName === 'LINEAR', 'VOUT_MODE 0x18 应为 LINEAR', `mode=${parsed.modeName}`);
+            assert(parsed.linearExponent === -8, 'VOUT_MODE 0x18 指数应为 -8', `N=${parsed.linearExponent}`);
+            return '0x18 -> LINEAR, N=-8';
+        });
+
+        test('VOUT_MODE 保留/非线性模式不会误生效', () => {
+            const vid = PMBusMath.parseVoutMode(0x20);
+            const direct = PMBusMath.parseVoutMode(0x40);
+            assert(vid.modeName === 'VID', '0x20 应解析为 VID', `mode=${vid.modeName}`);
+            assert(vid.linearExponent === null, 'VID 不应生成线性指数', `linearExponent=${vid.linearExponent}`);
+            assert(direct.modeName === 'DIRECT', '0x40 应解析为 DIRECT', `mode=${direct.modeName}`);
+            return 'VID/DIRECT 不误当成 LINEAR16 指数';
+        });
+
+        test('DIRECT 往返编码在 16-bit 有符号范围内稳定', () => {
+            const y = PMBusMath.encodeDirect(48, 100, 0, 0);
+            const decoded = PMBusMath.decodeDirect(y, 100, 0, 0);
+            assert(y === 4800, 'DIRECT 编码错误', `Y=${y}`);
+            assert(approx(decoded.value, 48, 1e-9), 'DIRECT 往返结果与公式不一致', `value=${decoded.value}`);
+            const negY = PMBusMath.encodeDirect(-40000, 1, 0, 0);
+            assert(negY === -32768, 'DIRECT 下界钳位错误', `Y=${negY}`);
+            return '验证 encode/decode 及超范围钳位';
+        });
+
+        test('IEEE Half 特殊值符合 Part I 7.6 / IEEE-754', () => {
+            assert(PMBusMath.encodeHalf(NaN) === 0x7E00, 'NaN 编码错误', `raw=0x${hex4(PMBusMath.encodeHalf(NaN))}`);
+            assert(PMBusMath.encodeHalf(Infinity) === 0x7C00, 'Infinity 编码错误', `raw=0x${hex4(PMBusMath.encodeHalf(Infinity))}`);
+            assert(PMBusMath.encodeHalf(-Infinity) === 0xFC00, '-Infinity 编码错误', `raw=0x${hex4(PMBusMath.encodeHalf(-Infinity))}`);
+            const sub = PMBusMath.decodeHalf(0x0001).value;
+            assert(sub > 0 && sub < PMBusMath.pow2(-14), '次正规数解析错误', `value=${sub}`);
+            return 'NaN / ±Inf / subnormal 均可识别';
+        });
+
+        test('SMBus PEC 使用 CRC-8 x^8+x^2+x+1', () => {
+            const pec = PMBusMath.calculatePEC([0x21, 0x00, 0x30]);
+            assert(pec === 0xB8, 'PEC 样例错误', `PEC=0x${hex2(pec)}`);
+            return '0x21 0x00 0x30 -> 0xB8';
+        });
+
+        test('命令元数据符合 Part II 命令类型', () => {
+            assert(getCommandConfig('READ_VOUT').type === 'scalar16', 'READ_VOUT 类型错误', getCommandConfig('READ_VOUT').type);
+            assert(getCommandConfig('STATUS_WORD').type === 'statusWord', 'STATUS_WORD 类型错误', getCommandConfig('STATUS_WORD').type);
+            assert(getCommandConfig('READ_EIN').type === 'blockRead', 'READ_EIN 类型错误', getCommandConfig('READ_EIN').type);
+            return '标量/状态字/块读已区分';
+        });
+
+        test('STATUS_WORD 提示用户这是状态位而非物理量', () => {
+            selectCommand('STATUS_WORD');
+            assert(currentCommand === 'STATUS_WORD', '命令未切换到 STATUS_WORD', `currentCommand=${currentCommand}`);
+            assert($('specialWarn').className.includes('show'), '未显示提示', $('specialWarn').className);
+            assert($('specialWarn').textContent.includes('状态位摘要'), '提示内容缺少状态字说明', $('specialWarn').textContent);
+            return $('specialWarn').textContent;
+        });
+
+        test('READ_EIN 提示 Block Read 不是单个 16-bit 标量', () => {
+            selectCommand('READ_EIN');
+            assert(currentCommand === 'READ_EIN', '命令未切换到 READ_EIN', `currentCommand=${currentCommand}`);
+            assert($('specialWarn').textContent.includes('Block Read'), '缺少 Block Read 提示', $('specialWarn').textContent);
+            return $('specialWarn').textContent;
+        });
+
+        test('DIRECT 模式显示不再引用未定义 unsigned', () => {
+            switchMode('DIRECT');
+            $('coeff_m').value = '1';
+            $('coeff_b').value = '0';
+            $('coeff_R').value = '0';
+            $('inputDirectY').value = '-1';
+            updateDirect('directY');
+            assert($('byteDisplay').textContent.includes('[0]FF'), '低字节显示错误', $('byteDisplay').textContent);
+            assert($('infoBar').textContent.includes('0xFFFF'), '状态栏未显示 0xFFFF', $('infoBar').textContent);
+            return $('byteDisplay').textContent.trim();
+        });
+
+        test('Hex 脏输入清洗与 fixOnBlur 边界', () => {
+            const cleaned = sanitizeInput('zz12g3!4', 'hex');
+            const blurred = fixOnBlur('  xx1Fz ', 'hex');
+            assert(cleaned === '1234', 'sanitizeInput(hex) 错误', cleaned);
+            assert(blurred === '1F', 'fixOnBlur(hex) 错误', blurred);
+            return `sanitize=${cleaned}, blur=${blurred}`;
+        });
+
+        test('浮点半截输入与极端值保护', () => {
+            assert(parseFloatSafe('.') === 0, '单点应视为 0', String(parseFloatSafe('.')));
+            assert(parseFloatSafe('12.') === 12, '尾随点解析错误', String(parseFloatSafe('12.')));
+            assert(parseFloatSafe('1e999') === 1e20, '极大值未钳位', String(parseFloatSafe('1e999')));
+            assert(parseFloatSafe('-1e999') === -1e20, '极小值未钳位', String(parseFloatSafe('-1e999')));
+            assert(fixOnBlur('12.', 'float') === '12', 'blur 未清理尾随点', fixOnBlur('12.', 'float'));
+            return '半截输入可恢复，极值会钳位';
+        });
+
+        test('整数输入清洗避免科学计数法/多符号污染', () => {
+            assert(sanitizeInput('1e2-+3', 'int') === '123', 'int 清洗错误', sanitizeInput('1e2-+3', 'int'));
+            assert(parseIntegerSafe('+') === null, '单个 + 不应通过', String(parseIntegerSafe('+')));
+            assert(parseIntegerSafe('-16') === -16, '负整数解析错误', String(parseIntegerSafe('-16')));
+            return '整数清洗与解析正常';
+        });
+
+        test('复制格式切换覆盖 0x 和空格边界', () => {
+            $('inputHex').value = 'ABCD';
+            add0xPrefix = true;
+            addSpaceBetweenBytes = true;
+            assert(getHexCopyText() === '0xAB CD', '默认复制格式错误', getHexCopyText());
+            add0xPrefix = false;
+            addSpaceBetweenBytes = false;
+            assert(getHexCopyText() === 'ABCD', '关闭格式后复制错误', getHexCopyText());
+            return '0xAB CD -> ABCD';
+        });
+
+        test('偏好恢复与模式切换用户路径可工作', () => {
+            localStorage.setItem('pmbus_add0x', 'false');
+            localStorage.setItem('pmbus_space', 'true');
+            loadPreferences();
+            assert(add0xPrefix === false, '0x 偏好恢复失败', String(add0xPrefix));
+            assert(addSpaceBetweenBytes === true, '空格偏好恢复失败', String(addSpaceBetweenBytes));
+            switchMode('L11');
+            autoSelectN = true;
+            toggleAutoN();
+            switchMode('DIRECT');
+            assert(autoSelectN === false, '离开 L11 后自动 N 未复位', String(autoSelectN));
+            assert($('nLockBtn').textContent === '🔒', '锁按钮文案错误', $('nLockBtn').textContent);
+            return 'localStorage + 模式切换路径正常';
+        });
+
+        test('L16 大端显示与 PMBus 低字节优先切换', () => {
+            switchMode('L16');
+            rawInt = 0x1234;
+            byteOrder = 'be';
+            $('byteOrderSelect').value = 'be';
+            updateAll('byteOrder');
+            assert($('inputHex').value === '3412', 'BE 显示错误', $('inputHex').value);
+            byteOrder = 'le';
+            $('byteOrderSelect').value = 'le';
+            updateAll('byteOrder');
+            assert($('inputHex').value === '1234', 'LE 显示错误', $('inputHex').value);
+            return 'BE=3412, LE=1234';
+        });
+
+        test('m=0 用户误操作不会崩溃且给出除零提示', () => {
+            switchMode('DIRECT');
+            $('coeff_m').value = '0';
+            $('coeff_b').value = '0';
+            $('coeff_R').value = '0';
+            $('inputDirectY').value = '10';
+            updateDirect('directY');
+            assert($('displayValue').textContent.includes('m = 0'), '未显示 m=0 提示', $('displayValue').textContent);
+            assert($('infoBar').textContent.includes('m=0'), '状态栏未提示除零', $('infoBar').textContent);
+            return $('displayValue').textContent;
+        });
+
+        test('runBoundaryTests 基础 DOM 缓存仍可工作', () => {
+            renderBits();
+            assert(bitButtons.length === 16, 'bitButtons 未缓存 16 位', String(bitButtons.length));
+            switchMode('DIRECT');
+            renderDirectBits();
+            assert(directBitButtons.length === 16, 'directBitButtons 未缓存 16 位', String(directBitButtons.length));
+            return `bitButtons=${bitButtons.length}, directBitButtons=${directBitButtons.length}`;
+        });
+    } finally {
+        currentMode = savedState.currentMode;
+        rawInt = savedState.rawInt;
+        byteOrder = savedState.byteOrder;
+        directY = savedState.directY;
+        currentCommand = savedState.currentCommand;
+        autoSelectN = savedState.autoSelectN;
+        add0xPrefix = savedState.add0xPrefix;
+        addSpaceBetweenBytes = savedState.addSpaceBetweenBytes;
+        Object.entries(savedState.storage).forEach(([key, value]) => {
+            if (value === null) localStorage.removeItem(key);
+            else localStorage.setItem(key, value);
+        });
+        Object.entries(savedState.fields).forEach(([id, value]) => {
+            const el = $(id);
+            if (el) el.value = value;
+        });
+        switchMode(savedState.currentMode);
+        updateAll(savedState.currentMode === 'DIRECT' ? 'directY' : 'init');
+        const note = getCommandNote(savedState.currentCommand);
+        if (note) {
+            $('specialWarn').textContent = note;
+            $('specialWarn').className = 'warn-banner show';
+        }
     }
 
-    let html = '<div style="background:var(--hover-bg);border:1px solid var(--border);padding:14px;border-radius:10px;margin:12px 0;font-size:12.5px;line-height:1.4">';
-    html += '<strong style="color:var(--gn)">✅ 测试通过 - 04性能优化完成 (DOM预创建 + pow2缓存)</strong><br><br>';
+    const passCount = results.filter(r => r.status === 'PASS').length;
+    const failCount = results.length - passCount;
+    let html = '<div style="background:var(--hover-bg);border:1px solid var(--border);padding:14px;border-radius:10px;margin:12px 0;font-size:12.5px;line-height:1.5">';
+    html += `<strong style="color:${failCount ? 'var(--rd)' : 'var(--gn)'}">${failCount ? '❌' : '✅'} 边界测试完成</strong> `;
+    html += `<span style="color:var(--text-secondary)">PASS ${passCount} / ${results.length}${failCount ? `，FAIL ${failCount}` : ''}</span><br><br>`;
     results.forEach(r => {
         const color = r.status === 'PASS' ? 'var(--gn)' : 'var(--rd)';
         html += `<span style="color:${color}">[${r.status}]</span> ${r.title}: ${r.details}<br>`;
     });
-    html += '<br><small style="color:var(--text-muted)">行业规范：输入框使用--input-bg/--input-border变量；错误/警告状态适配暗黑；focus-ring/contrast符合WCAG；所有表单元素、tab、tooltip已优化</small></div>';
+    html += '<br><small style="color:var(--text-muted)">依据：PMBus 1.3 Part I 的 LINEAR/VOUT_MODE/IEEE Half 定义，Part II 的命令类型与 STATUS_WORD / READ_EIN 语义，以及 SMBus 3.0 PEC CRC-8 规则。</small></div>';
 
-    const info = $('infoBar');
-    if (info) info.innerHTML = html;
+    setDebugOutput(html);
 
-    console.log('%c✅ Boundary Test PASSED (cleaned version)', 'color:#10b981;font-weight:bold');
+    if (failures.length) {
+        console.error('Boundary tests failed:', failures);
+    } else {
+        console.log('%cBoundary tests passed', 'color:#10b981;font-weight:bold');
+    }
     console.table(results);
+
+    return { passCount, failCount, results, failures };
 }
 
 window.runBoundaryTests = runBoundaryTests;
