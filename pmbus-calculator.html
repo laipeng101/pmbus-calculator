@@ -204,6 +204,23 @@ hr.d{border:0;border-top:1px solid var(--border);margin:18px 0}
   border-color:var(--gn);
   box-shadow:0 2px 6px rgba(16,185,129,0.25);
 }
+.toggle-small.text-toggle{
+  width:38px;
+  font-size:10px;
+  letter-spacing:.02em;
+}
+.toggle-small.endian-toggle[data-endian="le"]{
+  background:var(--gn);
+  color:#fff;
+  border-color:var(--gn);
+  box-shadow:0 2px 6px rgba(16,185,129,0.25);
+}
+.toggle-small.endian-toggle[data-endian="be"]{
+  background:var(--bl);
+  color:#fff;
+  border-color:var(--bl);
+  box-shadow:0 2px 6px rgba(59,130,246,0.25);
+}
 .result-label{
   display:block;
   font-size:13.5px;
@@ -862,6 +879,7 @@ input[type="number"] {
         <button class="copy-btn" id="copyHexBtn" data-tooltip="点击复制 Hex 值" data-original="📋 Hex">📋 Hex</button>
         <button class="toggle-small" id="toggle0xBtn" data-tooltip="切换是否在复制时添加 0x 前缀">0x</button>
         <button class="toggle-small" id="toggleSpaceBtn" data-tooltip="切换复制时字节之间是否加空格">␣</button>
+        <button class="toggle-small text-toggle endian-toggle" id="toggleEndianBtn" data-tooltip="切换复制时的字节顺序：LE=低字节在前，BE=高字节在前">LE</button>
       </div>
       <button class="copy-btn" id="copyValBtn" data-tooltip="点击复制物理值" data-original="📋 值">📋 值</button>
       <button class="copy-btn" id="copyCBtn" data-tooltip="点击生成并复制 C 语言宏定义代码" data-original="C 代码">C 代码</button>
@@ -1101,6 +1119,7 @@ let currentCommand = '';
 let autoSelectN = false; // 默认禁用自动根据Value优选N
 let add0xPrefix = true;
 let addSpaceBetweenBytes = true;
+let copyEndian = 'le';
 const DEBUG_MODE = false;
 
 // Bit element cache for performance (stage 04 optimization - pre-create elements)
@@ -1820,6 +1839,12 @@ function copyToClipboard(text, btnEl) {
 
 function getHexCopyText() {
     let hex = ($('inputHex').value || '0000').trim();
+    if (copyEndian === 'le' && hex.length >= 4) {
+        const pairs = hex.match(/.{1,2}/g);
+        if (pairs && pairs.length === 2) {
+            hex = `${pairs[1]}${pairs[0]}`;
+        }
+    }
     let text = hex;
     if (addSpaceBetweenBytes && hex.length >= 2) {
         text = hex.match(/.{1,2}/g).join(' ');
@@ -1852,6 +1877,20 @@ function toggleSpace() {
     localStorage.setItem('pmbus_space', addSpaceBetweenBytes.toString());
 }
 
+function syncCopyEndianButton() {
+    const btn = $('toggleEndianBtn');
+    if (!btn) return;
+    btn.dataset.endian = copyEndian;
+    btn.textContent = copyEndian.toUpperCase();
+    btn.setAttribute('aria-pressed', 'true');
+}
+
+function toggleCopyEndian() {
+    copyEndian = copyEndian === 'le' ? 'be' : 'le';
+    syncCopyEndianButton();
+    localStorage.setItem('pmbus_copy_endian', copyEndian);
+}
+
 function loadPreferences() {
     // 0x 前缀
     const saved0x = localStorage.getItem('pmbus_add0x');
@@ -1860,6 +1899,10 @@ function loadPreferences() {
     // 空格设置
     const savedSpace = localStorage.getItem('pmbus_space');
     if (savedSpace !== null) addSpaceBetweenBytes = savedSpace === 'true';
+
+    // 复制字节序设置
+    const savedCopyEndian = localStorage.getItem('pmbus_copy_endian');
+    if (savedCopyEndian === 'le' || savedCopyEndian === 'be') copyEndian = savedCopyEndian;
 
     // 更新 0x 和空格按钮激活状态
     const oxBtn = $('toggle0xBtn');
@@ -1879,6 +1922,8 @@ function loadPreferences() {
             spaceBtn.classList.remove('active');
         }
     }
+
+    syncCopyEndianButton();
 }
 
 function generateCMacro() {
@@ -2057,6 +2102,7 @@ function init() {
     }
     $('toggle0xBtn').addEventListener('click', toggle0xPrefix);
     $('toggleSpaceBtn').addEventListener('click', toggleSpace);
+    $('toggleEndianBtn').addEventListener('click', toggleCopyEndian);
     $('byteDisplay').addEventListener('click', () => {
         const text = $('byteDisplay').textContent.replace(/点击复制/, '').trim();
         navigator.clipboard.writeText(text);
@@ -2128,9 +2174,11 @@ function runBoundaryTests() {
         autoSelectN,
         add0xPrefix,
         addSpaceBetweenBytes,
+        copyEndian,
         storage: {
             pmbus_add0x: localStorage.getItem('pmbus_add0x'),
-            pmbus_space: localStorage.getItem('pmbus_space')
+            pmbus_space: localStorage.getItem('pmbus_space'),
+            pmbus_copy_endian: localStorage.getItem('pmbus_copy_endian')
         },
         fields: {
             inputHex: $('inputHex').value,
@@ -2266,11 +2314,29 @@ function runBoundaryTests() {
             $('inputHex').value = 'ABCD';
             add0xPrefix = true;
             addSpaceBetweenBytes = true;
+            copyEndian = 'be';
+            syncCopyEndianButton();
             assert(getHexCopyText() === '0xAB CD', '默认复制格式错误', getHexCopyText());
             add0xPrefix = false;
             addSpaceBetweenBytes = false;
             assert(getHexCopyText() === 'ABCD', '关闭格式后复制错误', getHexCopyText());
             return '0xAB CD -> ABCD';
+        });
+
+        test('复制字节序切换默认 LE 且支持记忆', () => {
+            $('inputHex').value = '1234';
+            add0xPrefix = false;
+            addSpaceBetweenBytes = true;
+            copyEndian = 'le';
+            syncCopyEndianButton();
+            assert(getHexCopyText() === '34 12', 'LE 复制顺序错误', getHexCopyText());
+            toggleCopyEndian();
+            assert(copyEndian === 'be', '未切换到 BE', copyEndian);
+            assert(getHexCopyText() === '12 34', 'BE 复制顺序错误', getHexCopyText());
+            assert(localStorage.getItem('pmbus_copy_endian') === 'be', '未记忆复制字节序', String(localStorage.getItem('pmbus_copy_endian')));
+            loadPreferences();
+            assert(copyEndian === 'be', '偏好恢复失败', copyEndian);
+            return 'LE=34 12, BE=12 34';
         });
 
         test('偏好恢复与模式切换用户路径可工作', () => {
@@ -2331,10 +2397,12 @@ function runBoundaryTests() {
         autoSelectN = savedState.autoSelectN;
         add0xPrefix = savedState.add0xPrefix;
         addSpaceBetweenBytes = savedState.addSpaceBetweenBytes;
+        copyEndian = savedState.copyEndian;
         Object.entries(savedState.storage).forEach(([key, value]) => {
             if (value === null) localStorage.removeItem(key);
             else localStorage.setItem(key, value);
         });
+        syncCopyEndianButton();
         Object.entries(savedState.fields).forEach(([id, value]) => {
             const el = $(id);
             if (el) el.value = value;
