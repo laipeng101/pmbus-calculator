@@ -922,8 +922,10 @@ const PMBusMath = {
     pow2(n) {
         if (this.pow2Cache.has(n)) return this.pow2Cache.get(n);
         let p;
-        if (n >= 0 && n < 53) p = 1 << n;
-        else if (n < 0 && n > -53) p = 1 / (1 << -n);
+        // JS 位移是 32-bit 运算，1 << 31 以后会溢出；PMBus 常用指数虽较小，
+        // 这里仍完整兜底到 Math.pow，避免未来扩展/测试出现隐性错误。
+        if (Number.isInteger(n) && n >= 0 && n < 31) p = 1 << n;
+        else if (Number.isInteger(n) && n < 0 && n > -31) p = 1 / (1 << -n);
         else p = Math.pow(2, n);
         this.pow2Cache.set(n, p);
         return p;
@@ -1128,6 +1130,22 @@ let directBitButtons = [];
 let nibbleHexEls = [];
 let directNibbleHexEls = [];
 
+// 高频 UI 更新合帧：Bit 点击、输入过程、VOUT_MODE 输入都统一收敛到下一帧，
+// 避免移动端连续 input 时重复重排/重绘；测试和命令切换仍可直接调用 updateAll 保持同步。
+let pendingUpdateSource = null;
+let updateFrameId = null;
+function scheduleUpdate(source) {
+    pendingUpdateSource = source;
+    if (updateFrameId !== null) return;
+    const raf = window.requestAnimationFrame || (cb => setTimeout(cb, 16));
+    updateFrameId = raf(() => {
+        updateFrameId = null;
+        const src = pendingUpdateSource;
+        pendingUpdateSource = null;
+        updateAll(src);
+    });
+}
+
 // ==================== DOM辅助函数 ====================
 const $ = id => document.getElementById(id);
 const hex2 = v => (v & 0xFF).toString(16).toUpperCase().padStart(2, '0');
@@ -1165,15 +1183,13 @@ function parseFloatSafe(s) {
     if (lower === 'nan') return NaN;
     if (lower === 'infinity' || lower === '+infinity') return Infinity;
     if (lower === '-infinity') return -Infinity;
-    if (s === '.' || s === '-.' || s === '+.') return 0;
-    if (s.endsWith('.')) {
-        const num = parseFloat(s);
-        return isNaN(num) ? 0 : num;
-    }
-    while (s.length > 0 && /[-+]$/.test(s)) s = s.slice(0, -1);
-    if (!s) return null;
-    let n = parseFloat(s);
-    if (isNaN(n)) return null;
+
+    // 允许输入过程中的半成品，但避免 parseFloat('1e') => 1 这类误判。
+    if (/^[+-]?(\.|\.0*)$/.test(s) || /^[+-]?\.$/.test(s)) return 0;
+    if (!/^[+-]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[eE][+-]?\d+)?$/.test(s)) return null;
+
+    let n = Number(s);
+    if (Number.isNaN(n)) return null;
     // Clamp extreme values to prevent display/calculation overflow
     if (n > 1e20) n = 1e20;
     if (n < -1e20) n = -1e20;
@@ -1186,8 +1202,11 @@ function fixOnBlur(value, kind) {
     if (kind === 'float') {
         if ('.+-.'.includes(value) && value.length <= 2) return '0';
         if (value === '-' || value === '+') return '0';
-        if (value.endsWith('.') || value.endsWith('e') || value.endsWith('E')) {
-            return value.slice(0, -1); // 清理未完成的 decimals (之前优化)
+        if (/[eE][+-]?$/.test(value)) {
+            return value.replace(/[eE][+-]?$/, '') || '0'; // 清理未完成的科学计数法
+        }
+        if (value.endsWith('.')) {
+            return value.slice(0, -1) || '0'; // 清理未完成的 decimals
         }
         return value;
     }
@@ -1197,20 +1216,46 @@ function fixOnBlur(value, kind) {
 }
 
 function sanitizeInput(value, kind) {
+    if (kind === 'hex') return String(value).replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+
     if (kind === 'float') {
-        value = value.replace(/[^0-9.eE\-+]/g, '');
-        const firstDot = value.indexOf('.');
-        if (firstDot !== -1) {
-            value = value.slice(0, firstDot + 1) + value.slice(firstDot + 1).replace(/\./g, '');
+        value = String(value).replace(/[^0-9.eE\-+]/g, '');
+        let out = '';
+        let seenDot = false;
+        let seenExp = false;
+        let hasMantissaDigit = false;
+
+        for (let i = 0; i < value.length; i++) {
+            const ch = value[i];
+            if (/\d/.test(ch)) {
+                out += ch;
+                if (!seenExp) hasMantissaDigit = true;
+                continue;
+            }
+            if ((ch === '+' || ch === '-') && (out.length === 0 || /[eE]$/.test(out))) {
+                out += ch;
+                continue;
+            }
+            if (ch === '.' && !seenDot && !seenExp) {
+                seenDot = true;
+                out += ch;
+                continue;
+            }
+            if ((ch === 'e' || ch === 'E') && !seenExp && hasMantissaDigit) {
+                seenExp = true;
+                out += 'e';
+                continue;
+            }
         }
-        return value;
+        return out;
     }
-    value = value.replace(/[^\d.eE\-+]/g, '');
-    if (kind === 'hex') return value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+
+    value = String(value).replace(/[^\d\-+]/g, '');
     if (kind === 'int') {
-        value = value.replace(/[.eE]/g, '');
-        if (value.length > 1) value = value[0] + value.slice(1).replace(/[-+]/g, '');
-        return value;
+        if (!value) return '';
+        const sign = value[0] === '-' ? '-' : (value[0] === '+' ? '+' : '');
+        const digits = (sign ? value.slice(1) : value).replace(/[\-+]/g, '');
+        return sign + digits;
     }
     return value;
 }
@@ -1267,7 +1312,7 @@ function renderBits() {
                 btn.textContent = '0';
                 btn.setAttribute('role', 'button');
                 btn.setAttribute('tabindex', '0');
-                btn.onclick = ((idx) => () => { rawInt ^= (1 << idx); rawInt &= 0xFFFF; updateAll('bit'); })(bitIdx);
+                btn.onclick = ((idx) => () => { rawInt ^= (1 << idx); rawInt &= 0xFFFF; scheduleUpdate('bit'); })(bitIdx);
                 
                 const idxEl = document.createElement('span');
                 idxEl.className = 'bi';
@@ -1345,7 +1390,7 @@ function renderDirectBits() {
                     let v = directY < 0 ? directY + 65536 : directY;
                     v ^= (1 << idx); v &= 0xFFFF;
                     directY = v >= 32768 ? v - 65536 : v;
-                    updateAll('bit');
+                    scheduleUpdate('bit');
                 })(bitIdx);
                 
                 const idxEl = document.createElement('span');
@@ -1677,7 +1722,7 @@ function updateHalf(source) {
     vm.addEventListener('blur', () => { editingField = null; vm.classList.remove('ed'); updateAll('voutMode'); });
     vm.addEventListener('input', () => {
         vm.value = vm.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
-        updateAll('voutMode');
+        scheduleUpdate('voutMode');
     });
     vm.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); vm.blur(); } });
 }
@@ -1699,6 +1744,29 @@ function applyProfile(name) {
 }
 
 // ==================== 模式切换函数 ====================
+function applyModeLabels(mode) {
+const isNarrow = window.innerWidth < 380;
+    if (mode === 'L11') {
+        $('labelY').textContent = isNarrow ? 'Y (±1023)' : 'Y (11-bit ±1023)';
+        $('resultLabel').innerHTML = 'X = Y × 2<sup>N</sup>';
+        $('hexLabel').textContent = '原始值 (Hex)';
+        $('labelValue').textContent = isNarrow ? 'Value' : '物理值 (Value)';
+    } else if (mode === 'L16') {
+        $('labelY').textContent = isNarrow ? 'V (0~65535)' : 'V (16-bit 0~65535)';
+        $('resultLabel').innerHTML = 'V × 2<sup>N</sup>';
+        $('hexLabel').textContent = 'VOUT_COMMAND (Hex)';
+        $('labelValue').textContent = isNarrow ? 'Value' : '物理值 (Value)';
+    } else if (mode === 'HALF') {
+        $('resultLabel').innerHTML = 'IEEE 754 Half Float';
+        $('hexLabel').textContent = 'Half Float (Hex)';
+        $('labelValue').textContent = 'Float 值';
+    } else {
+        $('resultLabel').innerHTML = 'DIRECT 格式';
+        $('hexLabel').textContent = 'Y (Hex)';
+        $('labelValue').textContent = isNarrow ? 'Value' : '物理值 (Value)';
+    }
+}
+
 function switchMode(mode) {
     const prev = currentMode;
     currentMode = mode;
@@ -1726,26 +1794,7 @@ function switchMode(mode) {
         }
     }
 
-    const isNarrow = window.innerWidth < 380;
-    if (mode === 'L11') {
-        $('labelY').textContent = isNarrow ? 'Y (±1023)' : 'Y (11-bit ±1023)';
-        $('resultLabel').innerHTML = 'X = Y × 2<sup>N</sup>';
-        $('hexLabel').textContent = '原始值 (Hex)';
-        $('labelValue').textContent = isNarrow ? 'Value' : '物理值 (Value)';
-    } else if (mode === 'L16') {
-        $('labelY').textContent = isNarrow ? 'V (0~65535)' : 'V (16-bit 0~65535)';
-        $('resultLabel').innerHTML = 'V × 2<sup>N</sup>';
-        $('hexLabel').textContent = 'VOUT_COMMAND (Hex)';
-        $('labelValue').textContent = isNarrow ? 'Value' : '物理值 (Value)';
-    } else if (mode === 'HALF') {
-        $('resultLabel').innerHTML = 'IEEE 754 Half Float';
-        $('hexLabel').textContent = 'Half Float (Hex)';
-        $('labelValue').textContent = 'Float 值';
-    } else {
-        $('resultLabel').innerHTML = 'DIRECT 格式';
-        $('hexLabel').textContent = 'Y (Hex)';
-        $('labelValue').textContent = isNarrow ? 'Value' : '物理值 (Value)';
-    }
+    applyModeLabels(mode);
     const hn = $('halfNote'); if (hn) hn.style.display = (mode === 'HALF') ? 'block' : 'none';
     currentCommand = '';
     if (prev === 'DIRECT' && !isDirect) { $('resultFormula').textContent = ''; $('resultBox').classList.remove('direct-mode'); }
@@ -1766,6 +1815,7 @@ function toggleAutoN() {
         btn.classList.remove('unlocked');
         btn.classList.add('locked');
     }
+    if (currentMode === 'L11') updateAll('val');
 }
 
 function updateNRange(n) {
@@ -1855,25 +1905,25 @@ function getHexCopyText() {
     return text;
 }
 
+function syncPreferenceButtons() {
+    const oxBtn = $('toggle0xBtn');
+    if (oxBtn) oxBtn.classList.toggle('active', add0xPrefix);
+
+    const spaceBtn = $('toggleSpaceBtn');
+    if (spaceBtn) spaceBtn.classList.toggle('active', addSpaceBetweenBytes);
+
+    syncCopyEndianButton();
+}
+
 function toggle0xPrefix() {
     add0xPrefix = !add0xPrefix;
-    const btn = $('toggle0xBtn');
-    if (add0xPrefix) {
-        btn.classList.add('active');
-    } else {
-        btn.classList.remove('active');
-    }
+    syncPreferenceButtons();
     localStorage.setItem('pmbus_add0x', add0xPrefix.toString());
 }
 
 function toggleSpace() {
     addSpaceBetweenBytes = !addSpaceBetweenBytes;
-    const btn = $('toggleSpaceBtn');
-    if (addSpaceBetweenBytes) {
-        btn.classList.add('active');
-    } else {
-        btn.classList.remove('active');
-    }
+    syncPreferenceButtons();
     localStorage.setItem('pmbus_space', addSpaceBetweenBytes.toString());
 }
 
@@ -1887,7 +1937,7 @@ function syncCopyEndianButton() {
 
 function toggleCopyEndian() {
     copyEndian = copyEndian === 'le' ? 'be' : 'le';
-    syncCopyEndianButton();
+    syncPreferenceButtons();
     localStorage.setItem('pmbus_copy_endian', copyEndian);
 }
 
@@ -1904,26 +1954,7 @@ function loadPreferences() {
     const savedCopyEndian = localStorage.getItem('pmbus_copy_endian');
     if (savedCopyEndian === 'le' || savedCopyEndian === 'be') copyEndian = savedCopyEndian;
 
-    // 更新 0x 和空格按钮激活状态
-    const oxBtn = $('toggle0xBtn');
-    if (oxBtn) {
-        if (add0xPrefix) {
-            oxBtn.classList.add('active');
-        } else {
-            oxBtn.classList.remove('active');
-        }
-    }
-
-    const spaceBtn = $('toggleSpaceBtn');
-    if (spaceBtn) {
-        if (addSpaceBetweenBytes) {
-            spaceBtn.classList.add('active');
-        } else {
-            spaceBtn.classList.remove('active');
-        }
-    }
-
-    syncCopyEndianButton();
+    syncPreferenceButtons();
 }
 
 function generateCMacro() {
@@ -2033,11 +2064,11 @@ function wireField(id, source, kind) {
         if (kind === 'float' || source === 'val') {
             // Per-field debounce for smooth decimal input
             if (!this._debouncedUpdate) {
-                this._debouncedUpdate = debounce(() => updateAll(source), 80);
+                this._debouncedUpdate = debounce(() => scheduleUpdate(source), 80);
             }
             this._debouncedUpdate();
         } else {
-            updateAll(source);
+            scheduleUpdate(source);
         }
     });
 }
@@ -2076,7 +2107,6 @@ function init() {
     const lastMode = localStorage.getItem('pmbus_last_mode');
     if (lastMode && ['L11','L16','DIRECT','HALF'].includes(lastMode)) {
         currentMode = lastMode;
-        document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.mode === lastMode));
     }
     const lastValue = localStorage.getItem('pmbus_last_value');
     if (lastValue) $('inputValue').value = lastValue;
@@ -2112,7 +2142,8 @@ function init() {
     const saveMode = () => localStorage.setItem('pmbus_last_mode', currentMode);
     document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', saveMode));
 
-    renderBits();
+    // 初始渲染必须走 switchMode，确保恢复 DIRECT/HALF 时面板显隐、ARIA、标签都一致。
+    switchMode(currentMode);
     updateAll('init');
 }
 
@@ -2132,8 +2163,13 @@ let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    if (typeof switchMode === 'function') {
-      switchMode(currentMode);
+    // 只刷新响应式标签，不触发 switchMode，避免窗口变化时清空 currentCommand。
+    if (typeof applyModeLabels === 'function') {
+      const savedLabel = currentCommand ? getCommandConfig(currentCommand)?.label : '';
+      applyModeLabels(currentMode);
+      if (currentCommand && savedLabel) {
+        $('resultLabel').innerHTML = `${savedLabel} <span style="font-size:0.85em;opacity:0.7">(${currentCommand})</span>`;
+      }
     }
   }, 150);
 });
@@ -2209,6 +2245,12 @@ function runBoundaryTests() {
             assert(best.y >= -1024 && best.y <= 1023, 'Y 越界', `Y=${best.y}`);
             assert(approx(best.value, 12, 1e-9), '12V 表示值错误', `represented=${best.value}`);
             return `N=${best.n}, Y=${best.y}, represented=${best.value}`;
+        });
+
+        test('pow2 大指数不会受 JS 32-bit 位移溢出影响', () => {
+            assert(PMBusMath.pow2(40) === Math.pow(2, 40), 'pow2(40) 错误', `value=${PMBusMath.pow2(40)}`);
+            assert(PMBusMath.pow2(-40) === Math.pow(2, -40), 'pow2(-40) 错误', `value=${PMBusMath.pow2(-40)}`);
+            return 'pow2(±40) 与 Math.pow 一致';
         });
 
         test('LINEAR16 / VOUT_MODE 解析符合 Part I 8.3', () => {
@@ -2297,17 +2339,20 @@ function runBoundaryTests() {
         test('浮点半截输入与极端值保护', () => {
             assert(parseFloatSafe('.') === 0, '单点应视为 0', String(parseFloatSafe('.')));
             assert(parseFloatSafe('12.') === 12, '尾随点解析错误', String(parseFloatSafe('12.')));
+            assert(parseFloatSafe('1e') === null, '半截科学计数法不应误解析为 1', String(parseFloatSafe('1e')));
             assert(parseFloatSafe('1e999') === 1e20, '极大值未钳位', String(parseFloatSafe('1e999')));
             assert(parseFloatSafe('-1e999') === -1e20, '极小值未钳位', String(parseFloatSafe('-1e999')));
             assert(fixOnBlur('12.', 'float') === '12', 'blur 未清理尾随点', fixOnBlur('12.', 'float'));
+            assert(fixOnBlur('12e-', 'float') === '12', 'blur 未清理半截科学计数法', fixOnBlur('12e-', 'float'));
             return '半截输入可恢复，极值会钳位';
         });
 
-        test('整数输入清洗避免科学计数法/多符号污染', () => {
+        test('整数/浮点输入清洗避免科学计数法/多符号污染', () => {
             assert(sanitizeInput('1e2-+3', 'int') === '123', 'int 清洗错误', sanitizeInput('1e2-+3', 'int'));
+            assert(sanitizeInput('--1.2e--3xx', 'float') === '-1.2e-3', 'float 清洗错误', sanitizeInput('--1.2e--3xx', 'float'));
             assert(parseIntegerSafe('+') === null, '单个 + 不应通过', String(parseIntegerSafe('+')));
             assert(parseIntegerSafe('-16') === -16, '负整数解析错误', String(parseIntegerSafe('-16')));
-            return '整数清洗与解析正常';
+            return '整数/浮点清洗与解析正常';
         });
 
         test('复制格式切换覆盖 0x 和空格边界', () => {
@@ -2345,6 +2390,8 @@ function runBoundaryTests() {
             loadPreferences();
             assert(add0xPrefix === false, '0x 偏好恢复失败', String(add0xPrefix));
             assert(addSpaceBetweenBytes === true, '空格偏好恢复失败', String(addSpaceBetweenBytes));
+            assert(!$('toggle0xBtn').classList.contains('active'), '0x 按钮状态未同步', $('toggle0xBtn').className);
+            assert($('toggleSpaceBtn').classList.contains('active'), '空格按钮状态未同步', $('toggleSpaceBtn').className);
             switchMode('L11');
             autoSelectN = true;
             toggleAutoN();
@@ -2402,7 +2449,7 @@ function runBoundaryTests() {
             if (value === null) localStorage.removeItem(key);
             else localStorage.setItem(key, value);
         });
-        syncCopyEndianButton();
+        syncPreferenceButtons();
         Object.entries(savedState.fields).forEach(([id, value]) => {
             const el = $(id);
             if (el) el.value = value;
