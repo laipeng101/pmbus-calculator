@@ -122,4 +122,4 @@ Any modern browser that supports ES6+ (Chrome 60+, Firefox 55+, Safari 12+, Edge
 
 ## License
 
-This project is open-source. See the repository for licence details.
+This project is licensed under the [MIT License](LICENSE).
