@@ -125,12 +125,12 @@ test-results/
 .surge
 
 # =========================================================
-# Claude Code / MCP
+# Claude Code / MCP / IDE Plugins
 # =========================================================
 
-# Local settings should not be committed
-.claude/settings.local.json
-.claude/.local
+.claude/
+everything-claude-code/
+.playwright-mcp/
 
 # =========================================================
 # Project-specific
