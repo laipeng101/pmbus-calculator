@@ -857,7 +857,12 @@ C. 继续提供 single HTML 构建产物
 | WEB-0001 | 2026-04-30 | `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `.gitignore`, `.prettierrc`, `eslint.config.js` | 配置 | 全局 | build / lint pass | 是 | Done |
 | WEB-0002 | 2026-04-30 | `src/main.tsx`, `src/App.tsx`, `src/styles/tokens.css` | 新增 | 全局 / THEME | build pass | 是 | Done |
 | WEB-0003 | 2026-04-30 | `src/legacy/pmbus-math.ts`, `src/legacy/command-metadata.ts`, `src/legacy/legacy-adapter.ts`, `src/legacy/pmbus-math.test.ts` | 迁移 | L11 / L16 / DIRECT / HALF | Vitest 13 pass | 是 | Done |
-| WEB-0008 | 2026-04-30 | 删除 `src/legacy/legacy-adapter.ts`；新增 `src/app/reducer.test.ts`；配置 pre-commit hook | 清理 / 测试 / 配置 | 全局 | 38 pass + tsc | 是 | Done |
+| WEB-0004 | 2026-04-30 | `src/app/state.ts`, `src/app/actions.ts`, `src/app/reducer.ts`, `src/app/view-model.ts` | 新增 | 全局 | typecheck / lint | 是 | Done |
+| WEB-0005 | 2026-04-30 | `App.tsx`, `AppHeader`, `WorkspaceLayout`, `ModeSwitcher`, `ModeWorkspace`, `CommandPicker`, `ResultInspector`, `InfoPanel`, `CopyToolbar`, `BitGrid`, `ThemeToggle` | 新增 | GLOBAL / LAYOUT / THEME | Playwright 1440px+390px | 是 | Done |
+| WEB-0006 | 2026-04-30 | `App.tsx`, `BitGrid`, `ResultInspector`, `ModeWorkspace`, `ModeSwitcher`, `command-metadata.ts`, `vite.config.ts`, `package.json` | 修复 | GLOBAL / LAYOUT / THEME | tsc+eslint+build+vitest 13 pass | 是 | Done |
+| WEB-0007 | 2026-04-30 | `BitGrid.tsx`, `tokens.css`, `App.tsx` | 修复 | GLOBAL / LAYOUT | Playwright 1440px+390px | 是 | Done |
+| WEB-0008 | 2026-04-30 | 删除 `src/legacy/legacy-adapter.ts`；新增 `src/app/reducer.test.ts`（38 tests）；配置 `simple-git-hooks` pre-commit | 清理 / 测试 / 配置 | 全局 | 38 pass + tsc | 是 | Done |
+| WEB-0009 | 2026-04-30 | `docs/WEB_REFACTOR_PLAN.md`（Migration Gap 同步）；新增 `src/components/debug/DebugDrawer.tsx`；更新 `src/App.tsx` | 文档 / 新增 | GLOBAL / LAYOUT | tsc+build+vitest 51 pass + Playwright | 是 | Done |
 
 ### 10.2 变更类型
 
@@ -916,14 +921,15 @@ Reverted
 |---|---|---|---|---|
 | PMBusMath 核心 | 内联 `PMBusMath` | `legacy/pmbus-math.ts` | Done | 机械迁移完成，带完整类型定义；smoke test 13 pass |
 | 命令字典数据 | 内联 `COMMAND_METADATA` | `legacy/command-metadata.ts` | Done | 数据层迁移完成；CommandPicker UI 待建 |
-| 模式 Tabs | HTML `.tabs` + `switchMode` | `ModeSwitcher` | Todo | 禁止继续 inline onclick |
-| 命令字典 UI | `#commandSelect` | `CommandPicker` | Todo | 应升级为 searchable |
-| Bit Grid | `renderBits` / `renderDirectBits` | `BitGrid` | Todo | 保留 nibble grouping |
-| 结果面板 | `#resultBox` | `ResultInspector` | Todo | 桌面右侧，移动 sticky |
-| InfoBar | `#infoBar` | `InfoPanel` | Todo | 修复样式缺失 |
-| DebugPanel | `#debugPanel` | `DebugDrawer` | Todo | 后续调用测试 fixture |
-| 主题切换 | `#themeToggle` + `.dark` | `ThemeToggle` | Todo | `tokens.css` 已建立 `data-theme` token 体系；组件待建 |
-| 复制设置 | global state + localStorage | `CopyToolbar` + persistence | Todo | 保留 0x/space/endian |
+| 模式 Tabs | HTML `.tabs` + `switchMode` | `ModeSwitcher` | Done | React 组件化，无 inline onclick；支持 Ctrl+1/2/3/4 快捷键 |
+| 命令字典 UI | `#commandSelect` | `CommandPicker` | Done | 可搜索下拉框；数据来自 `command-metadata.ts` |
+| Bit Grid | `renderBits` / `renderDirectBits` | `BitGrid` | Done | 保留 nibble 分组；响应式策略：≥1024px 4×1，480-1023px 2×2，<480px 1×1 |
+| 结果面板 | `#resultBox` | `ResultInspector` | Done | 桌面端右侧 sticky 面板，移动端跟随流式布局 |
+| 信息栏 | `#infoBar` | `InfoPanel` | Done | 警告/信息/错误三级提示，带图标和颜色区分 |
+| 公式界面 | `.formula-mode` DOM | `ModeWorkspace` 内联公式区 | Done | 静态版已建；双向编辑待 Milestone 3 接入（Hex ↔ Y/N/m/b/R） |
+| DebugPanel | `#debugPanel` | `DebugDrawer` | Done | 骨架完成：可折叠面板，展示测试状态（51 pass）和诊断信息；边界测试快捷入口待 Milestone 8 接入 |
+| 主题切换 | `#themeToggle` + `.dark` | `ThemeToggle`, `data-theme` | Done | `tokens.css` token 体系 + `ThemeToggle` 组件；支持 light/dark/system |
+| 复制设置 | 复制按钮 + 全局状态 | `CopyToolbar` | Done | Hex / 值 / C 宏复制按钮；clipboard API + 视觉反馈 |
 | DIRECT profiles | inline buttons | `DirectCoeffPanel` | Todo | 数据化 |
 | Boundary tests | `runBoundaryTests` | Vitest + DebugDrawer | In Progress | Vitest 框架已接入；`pmbus-math.test.ts` smoke test 通过；完整 golden-case 测试待补充 |
 

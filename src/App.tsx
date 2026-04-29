@@ -8,6 +8,7 @@ import ModeWorkspace from './components/mode/ModeWorkspace'
 import CommandPicker from './components/command/CommandPicker'
 import ResultInspector from './components/result/ResultInspector'
 import InfoPanel from './components/result/InfoPanel'
+import DebugDrawer from './components/debug/DebugDrawer'
 
 function App() {
   const [state, dispatch] = useReducer(appReducer, INITIAL_STATE)
@@ -80,6 +81,12 @@ function App() {
               <InfoPanel warnings={vm.warnings} />
             </div>
           }
+        />
+
+        <DebugDrawer
+          open={state.ui.debugOpen}
+          state={state}
+          onToggle={() => dispatch({ type: 'ui/toggle-debug' })}
         />
       </div>
     </div>

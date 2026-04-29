@@ -18,6 +18,7 @@
 | WEB-0006 | 2026-04-30 | App.tsx, BitGrid, ResultInspector, ModeWorkspace, ModeSwitcher, command-metadata.ts, vite.config.ts, package.json | 修复 | GLOBAL / LAYOUT / THEME | tsc+eslint+build+vitest 13 pass | 是 | 已完成 |
 | WEB-0007 | 2026-04-30 | BitGrid.tsx, tokens.css, App.tsx | 修复 | GLOBAL / LAYOUT | Playwright 1440px+390px | 是 | 已完成 |
 | WEB-0008 | 2026-04-30 | 删除 `src/legacy/legacy-adapter.ts`；新增 `src/app/reducer.test.ts`（38 tests）；配置 `simple-git-hooks` pre-commit | 清理 / 测试 / 配置 | 全局 | 38 pass + tsc | 是 | 已完成 |
+| WEB-0009 | 2026-04-30 | `docs/WEB_REFACTOR_PLAN.md`（Migration Gap 同步）；新增 `src/components/debug/DebugDrawer.tsx`；更新 `src/App.tsx` | 文档 / 新增 | GLOBAL / LAYOUT | tsc+build+vitest 51 pass + Playwright | 是 | 已完成 |
 
 ---
 
@@ -34,7 +35,7 @@
 | 公式界面 | `.formula-mode` DOM | `ModeWorkspace` 内联公式区 | 已完成 | 静态版已建；双向编辑待 Milestone 3 接入（Hex ↔ Y/N/m/b/R） |
 | 主题切换 | `#themeToggle`, `.dark` | `ThemeToggle`, `data-theme` | 已完成 | `tokens.css` token 体系 + `ThemeToggle` 组件；支持 light/dark/system |
 | 复制工具 | 复制按钮 + 全局状态 | `CopyToolbar` | 已完成 | Hex / 值 / C 宏复制按钮；clipboard API + 视觉反馈 |
-| 调试测试 | `runBoundaryTests` | Vitest + `DebugDrawer` | 进行中 | Vitest 框架已接入；`pmbus-math.test.ts` smoke test 通过；UI 入口待建 |
+| 调试测试 | `runBoundaryTests` | Vitest + `DebugDrawer` | 已完成 | Vitest 框架已接入；`DebugDrawer` 骨架完成（测试状态 + 诊断信息展示）；边界测试快捷入口待 Milestone 8 接入 |
 
 ---
 
