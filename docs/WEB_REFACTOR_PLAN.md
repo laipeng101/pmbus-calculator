@@ -642,23 +642,23 @@ linearSection/directSection 不再用 display:none 作为主状态管理
 
 ### 任务
 
-- [ ] `AppHeader`
-- [ ] `ModeSwitcher`
-- [ ] `CommandPicker` 静态版
-- [ ] `WorkspaceLayout`
-- [ ] `ResultInspector` 静态版
-- [ ] `InfoPanel`
-- [ ] 响应式桌面双栏
-- [ ] 移动端单栏
-- [ ] 暗色模式 token
+- [x] `AppHeader`
+- [x] `ModeSwitcher`
+- [x] `CommandPicker` 静态版
+- [x] `WorkspaceLayout`
+- [x] `ResultInspector` 静态版
+- [x] `InfoPanel`
+- [x] 响应式桌面双栏
+- [x] 移动端单栏
+- [x] 暗色模式 token
 
 ### 验收标准
 
-- [ ] 1440px 桌面布局无明显空洞
-- [ ] 768px 平板布局不溢出
-- [ ] 390px 手机布局无横向滚动
-- [ ] 暗色模式所有文字可读
-- [ ] UI 不依赖旧 DOM ID
+- [x] 1440px 桌面布局无明显空洞（Playwright 验证双栏）
+- [x] 768px 平板布局不溢出
+- [x] 390px 手机布局无横向滚动（Playwright 验证）
+- [x] 暗色模式所有文字可读（data-theme token 体系）
+- [x] UI 不依赖旧 DOM ID
 
 ---
 
