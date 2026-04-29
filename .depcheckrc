@@ -1,0 +1,4 @@
+{
+  "ignores": ["tailwindcss"],
+  "ignorePatterns": ["dist", "node_modules", ".claude"]
+}
