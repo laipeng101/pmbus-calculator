@@ -1,0 +1,201 @@
+import type { AppMode, AppState } from '../../app/state'
+import type { AppAction } from '../../app/actions'
+import type { CalculatorViewModel } from '../../app/view-model'
+import BitGrid from '../bits/BitGrid'
+
+interface Props {
+  mode: AppMode
+  state: AppState
+  vm: CalculatorViewModel
+  dispatch: React.Dispatch<AppAction>
+}
+
+export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
+  return (
+    <div className="space-y-4">
+      {/* Hex Input */}
+      <section
+        className="rounded-xl p-4"
+        style={{
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          boxShadow: 'var(--shadow-panel)',
+        }}
+      >
+        <h3
+          className="mb-3 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          原始数据
+        </h3>
+        <div className="flex items-center gap-2">
+          <label className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            Hex
+          </label>
+          <input
+            type="text"
+            value={vm.rawHex}
+            onChange={(e) =>
+              dispatch({ type: 'raw/set-from-hex', hex: e.target.value })
+            }
+            className="flex-1 rounded-lg px-3 py-2 text-base font-mono outline-none"
+            style={{
+              background: 'var(--color-surface-muted)',
+              color: 'var(--color-text-primary)',
+              border: '1px solid var(--color-border)',
+              fontFamily: 'var(--font-mono)',
+            }}
+            placeholder="0x0000"
+          />
+        </div>
+
+        {/* Bit Grid */}
+        <BitGrid groups={vm.bitGroups} dispatch={dispatch} />
+      </section>
+
+      {/* Mode-specific workspace */}
+      <section
+        className="rounded-xl p-4"
+        style={{
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          boxShadow: 'var(--shadow-panel)',
+        }}
+      >
+        <h3
+          className="mb-3 text-xs font-semibold uppercase tracking-wider"
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          {mode === 'L11'
+            ? 'LINEAR11 参数'
+            : mode === 'L16'
+              ? 'LINEAR16 / VOUT 参数'
+              : mode === 'DIRECT'
+                ? 'DIRECT 系数'
+                : 'IEEE 754 Half-Precision'}
+        </h3>
+
+        {mode === 'L11' && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <label className="w-8 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                N
+              </label>
+              <input
+                type="number"
+                value={state.l11.n}
+                onChange={(e) => dispatch({ type: 'l11/set-n', n: e.target.value })}
+                className="w-24 rounded-lg px-3 py-2 text-sm outline-none"
+                style={{
+                  background: 'var(--color-surface-muted)',
+                  color: 'var(--color-text-primary)',
+                  border: '1px solid var(--color-border)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              />
+              <button
+                onClick={() => dispatch({ type: 'l11/toggle-auto-n' })}
+                className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                style={{
+                  background: state.l11.autoN
+                    ? 'var(--color-accent)'
+                    : 'var(--color-surface-muted)',
+                  color: state.l11.autoN ? '#fff' : 'var(--color-text-secondary)',
+                }}
+              >
+                Auto N {state.l11.autoN ? '✓' : ''}
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="w-8 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                Y
+              </label>
+              <input
+                type="number"
+                value={state.l11.y}
+                onChange={(e) => dispatch({ type: 'l11/set-y', y: e.target.value })}
+                className="w-32 rounded-lg px-3 py-2 text-sm outline-none"
+                style={{
+                  background: 'var(--color-surface-muted)',
+                  color: 'var(--color-text-primary)',
+                  border: '1px solid var(--color-border)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {mode === 'L16' && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <label className="w-24 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                VOUT_MODE
+              </label>
+              <input
+                type="text"
+                value={'0x' + state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')}
+                onChange={(e) => dispatch({ type: 'l16/set-vout-mode', hex: e.target.value })}
+                className="w-24 rounded-lg px-3 py-2 text-sm outline-none"
+                style={{
+                  background: 'var(--color-surface-muted)',
+                  color: 'var(--color-text-primary)',
+                  border: '1px solid var(--color-border)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              />
+              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                N = {state.l16.n}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {mode === 'DIRECT' && (
+          <div className="grid grid-cols-3 gap-3">
+            {(
+              [
+                ['m', state.direct.m],
+                ['b', state.direct.b],
+                ['r', state.direct.r],
+              ] as const
+            ).map(([name, val]) => (
+              <div key={name}>
+                <label
+                  className="mb-1 block text-xs"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {name.toUpperCase()}
+                </label>
+                <input
+                  type="number"
+                  value={val}
+                  onChange={(e) =>
+                    dispatch({
+                      type: 'direct/set-coeff',
+                      name,
+                      value: e.target.value,
+                    })
+                  }
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{
+                    background: 'var(--color-surface-muted)',
+                    color: 'var(--color-text-primary)',
+                    border: '1px solid var(--color-border)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {mode === 'HALF' && (
+          <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            IEEE 754 binary16 半精度浮点。符号 1 位，指数 5 位，尾数 10 位。
+          </p>
+        )}
+      </section>
+    </div>
+  )
+}

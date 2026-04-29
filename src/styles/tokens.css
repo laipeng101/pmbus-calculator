@@ -170,3 +170,73 @@ body {
   color: var(--color-text-secondary);
   margin: 8px 0;
 }
+
+/* =========================================================
+   Workspace Layout — responsive grid
+   ========================================================= */
+
+.workspace-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  padding: 0 16px 24px;
+}
+
+@media (min-width: 768px) {
+  .workspace-layout {
+    grid-template-columns: 1fr 380px;
+    gap: 20px;
+    padding: 0 24px 32px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .workspace-layout {
+    grid-template-columns: 1fr 420px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+}
+
+/* Primary panel */
+.primary-panel {
+  min-width: 0;
+}
+
+/* Secondary panel — sticky on desktop */
+@media (min-width: 768px) {
+  .secondary-panel {
+    position: sticky;
+    top: 16px;
+    align-self: start;
+  }
+}
+
+/* =========================================================
+   Bit Grid — nibble layout
+   ========================================================= */
+
+.bit-grid-container {
+  display: flex;
+  justify-content: center;
+}
+
+.bit-grid-inner {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .bit-grid-inner {
+    grid-template-columns: repeat(2, auto);
+    gap: 10px;
+  }
+}
+
+@media (max-width: 360px) {
+  .bit-grid-inner {
+    grid-template-columns: repeat(1, auto);
+    gap: 8px;
+  }
+}
