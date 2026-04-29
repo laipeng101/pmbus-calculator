@@ -40,12 +40,12 @@
 
 ## 支持的格式
 
-| 模式 | 说明 | 计算公式 |
-|------|------|---------|
-| **LINEAR11** | 11 位有符号尾数 + 5 位有符号指数 | `X = Y × 2^N` |
-| **LINEAR16 (VOUT)** | 16 位无符号尾数，指数来自 `VOUT_MODE` | `X = V × 2^N` |
-| **DIRECT** | 通过三个设备专属系数进行线性变换 | `X = (1/m) × (Y × 10^−R − b)` |
-| **IEEE 半精度** | IEEE 754 binary16（1 位符号、5 位指数、10 位尾数）| 标准半精度浮点 |
+| 模式                | 说明                                               | 计算公式                      |
+| ------------------- | -------------------------------------------------- | ----------------------------- |
+| **LINEAR11**        | 11 位有符号尾数 + 5 位有符号指数                   | `X = Y × 2^N`                 |
+| **LINEAR16 (VOUT)** | 16 位无符号尾数，指数来自 `VOUT_MODE`              | `X = V × 2^N`                 |
+| **DIRECT**          | 通过三个设备专属系数进行线性变换                   | `X = (1/m) × (Y × 10^−R − b)` |
+| **IEEE 半精度**     | IEEE 754 binary16（1 位符号、5 位指数、10 位尾数） | 标准半精度浮点                |
 
 ---
 
@@ -85,12 +85,12 @@ npm test         # 运行 Vitest 测试
 
 ## 键盘快捷键
 
-| 快捷键 | 操作 |
-|--------|------|
-| `Ctrl + 1` | 切换至 LINEAR11 模式 |
+| 快捷键     | 操作                        |
+| ---------- | --------------------------- |
+| `Ctrl + 1` | 切换至 LINEAR11 模式        |
 | `Ctrl + 2` | 切换至 LINEAR16 (VOUT) 模式 |
-| `Ctrl + 3` | 切换至 DIRECT 模式 |
-| `Ctrl + 4` | 切换至 IEEE 半精度模式 |
+| `Ctrl + 3` | 切换至 DIRECT 模式          |
+| `Ctrl + 4` | 切换至 IEEE 半精度模式      |
 
 ---
 
@@ -98,32 +98,34 @@ npm test         # 运行 Vitest 测试
 
 内置字典涵盖以下 PMBus 1.3 命令及其典型预设参数：
 
-| 命令 | 命令码 | 格式 |
-|------|--------|------|
-| `VOUT_COMMAND` | `0x21` | LINEAR16 |
-| `VOUT_OV_FAULT_LIMIT` | `0x40` | LINEAR16 |
-| `READ_VOUT` | `0x8B` | LINEAR16 |
-| `READ_VIN` | `0x88` | DIRECT |
-| `READ_IOUT` | `0x8C` | DIRECT |
-| `READ_TEMPERATURE_1` | `0x8D` | DIRECT |
-| `VIN_OV_FAULT_LIMIT` | `0x55` | DIRECT |
-| `OT_FAULT_LIMIT` | `0x4F` | DIRECT |
-| `FAN_COMMAND` | `0x3B` | LINEAR11 |
-| `READ_POUT` | `0x96` | DIRECT |
-| `READ_FAN_SPEED_1` | `0x90` | LINEAR11 |
-| `STATUS_WORD` | `0x79` | 状态位字 |
-| `READ_EIN` | `0x86` | DIRECT（块读取说明）|
+| 命令                  | 命令码 | 格式                 |
+| --------------------- | ------ | -------------------- |
+| `VOUT_COMMAND`        | `0x21` | LINEAR16             |
+| `VOUT_OV_FAULT_LIMIT` | `0x40` | LINEAR16             |
+| `READ_VOUT`           | `0x8B` | LINEAR16             |
+| `READ_VIN`            | `0x88` | DIRECT               |
+| `READ_IOUT`           | `0x8C` | DIRECT               |
+| `READ_TEMPERATURE_1`  | `0x8D` | DIRECT               |
+| `VIN_OV_FAULT_LIMIT`  | `0x55` | DIRECT               |
+| `OT_FAULT_LIMIT`      | `0x4F` | DIRECT               |
+| `FAN_COMMAND`         | `0x3B` | LINEAR11             |
+| `READ_POUT`           | `0x96` | DIRECT               |
+| `READ_FAN_SPEED_1`    | `0x90` | LINEAR11             |
+| `STATUS_WORD`         | `0x79` | 状态位字             |
+| `READ_EIN`            | `0x86` | DIRECT（块读取说明） |
 
 ---
 
 ## 技术栈
 
 ### 旧版（单文件，仍然可用）
+
 - **纯 HTML + CSS + 原生 JavaScript** — 无框架，无任何外部依赖。
 - CSS 自定义属性驱动完整的亮色/暗黑主题。
 - 严格内容安全策略。
 
 ### 新版 Web App（重构中）
+
 - **Vite** + **React 19** + **TypeScript** — 现代组件化架构。
 - **Tailwind CSS** + CSS 变量 — 设计 Token 驱动的主题系统。
 - **Vitest** — PMBus 数学核心的单元测试。

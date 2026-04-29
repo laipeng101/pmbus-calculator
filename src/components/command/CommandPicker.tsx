@@ -11,10 +11,7 @@ export default function CommandPicker({ commandKey, onChange }: Props) {
   const [query, setQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const commands = useMemo(
-    () => Object.values(COMMAND_METADATA),
-    []
-  )
+  const commands = useMemo(() => Object.values(COMMAND_METADATA), [])
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase()
@@ -24,18 +21,15 @@ export default function CommandPicker({ commandKey, onChange }: Props) {
           (c) =>
             c.label.toLowerCase().includes(q) ||
             c.cmd.toString(16).includes(q) ||
-            (c.spec?.toLowerCase().includes(q) ?? false)
+            (c.spec?.toLowerCase().includes(q) ?? false),
         )
   }, [commands, query])
 
-  const selected = commandKey ? COMMAND_METADATA[commandKey] ?? null : null
+  const selected = commandKey ? (COMMAND_METADATA[commandKey] ?? null) : null
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
       }
     }
@@ -45,7 +39,11 @@ export default function CommandPicker({ commandKey, onChange }: Props) {
 
   return (
     <div ref={containerRef} className="relative px-4 py-2">
-      <label htmlFor="command-picker" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-secondary)' }}>
+      <label
+        htmlFor="command-picker"
+        className="mb-1.5 block text-xs font-semibold uppercase tracking-wider"
+        style={{ color: 'var(--color-text-secondary)' }}
+      >
         PMBus 命令
       </label>
       <button
@@ -92,10 +90,7 @@ export default function CommandPicker({ commandKey, onChange }: Props) {
               autoFocus
             />
           </div>
-          <ul
-            role="listbox"
-            className="max-h-64 overflow-y-auto py-1"
-          >
+          <ul role="listbox" className="max-h-64 overflow-y-auto py-1">
             <li>
               <button
                 role="option"
@@ -107,10 +102,7 @@ export default function CommandPicker({ commandKey, onChange }: Props) {
                 }}
                 className="w-full px-4 py-2 text-left text-sm transition-colors hover:opacity-80"
                 style={{
-                  background:
-                    commandKey === null
-                      ? 'var(--color-surface-muted)'
-                      : 'transparent',
+                  background: commandKey === null ? 'var(--color-surface-muted)' : 'transparent',
                   color: 'var(--color-text-secondary)',
                 }}
               >
@@ -130,25 +122,17 @@ export default function CommandPicker({ commandKey, onChange }: Props) {
                   className="w-full px-4 py-2 text-left text-sm transition-colors hover:opacity-80"
                   style={{
                     background:
-                      commandKey === cmd.key
-                        ? 'var(--color-surface-muted)'
-                        : 'transparent',
+                      commandKey === cmd.key ? 'var(--color-surface-muted)' : 'transparent',
                     color: 'var(--color-text-primary)',
                   }}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-medium">{cmd.label}</span>
-                    <span
-                      className="ml-2 text-xs"
-                      style={{ color: 'var(--color-text-muted)' }}
-                    >
+                    <span className="ml-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
                       0x{cmd.cmd.toString(16).toUpperCase().padStart(2, '0')}
                     </span>
                   </div>
-                  <div
-                    className="mt-0.5 text-xs"
-                    style={{ color: 'var(--color-text-muted)' }}
-                  >
+                  <div className="mt-0.5 text-xs" style={{ color: 'var(--color-text-muted)' }}>
                     {cmd.mode} · {cmd.spec}
                   </div>
                 </button>

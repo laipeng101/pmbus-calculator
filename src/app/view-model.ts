@@ -47,10 +47,7 @@ function toBytesBE(raw: number): [number, number] {
   return [(raw >> 8) & 0xff, raw & 0xff]
 }
 
-function formatBytes(
-  bytes: number[],
-  opts: { prefix0x?: boolean; space?: boolean } = {}
-): string {
+function formatBytes(bytes: number[], opts: { prefix0x?: boolean; space?: boolean } = {}): string {
   const { prefix0x = true, space = true } = opts
   const parts = bytes.map((b) => b.toString(16).toUpperCase().padStart(2, '0'))
   let result = space ? parts.join(' ') : parts.join('')
@@ -107,15 +104,14 @@ function computeValueText(state: AppState): string {
           state.direct.y,
           state.direct.m,
           state.direct.b,
-          state.direct.r
+          state.direct.r,
         )
         return Number.isNaN(r.value) ? '—' : r.value.toString()
       }
       case 'HALF': {
         const r = PMBusMath.decodeHalf(state.raw)
         if (Number.isNaN(r.value)) return 'NaN'
-        if (!Number.isFinite(r.value))
-          return r.value > 0 ? '+Infinity' : '-Infinity'
+        if (!Number.isFinite(r.value)) return r.value > 0 ? '+Infinity' : '-Infinity'
         return r.value.toString()
       }
       default:

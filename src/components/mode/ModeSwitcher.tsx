@@ -14,7 +14,11 @@ interface Props {
 
 export default function ModeSwitcher({ mode, onChange }: Props) {
   return (
-    <nav aria-label="模式切换" role="tablist" className="grid grid-cols-2 gap-2 px-4 py-3 md:flex md:flex-row md:justify-center md:gap-3">
+    <nav
+      aria-label="模式切换"
+      role="tablist"
+      className="grid grid-cols-2 gap-2 px-4 py-3 md:flex md:flex-row md:justify-center md:gap-3"
+    >
       {MODES.map((m) => {
         const active = mode === m.key
         return (
@@ -34,10 +38,7 @@ export default function ModeSwitcher({ mode, onChange }: Props) {
             }}
           >
             {m.label}
-            <span
-              className="ml-1 hidden text-[10px] opacity-60 md:inline"
-              aria-hidden="true"
-            >
+            <span className="ml-1 hidden text-[10px] opacity-60 md:inline" aria-hidden="true">
               Ctrl+{m.shortcut}
             </span>
           </button>

@@ -30,16 +30,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'l11/set-n': {
       const n = parseInt(action.n, 10)
-      return Number.isNaN(n)
-        ? state
-        : { ...state, l11: { ...state.l11, n } }
+      return Number.isNaN(n) ? state : { ...state, l11: { ...state.l11, n } }
     }
 
     case 'l11/set-y': {
       const y = parseInt(action.y, 10)
-      return Number.isNaN(y)
-        ? state
-        : { ...state, l11: { ...state.l11, y } }
+      return Number.isNaN(y) ? state : { ...state, l11: { ...state.l11, y } }
     }
 
     case 'l11/toggle-auto-n':
@@ -55,9 +51,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'direct/set-y': {
       const y = parseInt(action.y, 10)
-      return Number.isNaN(y)
-        ? state
-        : { ...state, direct: { ...state.direct, y } }
+      return Number.isNaN(y) ? state : { ...state, direct: { ...state.direct, y } }
     }
 
     case 'direct/set-coeff': {

@@ -63,9 +63,7 @@ export default function BitGrid({ groups, dispatch }: Props) {
                   return (
                     <button
                       key={bit.index}
-                      onClick={() =>
-                        dispatch({ type: 'bit/toggle', bit: 15 - bit.index })
-                      }
+                      onClick={() => dispatch({ type: 'bit/toggle', bit: 15 - bit.index })}
                       className="flex flex-col items-center gap-0.5"
                       aria-label={`位 ${bit.index}: ${isOn ? '1' : '0'}`}
                       title={`Bit ${bit.index}`}
@@ -100,25 +98,13 @@ export default function BitGrid({ groups, dispatch }: Props) {
       <div className="mt-2 flex flex-wrap justify-center gap-3 text-[10px]">
         <LegendItem color="#3b82f6" label="N [15:11]" />
         <LegendItem color="#10b981" label="Y [10:0]" />
-        <LegendItem
-          color="var(--color-surface-muted)"
-          border="var(--color-border)"
-          label="0"
-        />
+        <LegendItem color="var(--color-surface-muted)" border="var(--color-border)" label="0" />
       </div>
     </div>
   )
 }
 
-function LegendItem({
-  color,
-  border,
-  label,
-}: {
-  color: string
-  border?: string
-  label: string
-}) {
+function LegendItem({ color, border, label }: { color: string; border?: string; label: string }) {
   return (
     <div className="flex items-center gap-1">
       <span

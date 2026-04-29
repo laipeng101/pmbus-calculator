@@ -27,14 +27,12 @@ export default function ResultInspector({ vm }: Props) {
       <div
         className="mb-4 rounded-xl px-4 py-5 text-center md:px-6 md:py-6"
         style={{
-          background: 'linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(16,185,129,0.08) 100%)',
+          background:
+            'linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(16,185,129,0.08) 100%)',
           border: '1px solid rgba(59,130,246,0.15)',
         }}
       >
-        <div
-          className="text-xs font-medium"
-          style={{ color: 'var(--color-text-muted)' }}
-        >
+        <div className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
           物理值
         </div>
         <div
@@ -47,20 +45,14 @@ export default function ResultInspector({ vm }: Props) {
         >
           {vm.valueText}
         </div>
-        <div
-          className="mt-1 text-sm font-medium"
-          style={{ color: 'var(--color-text-secondary)' }}
-        >
+        <div className="mt-1 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
           {vm.formulaText}
         </div>
       </div>
 
       {/* Raw Hex */}
       <div className="mb-3">
-        <label
-          className="mb-1 block text-xs"
-          style={{ color: 'var(--color-text-muted)' }}
-        >
+        <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
           原始 Hex
         </label>
         <div
@@ -78,10 +70,7 @@ export default function ResultInspector({ vm }: Props) {
       {/* Byte Order */}
       <div className="mb-3 grid grid-cols-2 gap-3">
         <div>
-          <label
-            className="mb-1 block text-xs"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
+          <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
             小端序 (LE)
           </label>
           <div
@@ -96,10 +85,7 @@ export default function ResultInspector({ vm }: Props) {
           </div>
         </div>
         <div>
-          <label
-            className="mb-1 block text-xs"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
+          <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
             大端序 (BE)
           </label>
           <div

@@ -90,9 +90,7 @@ export const PMBusMath = {
   encodeLinear11(n: number, y: number): number {
     n = this.clamp(n, -16, 15)
     y = this.clamp(y, -1024, 1023)
-    return (
-      ((this.fromSigned(n, 5) & 0x1f) << 11) | (this.fromSigned(y, 11) & 0x7ff)
-    )
+    return ((this.fromSigned(n, 5) & 0x1f) << 11) | (this.fromSigned(y, 11) & 0x7ff)
   },
 
   /** Find best N/Y for a given physical value */
@@ -136,11 +134,7 @@ export const PMBusMath = {
   },
 
   encodeDirect(value: number, m: number, b: number, R: number): number {
-    return this.clamp(
-      Math.round((m * value + b) * Math.pow(10, R)),
-      -32768,
-      32767,
-    )
+    return this.clamp(Math.round((m * value + b) * Math.pow(10, R)), -32768, 32767)
   },
 
   /** IEEE 754 half-precision float (binary16) */
@@ -228,8 +222,7 @@ export const PMBusMath = {
           type: 'overflow',
           msg: 'Y 接近极值 (±1023/±1024)，可能是饱和/溢出标记',
         }
-      if (y === 0)
-        return { type: 'info', msg: 'Y = 0，表示零值或未初始化' }
+      if (y === 0) return { type: 'info', msg: 'Y = 0，表示零值或未初始化' }
     }
     return null
   },
@@ -240,7 +233,7 @@ export const PMBusMath = {
     for (const b of bytes) {
       crc ^= b & 0xff
       for (let i = 0; i < 8; i++) {
-        crc = crc & 0x80 ? ((crc << 1) ^ 0x07) : crc << 1
+        crc = crc & 0x80 ? (crc << 1) ^ 0x07 : crc << 1
         crc &= 0xff
       }
     }

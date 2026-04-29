@@ -41,11 +41,9 @@ export default function ThemeToggle() {
     })
   }, [])
 
-  const icon =
-    theme === 'light' ? '☀️' : theme === 'dark' ? '🌙' : '🖥️'
+  const icon = theme === 'light' ? '☀️' : theme === 'dark' ? '🌙' : '🖥️'
 
-  const label =
-    theme === 'light' ? '亮色' : theme === 'dark' ? '暗色' : '跟随系统'
+  const label = theme === 'light' ? '亮色' : theme === 'dark' ? '暗色' : '跟随系统'
 
   return (
     <button

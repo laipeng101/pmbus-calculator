@@ -16,7 +16,7 @@
     "postinstall": "simple-git-hooks"
   },
   "simple-git-hooks": {
-    "pre-commit": "npm run typecheck && npm run test:run"
+    "pre-commit": "npm run format && git add -u && npm run typecheck && npm run test:run"
   },
   "dependencies": {
     "react": "^19.1.0",

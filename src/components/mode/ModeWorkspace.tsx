@@ -35,9 +35,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
           <input
             type="text"
             value={vm.rawHex}
-            onChange={(e) =>
-              dispatch({ type: 'raw/set-from-hex', hex: e.target.value })
-            }
+            onChange={(e) => dispatch({ type: 'raw/set-from-hex', hex: e.target.value })}
             className="flex-1 rounded-lg px-3 py-2 text-base font-mono outline-none"
             style={{
               background: 'var(--color-surface-muted)',
@@ -76,8 +74,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         </h3>
 
         {mode === 'L11' && (
-          <div className="space-y-4"
-          >
+          <div className="space-y-4">
             {/* Immersive formula: Y × 2^N */}
             <div
               className="flex items-center justify-center gap-3 rounded-xl px-4 py-5"
@@ -86,10 +83,8 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 border: '1px solid var(--color-border)',
               }}
             >
-              <div className="text-center"
-              >
-                <div className="mb-1 text-xs" style={{ color: 'var(--color-text-muted)' }}
-                >
+              <div className="text-center">
+                <div className="mb-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
                   Y (11-bit)
                 </div>
                 <input
@@ -106,19 +101,15 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 />
               </div>
 
-              <div className="text-2xl font-bold" style={{ color: 'var(--color-text-secondary)' }}
-              >
+              <div className="text-2xl font-bold" style={{ color: 'var(--color-text-secondary)' }}>
                 ×
               </div>
 
-              <div className="text-center"
-              >
-                <div className="mb-1 text-xs" style={{ color: 'var(--color-text-muted)' }}
-                >
+              <div className="text-center">
+                <div className="mb-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
                   2^N
                 </div>
-                <div className="flex items-center gap-1"
-                >
+                <div className="flex items-center gap-1">
                   <input
                     type="number"
                     value={state.l11.n}
@@ -138,9 +129,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                     className="rounded-md px-2 py-1.5 text-lg transition-colors"
                     title={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
                     style={{
-                      background: state.l11.autoN
-                        ? 'var(--color-accent)'
-                        : 'var(--color-surface)',
+                      background: state.l11.autoN ? 'var(--color-accent)' : 'var(--color-surface)',
                       color: state.l11.autoN ? '#fff' : 'var(--color-text-muted)',
                       border: '1px solid var(--color-border)',
                     }}
@@ -152,8 +141,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
             </div>
 
             {/* Range hint */}
-            <div className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}
-            >
+            <div className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
               Y 范围: -1024 ~ 1023 · N 范围: -16 ~ 15
             </div>
           </div>
@@ -194,10 +182,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               ] as const
             ).map(([name, val]) => (
               <div key={name}>
-                <label
-                  className="mb-1 block text-xs"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
+                <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
                   {name.toUpperCase()}
                 </label>
                 <input

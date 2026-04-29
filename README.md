@@ -40,12 +40,12 @@ It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEE
 
 ## Supported Formats
 
-| Mode | Description | Formula |
-|------|-------------|---------|
-| **LINEAR11** | 11-bit mantissa + 5-bit signed exponent | `X = Y × 2^N` |
-| **LINEAR16 (VOUT)** | 16-bit unsigned mantissa, exponent from `VOUT_MODE` | `X = V × 2^N` |
-| **DIRECT** | Linear transform with three device-specific coefficients | `X = (1/m) × (Y × 10^−R − b)` |
-| **IEEE Half** | IEEE 754 binary16 (1-bit sign, 5-bit exponent, 10-bit mantissa) | standard half-precision float |
+| Mode                | Description                                                     | Formula                       |
+| ------------------- | --------------------------------------------------------------- | ----------------------------- |
+| **LINEAR11**        | 11-bit mantissa + 5-bit signed exponent                         | `X = Y × 2^N`                 |
+| **LINEAR16 (VOUT)** | 16-bit unsigned mantissa, exponent from `VOUT_MODE`             | `X = V × 2^N`                 |
+| **DIRECT**          | Linear transform with three device-specific coefficients        | `X = (1/m) × (Y × 10^−R − b)` |
+| **IEEE Half**       | IEEE 754 binary16 (1-bit sign, 5-bit exponent, 10-bit mantissa) | standard half-precision float |
 
 ---
 
@@ -85,11 +85,11 @@ npm test         # runs Vitest
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl + 1` | Switch to LINEAR11 mode |
-| `Ctrl + 2` | Switch to LINEAR16 (VOUT) mode |
-| `Ctrl + 3` | Switch to DIRECT mode |
+| Shortcut   | Action                             |
+| ---------- | ---------------------------------- |
+| `Ctrl + 1` | Switch to LINEAR11 mode            |
+| `Ctrl + 2` | Switch to LINEAR16 (VOUT) mode     |
+| `Ctrl + 3` | Switch to DIRECT mode              |
 | `Ctrl + 4` | Switch to IEEE Half-Precision mode |
 
 ---
@@ -98,32 +98,34 @@ npm test         # runs Vitest
 
 The built-in dictionary covers the following PMBus 1.3 commands with pre-filled typical parameters:
 
-| Command | Code | Format |
-|---------|------|--------|
-| `VOUT_COMMAND` | `0x21` | LINEAR16 |
-| `VOUT_OV_FAULT_LIMIT` | `0x40` | LINEAR16 |
-| `READ_VOUT` | `0x8B` | LINEAR16 |
-| `READ_VIN` | `0x88` | DIRECT |
-| `READ_IOUT` | `0x8C` | DIRECT |
-| `READ_TEMPERATURE_1` | `0x8D` | DIRECT |
-| `VIN_OV_FAULT_LIMIT` | `0x55` | DIRECT |
-| `OT_FAULT_LIMIT` | `0x4F` | DIRECT |
-| `FAN_COMMAND` | `0x3B` | LINEAR11 |
-| `READ_POUT` | `0x96` | DIRECT |
-| `READ_FAN_SPEED_1` | `0x90` | LINEAR11 |
-| `STATUS_WORD` | `0x79` | Status bits |
-| `READ_EIN` | `0x86` | DIRECT (block read note) |
+| Command               | Code   | Format                   |
+| --------------------- | ------ | ------------------------ |
+| `VOUT_COMMAND`        | `0x21` | LINEAR16                 |
+| `VOUT_OV_FAULT_LIMIT` | `0x40` | LINEAR16                 |
+| `READ_VOUT`           | `0x8B` | LINEAR16                 |
+| `READ_VIN`            | `0x88` | DIRECT                   |
+| `READ_IOUT`           | `0x8C` | DIRECT                   |
+| `READ_TEMPERATURE_1`  | `0x8D` | DIRECT                   |
+| `VIN_OV_FAULT_LIMIT`  | `0x55` | DIRECT                   |
+| `OT_FAULT_LIMIT`      | `0x4F` | DIRECT                   |
+| `FAN_COMMAND`         | `0x3B` | LINEAR11                 |
+| `READ_POUT`           | `0x96` | DIRECT                   |
+| `READ_FAN_SPEED_1`    | `0x90` | LINEAR11                 |
+| `STATUS_WORD`         | `0x79` | Status bits              |
+| `READ_EIN`            | `0x86` | DIRECT (block read note) |
 
 ---
 
 ## Tech Stack
 
 ### Legacy (single-file, still works)
+
 - **Pure HTML + CSS + Vanilla JavaScript** — no frameworks, no dependencies.
 - CSS custom properties for full light/dark theming.
 - Strict Content Security Policy.
 
 ### New Web App (under construction)
+
 - **Vite** + **React 19** + **TypeScript** — modern component-based architecture.
 - **Tailwind CSS** + CSS variables — design-token-driven theming.
 - **Vitest** — unit testing for PMBus math core.

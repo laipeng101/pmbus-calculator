@@ -10,16 +10,16 @@
 
 ## 0. 文档状态
 
-| 字段 | 内容 |
-|---|---|
-| 文档类型 | Web 重构主规划 / 代码同步追踪 / Agent 执行基线 |
-| 适用项目 | PMBus 协议计算器 |
-| 当前阶段 | Web 设计重构优先 |
-| 推荐技术栈 | Vite + React + TypeScript + Tailwind CSS + Radix Primitives |
-| 初始代码形态 | 单文件 HTML，内联 CSS / JS |
-| 发布目标 | Web App 优先；保留未来 PWA / App / single HTML 的可能性 |
-| 最后更新 | 2026-04-30 |
-| 维护规则 | 每次结构性代码变更必须同步更新本文件对应章节 |
+| 字段         | 内容                                                        |
+| ------------ | ----------------------------------------------------------- |
+| 文档类型     | Web 重构主规划 / 代码同步追踪 / Agent 执行基线              |
+| 适用项目     | PMBus 协议计算器                                            |
+| 当前阶段     | Web 设计重构优先                                            |
+| 推荐技术栈   | Vite + React + TypeScript + Tailwind CSS + Radix Primitives |
+| 初始代码形态 | 单文件 HTML，内联 CSS / JS                                  |
+| 发布目标     | Web App 优先；保留未来 PWA / App / single HTML 的可能性     |
+| 最后更新     | 2026-04-30                                                  |
+| 维护规则     | 每次结构性代码变更必须同步更新本文件对应章节                |
 
 ---
 
@@ -242,18 +242,18 @@ pmbus-calculator/
 
 ### 4.1 Web 主栈
 
-| 层 | 推荐 |
-|---|---|
-| 构建 | Vite |
-| UI | React |
-| 语言 | TypeScript |
-| 样式 | Tailwind CSS + CSS variables |
-| 基础交互组件 | Radix Primitives |
-| 单元测试 | Vitest |
-| UI/E2E 测试 | Playwright |
-| 格式化 | Prettier |
-| 静态检查 | ESLint |
-| 类型检查 | `tsc --noEmit` |
+| 层           | 推荐                         |
+| ------------ | ---------------------------- |
+| 构建         | Vite                         |
+| UI           | React                        |
+| 语言         | TypeScript                   |
+| 样式         | Tailwind CSS + CSS variables |
+| 基础交互组件 | Radix Primitives             |
+| 单元测试     | Vitest                       |
+| UI/E2E 测试  | Playwright                   |
+| 格式化       | Prettier                     |
+| 静态检查     | ESLint                       |
+| 类型检查     | `tsc --noEmit`               |
 
 ### 4.2 为什么不是直接用原生 DOM
 
@@ -319,17 +319,17 @@ Tauri 是后续 App 化的壳，不是当前 Web 设计重构的核心。当前�
 
 ### 5.3 核心 UI 区域
 
-| 区域 | 组件名 | 说明 |
-|---|---|---|
-| 顶部 | `AppHeader` | 标题、主题、设置 |
-| 模式 | `ModeSwitcher` | L11/L16/DIRECT/HALF |
-| 命令 | `CommandPicker` | 可搜索命令选择 |
-| 工作区 | `ModeWorkspace` | 按模式渲染输入区 |
-| 位图 | `BitGrid` | 16 bit / nibble 分组 |
-| 公式 | `FormulaEditor` | Y × 2^N / DIRECT 等 |
-| 结果 | `ResultInspector` | 值、公式、误差、复制 |
-| 提示 | `InfoPanel` | warnings、notes、status |
-| 调试 | `DebugDrawer` | 边界测试入口 |
+| 区域   | 组件名            | 说明                    |
+| ------ | ----------------- | ----------------------- |
+| 顶部   | `AppHeader`       | 标题、主题、设置        |
+| 模式   | `ModeSwitcher`    | L11/L16/DIRECT/HALF     |
+| 命令   | `CommandPicker`   | 可搜索命令选择          |
+| 工作区 | `ModeWorkspace`   | 按模式渲染输入区        |
+| 位图   | `BitGrid`         | 16 bit / nibble 分组    |
+| 公式   | `FormulaEditor`   | Y × 2^N / DIRECT 等     |
+| 结果   | `ResultInspector` | 值、公式、误差、复制    |
+| 提示   | `InfoPanel`       | warnings、notes、status |
+| 调试   | `DebugDrawer`     | 边界测试入口            |
 
 ---
 
@@ -361,29 +361,29 @@ Tauri 是后续 App 化的壳，不是当前 Web 设计重构的核心。当前�
 function ModeWorkspace({ state, dispatch }: Props) {
   switch (state.mode) {
     case 'L11':
-      return <Linear11Workspace state={state} dispatch={dispatch} />;
+      return <Linear11Workspace state={state} dispatch={dispatch} />
     case 'L16':
-      return <Linear16Workspace state={state} dispatch={dispatch} />;
+      return <Linear16Workspace state={state} dispatch={dispatch} />
     case 'DIRECT':
-      return <DirectWorkspace state={state} dispatch={dispatch} />;
+      return <DirectWorkspace state={state} dispatch={dispatch} />
     case 'HALF':
-      return <HalfWorkspace state={state} dispatch={dispatch} />;
+      return <HalfWorkspace state={state} dispatch={dispatch} />
   }
 }
 ```
 
 ### 6.3 组件职责边界
 
-| 组件 | 允许做 | 禁止做 |
-|---|---|---|
-| `HexInput` | 输入、显示、校验 Hex 字符 | 直接计算 PMBus 值 |
-| `BitGrid` | 显示 bit、触发 toggle action | 直接改 raw 全局变量 |
-| `FormulaEditor` | 编辑 Y/N/Value | 直接操作 DOM |
-| `ResultInspector` | 展示 ViewModel | 修改计算状态 |
-| `CommandPicker` | 选择命令 | 复制命令算法 |
-| `ThemeToggle` | 切换主题状态 | 写散落的 class |
-| `CopyToolbar` | 复制动作 | 重新计算值 |
-| `InfoPanel` | 展示 warning/note | 直接解析输入 |
+| 组件              | 允许做                       | 禁止做              |
+| ----------------- | ---------------------------- | ------------------- |
+| `HexInput`        | 输入、显示、校验 Hex 字符    | 直接计算 PMBus 值   |
+| `BitGrid`         | 显示 bit、触发 toggle action | 直接改 raw 全局变量 |
+| `FormulaEditor`   | 编辑 Y/N/Value               | 直接操作 DOM        |
+| `ResultInspector` | 展示 ViewModel               | 修改计算状态        |
+| `CommandPicker`   | 选择命令                     | 复制命令算法        |
+| `ThemeToggle`     | 切换主题状态                 | 写散落的 class      |
+| `CopyToolbar`     | 复制动作                     | 重新计算值          |
+| `InfoPanel`       | 展示 warning/note            | 直接解析输入        |
 
 ---
 
@@ -394,44 +394,44 @@ function ModeWorkspace({ state, dispatch }: Props) {
 第一阶段使用 React `useReducer`，不要引入复杂状态库。
 
 ```ts
-export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF';
-export type Endian = 'le' | 'be';
+export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF'
+export type Endian = 'le' | 'be'
 
 export interface AppState {
-  mode: AppMode;
-  raw: number;
-  commandKey: string | null;
-  byteOrder: Endian;
+  mode: AppMode
+  raw: number
+  commandKey: string | null
+  byteOrder: Endian
 
   l11: {
-    n: number;
-    y: number;
-    autoN: boolean;
-  };
+    n: number
+    y: number
+    autoN: boolean
+  }
 
   l16: {
-    n: number;
-    voutMode: number;
-  };
+    n: number
+    voutMode: number
+  }
 
   direct: {
-    y: number;
-    m: number;
-    b: number;
-    r: number;
-  };
+    y: number
+    m: number
+    b: number
+    r: number
+  }
 
   copy: {
-    prefix0x: boolean;
-    spaceBetweenBytes: boolean;
-    endian: Endian;
-  };
+    prefix0x: boolean
+    spaceBetweenBytes: boolean
+    endian: Endian
+  }
 
   ui: {
-    theme: 'light' | 'dark' | 'system';
-    focusedField: string | null;
-    debugOpen: boolean;
-  };
+    theme: 'light' | 'dark' | 'system'
+    focusedField: string | null
+    debugOpen: boolean
+  }
 }
 ```
 
@@ -454,7 +454,7 @@ export type AppAction =
   | { type: 'copy/toggle-prefix' }
   | { type: 'copy/toggle-space' }
   | { type: 'copy/set-endian'; endian: Endian }
-  | { type: 'ui/set-theme'; theme: 'light' | 'dark' | 'system' };
+  | { type: 'ui/set-theme'; theme: 'light' | 'dark' | 'system' }
 ```
 
 ### 7.3 ViewModel
@@ -463,23 +463,23 @@ export type AppAction =
 
 ```ts
 export interface CalculatorViewModel {
-  mode: AppMode;
-  valueText: string;
-  rawHex: string;
-  rawBytesLE: string;
-  rawBytesBE: string;
-  formulaText: string;
-  deltaText?: string;
-  deltaKind?: 'ok' | 'warn' | 'error';
-  warnings: Array<{ id: string; level: 'info' | 'warning' | 'error'; text: string }>;
-  bitGroups: BitGroupViewModel[];
-  commandNote?: string;
+  mode: AppMode
+  valueText: string
+  rawHex: string
+  rawBytesLE: string
+  rawBytesBE: string
+  formulaText: string
+  deltaText?: string
+  deltaKind?: 'ok' | 'warn' | 'error'
+  warnings: Array<{ id: string; level: 'info' | 'warning' | 'error'; text: string }>
+  bitGroups: BitGroupViewModel[]
+  commandNote?: string
   visible: {
-    voutMode: boolean;
-    directCoefficients: boolean;
-    halfNote: boolean;
-    nRange: boolean;
-  };
+    voutMode: boolean
+    directCoefficients: boolean
+    halfNote: boolean
+    nRange: boolean
+  }
 }
 ```
 
@@ -520,11 +520,10 @@ export interface CalculatorViewModel {
   --radius-lg: 0.875rem;
   --radius-xl: 1.25rem;
 
-  --shadow-panel: 0 20px 25px -5px rgb(0 0 0 / 0.05),
-                  0 8px 10px -6px rgb(0 0 0 / 0.05);
+  --shadow-panel: 0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05);
 }
 
-:root[data-theme="dark"] {
+:root[data-theme='dark'] {
   --color-bg: #0f172a;
   --color-surface: #1e2937;
   --color-surface-muted: #334155;
@@ -852,17 +851,17 @@ C. 继续提供 single HTML 构建产物
 
 在每个 PR / commit 中填写：
 
-| 变更 ID | 日期 | 文件 | 变更类型 | 影响模式 | 测试 | 文档同步 | 状态 |
-|---|---|---|---|---|---|---|---|
-| WEB-0001 | 2026-04-30 | `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `.gitignore`, `.prettierrc`, `eslint.config.js` | 配置 | 全局 | build / lint pass | 是 | Done |
-| WEB-0002 | 2026-04-30 | `src/main.tsx`, `src/App.tsx`, `src/styles/tokens.css` | 新增 | 全局 / THEME | build pass | 是 | Done |
-| WEB-0003 | 2026-04-30 | `src/legacy/pmbus-math.ts`, `src/legacy/command-metadata.ts`, `src/legacy/legacy-adapter.ts`, `src/legacy/pmbus-math.test.ts` | 迁移 | L11 / L16 / DIRECT / HALF | Vitest 13 pass | 是 | Done |
-| WEB-0004 | 2026-04-30 | `src/app/state.ts`, `src/app/actions.ts`, `src/app/reducer.ts`, `src/app/view-model.ts` | 新增 | 全局 | typecheck / lint | 是 | Done |
-| WEB-0005 | 2026-04-30 | `App.tsx`, `AppHeader`, `WorkspaceLayout`, `ModeSwitcher`, `ModeWorkspace`, `CommandPicker`, `ResultInspector`, `InfoPanel`, `CopyToolbar`, `BitGrid`, `ThemeToggle` | 新增 | GLOBAL / LAYOUT / THEME | Playwright 1440px+390px | 是 | Done |
-| WEB-0006 | 2026-04-30 | `App.tsx`, `BitGrid`, `ResultInspector`, `ModeWorkspace`, `ModeSwitcher`, `command-metadata.ts`, `vite.config.ts`, `package.json` | 修复 | GLOBAL / LAYOUT / THEME | tsc+eslint+build+vitest 13 pass | 是 | Done |
-| WEB-0007 | 2026-04-30 | `BitGrid.tsx`, `tokens.css`, `App.tsx` | 修复 | GLOBAL / LAYOUT | Playwright 1440px+390px | 是 | Done |
-| WEB-0008 | 2026-04-30 | 删除 `src/legacy/legacy-adapter.ts`；新增 `src/app/reducer.test.ts`（38 tests）；配置 `simple-git-hooks` pre-commit | 清理 / 测试 / 配置 | 全局 | 38 pass + tsc | 是 | Done |
-| WEB-0009 | 2026-04-30 | `docs/WEB_REFACTOR_PLAN.md`（Migration Gap 同步）；新增 `src/components/debug/DebugDrawer.tsx`；更新 `src/App.tsx` | 文档 / 新增 | GLOBAL / LAYOUT | tsc+build+vitest 51 pass + Playwright | 是 | Done |
+| 变更 ID  | 日期       | 文件                                                                                                                                                                 | 变更类型           | 影响模式                  | 测试                                  | 文档同步 | 状态 |
+| -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------- | ------------------------------------- | -------- | ---- |
+| WEB-0001 | 2026-04-30 | `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `.gitignore`, `.prettierrc`, `eslint.config.js`                                                    | 配置               | 全局                      | build / lint pass                     | 是       | Done |
+| WEB-0002 | 2026-04-30 | `src/main.tsx`, `src/App.tsx`, `src/styles/tokens.css`                                                                                                               | 新增               | 全局 / THEME              | build pass                            | 是       | Done |
+| WEB-0003 | 2026-04-30 | `src/legacy/pmbus-math.ts`, `src/legacy/command-metadata.ts`, `src/legacy/legacy-adapter.ts`, `src/legacy/pmbus-math.test.ts`                                        | 迁移               | L11 / L16 / DIRECT / HALF | Vitest 13 pass                        | 是       | Done |
+| WEB-0004 | 2026-04-30 | `src/app/state.ts`, `src/app/actions.ts`, `src/app/reducer.ts`, `src/app/view-model.ts`                                                                              | 新增               | 全局                      | typecheck / lint                      | 是       | Done |
+| WEB-0005 | 2026-04-30 | `App.tsx`, `AppHeader`, `WorkspaceLayout`, `ModeSwitcher`, `ModeWorkspace`, `CommandPicker`, `ResultInspector`, `InfoPanel`, `CopyToolbar`, `BitGrid`, `ThemeToggle` | 新增               | GLOBAL / LAYOUT / THEME   | Playwright 1440px+390px               | 是       | Done |
+| WEB-0006 | 2026-04-30 | `App.tsx`, `BitGrid`, `ResultInspector`, `ModeWorkspace`, `ModeSwitcher`, `command-metadata.ts`, `vite.config.ts`, `package.json`                                    | 修复               | GLOBAL / LAYOUT / THEME   | tsc+eslint+build+vitest 13 pass       | 是       | Done |
+| WEB-0007 | 2026-04-30 | `BitGrid.tsx`, `tokens.css`, `App.tsx`                                                                                                                               | 修复               | GLOBAL / LAYOUT           | Playwright 1440px+390px               | 是       | Done |
+| WEB-0008 | 2026-04-30 | 删除 `src/legacy/legacy-adapter.ts`；新增 `src/app/reducer.test.ts`（38 tests）；配置 `simple-git-hooks` pre-commit                                                  | 清理 / 测试 / 配置 | 全局                      | 38 pass + tsc                         | 是       | Done |
+| WEB-0009 | 2026-04-30 | `docs/WEB_REFACTOR_PLAN.md`（Migration Gap 同步）；新增 `src/components/debug/DebugDrawer.tsx`；更新 `src/App.tsx`                                                   | 文档 / 新增        | GLOBAL / LAYOUT           | tsc+build+vitest 51 pass + Playwright | 是       | Done |
 
 ### 10.2 变更类型
 
@@ -905,11 +904,11 @@ Reverted
 
 ### 10.5 示例
 
-| 变更 ID | 日期 | 文件 | 变更类型 | 影响模式 | 测试 | 文档同步 | 状态 |
-|---|---|---|---|---|---|---|---|
-| WEB-0001 | 2026-04-29 | `src/styles/tokens.css` | 新增 | THEME | 手测 light/dark | 是 | Done |
-| WEB-0002 | 2026-04-29 | `src/components/ModeSwitcher.tsx` | 新增 | GLOBAL | 手测模式切换 | 是 | Done |
-| WEB-0003 | 2026-04-29 | `src/legacy/pmbus-math.ts` | 迁移 | L11/L16/DIRECT/HALF | Vitest smoke | 是 | Review |
+| 变更 ID  | 日期       | 文件                              | 变更类型 | 影响模式            | 测试            | 文档同步 | 状态   |
+| -------- | ---------- | --------------------------------- | -------- | ------------------- | --------------- | -------- | ------ |
+| WEB-0001 | 2026-04-29 | `src/styles/tokens.css`           | 新增     | THEME               | 手测 light/dark | 是       | Done   |
+| WEB-0002 | 2026-04-29 | `src/components/ModeSwitcher.tsx` | 新增     | GLOBAL              | 手测模式切换    | 是       | Done   |
+| WEB-0003 | 2026-04-29 | `src/legacy/pmbus-math.ts`        | 迁移     | L11/L16/DIRECT/HALF | Vitest smoke    | 是       | Review |
 
 ---
 
@@ -917,21 +916,21 @@ Reverted
 
 每迁移一个旧功能，必须更新本表。
 
-| 旧功能 | 旧位置 | 新组件/模块 | 状态 | 备注 |
-|---|---|---|---|---|
-| PMBusMath 核心 | 内联 `PMBusMath` | `legacy/pmbus-math.ts` | Done | 机械迁移完成，带完整类型定义；smoke test 13 pass |
-| 命令字典数据 | 内联 `COMMAND_METADATA` | `legacy/command-metadata.ts` | Done | 数据层迁移完成；CommandPicker UI 待建 |
-| 模式 Tabs | HTML `.tabs` + `switchMode` | `ModeSwitcher` | Done | React 组件化，无 inline onclick；支持 Ctrl+1/2/3/4 快捷键 |
-| 命令字典 UI | `#commandSelect` | `CommandPicker` | Done | 可搜索下拉框；数据来自 `command-metadata.ts` |
-| Bit Grid | `renderBits` / `renderDirectBits` | `BitGrid` | Done | 保留 nibble 分组；响应式策略：≥1024px 4×1，480-1023px 2×2，<480px 1×1 |
-| 结果面板 | `#resultBox` | `ResultInspector` | Done | 桌面端右侧 sticky 面板，移动端跟随流式布局 |
-| 信息栏 | `#infoBar` | `InfoPanel` | Done | 警告/信息/错误三级提示，带图标和颜色区分 |
-| 公式界面 | `.formula-mode` DOM | `ModeWorkspace` 内联公式区 | Done | 静态版已建；双向编辑待 Milestone 3 接入（Hex ↔ Y/N/m/b/R） |
-| DebugPanel | `#debugPanel` | `DebugDrawer` | Done | 骨架完成：可折叠面板，展示测试状态（51 pass）和诊断信息；边界测试快捷入口待 Milestone 8 接入 |
-| 主题切换 | `#themeToggle` + `.dark` | `ThemeToggle`, `data-theme` | Done | `tokens.css` token 体系 + `ThemeToggle` 组件；支持 light/dark/system |
-| 复制设置 | 复制按钮 + 全局状态 | `CopyToolbar` | Done | Hex / 值 / C 宏复制按钮；clipboard API + 视觉反馈 |
-| DIRECT profiles | inline buttons | `DirectCoeffPanel` | Todo | 数据化 |
-| Boundary tests | `runBoundaryTests` | Vitest + DebugDrawer | In Progress | Vitest 框架已接入；`pmbus-math.test.ts` smoke test 通过；完整 golden-case 测试待补充 |
+| 旧功能          | 旧位置                            | 新组件/模块                  | 状态        | 备注                                                                                         |
+| --------------- | --------------------------------- | ---------------------------- | ----------- | -------------------------------------------------------------------------------------------- |
+| PMBusMath 核心  | 内联 `PMBusMath`                  | `legacy/pmbus-math.ts`       | Done        | 机械迁移完成，带完整类型定义；smoke test 13 pass                                             |
+| 命令字典数据    | 内联 `COMMAND_METADATA`           | `legacy/command-metadata.ts` | Done        | 数据层迁移完成；CommandPicker UI 待建                                                        |
+| 模式 Tabs       | HTML `.tabs` + `switchMode`       | `ModeSwitcher`               | Done        | React 组件化，无 inline onclick；支持 Ctrl+1/2/3/4 快捷键                                    |
+| 命令字典 UI     | `#commandSelect`                  | `CommandPicker`              | Done        | 可搜索下拉框；数据来自 `command-metadata.ts`                                                 |
+| Bit Grid        | `renderBits` / `renderDirectBits` | `BitGrid`                    | Done        | 保留 nibble 分组；响应式策略：≥1024px 4×1，480-1023px 2×2，<480px 1×1                        |
+| 结果面板        | `#resultBox`                      | `ResultInspector`            | Done        | 桌面端右侧 sticky 面板，移动端跟随流式布局                                                   |
+| 信息栏          | `#infoBar`                        | `InfoPanel`                  | Done        | 警告/信息/错误三级提示，带图标和颜色区分                                                     |
+| 公式界面        | `.formula-mode` DOM               | `ModeWorkspace` 内联公式区   | Done        | 静态版已建；双向编辑待 Milestone 3 接入（Hex ↔ Y/N/m/b/R）                                   |
+| DebugPanel      | `#debugPanel`                     | `DebugDrawer`                | Done        | 骨架完成：可折叠面板，展示测试状态（51 pass）和诊断信息；边界测试快捷入口待 Milestone 8 接入 |
+| 主题切换        | `#themeToggle` + `.dark`          | `ThemeToggle`, `data-theme`  | Done        | `tokens.css` token 体系 + `ThemeToggle` 组件；支持 light/dark/system                         |
+| 复制设置        | 复制按钮 + 全局状态               | `CopyToolbar`                | Done        | Hex / 值 / C 宏复制按钮；clipboard API + 视觉反馈                                            |
+| DIRECT profiles | inline buttons                    | `DirectCoeffPanel`           | Todo        | 数据化                                                                                       |
+| Boundary tests  | `runBoundaryTests`                | Vitest + DebugDrawer         | In Progress | Vitest 框架已接入；`pmbus-math.test.ts` smoke test 通过；完整 golden-case 测试待补充         |
 
 ---
 
@@ -1022,19 +1021,19 @@ C macro includes command if selected
 
 ### 13.1 桌面端
 
-| 宽度 | 预期 |
-|---|---|
+| 宽度   | 预期                                     |
+| ------ | ---------------------------------------- |
 | 1440px | 双栏布局，结果区右侧固定，输入区宽度舒适 |
-| 1024px | 双栏仍可用，CommandPicker 不溢出 |
-| 768px | 可以降为单栏或紧凑双栏 |
+| 1024px | 双栏仍可用，CommandPicker 不溢出         |
+| 768px  | 可以降为单栏或紧凑双栏                   |
 
 ### 13.2 移动端
 
-| 宽度 | 预期 |
-|---|---|
-| 430px | 无横向滚动 |
-| 390px | BitGrid 不溢出 |
-| 360px | 输入框不裁切 |
+| 宽度  | 预期                         |
+| ----- | ---------------------------- |
+| 430px | 无横向滚动                   |
+| 390px | BitGrid 不溢出               |
+| 360px | 输入框不裁切                 |
 | 320px | 允许布局降级，但核心输入可用 |
 
 ### 13.3 主题
@@ -1089,6 +1088,7 @@ docs: update migration tracking table
 ## Changed Files
 
 ## Affected Modes
+
 - [ ] L11
 - [ ] L16
 - [ ] DIRECT
@@ -1098,6 +1098,7 @@ docs: update migration tracking table
 - [ ] Layout
 
 ## Tests
+
 - [ ] lint
 - [ ] typecheck
 - [ ] unit
@@ -1105,12 +1106,15 @@ docs: update migration tracking table
 - [ ] manual mobile check
 
 ## Migration Tracking
+
 Updated:
+
 - [ ] WEB_REFACTOR_PLAN.md
 - [ ] MIGRATION_LOG.md
 - [ ] AGENTS.md if workflow changed
 
 ## Screenshots
+
 Desktop:
 Mobile:
 Dark:
@@ -1126,15 +1130,19 @@ Dark:
 # ADR-0001: Web-first refactor
 
 ## Status
+
 Accepted
 
 ## Context
+
 当前项目从单文件 PMBus 计算器演进为长期维护的 Web 工具。虽然未来可能 App 化，但当前 99% 重心是 Web 设计重构。
 
 ## Decision
+
 采用 Vite + React + TypeScript + Tailwind 的 Web-first 路线。Tauri / App 壳后置。旧计算逻辑先迁移，不重写。
 
 ## Consequences
+
 - Web UI 可以快速现代化。
 - 当前算法资产得到保留。
 - 后续 PWA / App 化可以基于 Web App 包装。
@@ -1145,15 +1153,15 @@ Accepted
 
 ## 16. 风险清单
 
-| 风险 | 影响 | 缓解 |
-|---|---|---|
-| UI 重构破坏计算正确性 | 高 | 先迁移测试，算法不重写 |
-| 一次性重写范围过大 | 高 | 按 Milestone 分阶段 |
-| 状态模型过早复杂化 | 中 | 第一阶段只用 useReducer |
-| Tailwind 与 token 混乱 | 中 | token 管主题，Tailwind 管布局 |
-| 移动端体验退化 | 高 | 每个 Milestone 做 390px 检查 |
-| 旧功能遗漏 | 高 | 维护 Migration Gap 表 |
-| Agent 自作主张引入新库 | 中 | AGENTS.md 强约束 |
+| 风险                   | 影响 | 缓解                          |
+| ---------------------- | ---- | ----------------------------- |
+| UI 重构破坏计算正确性  | 高   | 先迁移测试，算法不重写        |
+| 一次性重写范围过大     | 高   | 按 Milestone 分阶段           |
+| 状态模型过早复杂化     | 中   | 第一阶段只用 useReducer       |
+| Tailwind 与 token 混乱 | 中   | token 管主题，Tailwind 管布局 |
+| 移动端体验退化         | 高   | 每个 Milestone 做 390px 检查  |
+| 旧功能遗漏             | 高   | 维护 Migration Gap 表         |
+| Agent 自作主张引入新库 | 中   | AGENTS.md 强约束              |
 
 ---
 

@@ -149,7 +149,8 @@ Recoil
 
 ```html
 <button onclick="...">
-<div style="...">
+  <div style="..."></div>
+</button>
 ```
 
 允许极少数动态 style，但必须有明确理由。布局和视觉样式优先用 class / token / CSS。
@@ -281,42 +282,42 @@ ThemeToggle
 必须建立统一状态：
 
 ```ts
-type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF';
+type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF'
 ```
 
 推荐状态：
 
 ```ts
 interface AppState {
-  mode: AppMode;
-  raw: number;
-  commandKey: string | null;
-  byteOrder: 'le' | 'be';
+  mode: AppMode
+  raw: number
+  commandKey: string | null
+  byteOrder: 'le' | 'be'
   l11: {
-    n: number;
-    y: number;
-    autoN: boolean;
-  };
+    n: number
+    y: number
+    autoN: boolean
+  }
   l16: {
-    n: number;
-    voutMode: number;
-  };
+    n: number
+    voutMode: number
+  }
   direct: {
-    y: number;
-    m: number;
-    b: number;
-    r: number;
-  };
+    y: number
+    m: number
+    b: number
+    r: number
+  }
   copy: {
-    prefix0x: boolean;
-    spaceBetweenBytes: boolean;
-    endian: 'le' | 'be';
-  };
+    prefix0x: boolean
+    spaceBetweenBytes: boolean
+    endian: 'le' | 'be'
+  }
   ui: {
-    theme: 'light' | 'dark' | 'system';
-    focusedField: string | null;
-    debugOpen: boolean;
-  };
+    theme: 'light' | 'dark' | 'system'
+    focusedField: string | null
+    debugOpen: boolean
+  }
 }
 ```
 
@@ -362,21 +363,21 @@ ViewModel 至少包括：
 
 ```ts
 interface CalculatorViewModel {
-  mode: AppMode;
-  valueText: string;
-  rawHex: string;
-  rawBytesLE: string;
-  rawBytesBE: string;
-  formulaText: string;
-  deltaText?: string;
-  deltaKind?: 'ok' | 'warn' | 'error';
+  mode: AppMode
+  valueText: string
+  rawHex: string
+  rawBytesLE: string
+  rawBytesBE: string
+  formulaText: string
+  deltaText?: string
+  deltaKind?: 'ok' | 'warn' | 'error'
   warnings: Array<{
-    id: string;
-    level: 'info' | 'warning' | 'error';
-    text: string;
-  }>;
-  bitGroups: BitGroupViewModel[];
-  commandNote?: string;
+    id: string
+    level: 'info' | 'warning' | 'error'
+    text: string
+  }>
+  bitGroups: BitGroupViewModel[]
+  commandNote?: string
 }
 ```
 
@@ -466,9 +467,9 @@ README.md
 ### 11.1 变更记录格式
 
 ```md
-| Change ID | Date | Files | Type | Affected Modes | Tests | Docs Updated | Status |
-|---|---|---|---|---|---|---|---|
-| WEB-0001 | 2026-04-29 | src/App.tsx | add | GLOBAL | build | yes | Done |
+| Change ID | Date       | Files       | Type | Affected Modes | Tests | Docs Updated | Status |
+| --------- | ---------- | ----------- | ---- | -------------- | ----- | ------------ | ------ |
+| WEB-0001  | 2026-04-29 | src/App.tsx | add  | GLOBAL         | build | yes          | Done   |
 ```
 
 ### 11.2 Migration Gap 必须同步
