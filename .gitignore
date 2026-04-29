@@ -89,6 +89,8 @@ coverage/
 playwright-report/
 test-results/
 .playwright-mcp/
+tests/e2e/output/
+tests/e2e/report/
 
 # =========================================================
 # IDE / Editor

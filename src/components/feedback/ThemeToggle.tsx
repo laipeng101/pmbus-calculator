@@ -10,16 +10,32 @@ function resolveTheme(theme: Theme): 'light' | 'dark' {
   return theme === 'system' ? getSystemTheme() : theme
 }
 
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Silently fail in private mode or when storage is restricted
+  }
+}
+
 export default function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('theme') as Theme | null
+    const saved = safeGetItem('theme') as Theme | null
     return saved ?? 'system'
   })
 
   useEffect(() => {
     const resolved = resolveTheme(theme)
     document.documentElement.setAttribute('data-theme', resolved)
-    localStorage.setItem('theme', theme)
+    safeSetItem('theme', theme)
   }, [theme])
 
   useEffect(() => {
