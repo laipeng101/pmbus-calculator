@@ -51,6 +51,8 @@
 
 ## 使用方法
 
+### 旧版单文件（立即可用）
+
 计算器是一个独立的单 HTML 文件，无需构建步骤，无需服务器。
 
 **方式 A — 本地打开：**
@@ -61,6 +63,15 @@
 **方式 B — GitHub Pages / 任意静态托管：**
 
 将 `pmbus-calculator.html` 部署到任意静态托管服务（GitHub Pages、Netlify 等），通过 URL 访问即可。
+
+### 新版 Web App（开发中）
+
+```bash
+npm install
+npm run dev      # 启动 Vite 开发服务器，访问 http://localhost:5173
+npm run build    # 生产构建输出到 dist/
+npm test         # 运行 Vitest 测试
+```
 
 **操作流程：**
 
@@ -107,10 +118,18 @@
 
 ## 技术栈
 
+### 旧版（单文件，仍然可用）
 - **纯 HTML + CSS + 原生 JavaScript** — 无框架，无任何外部依赖。
 - CSS 自定义属性驱动完整的亮色/暗黑主题。
-- `prefers-color-scheme` 媒体查询 + 手动切换按钮。
-- 严格内容安全策略（`default-src 'self' 'unsafe-inline' data: blob:`）。
+- 严格内容安全策略。
+
+### 新版 Web App（重构中）
+- **Vite** + **React 19** + **TypeScript** — 现代组件化架构。
+- **Tailwind CSS** + CSS 变量 — 设计 Token 驱动的主题系统。
+- **Vitest** — PMBus 数学核心的单元测试。
+- 详见 [`AGENTS.md`](AGENTS.md) 与 [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md)。
+
+> **当前状态：** 旧版 `pmbus-calculator.html` 完全可用。新版 Web App 正按里程碑分阶段重建；目前已完成骨架布局与计算核心迁移，交互式 UI 尚未接入。
 
 ---
 

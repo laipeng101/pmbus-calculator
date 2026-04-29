@@ -51,6 +51,8 @@ It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEE
 
 ## Usage
 
+### Legacy single-file (works today)
+
 The calculator is a single self-contained HTML file — no build step, no server required.
 
 **Option A — open locally:**
@@ -61,6 +63,15 @@ The calculator is a single self-contained HTML file — no build step, no server
 **Option B — GitHub Pages / any static host:**
 
 Deploy `pmbus-calculator.html` to any static hosting service (GitHub Pages, Netlify, etc.) and access it via URL.
+
+### New web app (work in progress)
+
+```bash
+npm install
+npm run dev      # starts Vite dev server at http://localhost:5173
+npm run build    # production build to dist/
+npm test         # runs Vitest
+```
 
 **Workflow:**
 
@@ -107,10 +118,18 @@ The built-in dictionary covers the following PMBus 1.3 commands with pre-filled 
 
 ## Tech Stack
 
+### Legacy (single-file, still works)
 - **Pure HTML + CSS + Vanilla JavaScript** — no frameworks, no dependencies.
 - CSS custom properties for full light/dark theming.
-- `prefers-color-scheme` media query + manual toggle.
-- Strict Content Security Policy (`default-src 'self' 'unsafe-inline' data: blob:`).
+- Strict Content Security Policy.
+
+### New Web App (under construction)
+- **Vite** + **React 19** + **TypeScript** — modern component-based architecture.
+- **Tailwind CSS** + CSS variables — design-token-driven theming.
+- **Vitest** — unit testing for PMBus math core.
+- See [`AGENTS.md`](AGENTS.md) and [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md) for the full refactor plan.
+
+> **Current status:** The legacy `pmbus-calculator.html` remains fully functional. The new web app is being rebuilt milestone-by-milestone; it currently has a skeleton layout and the math core migrated, but the interactive UI is not yet wired up.
 
 ---
 

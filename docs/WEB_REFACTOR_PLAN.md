@@ -614,23 +614,23 @@ linearSection/directSection 不再用 display:none 作为主状态管理
 
 ### 任务
 
-- [ ] 创建 Vite React TS 项目
-- [ ] 接入 Tailwind
-- [ ] 接入 ESLint / Prettier
-- [ ] 接入 Vitest
-- [ ] 建立 `src/App.tsx`
-- [ ] 建立 `src/styles/tokens.css`
-- [ ] 建立 `src/legacy/`
-- [ ] 迁入 `PMBusMath` 到 legacy adapter
-- [ ] 迁入 `COMMAND_METADATA`
+- [x] 创建 Vite React TS 项目
+- [x] 接入 Tailwind
+- [x] 接入 ESLint / Prettier
+- [x] 接入 Vitest
+- [x] 建立 `src/App.tsx`
+- [x] 建立 `src/styles/tokens.css`
+- [x] 建立 `src/legacy/`
+- [x] 迁入 `PMBusMath` 到 legacy adapter
+- [x] 迁入 `COMMAND_METADATA`
 
 ### 验收标准
 
-- [ ] `npm run dev` 可启动
-- [ ] `npm run build` 可通过
-- [ ] 页面显示基础 AppShell
-- [ ] 旧 HTML 未被删除
-- [ ] `PMBusMath` 至少有 smoke test
+- [x] `npm run dev` 可启动
+- [x] `npm run build` 可通过
+- [x] 页面显示基础 AppShell
+- [x] 旧 HTML 未被删除
+- [x] `PMBusMath` 至少有 smoke test（13 pass）
 
 ---
 
