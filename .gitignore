@@ -1,3 +1,5 @@
 .DS_Store
 *.pdf
+!document/*.pdf
 .worktrees/
+diff_for_ai.txt
