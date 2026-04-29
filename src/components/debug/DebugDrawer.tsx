@@ -67,9 +67,7 @@ export default function DebugDrawer({ open, state, onToggle }: Props) {
           >
             <div className="flex justify-between">
               <span>模式</span>
-              <span style={{ color: 'var(--color-text-primary)' }}>
-                {MODE_LABELS[state.mode]}
-              </span>
+              <span style={{ color: 'var(--color-text-primary)' }}>{MODE_LABELS[state.mode]}</span>
             </div>
             <div className="flex justify-between">
               <span>Raw</span>
@@ -79,9 +77,7 @@ export default function DebugDrawer({ open, state, onToggle }: Props) {
             </div>
             <div className="flex justify-between">
               <span>命令</span>
-              <span style={{ color: 'var(--color-text-primary)' }}>
-                {state.commandKey ?? '—'}
-              </span>
+              <span style={{ color: 'var(--color-text-primary)' }}>{state.commandKey ?? '—'}</span>
             </div>
             <div className="flex justify-between">
               <span>字节序</span>
@@ -91,17 +87,12 @@ export default function DebugDrawer({ open, state, onToggle }: Props) {
             </div>
             <div className="flex justify-between">
               <span>主题</span>
-              <span style={{ color: 'var(--color-text-primary)' }}>
-                {state.ui.theme}
-              </span>
+              <span style={{ color: 'var(--color-text-primary)' }}>{state.ui.theme}</span>
             </div>
           </div>
 
           {/* Future: boundary test runner */}
-          <p
-            className="text-xs italic"
-            style={{ color: 'var(--color-text-muted)' }}
-          >
+          <p className="text-xs italic" style={{ color: 'var(--color-text-muted)' }}>
             边界测试快捷入口待 Milestone 8 接入
           </p>
         </div>

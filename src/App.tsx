@@ -56,10 +56,7 @@ function App() {
       >
         <AppHeader />
 
-        <ModeSwitcher
-          mode={state.mode}
-          onChange={(mode) => dispatch({ type: 'mode/set', mode })}
-        />
+        <ModeSwitcher mode={state.mode} onChange={(mode) => dispatch({ type: 'mode/set', mode })} />
 
         <CommandPicker
           commandKey={state.commandKey}
@@ -67,14 +64,7 @@ function App() {
         />
 
         <WorkspaceLayout
-          primary={
-            <ModeWorkspace
-              mode={state.mode}
-              state={state}
-              vm={vm}
-              dispatch={dispatch}
-            />
-          }
+          primary={<ModeWorkspace mode={state.mode} state={state} vm={vm} dispatch={dispatch} />}
           secondary={
             <div className="space-y-4">
               <ResultInspector vm={vm} />
