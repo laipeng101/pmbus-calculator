@@ -17,6 +17,7 @@
 | WEB-0005 | 2026-04-30 | App.tsx, AppHeader, WorkspaceLayout, ModeSwitcher, ModeWorkspace, CommandPicker, ResultInspector, InfoPanel, CopyToolbar, BitGrid, ThemeToggle | 新增 | GLOBAL / LAYOUT / THEME | Playwright 1440px+390px | 是 | 已完成 |
 | WEB-0006 | 2026-04-30 | App.tsx, BitGrid, ResultInspector, ModeWorkspace, ModeSwitcher, command-metadata.ts, vite.config.ts, package.json | 修复 | GLOBAL / LAYOUT / THEME | tsc+eslint+build+vitest 13 pass | 是 | 已完成 |
 | WEB-0007 | 2026-04-30 | BitGrid.tsx, tokens.css, App.tsx | 修复 | GLOBAL / LAYOUT | Playwright 1440px+390px | 是 | 已完成 |
+| WEB-0008 | 2026-04-30 | 删除 `src/legacy/legacy-adapter.ts`；新增 `src/app/reducer.test.ts`（38 tests）；配置 `simple-git-hooks` pre-commit | 清理 / 测试 / 配置 | 全局 | 38 pass + tsc | 是 | 已完成 |
 
 ---
 

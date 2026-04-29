@@ -18,7 +18,7 @@
 | 推荐技术栈 | Vite + React + TypeScript + Tailwind CSS + Radix Primitives |
 | 初始代码形态 | 单文件 HTML，内联 CSS / JS |
 | 发布目标 | Web App 优先；保留未来 PWA / App / single HTML 的可能性 |
-| 最后更新 | 2026-04-29 |
+| 最后更新 | 2026-04-30 |
 | 维护规则 | 每次结构性代码变更必须同步更新本文件对应章节 |
 
 ---
@@ -857,6 +857,7 @@ C. 继续提供 single HTML 构建产物
 | WEB-0001 | 2026-04-30 | `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `.gitignore`, `.prettierrc`, `eslint.config.js` | 配置 | 全局 | build / lint pass | 是 | Done |
 | WEB-0002 | 2026-04-30 | `src/main.tsx`, `src/App.tsx`, `src/styles/tokens.css` | 新增 | 全局 / THEME | build pass | 是 | Done |
 | WEB-0003 | 2026-04-30 | `src/legacy/pmbus-math.ts`, `src/legacy/command-metadata.ts`, `src/legacy/legacy-adapter.ts`, `src/legacy/pmbus-math.test.ts` | 迁移 | L11 / L16 / DIRECT / HALF | Vitest 13 pass | 是 | Done |
+| WEB-0008 | 2026-04-30 | 删除 `src/legacy/legacy-adapter.ts`；新增 `src/app/reducer.test.ts`；配置 pre-commit hook | 清理 / 测试 / 配置 | 全局 | 38 pass + tsc | 是 | Done |
 
 ### 10.2 变更类型
 
