@@ -14,7 +14,7 @@ interface Props {
 
 export default function ModeSwitcher({ mode, onChange }: Props) {
   return (
-    <nav aria-label="模式切换" role="tablist" className="flex flex-wrap justify-center gap-2 px-4 py-3">
+    <nav aria-label="模式切换" role="tablist" className="grid grid-cols-2 gap-2 px-4 py-3 md:flex md:flex-row md:justify-center md:gap-3">
       {MODES.map((m) => {
         const active = mode === m.key
         return (
@@ -23,7 +23,7 @@ export default function ModeSwitcher({ mode, onChange }: Props) {
             role="tab"
             aria-selected={active}
             onClick={() => onChange(m.key)}
-            className="relative rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200 md:px-5 md:text-base"
+            className="relative rounded-full px-3 py-2 text-xs font-semibold transition-all duration-200 md:px-5 md:text-sm"
             style={{
               background: active ? 'var(--color-accent)' : 'var(--color-surface)',
               color: active ? '#fff' : 'var(--color-text-primary)',

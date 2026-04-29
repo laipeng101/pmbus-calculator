@@ -6,6 +6,12 @@ interface Props {
   dispatch: React.Dispatch<AppAction>
 }
 
+function getBitRegion(index: number): 'n' | 'y' | 'other' {
+  if (index >= 11 && index <= 15) return 'n'
+  if (index >= 0 && index <= 10) return 'y'
+  return 'other'
+}
+
 export default function BitGrid({ groups, dispatch }: Props) {
   return (
     <div className="mt-4">
@@ -14,15 +20,15 @@ export default function BitGrid({ groups, dispatch }: Props) {
           {groups.map((group) => (
             <div
               key={group.nibbleIndex}
-              className="flex flex-col items-center rounded-xl p-2 transition-all hover:opacity-90"
+              className="flex flex-col items-center rounded-xl p-2"
               style={{
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-border)',
-                boxShadow: 'var(--shadow-card)',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
               }}
             >
               <div
-                className="mb-2 rounded-md px-3 py-0.5 text-sm font-bold"
+                className="mb-2 rounded-md px-4 py-0.5 text-sm font-bold"
                 style={{
                   background: 'var(--color-surface-muted)',
                   color: 'var(--color-accent)',
@@ -34,12 +40,26 @@ export default function BitGrid({ groups, dispatch }: Props) {
               </div>
               <div className="flex gap-1">
                 {group.bits.map((bit) => {
-                  const isNibbleBoundary =
-                    bit.index === 15 ||
-                    bit.index === 11 ||
-                    bit.index === 7 ||
-                    bit.index === 3
-                  const isYBoundary = bit.index === 10
+                  const region = getBitRegion(bit.index)
+                  const isOn = bit.value === 1
+
+                  const bgColor = isOn
+                    ? region === 'n'
+                      ? '#3b82f6'
+                      : '#10b981'
+                    : 'var(--color-surface-muted)'
+                  const borderColor = isOn
+                    ? region === 'n'
+                      ? '#2563eb'
+                      : '#059669'
+                    : 'var(--color-border)'
+                  const textColor = isOn ? '#fff' : 'var(--color-text-muted)'
+                  const shadow = isOn
+                    ? region === 'n'
+                      ? '0 4px 12px rgba(59,130,246,0.3)'
+                      : '0 4px 12px rgba(16,185,129,0.3)'
+                    : '0 1px 2px rgba(0,0,0,0.04)'
+
                   return (
                     <button
                       key={bit.index}
@@ -47,38 +67,22 @@ export default function BitGrid({ groups, dispatch }: Props) {
                         dispatch({ type: 'bit/toggle', bit: 15 - bit.index })
                       }
                       className="flex flex-col items-center gap-0.5"
-                      aria-label={`位 ${bit.index}: ${bit.value ? '1' : '0'}`}
+                      aria-label={`位 ${bit.index}: ${isOn ? '1' : '0'}`}
                       title={`Bit ${bit.index}`}
                     >
                       <div
-                        className="flex h-9 w-8 items-center justify-center rounded-lg text-sm font-bold transition-all hover:scale-105 active:scale-95 md:h-10 md:w-9 md:text-base"
+                        className="flex h-10 w-9 items-center justify-center rounded-lg text-base font-bold transition-all hover:scale-105 active:scale-95 md:h-11 md:w-10 md:text-lg"
                         style={{
-                          background: bit.value
-                            ? isYBoundary
-                              ? 'var(--color-bit-y)'
-                              : isNibbleBoundary
-                                ? 'var(--color-bit-n)'
-                                : 'var(--color-bit-e)'
-                            : 'var(--color-surface-muted)',
-                          color: bit.value ? '#fff' : 'var(--color-text-muted)',
-                          border: `2px solid ${
-                            bit.value
-                              ? isYBoundary
-                                ? 'var(--color-bit-y)'
-                                : isNibbleBoundary
-                                  ? 'var(--color-bit-n)'
-                                  : 'var(--color-bit-e)'
-                              : 'var(--color-border)'
-                          }`,
-                          boxShadow: bit.value
-                            ? '0 2px 8px rgba(0,0,0,0.15)'
-                            : 'none',
+                          background: bgColor,
+                          color: textColor,
+                          border: `2px solid ${borderColor}`,
+                          boxShadow: shadow,
                         }}
                       >
                         {bit.value}
                       </div>
                       <span
-                        className="text-[9px] font-medium"
+                        className="text-[10px] font-medium"
                         style={{ color: 'var(--color-text-muted)' }}
                       >
                         {bit.index}
@@ -94,21 +98,35 @@ export default function BitGrid({ groups, dispatch }: Props) {
 
       {/* Legend */}
       <div className="mt-3 flex flex-wrap justify-center gap-4 text-[11px]">
-        <LegendItem color="var(--color-bit-n)" label="Nibble 边界" />
-        <LegendItem color="var(--color-bit-y)" label="Y 区域" />
-        <LegendItem color="var(--color-bit-e)" label="指数区域" />
-        <LegendItem color="var(--color-surface-muted)" label="0" />
+        <LegendItem color="#3b82f6" label="N [15:11]" />
+        <LegendItem color="#10b981" label="Y [10:0]" />
+        <LegendItem
+          color="var(--color-surface-muted)"
+          border="var(--color-border)"
+          label="0"
+        />
       </div>
     </div>
   )
 }
 
-function LegendItem({ color, label }: { color: string; label: string }) {
+function LegendItem({
+  color,
+  border,
+  label,
+}: {
+  color: string
+  border?: string
+  label: string
+}) {
   return (
     <div className="flex items-center gap-1.5">
       <span
-        className="inline-block h-2.5 w-2.5 rounded-sm"
-        style={{ background: color, border: '1px solid var(--color-border)' }}
+        className="inline-block h-3 w-3 rounded-sm"
+        style={{
+          background: color,
+          border: `1px solid ${border || color}`,
+        }}
       />
       <span style={{ color: 'var(--color-text-muted)' }}>{label}</span>
     </div>

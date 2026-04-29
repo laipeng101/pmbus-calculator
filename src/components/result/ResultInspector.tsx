@@ -23,18 +23,23 @@ export default function ResultInspector({ vm }: Props) {
         计算结果
       </h2>
 
-      {/* Value */}
-      <div className="mb-4">
-        <label
-          className="mb-1 block text-xs"
+      {/* Primary Value — large, emphasized */}
+      <div
+        className="mb-4 rounded-xl px-4 py-5 text-center md:px-6 md:py-6"
+        style={{
+          background: 'linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(16,185,129,0.08) 100%)',
+          border: '1px solid rgba(59,130,246,0.15)',
+        }}
+      >
+        <div
+          className="text-xs font-medium"
           style={{ color: 'var(--color-text-muted)' }}
         >
           物理值
-        </label>
+        </div>
         <div
-          className="rounded-lg px-4 py-3 text-2xl font-bold tracking-tight md:text-3xl"
+          className="mt-1 text-3xl font-bold tracking-tight md:text-4xl"
           style={{
-            background: 'var(--color-surface-muted)',
             color: 'var(--color-accent)',
             fontFamily: 'var(--font-mono)',
           }}
@@ -42,10 +47,16 @@ export default function ResultInspector({ vm }: Props) {
         >
           {vm.valueText}
         </div>
+        <div
+          className="mt-1 text-sm font-medium"
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          {vm.formulaText}
+        </div>
       </div>
 
       {/* Raw Hex */}
-      <div className="mb-4">
+      <div className="mb-3">
         <label
           className="mb-1 block text-xs"
           style={{ color: 'var(--color-text-muted)' }}
@@ -65,7 +76,7 @@ export default function ResultInspector({ vm }: Props) {
       </div>
 
       {/* Byte Order */}
-      <div className="mb-4 grid grid-cols-2 gap-3">
+      <div className="mb-3 grid grid-cols-2 gap-3">
         <div>
           <label
             className="mb-1 block text-xs"
@@ -101,26 +112,6 @@ export default function ResultInspector({ vm }: Props) {
           >
             {vm.rawBytesBE}
           </div>
-        </div>
-      </div>
-
-      {/* Formula */}
-      <div className="mb-4">
-        <label
-          className="mb-1 block text-xs"
-          style={{ color: 'var(--color-text-muted)' }}
-        >
-          公式
-        </label>
-        <div
-          className="rounded-lg px-4 py-2 text-sm"
-          style={{
-            background: 'var(--color-surface-muted)',
-            color: 'var(--color-text-secondary)',
-            fontFamily: 'var(--font-mono)',
-          }}
-        >
-          {vm.formulaText}
         </div>
       </div>
 

@@ -31,6 +31,7 @@ export interface CommandMeta {
 
 export const COMMAND_METADATA: Record<string, CommandMeta> = {
   VOUT_COMMAND: {
+    key: 'VOUT_COMMAND',
     mode: 'L16',
     val: 12,
     n: -8,
@@ -41,6 +42,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 13.2 / Part I 8.4.1',
   },
   VOUT_OV_FAULT_LIMIT: {
+    key: 'VOUT_OV_FAULT_LIMIT',
     mode: 'L16',
     val: 13.2,
     n: -8,
@@ -51,6 +53,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 15.x / follows VOUT_MODE',
   },
   READ_VOUT: {
+    key: 'READ_VOUT',
     mode: 'L16',
     val: 12,
     n: -8,
@@ -61,6 +64,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 18.4; format follows VOUT_MODE',
   },
   READ_VIN: {
+    key: 'READ_VIN',
     mode: 'DIRECT',
     val: 48,
     m: 1,
@@ -72,6 +76,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 18.1; two data bytes in Section 7 format',
   },
   READ_IOUT: {
+    key: 'READ_IOUT',
     mode: 'DIRECT',
     val: 20,
     m: 100,
@@ -83,6 +88,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 18.5; two data bytes in Section 7 format',
   },
   READ_TEMPERATURE_1: {
+    key: 'READ_TEMPERATURE_1',
     mode: 'DIRECT',
     val: 45,
     m: 1,
@@ -94,6 +100,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 18.6; two data bytes in Section 7 format',
   },
   VIN_OV_FAULT_LIMIT: {
+    key: 'VIN_OV_FAULT_LIMIT',
     mode: 'DIRECT',
     val: 60,
     m: 1,
@@ -105,6 +112,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 15.23; two data bytes in Section 7 format',
   },
   OT_FAULT_LIMIT: {
+    key: 'OT_FAULT_LIMIT',
     mode: 'DIRECT',
     val: 125,
     m: 1,
@@ -116,6 +124,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 15.17; two data bytes in Section 7 format',
   },
   FAN_COMMAND: {
+    key: 'FAN_COMMAND',
     mode: 'L11',
     val: 5000,
     n: 3,
@@ -125,6 +134,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 14.12; two data bytes in Section 7 format',
   },
   READ_POUT: {
+    key: 'READ_POUT',
     mode: 'DIRECT',
     val: 120,
     m: 1,
@@ -136,6 +146,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 18.11; two data bytes in Section 7 format',
   },
   READ_FAN_SPEED_1: {
+    key: 'READ_FAN_SPEED_1',
     mode: 'L11',
     val: 3200,
     n: 2,
@@ -145,6 +156,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     spec: 'PMBus Part II 18.7; returns RPM in Section 7 format',
   },
   STATUS_WORD: {
+    key: 'STATUS_WORD',
     mode: 'L11',
     val: 0,
     n: 0,
@@ -155,6 +167,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     note: 'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。',
   },
   READ_EIN: {
+    key: 'READ_EIN',
     mode: 'DIRECT',
     val: 100,
     m: 1,

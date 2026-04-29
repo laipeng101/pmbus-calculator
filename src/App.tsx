@@ -42,37 +42,46 @@ function App() {
 
   return (
     <div
-      className="flex min-h-screen flex-col"
+      className="flex min-h-screen flex-col items-center py-6 px-4"
       style={{ background: 'var(--color-bg)' }}
     >
-      <AppHeader />
+      <div
+        className="w-full max-w-[900px] rounded-2xl p-6 md:p-8"
+        style={{
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          boxShadow: 'var(--shadow-panel)',
+        }}
+      >
+        <AppHeader />
 
-      <ModeSwitcher
-        mode={state.mode}
-        onChange={(mode) => dispatch({ type: 'mode/set', mode })}
-      />
+        <ModeSwitcher
+          mode={state.mode}
+          onChange={(mode) => dispatch({ type: 'mode/set', mode })}
+        />
 
-      <CommandPicker
-        commandKey={state.commandKey}
-        onChange={(key) => dispatch({ type: 'command/set', commandKey: key })}
-      />
+        <CommandPicker
+          commandKey={state.commandKey}
+          onChange={(key) => dispatch({ type: 'command/set', commandKey: key })}
+        />
 
-      <WorkspaceLayout
-        primary={
-          <ModeWorkspace
-            mode={state.mode}
-            state={state}
-            vm={vm}
-            dispatch={dispatch}
-          />
-        }
-        secondary={
-          <div className="space-y-4">
-            <ResultInspector vm={vm} />
-            <InfoPanel warnings={vm.warnings} />
-          </div>
-        }
-      />
+        <WorkspaceLayout
+          primary={
+            <ModeWorkspace
+              mode={state.mode}
+              state={state}
+              vm={vm}
+              dispatch={dispatch}
+            />
+          }
+          secondary={
+            <div className="space-y-4">
+              <ResultInspector vm={vm} />
+              <InfoPanel warnings={vm.warnings} />
+            </div>
+          }
+        />
+      </div>
     </div>
   )
 }

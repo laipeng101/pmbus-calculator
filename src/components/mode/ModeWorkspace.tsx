@@ -76,52 +76,85 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         </h3>
 
         {mode === 'L11' && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <label className="w-8 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                N
-              </label>
-              <input
-                type="number"
-                value={state.l11.n}
-                onChange={(e) => dispatch({ type: 'l11/set-n', n: e.target.value })}
-                className="w-24 rounded-lg px-3 py-2 text-sm outline-none"
-                style={{
-                  background: 'var(--color-surface-muted)',
-                  color: 'var(--color-text-primary)',
-                  border: '1px solid var(--color-border)',
-                  fontFamily: 'var(--font-mono)',
-                }}
-              />
-              <button
-                onClick={() => dispatch({ type: 'l11/toggle-auto-n' })}
-                className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-                style={{
-                  background: state.l11.autoN
-                    ? 'var(--color-accent)'
-                    : 'var(--color-surface-muted)',
-                  color: state.l11.autoN ? '#fff' : 'var(--color-text-secondary)',
-                }}
+          <div className="space-y-4"
+          >
+            {/* Immersive formula: Y × 2^N */}
+            <div
+              className="flex items-center justify-center gap-3 rounded-xl px-4 py-5"
+              style={{
+                background: 'var(--color-surface-muted)',
+                border: '1px solid var(--color-border)',
+              }}
+            >
+              <div className="text-center"
               >
-                Auto N {state.l11.autoN ? '✓' : ''}
-              </button>
+                <div className="mb-1 text-xs" style={{ color: 'var(--color-text-muted)' }}
+                >
+                  Y (11-bit)
+                </div>
+                <input
+                  type="number"
+                  value={state.l11.y}
+                  onChange={(e) => dispatch({ type: 'l11/set-y', y: e.target.value })}
+                  className="w-28 rounded-lg px-3 py-2 text-center text-lg font-bold outline-none"
+                  style={{
+                    background: 'var(--color-surface)',
+                    color: 'var(--color-text-primary)',
+                    border: '1px solid var(--color-border)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                />
+              </div>
+
+              <div className="text-2xl font-bold" style={{ color: 'var(--color-text-secondary)' }}
+              >
+                ×
+              </div>
+
+              <div className="text-center"
+              >
+                <div className="mb-1 text-xs" style={{ color: 'var(--color-text-muted)' }}
+                >
+                  2^N
+                </div>
+                <div className="flex items-center gap-1"
+                >
+                  <input
+                    type="number"
+                    value={state.l11.n}
+                    onChange={(e) => dispatch({ type: 'l11/set-n', n: e.target.value })}
+                    disabled={state.l11.autoN}
+                    className="w-20 rounded-lg px-2 py-2 text-center text-lg font-bold outline-none"
+                    style={{
+                      background: 'var(--color-surface)',
+                      color: 'var(--color-text-primary)',
+                      border: '1px solid var(--color-border)',
+                      fontFamily: 'var(--font-mono)',
+                      opacity: state.l11.autoN ? 0.6 : 1,
+                    }}
+                  />
+                  <button
+                    onClick={() => dispatch({ type: 'l11/toggle-auto-n' })}
+                    className="rounded-md px-2 py-1.5 text-lg transition-colors"
+                    title={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
+                    style={{
+                      background: state.l11.autoN
+                        ? 'var(--color-accent)'
+                        : 'var(--color-surface)',
+                      color: state.l11.autoN ? '#fff' : 'var(--color-text-muted)',
+                      border: '1px solid var(--color-border)',
+                    }}
+                  >
+                    {state.l11.autoN ? '🔒' : '🔓'}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <label className="w-8 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                Y
-              </label>
-              <input
-                type="number"
-                value={state.l11.y}
-                onChange={(e) => dispatch({ type: 'l11/set-y', y: e.target.value })}
-                className="w-32 rounded-lg px-3 py-2 text-sm outline-none"
-                style={{
-                  background: 'var(--color-surface-muted)',
-                  color: 'var(--color-text-primary)',
-                  border: '1px solid var(--color-border)',
-                  fontFamily: 'var(--font-mono)',
-                }}
-              />
+
+            {/* Range hint */}
+            <div className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}
+            >
+              Y 范围: -1024 ~ 1023 · N 范围: -16 ~ 15
             </div>
           </div>
         )}
