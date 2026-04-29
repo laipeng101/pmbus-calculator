@@ -46,7 +46,7 @@ function App() {
       style={{ background: 'var(--color-bg)' }}
     >
       <div
-        className="w-full max-w-[900px] rounded-2xl p-6 md:p-8"
+        className="w-full max-w-[1000px] rounded-2xl p-6 md:p-8"
         style={{
           background: 'var(--color-surface)',
           border: '1px solid var(--color-border)',

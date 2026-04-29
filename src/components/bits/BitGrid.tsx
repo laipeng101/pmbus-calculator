@@ -20,7 +20,7 @@ export default function BitGrid({ groups, dispatch }: Props) {
           {groups.map((group) => (
             <div
               key={group.nibbleIndex}
-              className="flex flex-col items-center rounded-xl p-2"
+              className="flex flex-col items-center rounded-lg p-1"
               style={{
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-border)',
@@ -28,7 +28,7 @@ export default function BitGrid({ groups, dispatch }: Props) {
               }}
             >
               <div
-                className="mb-2 rounded-md px-4 py-0.5 text-sm font-bold"
+                className="mb-1 rounded px-2 py-0.5 text-xs font-bold"
                 style={{
                   background: 'var(--color-surface-muted)',
                   color: 'var(--color-accent)',
@@ -38,7 +38,7 @@ export default function BitGrid({ groups, dispatch }: Props) {
               >
                 {group.hex}
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-0.5">
                 {group.bits.map((bit) => {
                   const region = getBitRegion(bit.index)
                   const isOn = bit.value === 1
@@ -71,7 +71,7 @@ export default function BitGrid({ groups, dispatch }: Props) {
                       title={`Bit ${bit.index}`}
                     >
                       <div
-                        className="flex h-10 w-9 items-center justify-center rounded-lg text-base font-bold transition-all hover:scale-105 active:scale-95 md:h-11 md:w-10 md:text-lg"
+                        className="flex h-8 w-7 items-center justify-center rounded text-sm font-bold transition-all hover:scale-105 active:scale-95"
                         style={{
                           background: bgColor,
                           color: textColor,
@@ -82,7 +82,7 @@ export default function BitGrid({ groups, dispatch }: Props) {
                         {bit.value}
                       </div>
                       <span
-                        className="text-[10px] font-medium"
+                        className="text-[9px] font-medium"
                         style={{ color: 'var(--color-text-muted)' }}
                       >
                         {bit.index}
@@ -97,7 +97,7 @@ export default function BitGrid({ groups, dispatch }: Props) {
       </div>
 
       {/* Legend */}
-      <div className="mt-3 flex flex-wrap justify-center gap-4 text-[11px]">
+      <div className="mt-2 flex flex-wrap justify-center gap-3 text-[10px]">
         <LegendItem color="#3b82f6" label="N [15:11]" />
         <LegendItem color="#10b981" label="Y [10:0]" />
         <LegendItem
@@ -120,9 +120,9 @@ function LegendItem({
   label: string
 }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1">
       <span
-        className="inline-block h-3 w-3 rounded-sm"
+        className="inline-block h-2.5 w-2.5 rounded-sm"
         style={{
           background: color,
           border: `1px solid ${border || color}`,
