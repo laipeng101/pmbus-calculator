@@ -854,7 +854,9 @@ C. 继续提供 single HTML 构建产物
 
 | 变更 ID | 日期 | 文件 | 变更类型 | 影响模式 | 测试 | 文档同步 | 状态 |
 |---|---|---|---|---|---|---|---|
-| WEB-0001 | YYYY-MM-DD | `src/App.tsx` | 新增 | 全局 | N/A | 是 | Done |
+| WEB-0001 | 2026-04-30 | `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `.gitignore`, `.prettierrc`, `eslint.config.js` | 配置 | 全局 | build / lint pass | 是 | Done |
+| WEB-0002 | 2026-04-30 | `src/main.tsx`, `src/App.tsx`, `src/styles/tokens.css` | 新增 | 全局 / THEME | build pass | 是 | Done |
+| WEB-0003 | 2026-04-30 | `src/legacy/pmbus-math.ts`, `src/legacy/command-metadata.ts`, `src/legacy/legacy-adapter.ts`, `src/legacy/pmbus-math.test.ts` | 迁移 | L11 / L16 / DIRECT / HALF | Vitest 13 pass | 是 | Done |
 
 ### 10.2 变更类型
 
@@ -911,16 +913,18 @@ Reverted
 
 | 旧功能 | 旧位置 | 新组件/模块 | 状态 | 备注 |
 |---|---|---|---|---|
+| PMBusMath 核心 | 内联 `PMBusMath` | `legacy/pmbus-math.ts` | Done | 机械迁移完成，带完整类型定义；smoke test 13 pass |
+| 命令字典数据 | 内联 `COMMAND_METADATA` | `legacy/command-metadata.ts` | Done | 数据层迁移完成；CommandPicker UI 待建 |
 | 模式 Tabs | HTML `.tabs` + `switchMode` | `ModeSwitcher` | Todo | 禁止继续 inline onclick |
-| 命令字典 | `#commandSelect` | `CommandPicker` | Todo | 应升级为 searchable |
+| 命令字典 UI | `#commandSelect` | `CommandPicker` | Todo | 应升级为 searchable |
 | Bit Grid | `renderBits` / `renderDirectBits` | `BitGrid` | Todo | 保留 nibble grouping |
 | 结果面板 | `#resultBox` | `ResultInspector` | Todo | 桌面右侧，移动 sticky |
 | InfoBar | `#infoBar` | `InfoPanel` | Todo | 修复样式缺失 |
 | DebugPanel | `#debugPanel` | `DebugDrawer` | Todo | 后续调用测试 fixture |
-| 主题切换 | `#themeToggle` + `.dark` | `ThemeToggle` | Todo | 改为 data-theme |
+| 主题切换 | `#themeToggle` + `.dark` | `ThemeToggle` | Todo | `tokens.css` 已建立 `data-theme` token 体系；组件待建 |
 | 复制设置 | global state + localStorage | `CopyToolbar` + persistence | Todo | 保留 0x/space/endian |
 | DIRECT profiles | inline buttons | `DirectCoeffPanel` | Todo | 数据化 |
-| Boundary tests | `runBoundaryTests` | Vitest + DebugDrawer | Todo | 先迁移再删除 |
+| Boundary tests | `runBoundaryTests` | Vitest + DebugDrawer | In Progress | Vitest 框架已接入；`pmbus-math.test.ts` smoke test 通过；完整 golden-case 测试待补充 |
 
 ---
 
