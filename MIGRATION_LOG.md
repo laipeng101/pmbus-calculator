@@ -15,6 +15,7 @@
 | WEB-0003 | 2026-04-30 | src/legacy/pmbus-math.ts, src/legacy/command-metadata.ts, src/legacy/legacy-adapter.ts | 迁移 | L11/L16/DIRECT/HALF | Vitest smoke 13 pass | 是 | 已完成 |
 | WEB-0004 | 2026-04-30 | src/app/state.ts, src/app/actions.ts, src/app/reducer.ts, src/app/view-model.ts | 新增 | 全局 | typecheck / lint | 是 | 已完成 |
 | WEB-0005 | 2026-04-30 | App.tsx, AppHeader, WorkspaceLayout, ModeSwitcher, ModeWorkspace, CommandPicker, ResultInspector, InfoPanel, CopyToolbar, BitGrid, ThemeToggle | 新增 | GLOBAL / LAYOUT / THEME | Playwright 1440px+390px | 是 | 已完成 |
+| WEB-0006 | 2026-04-30 | App.tsx, BitGrid, ResultInspector, ModeWorkspace, ModeSwitcher, command-metadata.ts, vite.config.ts, package.json | 修复 | GLOBAL / LAYOUT / THEME | tsc+eslint+build+vitest 13 pass | 是 | 已完成 |
 
 ---
 
@@ -28,7 +29,7 @@
 | 结果框 | `#resultBox` | `ResultInspector` | 已完成 | 桌面端右侧 sticky 面板，移动端跟随流式布局 |
 | 信息栏 | `#infoBar` | `InfoPanel` | 已完成 | 警告/信息/错误三级提示，带图标和颜色区分 |
 | 位图网格 | `renderBits`, `renderDirectBits` | `BitGrid` | 已完成 | 保留 nibble 分组；桌面 4×1，移动 2×2 |
-| 公式界面 | `.formula-mode` DOM | `ModeWorkspace` 内联公式区 | 进行中 | L11/L16/DIRECT/HALF 参数区静态版已建；双向编辑待接入 |
+| 公式界面 | `.formula-mode` DOM | `ModeWorkspace` 内联公式区 | 已完成 | 静态版已建；双向编辑已接入（Hex ↔ Y/N/m/b/R） |
 | 主题切换 | `#themeToggle`, `.dark` | `ThemeToggle`, `data-theme` | 已完成 | `tokens.css` token 体系 + `ThemeToggle` 组件；支持 light/dark/system |
 | 复制工具 | 复制按钮 + 全局状态 | `CopyToolbar` | 已完成 | Hex / 值 / C 宏复制按钮；clipboard API + 视觉反馈 |
 | 调试测试 | `runBoundaryTests` | Vitest + `DebugDrawer` | 进行中 | Vitest 框架已接入；`pmbus-math.test.ts` smoke test 通过；UI 入口待建 |
@@ -41,10 +42,10 @@
 |---|---|---|---|---|---|---|---|---|---|---|
 | M1 骨架 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 |
 | M2 布局 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 不适用 | 不适用 | 不适用 | 不适用 |
-| M3 L11 | 待办 | 待办 | 待办 | 待办 | 待办 | 待办 | 待办 | 不适用 | 不适用 | 不适用 |
-| M4 L16 | 待办 | 待办 | 待办 | 待办 | 待办 | 待办 | 完成? | 待办 | 不适用 | 不适用 |
-| M5 DIRECT | 待办 | 待办 | 待办 | 待办 | 待办 | 待办 | 完成? | 完成? | 待办 | 不适用 |
-| M6 HALF | 待办 | 待办 | 待办 | 待办 | 待办 | 待办 | 完成? | 完成? | 完成? | 待办 |
+| M3 L11 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 不适用 | 不适用 | 不适用 |
+| M4 L16 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 不适用 | 不适用 |
+| M5 DIRECT | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 不适用 |
+| M6 HALF | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 |
 
 ---
 
