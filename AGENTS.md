@@ -8,7 +8,7 @@
 
 ```text
 把单文件 PMBus Calculator 重构为可维护的现代 Web App。
-当前阶段：Web-first。L11/L16 已完成并通过 M4.5 稳定化门禁；下一步 M5 DIRECT。
+当前阶段：Web-first。L11/L16/DIRECT/HALF 已闭环，M7 Copy 已合入；当前 M8 回归。
 ```
 
 不追求（除非用户明确要求进入对应阶段）：
@@ -70,6 +70,8 @@ tests/e2e/        Playwright 真实用户流程
 - UI E2E 至少覆盖：模式切换、Hex 输入、Value 输入、bit toggle、命令选择、复制、主题、移动端布局。
 - 修改算法必须同时补 golden case。
 - `npm run test:coverage` 必须达到 `vite.config.ts` 中声明的阈值。
+- 分层覆盖策略：`src/app` 与 `src/legacy` 由 Vitest + v8 coverage 覆盖；
+  `src/components` 为薄展示/交互层，由 Playwright E2E 覆盖，不纳入 v8 coverage 阈值。
 
 ## 7. 每次任务执行流程
 
