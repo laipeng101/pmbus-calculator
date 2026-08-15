@@ -3,6 +3,7 @@ import type { AppState } from './state'
 import type { AppAction } from './actions'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { getCommandConfig } from '../legacy/command-metadata'
+import { parseHexStrict } from './hex-parse'
 
 /** Integer parser for reducer-managed numeric fields (L11 Y/N, etc.) */
 function parseIntegerSafe(s: string): number | null {
@@ -137,7 +138,7 @@ function applyCommandPreset(state: AppState, commandKey: string | null): AppStat
       m: preset.m ?? next.direct.m,
       b: preset.b ?? next.direct.b,
       r: preset.R ?? next.direct.r,
-      error: next.direct.error,
+      error: null,
     }
     const withDirect = { ...next, mode: 'DIRECT' as const, direct }
     const y = PMBusMath.encodeDirect(preset.value, direct.m, direct.b, direct.r)
@@ -181,13 +182,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return applyCommandPreset(state, action.commandKey)
 
     case 'raw/set-from-hex': {
-      const cleaned = action.hex.replace(/^0x/i, '').replace(/\s/g, '')
-      const parsed = cleaned === '' ? 0 : parseInt(cleaned, 16)
-      if (Number.isNaN(parsed)) return state
-      // Legacy behavior: in L16 + big-endian mode, hex input is byte-swapped
-      // into the internal little-endian PMBus word.
+      const parsed = parseHexStrict(action.hex, 4)
+      if (parsed.ok === false) return state
+      // In L16 + big-endian mode, hex input is byte-swapped into the internal
+      // little-endian PMBus word.  Over-long input is rejected above, so no
+      // silent truncation occurs here.
       const raw =
-        state.mode === 'L16' && state.byteOrder === 'be' ? PMBusMath.swapBytes(parsed) : parsed
+        state.mode === 'L16' && state.byteOrder === 'be'
+          ? PMBusMath.swapBytes(parsed.value)
+          : parsed.value
       return withRaw(state, raw)
     }
 
@@ -261,15 +264,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'l16/set-vout-mode': {
-      const hex = action.hex.replace(/^0x/i, '')
-      const voutMode = hex === '' ? 0 : parseInt(hex, 16)
-      if (Number.isNaN(voutMode)) return state
+      const parsedHex = parseHexStrict(action.hex, 2)
+      if (parsedHex.ok === false) return state
+      const voutMode = parsedHex.value
       const parsed = PMBusMath.parseVoutMode(voutMode)
       const l16 = {
         ...state.l16,
-        voutMode: voutMode & 0xff,
-        // Per PMBus 1.3: VOUT_MODE LINEAR sets N from the low 5 bits.
-        // Non-LINEAR modes must not silently change the exponent.
+        voutMode,
+        // Per PMBus 1.3 Part II §8.3: VOUT_MODE LINEAR sets N from the low
+        // 5 bits.  Non-LINEAR modes must not silently change the exponent.
         ...(typeof parsed.linearExponent === 'number' ? { n: parsed.linearExponent } : {}),
       }
       return { ...state, l16 }

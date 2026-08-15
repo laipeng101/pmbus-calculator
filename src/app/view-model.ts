@@ -161,7 +161,7 @@ function buildWarnings(state: AppState): WarningVM[] {
       text: 'DIRECT 系数 m 不能为 0',
     })
   }
-  if (state.direct.error) {
+  if (state.mode === 'DIRECT' && state.direct.error) {
     warnings.push({
       id: 'direct-coeff-error',
       level: 'error',
