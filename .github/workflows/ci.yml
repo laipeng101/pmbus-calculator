@@ -50,11 +50,22 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: git diff --check ${{ env.BASE_SHA }} ${{ env.HEAD_SHA }}
+        run: |
+          set -euo pipefail
+          git diff --check "$BASE_SHA" "$HEAD_SHA"
 
-      - name: Check pushed commit for whitespace errors
+      - name: Check full pushed range for whitespace errors
         if: github.event_name == 'push'
-        run: git show --check --stat --oneline HEAD
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            git show --check --stat --oneline "$HEAD_SHA"
+          else
+            git diff --check "$BEFORE_SHA" "$HEAD_SHA"
+          fi
 
       - name: Audit dependencies
         run: npm audit --audit-level=high
