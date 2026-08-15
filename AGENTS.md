@@ -432,24 +432,25 @@ style={{ color: '#1e40af' }}
 必须按以下顺序优先：
 
 ```text
-1. docs / AGENTS
-2. Vite React TS skeleton
-3. design tokens
-4. AppShell layout
-5. static ModeSwitcher / CommandPicker / ResultInspector
-6. migrate PMBusMath as legacy adapter
-7. migrate COMMAND_METADATA
-8. L11 full loop
-9. L16 full loop
-10. DIRECT full loop
-11. HALF full loop
-12. copy tools
-13. debug tests migration
-14. legacy cleanup
+1. docs / AGENTS                                ✅ 已完成
+2. Vite React TS skeleton                       ✅ 已完成
+3. design tokens                                ✅ 已完成
+4. AppShell layout                              ✅ 已完成
+5. static ModeSwitcher / CommandPicker / ResultInspector  ✅ 已完成
+6. migrate PMBusMath as legacy adapter          ✅ 已完成
+7. migrate COMMAND_METADATA                     ✅ 已完成
+8. L11 full loop                                🔄 进行中（当前）
+9. L16 full loop                                ⬜ 待办
+10. DIRECT full loop                             ⬜ 待办
+11. HALF full loop                               ⬜ 待办
+12. copy tools                                   ⬜ 待办
+13. debug tests migration                        ⬜ 待办
+14. legacy cleanup                               ⬜ 待办
 ```
 
 不要先做 DIRECT/HALF，而跳过 L11。  
-L11 是主路径和首个闭环。
+L11 是主路径和首个闭环。  
+当前执行位置：第 8 项 L11 full loop。
 
 ---
 
@@ -672,17 +673,32 @@ VOUT_MODE 非 LINEAR
 如果没有更具体任务，Agent 应从这里开始：
 
 ```text
-1. 创建 docs/WEB_REFACTOR_PLAN.md
-2. 创建 AGENTS.md
-3. 创建 CLAUDE.md 指向 AGENTS.md
-4. 创建 Vite React TS skeleton
-5. 添加 tokens.css
-6. 添加 AppShell 静态布局
-7. 添加 ModeSwitcher 静态组件
-8. 添加 CommandPicker 静态组件
-9. 添加 ResultInspector 静态组件
-10. 迁移 PMBusMath 到 legacy adapter
+1. 完成 M3：L11 full loop（当前主任务）
+   - 实现 value/set 的 encode 逻辑（含 auto-N 的 findBestLinear11 行为）
+   - Y/N 编辑回写 raw，Hex ↔ Y/N/Value 双向同步
+   - 接入 delta / 误差展示
+   - 补齐 L11 golden 测试
+2. 完成 M4：L16 / VOUT_MODE 闭环
+3. 完成 M5：DIRECT 闭环
+4. 完成 M6：HALF 闭环
+5. 完成 M7：复制偏好（0x / 空格 / LE-BE toggle）
+6. 完成 M8：测试回归保护与 debug 测试迁移
+7. 旧 HTML 下线或保留（按规划文档决策）
 ```
+
+已完成的基础项（M0–M2，不再重复执行）：
+
+```text
+docs / AGENTS / CLAUDE
+Vite React TS skeleton
+design tokens
+AppShell 静态布局
+ModeSwitcher / CommandPicker / ResultInspector 静态组件
+PMBusMath 迁移到 legacy adapter
+COMMAND_METADATA 迁移到 legacy/command-metadata.ts
+```
+
+> 实际实现进度基线以 `docs/WEB_REFACTOR_PLAN.md` 各 Milestone 的「实际状态」小节与 `MIGRATION_LOG.md` 的迁移缺口表为准。
 
 ---
 
