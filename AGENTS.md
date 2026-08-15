@@ -439,8 +439,8 @@ style={{ color: '#1e40af' }}
 5. static ModeSwitcher / CommandPicker / ResultInspector  ✅ 已完成
 6. migrate PMBusMath as legacy adapter          ✅ 已完成
 7. migrate COMMAND_METADATA                     ✅ 已完成
-8. L11 full loop                                🔄 进行中（当前）
-9. L16 full loop                                ⬜ 待办
+8. L11 full loop                                ✅ 已完成（2026-08-15）
+9. L16 full loop                                🔄 进行中（当前）
 10. DIRECT full loop                             ⬜ 待办
 11. HALF full loop                               ⬜ 待办
 12. copy tools                                   ⬜ 待办
@@ -450,7 +450,7 @@ style={{ color: '#1e40af' }}
 
 不要先做 DIRECT/HALF，而跳过 L11。  
 L11 是主路径和首个闭环。  
-当前执行位置：第 8 项 L11 full loop。
+当前执行位置：第 9 项 L16 full loop。
 
 ---
 
@@ -673,20 +673,18 @@ VOUT_MODE 非 LINEAR
 如果没有更具体任务，Agent 应从这里开始：
 
 ```text
-1. 完成 M3：L11 full loop（当前主任务）
-   - 实现 value/set 的 encode 逻辑（含 auto-N 的 findBestLinear11 行为）
-   - Y/N 编辑回写 raw，Hex ↔ Y/N/Value 双向同步
-   - 接入 delta / 误差展示
-   - 补齐 L11 golden 测试
-2. 完成 M4：L16 / VOUT_MODE 闭环
-3. 完成 M5：DIRECT 闭环
-4. 完成 M6：HALF 闭环
-5. 完成 M7：复制偏好（0x / 空格 / LE-BE toggle）
-6. 完成 M8：测试回归保护与 debug 测试迁移
-7. 旧 HTML 下线或保留（按规划文档决策）
+1. 完成 M4：L16 / VOUT_MODE 闭环（当前主任务）
+   - VOUT_MODE 变更时经 parseVoutMode 推导 l16.n
+   - 非 LINEAR VOUT_MODE 显示明确 warning
+   - value ↔ raw 转换接入（encodeLinear16 / 手动 V）
+2. 完成 M5：DIRECT 闭环
+3. 完成 M6：HALF 闭环
+4. 完成 M7：复制偏好（0x / 空格 / LE-BE toggle）
+5. 完成 M8：测试回归保护与 debug 测试迁移
+6. 旧 HTML 下线或保留（按规划文档决策）
 ```
 
-已完成的基础项（M0–M2，不再重复执行）：
+已完成的基础项（M0–M3，不再重复执行）：
 
 ```text
 docs / AGENTS / CLAUDE
@@ -696,6 +694,7 @@ AppShell 静态布局
 ModeSwitcher / CommandPicker / ResultInspector 静态组件
 PMBusMath 迁移到 legacy adapter
 COMMAND_METADATA 迁移到 legacy/command-metadata.ts
+L11 full loop（双向闭环，含 ValueInput / IntegerInput / ErrorDelta / golden tests）
 ```
 
 > 实际实现进度基线以 `docs/WEB_REFACTOR_PLAN.md` 各 Milestone 的「实际状态」小节与 `MIGRATION_LOG.md` 的迁移缺口表为准。

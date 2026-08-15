@@ -2,6 +2,8 @@ import type { AppMode, AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
 import BitGrid from '../bits/BitGrid'
+import IntegerInput from '../inputs/IntegerInput'
+import ValueInput from '../inputs/ValueInput'
 
 interface Props {
   mode: AppMode
@@ -87,10 +89,10 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 <div className="mb-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
                   Y (11-bit)
                 </div>
-                <input
-                  type="number"
+                <IntegerInput
                   value={state.l11.y}
-                  onChange={(e) => dispatch({ type: 'l11/set-y', y: e.target.value })}
+                  ariaLabel="Y (11-bit)"
+                  onCommit={(text) => dispatch({ type: 'l11/set-y', y: text })}
                   className="w-28 rounded-lg px-3 py-2 text-center text-lg font-bold outline-none"
                   style={{
                     background: 'var(--color-surface)',
@@ -110,11 +112,11 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                   2^N
                 </div>
                 <div className="flex items-center gap-1">
-                  <input
-                    type="number"
+                  <IntegerInput
                     value={state.l11.n}
-                    onChange={(e) => dispatch({ type: 'l11/set-n', n: e.target.value })}
                     disabled={state.l11.autoN}
+                    ariaLabel="N 值 (指数)"
+                    onCommit={(text) => dispatch({ type: 'l11/set-n', n: text })}
                     className="w-20 rounded-lg px-2 py-2 text-center text-lg font-bold outline-none"
                     style={{
                       background: 'var(--color-surface)',
@@ -142,8 +144,13 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
             {/* Range hint */}
             <div className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              Y 范围: -1024 ~ 1023 · N 范围: -16 ~ 15
+              {vm.nRangeText
+                ? `可表示范围: ${vm.nRangeText}`
+                : 'Y 范围: -1024 ~ 1023 · N 范围: -16 ~ 15'}
             </div>
+
+            {/* Physical value input — encodes via findBestLinear11 / manual N */}
+            <ValueInput vm={vm} dispatch={dispatch} />
           </div>
         )}
 

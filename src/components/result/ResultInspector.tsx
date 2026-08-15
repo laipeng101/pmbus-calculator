@@ -1,5 +1,6 @@
 import type { CalculatorViewModel } from '../../app/view-model'
 import CopyToolbar from './CopyToolbar'
+import ErrorDelta from './ErrorDelta'
 
 interface Props {
   vm: CalculatorViewModel
@@ -100,6 +101,9 @@ export default function ResultInspector({ vm }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Quantization error (L11) */}
+      <ErrorDelta vm={vm} />
 
       {/* Copy Tools */}
       <CopyToolbar vm={vm} />

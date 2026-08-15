@@ -671,27 +671,27 @@ linearSection/directSection 不再用 display:none 作为主状态管理
 
 - [x] `HexInput`（暂内联于 `ModeWorkspace`，未拆独立组件）
 - [x] `BitGrid`（独立组件，toggle 已接 reducer）
-- [ ] `FormulaEditor`（仅展示公式，未拆组件、未双向编辑）
+- [x] `FormulaEditor`（L11 Y/N 双向编辑已通过 `IntegerInput` 接入；独立组件拆分待办）
 - [x] `ResultInspector`（展示 L11 的 value/raw/bytes）
 - [x] L11 decode（`view-model.ts` 已调用 `decodeLinear11`）
-- [ ] L11 encode（`encodeLinear11` 未接入 UI/reducer）
-- [ ] Value -> best N/Y（`findBestLinear11` 未接入）
-- [ ] N manual / auto toggle（仅切换 `autoN` 图标，未参与计算）
-- [ ] 误差展示（`deltaText/deltaKind` 未填充）
+- [x] L11 encode（`value/set` 经 `findBestLinear11` / 手动 N 接入 reducer）
+- [x] Value -> best N/Y（`findBestLinear11` 已接入 auto-N 路径）
+- [x] N manual / auto toggle（toggle 会按当前值重算 raw）
+- [x] 误差展示（`deltaText/deltaKind` 已填充，`ErrorDelta` 组件展示）
 - [x] overflow / special warning（`checkSpecial` 已接入 warnings）
 
 ### 实际状态（2026-08-15）
 
-L11 当前只具备 **decode 半闭环**：Hex 输入 / BitGrid toggle → raw → ViewModel → value 显示可用；Y/N 编辑只更新 `state.l11`，不回写 raw；`value/set` 仍是 no-op；auto-N 未参与 `findBestLinear11`；误差未展示。里程碑未完成。
+L11 已实现 **双向闭环**：Hex/bit → raw → Y/N/Value 同步；Y/N 编辑经 `encodeLinear11` 回写 raw；Value 编辑经 `findBestLinear11`（auto-N）或手动 N 回写 raw；`l11.valueInput` 记录请求值，`view-model` 填充 `deltaText/deltaKind`，`ErrorDelta` 展示量化误差；`nRangeText` 展示当前 N 可表示范围。`tests/fixtures/linear11-cases.ts` 已接入 `tests/linear11.test.ts`（decode 9 + roundtrip 9 + special 3）。Chromium 390px 浏览器实测：无横向滚动，Value 12.5 → Hex 0xF819、Y=25、N=-1。`FormulaEditor` 独立组件与 `HexInput` 拆分仍待后续 UI 专项。
 
 ### 验收标准
 
-- [ ] 修改 Hex 更新 Y/N/Value
-- [ ] 修改 bit 更新 Hex/Value
-- [ ] 修改 Y/N 更新 Hex/Value
-- [ ] 修改 Value 更新 Hex/Y/N
-- [ ] 自动 N 行为与旧版一致或有明确设计变更记录
-- [ ] 关键 golden case 测试通过
+- [x] 修改 Hex 更新 Y/N/Value
+- [x] 修改 bit 更新 Hex/Value
+- [x] 修改 Y/N 更新 Hex/Value
+- [x] 修改 Value 更新 Hex/Y/N
+- [x] 自动 N 行为与旧版一致或有明确设计变更记录
+- [x] 关键 golden case 测试通过
 
 ---
 
@@ -940,21 +940,21 @@ Reverted
 
 每迁移一个旧功能，必须更新本表。
 
-| 旧功能          | 旧位置                            | 新组件/模块                  | 状态        | 备注                                                                                                           |
-| --------------- | --------------------------------- | ---------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------- |
-| PMBusMath 核心  | 内联 `PMBusMath`                  | `legacy/pmbus-math.ts`       | Done        | 机械迁移完成，带完整类型定义；smoke test 13 pass                                                               |
-| 命令字典数据    | 内联 `COMMAND_METADATA`           | `legacy/command-metadata.ts` | Done        | 数据层迁移完成；`CommandPicker` 已从该数据源读取                                                               |
-| 模式 Tabs       | HTML `.tabs` + `switchMode`       | `ModeSwitcher`               | Done        | React 组件化，无 inline onclick；支持 Ctrl+1/2/3/4 快捷键                                                      |
-| 命令字典 UI     | `#commandSelect`                  | `CommandPicker`              | Done        | 可搜索下拉框；数据来自 `command-metadata.ts`；键盘方向键导航待补                                               |
-| Bit Grid        | `renderBits` / `renderDirectBits` | `BitGrid`                    | 部分完成    | 保留 nibble 分组与响应式策略；图例固定为 L11 的 N/Y 分区，L16/DIRECT/HALF 下不准确                             |
-| 结果面板        | `#resultBox`                      | `ResultInspector`            | Done        | 桌面端右侧 sticky 面板，移动端跟随流式布局                                                                     |
-| 信息栏          | `#infoBar`                        | `InfoPanel`                  | Done        | 警告/信息/错误三级提示，带图标和颜色区分                                                                       |
-| 公式界面        | `.formula-mode` DOM               | `ModeWorkspace` 内联公式区   | 部分完成    | 静态展示已建；双向编辑（Hex ↔ Y/N/m/b/R）未接入                                                                |
-| DebugPanel      | `#debugPanel`                     | `DebugDrawer`                | 部分完成    | 可折叠面板与诊断信息已建；测试状态显示“51/51”已过时（实际 77 pass）；边界测试入口待 M8 接入                    |
-| 主题切换        | `#themeToggle` + `.dark`          | `ThemeToggle`, `data-theme`  | 部分完成    | 功能可用（light/dark/system）；但 localStorage 在组件内直接读写，未走 persistence 层/`state.ui.theme`          |
-| 复制设置        | 复制按钮 + 全局状态               | `CopyToolbar`                | 部分完成    | Hex / 值 / C 宏复制按钮可用；0x/空格/LE-BE 偏好开关未接 UI，设置未持久化                                       |
-| DIRECT profiles | inline buttons                    | `DirectCoeffPanel`           | Todo        | 数据化 preset profiles 未实现                                                                                  |
-| Boundary tests  | `runBoundaryTests`                | Vitest + DebugDrawer         | In Progress | Vitest 已接入 77 pass（13 math + 38 reducer + 26 view-model）；L11 fixture 已建未接测试；完整 golden-case 待补 |
+| 旧功能          | 旧位置                            | 新组件/模块                  | 状态        | 备注                                                                                                                                 |
+| --------------- | --------------------------------- | ---------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| PMBusMath 核心  | 内联 `PMBusMath`                  | `legacy/pmbus-math.ts`       | Done        | 机械迁移完成，带完整类型定义；smoke test 13 pass                                                                                     |
+| 命令字典数据    | 内联 `COMMAND_METADATA`           | `legacy/command-metadata.ts` | Done        | 数据层迁移完成；`CommandPicker` 已从该数据源读取                                                                                     |
+| 模式 Tabs       | HTML `.tabs` + `switchMode`       | `ModeSwitcher`               | Done        | React 组件化，无 inline onclick；支持 Ctrl+1/2/3/4 快捷键                                                                            |
+| 命令字典 UI     | `#commandSelect`                  | `CommandPicker`              | Done        | 可搜索下拉框；数据来自 `command-metadata.ts`；键盘方向键导航待补                                                                     |
+| Bit Grid        | `renderBits` / `renderDirectBits` | `BitGrid`                    | 部分完成    | 保留 nibble 分组与响应式策略；图例固定为 L11 的 N/Y 分区，L16/DIRECT/HALF 下不准确                                                   |
+| 结果面板        | `#resultBox`                      | `ResultInspector`            | Done        | 桌面端右侧 sticky 面板，移动端跟随流式布局                                                                                           |
+| 信息栏          | `#infoBar`                        | `InfoPanel`                  | Done        | 警告/信息/错误三级提示，带图标和颜色区分                                                                                             |
+| 公式界面        | `.formula-mode` DOM               | `ModeWorkspace` 内联公式区   | 部分完成    | L11 双向编辑（Hex ↔ Y/N/Value）已接入；L16/DIRECT/HALF 双向待闭环；独立 FormulaEditor 组件待拆                                       |
+| DebugPanel      | `#debugPanel`                     | `DebugDrawer`                | 部分完成    | 可折叠面板与诊断信息已建；测试状态显示“51/51”已过时（实际 113 pass）；边界测试入口待 M8 接入                                         |
+| 主题切换        | `#themeToggle` + `.dark`          | `ThemeToggle`, `data-theme`  | 部分完成    | 功能可用（light/dark/system）；但 localStorage 在组件内直接读写，未走 persistence 层/`state.ui.theme`                                |
+| 复制设置        | 复制按钮 + 全局状态               | `CopyToolbar`                | 部分完成    | Hex / 值 / C 宏复制按钮可用；0x/空格/LE-BE 偏好开关未接 UI，设置未持久化                                                             |
+| DIRECT profiles | inline buttons                    | `DirectCoeffPanel`           | Todo        | 数据化 preset profiles 未实现                                                                                                        |
+| Boundary tests  | `runBoundaryTests`                | Vitest + DebugDrawer         | In Progress | Vitest 已接入 113 pass（13 math + 48 reducer + 31 view-model + 21 L11 golden）；L11 fixture 已接入；L16/DIRECT/HALF golden-case 待补 |
 
 ---
 
@@ -1208,12 +1208,12 @@ Migration Gap 更新
 
 ## 18. 当前下一步建议
 
-M0–M2 基础项已完成（docs、Vite React TS 骨架、tokens、AppShell、ModeSwitcher/CommandPicker/ResultInspector 静态版、PMBusMath 与 COMMAND_METADATA 迁移）。  
+M0–M3 已完成（docs、Vite React TS 骨架、tokens、AppShell、ModeSwitcher/CommandPicker/ResultInspector 静态版、PMBusMath 与 COMMAND_METADATA 迁移、L11 双向闭环）。  
 当前按顺序执行：
 
 ```text
-1. M3：L11 full loop（当前主任务）
-2. M4：L16 / VOUT_MODE 闭环
+1. M3：L11 full loop ✅（2026-08-15 双向闭环）
+2. M4：L16 / VOUT_MODE 闭环（当前主任务）
 3. M5：DIRECT 闭环
 4. M6：HALF 闭环
 5. M7：复制偏好闭环（0x / 空格 / LE-BE）

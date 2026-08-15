@@ -27,6 +27,7 @@ export interface CalculatorViewModel {
   warnings: WarningVM[]
   bitGroups: BitGroupVM[]
   commandNote?: string
+  nRangeText?: string
   visible: {
     voutMode: boolean
     directCoefficients: boolean
@@ -37,6 +38,12 @@ export interface CalculatorViewModel {
 
 function formatRawHex(raw: number): string {
   return '0x' + (raw & 0xffff).toString(16).toUpperCase().padStart(4, '0')
+}
+
+/** Number formatting mirroring legacy formatNumber (12 significant digits). */
+function formatNumber(v: number): string {
+  if (Number.isInteger(v)) return v.toString()
+  return parseFloat(v.toPrecision(12)).toString()
 }
 
 function toBytesLE(raw: number): [number, number] {
@@ -75,8 +82,10 @@ function buildBitGroups(raw: number): BitGroupVM[] {
 
 function computeFormula(state: AppState): string {
   switch (state.mode) {
-    case 'L11':
-      return `Y=${state.l11.y} × 2^${state.l11.n}`
+    case 'L11': {
+      const decoded = PMBusMath.decodeLinear11(state.raw)
+      return `Y=${decoded.y} × 2^${decoded.n}`
+    }
     case 'L16':
       return `V=${state.raw} × 2^${state.l16.n}`
     case 'DIRECT':
@@ -93,11 +102,11 @@ function computeValueText(state: AppState): string {
     switch (state.mode) {
       case 'L11': {
         const r = PMBusMath.decodeLinear11(state.raw)
-        return r.value.toString()
+        return formatNumber(r.value)
       }
       case 'L16': {
         const r = PMBusMath.decodeLinear16(state.raw, state.l16.n)
-        return r.value.toString()
+        return formatNumber(r.value)
       }
       case 'DIRECT': {
         const r = PMBusMath.decodeDirect(
@@ -106,13 +115,13 @@ function computeValueText(state: AppState): string {
           state.direct.b,
           state.direct.r,
         )
-        return Number.isNaN(r.value) ? '—' : r.value.toString()
+        return Number.isNaN(r.value) ? '—' : formatNumber(r.value)
       }
       case 'HALF': {
         const r = PMBusMath.decodeHalf(state.raw)
         if (Number.isNaN(r.value)) return 'NaN'
         if (!Number.isFinite(r.value)) return r.value > 0 ? '+Infinity' : '-Infinity'
-        return r.value.toString()
+        return formatNumber(r.value)
       }
       default:
         return '—'
@@ -153,6 +162,27 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   const le = toBytesLE(raw)
   const be = toBytesBE(raw)
 
+  const decodedL11 = state.mode === 'L11' ? PMBusMath.decodeLinear11(raw) : null
+
+  let deltaText: string | undefined
+  let deltaKind: 'ok' | 'warn' | 'error' | undefined
+  if (decodedL11) {
+    const represented = decodedL11.value
+    const requested = state.l11.valueInput ?? represented
+    const delta = requested - represented
+    if (Number.isFinite(requested) && Number.isFinite(delta)) {
+      const percent = Math.abs(requested) > 1e-12 ? (delta / Math.abs(requested)) * 100 : 0
+      deltaKind = Math.abs(delta) > 1e-5 ? 'warn' : 'ok'
+      deltaText = `${delta >= 0 ? '+' : ''}${delta.toFixed(6)} (${percent.toFixed(4)}%)`
+    }
+  }
+
+  let nRangeText: string | undefined
+  if (decodedL11) {
+    const p = PMBusMath.pow2(decodedL11.n)
+    nRangeText = `${formatNumber(-1024 * p)} ~ ${formatNumber(1023 * p)}`
+  }
+
   return {
     mode: state.mode,
     valueText: computeValueText(state),
@@ -166,9 +196,12 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       space: state.copy.spaceBetweenBytes,
     }),
     formulaText: computeFormula(state),
+    deltaText,
+    deltaKind,
     warnings: buildWarnings(state),
     bitGroups: buildBitGroups(raw),
     commandNote: getCommandConfig(state.commandKey)?.note,
+    nRangeText,
     visible: {
       voutMode: state.mode === 'L16',
       directCoefficients: state.mode === 'DIRECT',

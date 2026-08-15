@@ -7,7 +7,7 @@ const BASE: AppState = {
   raw: 0,
   commandKey: null,
   byteOrder: 'le',
-  l11: { n: 0, y: 0, autoN: true },
+  l11: { n: 0, y: 0, autoN: true, valueInput: null },
   l16: { n: -8, voutMode: 0x18 },
   direct: { y: 0, m: 1, b: 0, r: 0 },
   copy: { prefix0x: true, spaceBetweenBytes: true, endian: 'le' },
@@ -35,6 +35,33 @@ describe('toCalculatorViewModel', () => {
     test('raw=0x0801 produces value 2 (N=1, Y=1)', () => {
       const vm = toCalculatorViewModel(make({ raw: 0x0801 }))
       expect(vm.valueText).toBe('2')
+    })
+
+    test('formula is derived from raw, not stale l11 state', () => {
+      const vm = toCalculatorViewModel(make({ raw: 0xf819, l11: { ...BASE.l11, n: 0, y: 0 } }))
+      expect(vm.formulaText).toBe('Y=25 × 2^-1')
+    })
+
+    test('raw=0xF801 (N=-1, Y=1) formats to 0.5', () => {
+      const vm = toCalculatorViewModel(make({ raw: 0xf801 }))
+      expect(vm.valueText).toBe('0.5')
+    })
+
+    test('delta is zero when no value edit is active', () => {
+      const vm = toCalculatorViewModel(BASE)
+      expect(vm.deltaText).toBe('+0.000000 (0.0000%)')
+      expect(vm.deltaKind).toBe('ok')
+    })
+
+    test('delta reports the quantization error from the requested value', () => {
+      const vm = toCalculatorViewModel(make({ raw: 0x0000, l11: { ...BASE.l11, valueInput: 1 } }))
+      expect(vm.deltaText).toBe('+1.000000 (100.0000%)')
+      expect(vm.deltaKind).toBe('warn')
+    })
+
+    test('nRangeText reflects the current N range', () => {
+      const vm = toCalculatorViewModel(make({ raw: 0x0801 }))
+      expect(vm.nRangeText).toBe('-2048 ~ 2046')
     })
   })
 

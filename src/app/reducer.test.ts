@@ -87,10 +87,76 @@ describe('appReducer — state transitions', () => {
     })
   })
 
+  describe('L11 raw -> N/Y sync', () => {
+    it('raw/set-from-hex decodes N and Y in L11 mode', () => {
+      const s = appReducer(base, { type: 'raw/set-from-hex', hex: 'F819' })
+      expect(s.l11.n).toBe(-1)
+      expect(s.l11.y).toBe(25)
+      expect(s.l11.valueInput).toBeNull()
+    })
+
+    it('bit/toggle decodes N and Y in L11 mode', () => {
+      const s1 = appReducer(base, { type: 'raw/set-from-hex', hex: '0801' })
+      expect(s1.l11.n).toBe(1)
+      expect(s1.l11.y).toBe(1)
+    })
+
+    it('mode/set entering L11 syncs N and Y from current raw', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const withRaw = appReducer(l16, { type: 'raw/set', raw: 0x0801 })
+      expect(withRaw.l11.n).toBe(0) // not yet synced in L16
+      const s = appReducer(withRaw, { type: 'mode/set', mode: 'L11' })
+      expect(s.l11.n).toBe(1)
+      expect(s.l11.y).toBe(1)
+      expect(s.l11.valueInput).toBeNull()
+    })
+  })
+
   describe('value/set', () => {
-    it('returns unchanged state (Phase 2 placeholder)', () => {
+    it('encodes an integer with auto-N (best N/Y)', () => {
+      const s = appReducer(base, { type: 'value/set', value: '12' })
+      // 12 = 12 × 2^0
+      expect(s.raw).toBe(0x000c)
+      expect(s.l11.n).toBe(0)
+      expect(s.l11.y).toBe(12)
+      expect(s.l11.valueInput).toBe(12)
+    })
+
+    it('encodes a fraction with auto-N', () => {
       const s = appReducer(base, { type: 'value/set', value: '12.5' })
-      expect(s).toEqual(base)
+      // 12.5 = 25 × 2^-1
+      expect(s.raw).toBe(0xf819)
+      expect(s.l11.n).toBe(-1)
+      expect(s.l11.y).toBe(25)
+    })
+
+    it('encodes with manual N when autoN is off', () => {
+      const manual: AppState = {
+        ...base,
+        l11: { ...base.l11, autoN: false, n: -1 },
+      }
+      const s = appReducer(manual, { type: 'value/set', value: '12.5' })
+      expect(s.l11.autoN).toBe(false)
+      expect(s.raw).toBe(0xf819)
+      expect(s.l11.n).toBe(-1)
+      expect(s.l11.y).toBe(25)
+    })
+
+    it('ignores invalid strings', () => {
+      const s = appReducer(base, { type: 'value/set', value: 'abc' })
+      expect(s.raw).toBe(base.raw)
+      expect(s.l11.valueInput).toBeNull()
+    })
+
+    it('ignores non-finite values', () => {
+      const s = appReducer(base, { type: 'value/set', value: 'Infinity' })
+      expect(s.raw).toBe(base.raw)
+    })
+
+    it('is a no-op outside L11 mode', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s = appReducer(l16, { type: 'value/set', value: '12' })
+      expect(s.raw).toBe(l16.raw)
     })
   })
 
@@ -100,9 +166,16 @@ describe('appReducer — state transitions', () => {
       expect(s.l11.n).toBe(-4)
     })
 
+    it('writes raw back from N and current Y', () => {
+      const s = appReducer(base, { type: 'l11/set-n', n: '-4' })
+      // Y=0, N=-4 => raw = N-bits(28)<<11 = 0xE000
+      expect(s.raw).toBe(0xe000)
+    })
+
     it('ignores invalid string', () => {
       const s = appReducer(base, { type: 'l11/set-n', n: 'abc' })
       expect(s.l11.n).toBe(base.l11.n)
+      expect(s.raw).toBe(base.raw)
     })
   })
 
@@ -112,9 +185,15 @@ describe('appReducer — state transitions', () => {
       expect(s.l11.y).toBe(192)
     })
 
+    it('writes raw back from Y and current N', () => {
+      const s = appReducer(base, { type: 'l11/set-y', y: '192' })
+      expect(s.raw).toBe(0x00c0)
+    })
+
     it('ignores invalid string', () => {
       const s = appReducer(base, { type: 'l11/set-y', y: 'xyz' })
       expect(s.l11.y).toBe(base.l11.y)
+      expect(s.raw).toBe(base.raw)
     })
   })
 

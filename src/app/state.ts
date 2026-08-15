@@ -18,6 +18,8 @@ export interface AppState {
     n: number
     y: number
     autoN: boolean
+    /** Physical value requested by the user via ValueInput; null when not in value-edit context. */
+    valueInput: number | null
   }
 
   l16: {
@@ -55,6 +57,7 @@ export const INITIAL_STATE: AppState = {
     n: 0,
     y: 0,
     autoN: true,
+    valueInput: null,
   },
 
   l16: {
