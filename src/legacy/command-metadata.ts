@@ -57,6 +57,17 @@ export interface CommandDataBytesConflict {
   }
 }
 
+/**
+ * Render a `CommandDataBytesConflict` as human-readable Chinese text.
+ *
+ * The numbers and sources are read from the conflict argument; nothing is
+ * hardcoded here.  This keeps the metadata `note` and the CommandPicker UI
+ * from drifting into two copies of the same READ_EIN explanation.
+ */
+export function describeDataBytesConflict(conflict: CommandDataBytesConflict): string {
+  return `规范内部冲突：${conflict.detailedSection.source} 描述 ${conflict.detailedSection.value} 个数据字节；${conflict.appendixTable.source} 列为 ${conflict.appendixTable.value}。请以目标器件资料及适用规范修订为准。计算器不是 READ_EIN packet-length authority。`
+}
+
 export type CommandValueType = 'scalar' | 'status' | 'block'
 
 /** How the PMBus specification tells an implementer to resolve the payload format. */
@@ -121,6 +132,18 @@ export interface CommandMeta {
 
   /** Optional demo/preset parameters.  Never applied by `command/set`. */
   preset?: CommandPreset
+}
+
+/** Single source of truth for the READ_EIN data-bytes specification conflict. */
+const READ_EIN_DATA_BYTES_CONFLICT: CommandDataBytesConflict = {
+  detailedSection: {
+    value: 6,
+    source: 'PMBus Part II §18.13',
+  },
+  appendixTable: {
+    value: 5,
+    source: 'PMBus Part II Appendix I Table 31',
+  },
 }
 
 const PROJECT_DEMO = {
@@ -346,17 +369,8 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: '—',
     spec: 'PMBus Part II §18.13, Appendix I Table 31',
     encodingRule: 'block',
-    dataBytesConflict: {
-      detailedSection: {
-        value: 6,
-        source: 'PMBus Part II §18.13',
-      },
-      appendixTable: {
-        value: 5,
-        source: 'PMBus Part II Appendix I Table 31',
-      },
-    },
-    note: '规范内部冲突：§18.13 描述 6 个数据字节；Appendix I Table 31 列为 5。请以目标器件资料及适用规范修订为准。计算器不是 READ_EIN packet-length authority。',
+    dataBytesConflict: READ_EIN_DATA_BYTES_CONFLICT,
+    note: describeDataBytesConflict(READ_EIN_DATA_BYTES_CONFLICT),
   },
 }
 
