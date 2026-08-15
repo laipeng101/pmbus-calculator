@@ -235,10 +235,10 @@ describe('appReducer — state transitions', () => {
       expect(s.raw).toBe(base.raw)
     })
 
-    it('is a no-op in HALF mode', () => {
+    it('encodes in HALF mode', () => {
       const half = appReducer(base, { type: 'mode/set', mode: 'HALF' })
       const s = appReducer(half, { type: 'value/set', value: '12' })
-      expect(s.raw).toBe(half.raw)
+      expect(s.raw).toBe(0x4a00)
     })
   })
 
@@ -498,6 +498,30 @@ describe('appReducer — state transitions', () => {
       const directZero = appReducer(zeroM, { type: 'mode/set', mode: 'DIRECT' })
       const s = appReducer(directZero, { type: 'value/set', value: '12' })
       expect(s.raw).toBe(directZero.raw)
+    })
+  })
+
+  describe('HALF value -> raw encode', () => {
+    const halfMode = appReducer(base, { type: 'mode/set', mode: 'HALF' })
+
+    it('Value 1 -> raw 0x3C00', () => {
+      const s = appReducer(halfMode, { type: 'value/set', value: '1' })
+      expect(s.raw).toBe(0x3c00)
+    })
+
+    it('Value NaN -> raw 0x7E00', () => {
+      const s = appReducer(halfMode, { type: 'value/set', value: 'NaN' })
+      expect(s.raw).toBe(0x7e00)
+    })
+
+    it('Value +Infinity -> raw 0x7C00 and -Infinity -> 0xFC00', () => {
+      expect(appReducer(halfMode, { type: 'value/set', value: 'Infinity' }).raw).toBe(0x7c00)
+      expect(appReducer(halfMode, { type: 'value/set', value: '-Infinity' }).raw).toBe(0xfc00)
+    })
+
+    it('Value -0 -> raw 0x8000 (preserves negative zero)', () => {
+      const s = appReducer(halfMode, { type: 'value/set', value: '-0' })
+      expect(s.raw).toBe(0x8000)
     })
   })
 
