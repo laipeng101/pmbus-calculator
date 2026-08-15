@@ -51,9 +51,11 @@ It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEE
 
 ## Usage
 
-### Legacy single-file (works today)
+### Legacy single-file (read-only fallback)
 
-The calculator is a single self-contained HTML file — no build step, no server required.
+`pmbus-calculator.html` is a single self-contained HTML file — no build step, no server required.
+It remains in the repository root as a **read-only legacy fallback** for existing URLs and
+offline single-file use. It is no longer under active feature development; the new web app is the primary tool.
 
 **Option A — open locally:**
 
@@ -64,7 +66,7 @@ The calculator is a single self-contained HTML file — no build step, no server
 
 Deploy `pmbus-calculator.html` to any static hosting service (GitHub Pages, Netlify, etc.) and access it via URL.
 
-### New web app (work in progress)
+### New web app (primary)
 
 ```bash
 npm install
@@ -132,7 +134,7 @@ The built-in dictionary records what PMBus specifies for 13 standard commands. S
 - **Playwright** — real-user E2E flows across desktop and mobile Chromium projects.
 - See [`AGENTS.md`](AGENTS.md), [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md) for the full refactor plan.
 
-> **Current status:** The legacy `pmbus-calculator.html` remains fully functional. The new web app has L11 and L16 fully bidirectional; the M4.5 stabilisation gate has passed and M5 DIRECT is the current milestone.
+> **Current status:** The new web app has L11 / L16 / DIRECT / HALF fully bidirectional and is the primary tool. The legacy `pmbus-calculator.html` remains at the repository root as a read-only fallback for old URLs and offline single-file use.
 
 ---
 

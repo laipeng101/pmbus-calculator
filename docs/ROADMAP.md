@@ -3,15 +3,15 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 变更记录与 legacy parity 见 [`MIGRATION_MATRIX.md`](MIGRATION_MATRIX.md)。
 
-最后更新：2026-08-15（M5/M6/M7 已合入，M8 回归 PR 待合入）
+最后更新：2026-08-15（M5–M8 已合入，M9 legacy 决策 PR 待合入）
 
 ## 当前优先级
 
 ```text
-M8 测试回归（当前） → M9 legacy 决策
+M9 legacy 决策（当前）
 ```
 
-M4.5 / M4.5.1 已验收通过；M5 DIRECT 通过 PR #3、M6 HALF 通过 PR #4、M7 Copy 通过 PR #5 合入 `main`。
+M4.5 / M4.5.1 已验收通过；M5 DIRECT 通过 PR #3、M6 HALF 通过 PR #4、M7 Copy 通过 PR #5、M8 回归通过 PR #6 合入 `main`。
 
 ## 里程碑状态
 
@@ -26,8 +26,8 @@ M4.5 / M4.5.1 已验收通过；M5 DIRECT 通过 PR #3、M6 HALF 通过 PR #4、
 | M5        | DIRECT 模式闭环        | Done   | PR #3 已合入：`state.raw` 唯一事实来源；Y/Value/m/b/R 完整 UI       |
 | M6        | HALF 模式闭环          | Done   | PR #4 已合入：Value 输入闭环；Sign/Exponent/Mantissa 分区显示       |
 | M7        | 复制与工程输出         | Done   | PR #5 已合入：raw word 与 LE/BE bytes 分离；C 宏命令名              |
-| M8        | 测试与回归保护         | Review | PR 待合入：L11/L16/DIRECT/HALF/PEC golden 与 CommandPicker 键盘导航 |
-| M9        | 旧 HTML 下线或保留     | Todo   | 新应用全回归前保留 legacy 为 read-only fallback                     |
+| M8        | 测试与回归保护         | Done   | PR #6 已合入：golden 全覆盖与 CommandPicker 键盘/ARIA               |
+| M9        | 旧 HTML 下线或保留     | Review | PR 待合入：`pmbus-calculator.html` 标记为 read-only legacy fallback |
 
 ## M4.5 稳定化门禁（已完成）
 
@@ -108,3 +108,11 @@ M4.5 / M4.5.1 已验收通过；M5 DIRECT 通过 PR #3、M6 HALF 通过 PR #4、
 - [x] 组件分层覆盖策略写入 AGENTS.md（components 由 Playwright E2E 覆盖，不纳入 v8 coverage 阈值）
 - [x] E2E 保持桌面 + Pixel 7 Chromium，覆盖 L11/L16/DIRECT/HALF 四种模式闭环
 - [x] UI 文案不包含硬编码测试数量
+
+## M9 legacy 决策
+
+- [x] 新应用 L11/L16/DIRECT/HALF 四模式闭环回归完成（M3–M6）
+- [x] 命令选择、复制、响应式、主题回归完成（M4.5/M7/M8）
+- [x] `pmbus-calculator.html` 保留在根目录，作为 read-only legacy fallback，不删除、不移动、不重写
+- [x] 旧 URL 兼容：文件路径不变，继续可直接打开
+- [x] README 明确新版与 legacy 的入口及状态
