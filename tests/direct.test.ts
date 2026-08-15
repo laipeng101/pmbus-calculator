@@ -111,7 +111,7 @@ describe('DIRECT bidirectional sync', () => {
   })
 
   it('raw/set clamps 0..65535 without wrapping', () => {
-    expect(appReducer(directState(), { type: 'raw/set', raw: 0x1f0f0 }).raw).toBe(65535)
-    expect(appReducer(directState(), { type: 'raw/set', raw: -1 }).raw).toBe(0)
+    expect(appReducer(directState(), { type: 'raw/set', raw: '127216' }).raw).toBe(65535)
+    expect(appReducer(directState(), { type: 'raw/set', raw: '-1' }).raw).toBe(0)
   })
 })

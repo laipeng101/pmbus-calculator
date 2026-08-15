@@ -8,8 +8,8 @@ import {
 
 interface ExpectedCommand {
   cmd: number
-  write?: { type: string; dataBytes: number }
-  read?: { type: string; dataBytes: number }
+  write?: { type: string; dataBytes?: number }
+  read?: { type: string; dataBytes?: number }
   units: string
   spec: string
   encodingRule: string
@@ -127,7 +127,7 @@ const GOLDEN: Record<string, ExpectedCommand> = {
   },
   READ_EIN: {
     cmd: 0x86,
-    read: { type: 'block_read', dataBytes: 5 },
+    read: { type: 'block_read' },
     units: '—',
     spec: 'PMBus Part II §18.13, Appendix I Table 31',
     encodingRule: 'block',
@@ -245,12 +245,31 @@ describe('command metadata — standard definitions vs presets', () => {
     expect(COMMAND_METADATA.STATUS_WORD.note).toContain('清除')
   })
 
-  it('marks READ_EIN as block read with 5 data bytes and no numeric preset', () => {
+  it('marks READ_EIN as block read with no single authoritative dataBytes', () => {
     expect(COMMAND_METADATA.READ_EIN.encodingRule).toBe('block')
     expect(COMMAND_METADATA.READ_EIN.transactions).toEqual({
-      read: { type: 'block_read', dataBytes: 5 },
+      read: { type: 'block_read' },
     })
+    expect(COMMAND_METADATA.READ_EIN.transactions.read?.dataBytes).toBeUndefined()
     expect(COMMAND_METADATA.READ_EIN.preset).toBeUndefined()
+  })
+
+  it('records both READ_EIN data-byte sources in the explicit conflict model', () => {
+    const conflict = COMMAND_METADATA.READ_EIN.dataBytesConflict
+    expect(conflict).toEqual({
+      detailedSection: {
+        value: 6,
+        source: 'PMBus Part II §18.13',
+      },
+      appendixTable: {
+        value: 5,
+        source: 'PMBus Part II Appendix I Table 31',
+      },
+    })
+    expect(COMMAND_METADATA.READ_EIN.note).toContain('规范内部冲突')
+    expect(COMMAND_METADATA.READ_EIN.note).toContain('§18.13 描述 6 个数据字节')
+    expect(COMMAND_METADATA.READ_EIN.note).toContain('Appendix I Table 31 列为 5')
+    expect(COMMAND_METADATA.READ_EIN.note).toContain('计算器不是 READ_EIN packet-length authority')
   })
 
   it('marks STATUS_WORD as status without a numeric preset', () => {

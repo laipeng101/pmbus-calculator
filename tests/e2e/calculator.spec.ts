@@ -64,6 +64,29 @@ test.describe('计算器真实用户流程', () => {
     )
   })
 
+  test('L16：十进制 V 输入拒绝 partial parse/科学计数法/小数并显示错误', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    const vInput = page.getByLabel('V (16-bit 0~65535)')
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+
+    for (const bad of ['12abc', '1e2', '1.5']) {
+      await vInput.fill(bad)
+      await expect(page.getByText(/仅允许十进制整数/)).toBeVisible()
+      await expect(hexInput).toHaveValue('0x0000')
+    }
+
+    await vInput.fill('+12')
+    await vInput.press('Tab')
+    await expect(vInput).toHaveValue('12')
+    await expect(hexInput).toHaveValue('0x000C')
+
+    await vInput.fill('70000')
+    await vInput.press('Tab')
+    await expect(vInput).toHaveValue('65535')
+    await expect(hexInput).toHaveValue('0xFFFF')
+  })
+
   test('device_defined 命令提示需要器件数据手册且不切换模式', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
@@ -155,16 +178,25 @@ test.describe('计算器真实用户流程', () => {
   test('CommandPicker 键盘导航、Enter 选择与焦点恢复', async ({ page }) => {
     await page.goto('/')
     const trigger = page.locator('#command-picker')
+    const searchInput = page.getByPlaceholder('搜索命令...')
 
     await trigger.click()
     await expect(trigger).toHaveAttribute('aria-expanded', 'true')
     const listbox = page.getByRole('listbox', { name: 'PMBus 命令列表' })
     await expect(listbox).toBeVisible()
-    await expect(listbox).toHaveAttribute('aria-activedescendant', 'command-option-none')
-    await expect(page.getByPlaceholder('搜索命令...')).toBeFocused()
+    await expect(searchInput).toBeFocused()
+    await expect(searchInput).toHaveAttribute('role', 'combobox')
+    await expect(searchInput).toHaveAttribute('aria-autocomplete', 'list')
+    await expect(searchInput).toHaveAttribute('aria-expanded', 'true')
+    await expect(searchInput).toHaveAttribute('aria-controls', 'command-picker-listbox')
+    await expect(searchInput).toHaveAttribute('aria-activedescendant', 'command-option-none')
 
     await page.keyboard.press('ArrowDown') // 无命令 -> VOUT_COMMAND
-    await expect(listbox).toHaveAttribute('aria-activedescendant', 'command-option-VOUT_COMMAND')
+    await expect(searchInput).toHaveAttribute(
+      'aria-activedescendant',
+      'command-option-VOUT_COMMAND',
+    )
+    await expect(searchInput).toBeFocused()
     await page.keyboard.press('Enter')
 
     await expect(trigger).toHaveAttribute('aria-expanded', 'false')
@@ -184,16 +216,36 @@ test.describe('计算器真实用户流程', () => {
     await expect(page.getByRole('listbox', { name: 'PMBus 命令列表' })).toHaveCount(0)
   })
 
-  test('CommandPicker 外部点击关闭并恢复焦点', async ({ page }) => {
+  test('CommandPicker 外部点击关闭且不抢走被点击控件焦点', async ({ page }) => {
     await page.goto('/')
     const trigger = page.locator('#command-picker')
+    const hexInput = page.locator('input[placeholder="0x0000"]')
 
     await trigger.click()
-    await page.locator('h1').click()
+    await hexInput.click()
 
     await expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    await expect(trigger).toBeFocused()
     await expect(page.getByRole('listbox', { name: 'PMBus 命令列表' })).toHaveCount(0)
+    await page.waitForTimeout(0)
+    await expect(hexInput).toBeFocused()
+
+    await page.keyboard.type('1234')
+    await hexInput.press('Tab')
+    await expect(hexInput).toHaveValue('0x1234')
+  })
+
+  test('CommandPicker 关闭时点击 raw Hex 可保持焦点并键入', async ({ page }) => {
+    await page.goto('/')
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+
+    await hexInput.click()
+    await page.waitForTimeout(0)
+    await expect(hexInput).toBeFocused()
+
+    await page.keyboard.type('F819')
+    await hexInput.press('Tab')
+    await expect(hexInput).toHaveValue('0xF819')
+    await expect(page.locator('#value-input')).toHaveValue('12.5')
   })
 
   test('STATUS_WORD 不强制切换数值模式', async ({ page }) => {

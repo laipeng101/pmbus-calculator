@@ -19,6 +19,12 @@ interface OptionVM {
 
 const NONE_OPTION: OptionVM = { key: '', label: '— 无命令 —' }
 
+const LISTBOX_ID = 'command-picker-listbox'
+
+function optionId(key: string): string {
+  return `command-option-${key || 'none'}`
+}
+
 export default function CommandPicker({ commandKey, onChange, onApplyPreset }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -48,31 +54,41 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
 
   const selected = commandKey ? (COMMAND_METADATA[commandKey] ?? null) : null
 
-  const closeAndRestoreFocus = useCallback(() => {
+  /**
+   * Close the popup.  `restoreFocus` is true for keyboard-originated closes
+   * (Escape, Enter, option click) and false for outside pointer closes so the
+   * user's newly focused control keeps focus.
+   */
+  const closePopover = useCallback((restoreFocus: boolean) => {
     setOpen(false)
     setQuery('')
-    // Defer focus restoration so the browser's default focus handling for the
-    // closing interaction (e.g. mousedown outside) finishes first.
-    window.setTimeout(() => triggerRef.current?.focus(), 0)
+    if (restoreFocus) {
+      // Defer so the browser's default focus handling for the closing
+      // interaction (e.g. Enter/click) finishes first.
+      window.setTimeout(() => triggerRef.current?.focus(), 0)
+    }
   }, [])
 
   const selectOption = useCallback(
     (key: string) => {
       onChange(key === '' ? null : key)
-      closeAndRestoreFocus()
+      closePopover(true)
     },
-    [onChange, closeAndRestoreFocus],
+    [onChange, closePopover],
   )
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
+    if (!open) return
+    function handleOutsidePointerDown(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        closeAndRestoreFocus()
+        // Do not steal focus back to the trigger: let the clicked Hex/Value
+        // control keep the focus it is about to receive.
+        closePopover(false)
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [closeAndRestoreFocus])
+    document.addEventListener('mousedown', handleOutsidePointerDown)
+    return () => document.removeEventListener('mousedown', handleOutsidePointerDown)
+  }, [open, closePopover])
 
   useEffect(() => {
     if (!open) return
@@ -81,10 +97,17 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
     setActiveKey(options[idx >= 0 ? idx : 0]?.key ?? '')
   }, [open, commandKey, options])
 
+  // Keep the active option visible while navigating with ArrowUp/ArrowDown.
+  useEffect(() => {
+    if (!open) return
+    const el = document.getElementById(optionId(activeKey))
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [open, activeKey])
+
   const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
       e.preventDefault()
-      closeAndRestoreFocus()
+      closePopover(true)
       return
     }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -104,7 +127,9 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
 
   const toggleOpen = () => {
     if (open) {
-      closeAndRestoreFocus()
+      // The trigger already has focus when it is clicked; keep it there.
+      setOpen(false)
+      setQuery('')
     } else {
       setOpen(true)
     }
@@ -168,7 +193,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
 
       {open && (
         <div
-          className="absolute left-4 right-4 top-full z-50 mt-1 overflow-hidden rounded-lg"
+          className="absolute left-4 right-4 bottom-full z-50 mb-1 overflow-hidden rounded-lg"
           style={{
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
@@ -179,6 +204,11 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
             <input
               ref={inputRef}
               type="text"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded="true"
+              aria-controls={LISTBOX_ID}
+              aria-activedescendant={optionId(activeKey)}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onInputKeyDown}
@@ -193,9 +223,9 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
             />
           </div>
           <ul
+            id={LISTBOX_ID}
             role="listbox"
             aria-label="PMBus 命令列表"
-            aria-activedescendant={`command-option-${activeKey || 'none'}`}
             className="max-h-64 overflow-y-auto py-1"
           >
             {options.map((opt) => {
@@ -205,7 +235,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
               return (
                 <li key={opt.key || '__none__'}>
                   <button
-                    id={`command-option-${opt.key || 'none'}`}
+                    id={optionId(opt.key)}
                     role="option"
                     aria-selected={isSelected}
                     onClick={() => selectOption(opt.key)}
@@ -238,6 +268,12 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
                           {describeEncodingRule(cmd.encodingRule)} ·{' '}
                           {describeTransactions(cmd.transactions)} · {cmd.units} · {cmd.spec}
                         </div>
+                        {cmd.dataBytesConflict && (
+                          <div className="mt-0.5 text-xs" style={{ color: 'var(--color-warning)' }}>
+                            规范内部冲突：§18.13 描述 6 个数据字节；Appendix I Table 31 列为
+                            5。请以目标器件资料及适用规范修订为准。
+                          </div>
+                        )}
                       </>
                     ) : (
                       opt.label

@@ -5,7 +5,9 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 /**
- * Inject a strict CSP meta tag into the production build only.
+ * Inject a production CSP meta tag into the build only. It restricts runtime
+ * resource origins, but style-src currently allows 'unsafe-inline' because
+ * Tailwind and runtime styles require inline style elements.
  * Dev mode is left untouched so Vite HMR / React Refresh keep working.
  */
 function productionCspPlugin(): Plugin {

@@ -85,7 +85,7 @@ tests/e2e/        Playwright 真实用户流程
    npm run verify
    ```
 
-   `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`test:coverage`、`test:e2e`、`build`、`git diff --check`、`npm audit --audit-level=high`。
+   `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`test:coverage`、`test:e2e`、`build`、`git diff --check`、`git diff --cached --check`、`npm audit --audit-level=high`。
 
 6. 输出：changed files、affected modes、实际测试命令与结果、剩余缺口。
    验收记录必须包含每条命令、exit code、实际测试数、coverage 和 CI URL。
