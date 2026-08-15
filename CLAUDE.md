@@ -2,8 +2,8 @@
 
 请先阅读并严格遵守 [`AGENTS.md`](./AGENTS.md)。
 
-当前项目阶段：**PMBus Calculator Web-first 重构**。  
-当前 99% 重心：**Web 设计、组件化、响应式布局、主题系统**。
+当前项目阶段：以 [`docs/ROADMAP.md`](./docs/ROADMAP.md) 为唯一实时状态源。  
+当前重心：**Web-first 计算器的标准合规、输入正确性、测试与 CI 门禁一致性**。
 
 Claude Code 工作时必须：
 
@@ -19,13 +19,17 @@ Claude Code 工作时必须：
    - docs updated
    - remaining gaps
 
-默认执行路线：
+历史执行路线（已 M0–M9 完成，保留为 architecture context，实时状态以 [`docs/ROADMAP.md`](./docs/ROADMAP.md) 为准）：
 
 ```text
 docs ✅ → Vite React TS skeleton ✅ → design tokens ✅ → AppShell ✅ → ModeSwitcher ✅
 → CommandPicker ✅ → ResultInspector ✅ → PMBusMath legacy adapter ✅
-→ L11 loop ✅ → L16 loop ✅ → M4.5 稳定化门禁 ✅ → DIRECT loop（当前）→ HALF loop
-→ copy tools → tests migration → legacy cleanup
+→ L11 loop ✅ → L16 loop ✅ → M4.5 稳定化门禁 ✅ → DIRECT loop ✅ → HALF loop ✅
+→ copy tools ✅ → tests migration ✅ → legacy cleanup ✅
 ```
 
-实际进度以 `docs/ROADMAP.md` 与 `docs/MIGRATION_MATRIX.md` 为准。
+需要时：
+
+- 独立 FormulaEditor 仅作为可选 backlog，不作为当前功能缺陷。
+- DIRECT 内置 `device-datasheet` profiles 因缺少器件数据手册而不实现，这是明确决策；UI 保持手动系数输入并提示需要器件数据手册。
+- 未自动化覆盖的 viewport 不得在文档中宣称为已自动测试。

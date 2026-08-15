@@ -2,6 +2,7 @@ import type { AppMode, AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
 import BitGrid from '../bits/BitGrid'
+import HexInput from '../inputs/HexInput'
 import IntegerInput from '../inputs/IntegerInput'
 import ValueInput from '../inputs/ValueInput'
 
@@ -30,14 +31,16 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         >
           原始数据
         </h3>
-        <div className="flex items-center gap-2">
-          <label className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+        <div className="flex items-start gap-2">
+          <label className="mt-2 text-sm" style={{ color: 'var(--color-text-muted)' }}>
             Hex
           </label>
-          <input
-            type="text"
+          <HexInput
+            id="raw-hex-input"
             value={vm.rawHex}
-            onChange={(e) => dispatch({ type: 'raw/set-from-hex', hex: e.target.value })}
+            maxDigits={4}
+            ariaLabel="原始数据 Hex"
+            placeholder="0x0000"
             className="flex-1 rounded-lg px-3 py-2 text-base font-mono outline-none"
             style={{
               background: 'var(--color-surface-muted)',
@@ -45,7 +48,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               border: '1px solid var(--color-border)',
               fontFamily: 'var(--font-mono)',
             }}
-            placeholder="0x0000"
+            onCommit={(text) => dispatch({ type: 'raw/set-from-hex', hex: text })}
           />
         </div>
 
@@ -160,22 +163,26 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               <label className="w-24 text-sm" style={{ color: 'var(--color-text-muted)' }}>
                 VOUT_MODE
               </label>
-              <input
-                type="text"
-                value={
-                  vm.voutModeInfo?.hex ??
-                  '0x' + state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')
-                }
-                onChange={(e) => dispatch({ type: 'l16/set-vout-mode', hex: e.target.value })}
-                className="w-24 rounded-lg px-3 py-2 text-sm outline-none"
-                style={{
-                  background: 'var(--color-surface-muted)',
-                  color: 'var(--color-text-primary)',
-                  border: '1px solid var(--color-border)',
-                  fontFamily: 'var(--font-mono)',
-                }}
-                aria-label="VOUT_MODE"
-              />
+              <div className="w-28">
+                <HexInput
+                  id="vout-mode-input"
+                  value={
+                    vm.voutModeInfo?.hex ??
+                    '0x' + state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')
+                  }
+                  maxDigits={2}
+                  ariaLabel="VOUT_MODE"
+                  placeholder="0x18"
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{
+                    background: 'var(--color-surface-muted)',
+                    color: 'var(--color-text-primary)',
+                    border: '1px solid var(--color-border)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                  onCommit={(text) => dispatch({ type: 'l16/set-vout-mode', hex: text })}
+                />
+              </div>
               <span
                 className="text-xs"
                 style={{

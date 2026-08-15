@@ -253,6 +253,43 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
+  describe('DIRECT error visibility', () => {
+    test('DIRECT coefficient validation error is shown in DIRECT mode', () => {
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'DIRECT',
+          direct: { m: 1, b: 0, r: 0, error: 'm 必须是 -32768..32767 的整数' },
+        }),
+      )
+      expect(vm.warnings.find((w) => w.id === 'direct-coeff-error')?.level).toBe('error')
+    })
+
+    test('DIRECT coefficient error is hidden after switching to L11', () => {
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'L11',
+          direct: { m: 1, b: 0, r: 0, error: 'm 必须是 -32768..32767 的整数' },
+        }),
+      )
+      expect(vm.warnings.find((w) => w.id === 'direct-coeff-error')).toBeUndefined()
+    })
+
+    test('DIRECT coefficient error is hidden in L16 and HALF modes', () => {
+      for (const mode of ['L16', 'HALF'] as const) {
+        const vm = toCalculatorViewModel(
+          make({
+            mode,
+            direct: { m: 1, b: 0, r: 0, error: 'm 必须是 -32768..32767 的整数' },
+          }),
+        )
+        expect(
+          vm.warnings.find((w) => w.id === 'direct-coeff-error'),
+          mode,
+        ).toBeUndefined()
+      }
+    })
+  })
+
   describe('command note', () => {
     test('null commandKey has no note', () => {
       const vm = toCalculatorViewModel(BASE)

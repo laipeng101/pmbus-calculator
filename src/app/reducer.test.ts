@@ -108,22 +108,39 @@ describe('appReducer — state transitions', () => {
       expect(s.raw).toBe(0x1a2b)
     })
 
-    it('handles spaces', () => {
+    it('allows leading and trailing whitespace only', () => {
+      const s = appReducer(base, { type: 'raw/set-from-hex', hex: '  1A2B  ' })
+      expect(s.raw).toBe(0x1a2b)
+    })
+
+    it('rejects internal whitespace (full string must match)', () => {
       const s = appReducer(base, { type: 'raw/set-from-hex', hex: 'E0 C0' })
-      expect(s.raw).toBe(0xe0c0)
+      expect(s.raw).toBe(base.raw)
     })
 
-    it('clamps to 16 bits', () => {
-      const s = appReducer(base, { type: 'raw/set-from-hex', hex: '0x12345' })
-      expect(s.raw).toBe(0x2345)
-    })
-
-    it('falls back on empty string', () => {
+    it('falls back on empty string (explicit reset-to-zero)', () => {
       const s = appReducer(base, { type: 'raw/set-from-hex', hex: '' })
       expect(s.raw).toBe(0)
     })
 
-    it('ignores invalid hex', () => {
+    it('rejects over-long hex instead of silently truncating', () => {
+      const s = appReducer(base, { type: 'raw/set-from-hex', hex: '0x12345' })
+      expect(s.raw).toBe(base.raw)
+    })
+
+    it('rejects partial parses such as 1G and 0x12ZZ', () => {
+      for (const hex of ['1G', '0x12ZZ']) {
+        const s = appReducer(base, { type: 'raw/set-from-hex', hex })
+        expect(s.raw, hex).toBe(base.raw)
+      }
+    })
+
+    it('rejects a bare 0x prefix', () => {
+      const s = appReducer(base, { type: 'raw/set-from-hex', hex: '0x' })
+      expect(s.raw).toBe(base.raw)
+    })
+
+    it('rejects invalid hex without modifying global state', () => {
       const s = appReducer(base, { type: 'raw/set-from-hex', hex: 'zzzz' })
       expect(s.raw).toBe(base.raw)
     })
@@ -333,12 +350,12 @@ describe('appReducer — state transitions', () => {
       expect(s.l16.n).toBe(base.l16.n)
     })
 
-    it('masks to 8 bits', () => {
+    it('rejects over-long VOUT_MODE instead of masking', () => {
       const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x1ff' })
-      expect(s.l16.voutMode).toBe(0xff)
+      expect(s.l16.voutMode).toBe(base.l16.voutMode)
     })
 
-    it('falls back on empty string', () => {
+    it('falls back on empty string (explicit reset-to-zero)', () => {
       const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '' })
       expect(s.l16.voutMode).toBe(0)
     })
@@ -543,6 +560,31 @@ describe('appReducer — state transitions', () => {
     it('bit/toggle toggles raw in DIRECT', () => {
       const s = appReducer(directMode, { type: 'bit/toggle', bit: 0 })
       expect(s.raw).toBe(0x8000)
+    })
+  })
+
+  describe('DIRECT error isolation', () => {
+    it('keeps invalid coefficient error in state.direct.error for DIRECT display', () => {
+      const bad = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
+      expect(bad.direct.error).toBeTruthy()
+      expect(bad.raw).toBe(base.raw)
+    })
+
+    it('does not corrupt an existing valid raw value on invalid coefficient input', () => {
+      const directMode = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+      const withRaw = appReducer(directMode, { type: 'raw/set-from-hex', hex: '1234' })
+      const bad = appReducer(withRaw, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
+      expect(bad.raw).toBe(0x1234)
+      expect(bad.direct.m).toBe(withRaw.direct.m)
+      expect(bad.direct.error).toBeTruthy()
+    })
+
+    it('keeps the error stored after switching away and back (mode-scoped display, not state reset)', () => {
+      const bad = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
+      const away = appReducer(bad, { type: 'mode/set', mode: 'L11' })
+      expect(away.direct.error).toBeTruthy()
+      const back = appReducer(away, { type: 'mode/set', mode: 'DIRECT' })
+      expect(back.direct.error).toBeTruthy()
     })
   })
 

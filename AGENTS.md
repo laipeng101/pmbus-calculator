@@ -8,7 +8,7 @@
 
 ```text
 把单文件 PMBus Calculator 重构为可维护的现代 Web App。
-当前阶段：Web-first。L11/L16/DIRECT/HALF 已闭环，M7 Copy 已合入；当前 M8 回归。
+主线：Web-first。当前里程碑状态一律以 docs/ROADMAP.md 为准，不在本文件重复。
 ```
 
 不追求（除非用户明确要求进入对应阶段）：
@@ -58,7 +58,7 @@ tests/e2e/        Playwright 真实用户流程
 ## 5. 命令字典与领域模型
 
 - 命令字典唯一数据源：`src/legacy/command-metadata.ts`。
-- 标准命令定义包含：命令码、`transactionType`、`valueType`、`units`、`spec`、`encodingRule`。
+- 标准命令定义包含：命令码、`transactions`（可同时表达 write/read）、`valueType`、`units`、`spec`、`encodingRule`。
 - `encodingRule` 只能是：`follows_vout_mode`、`device_defined`、`status`、`block`。
 - 可选 `preset` 不随 `command/set` 自动应用；只有 `command/apply-preset` 才能切换模式、
   加载参数并重编码 raw。预设必须标 `sourceKind`（当前仅 `project-demo`）、`source`、
@@ -82,14 +82,10 @@ tests/e2e/        Playwright 真实用户流程
 5. 完成后必须运行：
 
    ```bash
-   npm run format:check
-   npm run typecheck
-   npm run lint
-   npm run test:coverage
-   npm run test:e2e
-   npm run build
-   git diff --check
+   npm run verify
    ```
+
+   `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`test:coverage`、`test:e2e`、`build`、`git diff --check`、`npm audit --audit-level=high`。
 
 6. 输出：changed files、affected modes、实际测试命令与结果、剩余缺口。
    验收记录必须包含每条命令、exit code、实际测试数、coverage 和 CI URL。

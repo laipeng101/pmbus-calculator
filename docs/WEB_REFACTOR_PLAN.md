@@ -61,11 +61,12 @@ tests/
 mode, raw, commandKey, byteOrder,
 l11: { n, y, autoN, valueInput },
 l16: { n, voutMode },
-direct: { y, m, b, r },
+direct: { m, b, r, error },
 copy: { prefix0x, spaceBetweenBytes, endian },
 ui: { theme, debugOpen }
 ```
 
+- DIRECT 状态模型：`state.raw` 是数值唯一事实来源；`state.direct` 只保存系数 `m`、`b`、`r` 和校验错误 `error`，不再保存 `y`。
 - 使用 `useReducer`。
 - 偏好持久化集中在 `src/app/persistence.ts`。
 - 主题由 `state.ui.theme` 驱动并写入 `document.documentElement.dataset.theme`。
@@ -89,20 +90,7 @@ nRangeText, voutModeInfo, visible: { voutMode, directCoefficients, halfNote, nRa
 
 ## 7. 迁移路线图
 
-```text
-M0 准备期            ✅ Done
-M1 Vite+React+TS 骨架 ✅ Done
-M2 Web 视觉框架      ✅ Done
-M3 L11 闭环          ✅ Review
-M4 L16/VOUT 闭环     ✅ Review
-M4.5 稳定化门禁      🔄 Active
-M5 DIRECT 闭环       ⬜ Todo
-M6 HALF 闭环         ⬜ Todo
-M7 Copy/工程输出     ⬜ Todo
-M8 测试回归保护      ⬜ Todo
-M9 legacy 下线/保留  ⬜ Todo
-```
-
+M0–M9 已全部合入 `main`。本节仅保留历史规划背景，不再维护状态表；
 里程碑任务与验收的实时状态见 [`ROADMAP.md`](ROADMAP.md)。
 
 ## 8. 里程碑要点
@@ -117,26 +105,25 @@ M9 legacy 下线/保留  ⬜ Todo
 - VOUT_MODE 推导 N、Value↔Raw 闭环、LE/BE 显示。
 - 手动 V 输入必须 clamp 到 `0..65535`（已修复并有 reducer case）。
 
-### M5 DIRECT（未开始，门禁通过后进入）
+### M5 DIRECT（已合入，历史要点）
 
-- `raw` 与 signed `Y` 只能有一个事实来源。
+- `state.raw` 是唯一编码事实来源；signed `Y` 由 `raw` 派生，`state.direct` 只保存 `m/b/r` 与校验错误。
 - Hex、bit、Y、Value、m/b/R 全部双向同步。
-- profile 必须绑定器件与来源。
+- profile 必须绑定器件与来源；当前仅 `project-demo` 预设，不内置无数据手册依据的 `device-datasheet` 预设。
 
-### M6 HALF
+### M6 HALF（已合入，历史要点）
 
-- `encodeHalf` 已修正 tie-to-even，但未接 UI。
-- 需要 Value 输入与 sign/exp/mantissa 分区图例。
+- `encodeHalf` 已修正 tie-to-even，并已接入 UI。
+- Value 输入与 sign/exp/mantissa 分区图例已实现。
 
-### M7 Copy/工程输出
+### M7 Copy/工程输出（已合入，历史要点）
 
 - 复制偏好 UI 已接（0x/空格/LE-BE），持久化已统一。
-- 剩余：clipboard 测试覆盖更完整、C 宏格式规范化。
+- clipboard 测试、C 宏格式规范化已完成。
 
-### M8 测试回归
+### M8 测试回归（已合入，历史要点）
 
-- 已：L11 golden、reducer/view-model 单测、Playwright 真实流程。
-- 缺：L16/DIRECT/HALF golden-case 文件。
+- L11/L16/DIRECT/HALF/PEC golden-case 文件与 Playwright 真实流程已补齐。
 
 ## 9. 测试策略
 

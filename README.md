@@ -23,7 +23,7 @@ It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEE
 
 ## Features
 
-- 🔁 **Bidirectional conversion** — L11 and L16 are fully bidirectional; DIRECT/HALF decode is available and their encode loops are the next milestones.
+- 🔁 **Bidirectional conversion** — L11, L16, DIRECT, and HALF are fully bidirectional (encode/decode loops are implemented).
 - 📐 **Four encoding modes** — LINEAR11, LINEAR16 (VOUT), DIRECT, and IEEE 754 Half-Precision.
 - 🔲 **Interactive bit-field viewer** — a 16-bit clickable register view with nibble-level grouping and live hex preview per nibble.
 - 📋 **One-click copy** — copy the raw hex value, the decoded physical value, or a ready-to-paste C macro.
@@ -34,7 +34,7 @@ It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEE
 - 🔒 **N-lock toggle** — lock the exponent to a fixed value when fine-tuning firmware registers.
 - ⚙️ **VOUT_MODE support** — configure the `VOUT_MODE (0x20)` byte to set the LINEAR16 exponent.
 - 🔢 **Byte-order control** — switch between little-endian (PMBus standard) and big-endian byte display.
-- 🔐 **Content Security Policy** — production build injects a strict CSP meta tag; no external requests, no tracking.
+- 🔐 **Content Security Policy** — production build injects a CSP meta tag that restricts runtime resource origins; no external requests, no tracking. Inline styles are still allowed by `style-src` (Tailwind/runtime styles require `unsafe-inline`).
 
 ---
 
@@ -69,7 +69,7 @@ Deploy `pmbus-calculator.html` to any static hosting service (GitHub Pages, Netl
 ### New web app (primary)
 
 ```bash
-npm install
+npm ci
 npm run dev      # starts Vite dev server at http://localhost:5173
 npm run build    # production build to dist/
 npm test         # runs Vitest
@@ -124,9 +124,9 @@ The built-in dictionary records what PMBus specifies for 13 standard commands. S
 
 - **Pure HTML + CSS + Vanilla JavaScript** — no frameworks, no dependencies.
 - CSS custom properties for full light/dark theming.
-- Strict Content Security Policy.
+- Static CSP in the single-file page.
 
-### New Web App (under construction)
+### New Web App (primary)
 
 - **Vite** + **React 19** + **TypeScript** — modern component-based architecture.
 - **Tailwind CSS** + CSS variables — design-token-driven theming.

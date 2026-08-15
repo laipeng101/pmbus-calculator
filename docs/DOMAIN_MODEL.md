@@ -25,10 +25,12 @@
 ### 2.2 LINEAR16
 
 - 手动 V 输入和 `raw/set` 必须 clamp 到 `0..65535`，不得使用 `raw & 0xffff` 回绕。
-- `raw/set-from-hex` 保留 16-bit 截断语义（兼容旧版十六进制输入）。
+- `raw/set-from-hex` 使用严格十六进制解析：可选 `0x`/`0X` 前缀与首尾空白；必须整串匹配，最多 4 位十六进制数字；非法、只有 `0x`、超长输入均报错且不修改 `state.raw`；空输入按 0 处理。不再通过 `& 0xffff` 静默截断超长输入。
 
 ### 2.3 DIRECT
 
+- `state.direct.error` 只在 DIRECT 模式显示；切换到其他模式后必须隐藏系数校验错误（模式作用域隔离）。
+- 应用有效 DIRECT preset 必须清除旧错误；无效系数不得破坏已存在的有效 `state.raw`。
 - `m === 0` 时解码返回 `NaN`，UI 显示错误提示，不得崩溃。
 - `Y` 是 16-bit signed（`-32768..32767`）；`state.raw` 是唯一编码事实来源，
   `Y = toSigned(raw, 16)` 始终派生自 `raw`，`state.direct` 只保存 `m/b/R`。
@@ -48,7 +50,7 @@
 
 ## 3. VOUT_MODE
 
-- `parseVoutMode(byte)`：mode bits `[7:5]`，param bits `[4:0]`。
+- `parseVoutMode(byte)`：mode bits `[7:5]`，param bits `[4:0]`，规范引用为 PMBus Part II §8.3。
 - `000` = LINEAR，N 取 param bits 的 5-bit signed。
 - `011` = IEEE Half，其余为 VID/DIRECT/保留。
 - 非 LINEAR 模式不得静默修改 `state.l16.n`。
@@ -66,10 +68,10 @@
 - 命令字典唯一数据源：`src/legacy/command-metadata.ts`。
 - 标准命令定义声明：
   - `cmd`：命令码
-  - `transactionType`：`read_word` / `write_word` / `read_block` 等
+  - `transactions`：可同时表达读/写事务，如 `{ write: { type: 'write_word', dataBytes: 2 }, read: { type: 'read_word', dataBytes: 2 } }`
   - `valueType`：`scalar` | `status` | `block`
-  - `units`：物理单位或位字段标记
-  - `spec`：规范章节
+  - `units`：物理单位或位字段标记；标准定义不固定 FAN_COMMAND_1 为 RPM（依 FAN_CONFIG_1_2）
+  - `spec`：规范章节（Part II 命令章节 + Appendix I Table 31）
   - `encodingRule`：`follows_vout_mode` | `device_defined` | `status` | `block`
 - 可选 `preset` 与标准定义分离；当前只允许 `sourceKind: project-demo`。
 - `command/set` 只记录选择并显示命令信息，不得切换模式、加载参数或重编码 raw。

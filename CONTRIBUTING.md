@@ -12,9 +12,10 @@
 
 ## 2. 分支与 PR
 
-- 新功能/修复从 `web-refactor`（或当前阶段分支）切分支；里程碑完成后通过 PR 合回主线。
+- 所有开发分支必须从最新 `origin/main` 创建：`git fetch origin --prune && git switch -c agent/<scope> origin/main`。
+- PR base 固定为 `main`；禁止以 `web-refactor` 或任何旧 `agent/*` 分支作为长期开发线。
 - 每个 PR 只实现一个可验证的垂直切片。
-- 当前为单人维护：Agent 自审 + 全绿 CI 即可合并；不为每个小任务机械创建 Issue。
+- 当前为单人维护：同一 Agent 可以完成本地检查、创建 PR、等待 CI、自审与普通 merge commit 合并的闭环；不为每个小任务机械创建 Issue。
 - 不启用强制分支保护；不等待人工确认。
 
 ## 3. Fresh environment 初始化
@@ -28,6 +29,14 @@ CI 可继续使用 `npx playwright install --with-deps chromium`。
 
 ## 4. 本地验证
 
+Fresh environment 先执行 `npm ci` 与 `npm run test:e2e:install`。核心门禁与 CI 保持一致，可直接使用：
+
+```bash
+npm run verify
+```
+
+`npm run verify` 依次执行：
+
 ```bash
 npm run format:check
 npm run typecheck
@@ -36,9 +45,11 @@ npm run test:coverage
 npm run test:e2e
 npm run build
 git diff --check
+npm audit --audit-level=high
 ```
 
 所有命令都必须以 exit code 0 正常结束，并记录在验收记录中。
+`npm run check` 只用于快速检查（format/typecheck/lint/test:run/build），不包含 coverage、E2E 与 audit，不得宣称它覆盖这些门禁。
 
 ## 5. 验收记录
 
@@ -61,7 +72,7 @@ type(scope): summary
 ## 7. PR 流程
 
 1. 填写 PR 模板中的验收清单。
-2. 确保 CI 全绿（format、typecheck、lint、coverage、E2E、build）。
+2. 确保 CI 全绿（format、typecheck、lint、coverage、E2E、build、git diff --check、npm audit --audit-level=high）。
 3. PR 描述中写明：changed files、affected modes、测试命令与结果、剩余缺口。
 4. CI 全绿后使用普通 merge commit 合入，不使用 squash。
 
