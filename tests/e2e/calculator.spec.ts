@@ -151,6 +151,35 @@ test.describe('计算器真实用户流程', () => {
     await expect(valueInput).toHaveValue('NaN')
   })
 
+  test('CommandPicker 键盘导航、Enter 选择与焦点恢复', async ({ page }) => {
+    await page.goto('/')
+    const trigger = page.locator('#command-picker')
+
+    await trigger.click()
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.getByRole('listbox', { name: 'PMBus 命令列表' })).toBeVisible()
+    await expect(page.getByPlaceholder('搜索命令...')).toBeFocused()
+
+    await page.keyboard.press('ArrowDown') // 无命令 -> VOUT_COMMAND
+    await page.keyboard.press('Enter')
+
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await expect(trigger).toBeFocused()
+    await expect(trigger).toContainText('VOUT_COMMAND')
+  })
+
+  test('CommandPicker Escape 关闭并恢复焦点', async ({ page }) => {
+    await page.goto('/')
+    const trigger = page.locator('#command-picker')
+
+    await trigger.click()
+    await page.keyboard.press('Escape')
+
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await expect(trigger).toBeFocused()
+    await expect(page.getByRole('listbox', { name: 'PMBus 命令列表' })).toHaveCount(0)
+  })
+
   test('STATUS_WORD 不强制切换数值模式', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()

@@ -3,31 +3,31 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 变更记录与 legacy parity 见 [`MIGRATION_MATRIX.md`](MIGRATION_MATRIX.md)。
 
-最后更新：2026-08-15（M5/M6 已合入，M7 Copy PR 待合入）
+最后更新：2026-08-15（M5/M6/M7 已合入，M8 回归 PR 待合入）
 
 ## 当前优先级
 
 ```text
-M7 Copy/工程输出（当前） → M8 测试回归 → M9 legacy 决策
+M8 测试回归（当前） → M9 legacy 决策
 ```
 
-M4.5 / M4.5.1 已验收通过；M5 DIRECT 通过 PR #3、M6 HALF 通过 PR #4 合入 `main`。
+M4.5 / M4.5.1 已验收通过；M5 DIRECT 通过 PR #3、M6 HALF 通过 PR #4、M7 Copy 通过 PR #5 合入 `main`。
 
 ## 里程碑状态
 
-| Milestone | 名称                   | 状态   | 备注                                                          |
-| --------- | ---------------------- | ------ | ------------------------------------------------------------- |
-| M0        | 准备期                 | Done   | 文件实际在仓库根目录与 `docs/`，见迁移矩阵                    |
-| M1        | Vite + React + TS 骨架 | Done   | build/lint/typecheck 通过                                     |
-| M2        | 新版 Web 视觉框架      | Done   | Playwright 双端布局验证                                       |
-| M3        | L11 模式闭环           | Done   | 双向闭环 + 超范围饱和 golden case                             |
-| M4        | L16 / VOUT 模式闭环    | Done   | 双向闭环 + V 输入 clamp golden case                           |
-| M4.5      | 稳定化门禁             | Done   | 质量门禁、L11/L16 纠偏、命令/预设分离、文档体系全部验收       |
-| M5        | DIRECT 模式闭环        | Done   | PR #3 已合入：`state.raw` 唯一事实来源；Y/Value/m/b/R 完整 UI |
-| M6        | HALF 模式闭环          | Done   | PR #4 已合入：Value 输入闭环；Sign/Exponent/Mantissa 分区显示 |
-| M7        | 复制与工程输出         | Review | PR 待合入：raw word 与 LE/BE bytes 分离；C 宏命令名           |
-| M8        | 测试与回归保护         | Todo   | L11/DIRECT/HALF golden 已有；L16 golden 待补                  |
-| M9        | 旧 HTML 下线或保留     | Todo   | 新应用全回归前保留 legacy 为 read-only fallback               |
+| Milestone | 名称                   | 状态   | 备注                                                                |
+| --------- | ---------------------- | ------ | ------------------------------------------------------------------- |
+| M0        | 准备期                 | Done   | 文件实际在仓库根目录与 `docs/`，见迁移矩阵                          |
+| M1        | Vite + React + TS 骨架 | Done   | build/lint/typecheck 通过                                           |
+| M2        | 新版 Web 视觉框架      | Done   | Playwright 双端布局验证                                             |
+| M3        | L11 模式闭环           | Done   | 双向闭环 + 超范围饱和 golden case                                   |
+| M4        | L16 / VOUT 模式闭环    | Done   | 双向闭环 + V 输入 clamp golden case                                 |
+| M4.5      | 稳定化门禁             | Done   | 质量门禁、L11/L16 纠偏、命令/预设分离、文档体系全部验收             |
+| M5        | DIRECT 模式闭环        | Done   | PR #3 已合入：`state.raw` 唯一事实来源；Y/Value/m/b/R 完整 UI       |
+| M6        | HALF 模式闭环          | Done   | PR #4 已合入：Value 输入闭环；Sign/Exponent/Mantissa 分区显示       |
+| M7        | 复制与工程输出         | Done   | PR #5 已合入：raw word 与 LE/BE bytes 分离；C 宏命令名              |
+| M8        | 测试与回归保护         | Review | PR 待合入：L11/L16/DIRECT/HALF/PEC golden 与 CommandPicker 键盘导航 |
+| M9        | 旧 HTML 下线或保留     | Todo   | 新应用全回归前保留 legacy 为 read-only fallback                     |
 
 ## M4.5 稳定化门禁（已完成）
 
@@ -94,3 +94,17 @@ M4.5 / M4.5.1 已验收通过；M5 DIRECT 通过 PR #3、M6 HALF 通过 PR #4 �
 - [x] 有命令时 C 宏使用安全清洗后的命令名；无命令使用 `RAW_VALUE`
 - [x] prefix / space / LE-BE / 命令名 / clipboard fallback / 偏好 reload 均有测试
 - [x] 桌面 + 移动 Chromium E2E 覆盖复制流程
+
+## M8 回归进入条件
+
+- [x] M7 完成并合入
+- [x] L11/DIRECT/HALF golden 已有
+- [x] E2E 桌面 + Pixel 7 Chromium 覆盖四种模式闭环
+
+## M8 回归完成标准
+
+- [x] L11/L16/DIRECT/HALF/PEC 均有 dedicated golden-case 测试集合
+- [x] CommandPicker 键盘导航、Enter 选择、Escape 关闭、焦点恢复、ARIA 均有 E2E 覆盖
+- [x] 组件分层覆盖策略写入 AGENTS.md（components 由 Playwright E2E 覆盖，不纳入 v8 coverage 阈值）
+- [x] E2E 保持桌面 + Pixel 7 Chromium，覆盖 L11/L16/DIRECT/HALF 四种模式闭环
+- [x] UI 文案不包含硬编码测试数量

@@ -28,7 +28,8 @@
 | WEB-0016  | 2026-08-15 | 单人闭环流程文档（AGENTS/CONTRIBUTING/PR模板）与 README 事实修正                       | 文档      | GLOBAL                     | format/typecheck/lint/build                              | 是       | Done   |
 | WEB-0017  | 2026-08-15 | M5 DIRECT 闭环：raw 唯一事实来源、Y/Value/m/b/R UI、系数校验与 golden case             | 新增/修复 | DIRECT                     | Vitest 181 pass + coverage + Playwright 32 pass + build  | 是       | Done   |
 | WEB-0018  | 2026-08-15 | M6 HALF 闭环：Value 输入、Sign/Exp/Mantissa 分区、golden cases、E2E                    | 新增/修复 | HALF                       | Vitest 214 pass + coverage + Playwright 36 pass + build  | 是       | Done   |
-| WEB-0019  | 2026-08-15 | M7 Copy：raw word 与 LE/BE bytes 分离、C 宏命令名清洗、byte 复制按钮、clipboard 测试   | 修复/新增 | GLOBAL/COPY                | Vitest 226 pass + coverage + Playwright 40 pass + build  | 是       | Review |
+| WEB-0019  | 2026-08-15 | M7 Copy：raw word 与 LE/BE bytes 分离、C 宏命令名清洗、byte 复制按钮、clipboard 测试   | 修复/新增 | GLOBAL/COPY                | Vitest 226 pass + coverage + Playwright 40 pass + build  | 是       | Done   |
+| WEB-0020  | 2026-08-15 | M8 回归：L16/PEC golden cases、CommandPicker 键盘导航/ARIA/Escape、分层覆盖策略        | 测试      | GLOBAL/L11/L16/DIRECT/HALF | Vitest 240 pass + coverage + Playwright 44 pass + build  | 是       | Review |
 
 ## 2. Legacy parity
 
@@ -37,7 +38,7 @@
 | PMBusMath 核心  | 内联 `PMBusMath`                  | `legacy/pmbus-math.ts`       | Done     | 机械迁移；L11 饱和与 Half 舍入已修正并有测试                                                         |
 | 命令字典数据    | 内联 `COMMAND_METADATA`           | `legacy/command-metadata.ts` | Done     | 标准定义与 project-demo 预设分离（见 ADR 0002）；`command/set` 只读；`command/apply-preset` 显式应用 |
 | 模式 Tabs       | `.tabs` + `switchMode`            | `ModeSwitcher`               | Done     | 支持 Ctrl+1/2/3/4                                                                                    |
-| 命令选择器      | `#commandSelect`                  | `CommandPicker`              | 部分完成 | 选中命令只显示信息；显式“应用 project-demo 预设”可加载参数；键盘方向键导航待补                       |
+| 命令选择器      | `#commandSelect`                  | `CommandPicker`              | Done     | 选中命令只显示信息；显式“应用 project-demo 预设”可加载参数；键盘导航/Escape/焦点恢复/ARIA 已覆盖     |
 | Bit Grid        | `renderBits` / `renderDirectBits` | `BitGrid`                    | 部分完成 | 图例按模式切换；L11/HALF 已分区（N/Y、Sign/Exp/Mantissa）；DIRECT 分区仍简化                         |
 | 结果面板        | `#resultBox`                      | `ResultInspector`            | Done     | 展示 value/raw/LE/BE/误差/复制                                                                       |
 | 信息栏          | `#infoBar`                        | `InfoPanel`                  | Done     | 三级提示                                                                                             |
@@ -46,7 +47,7 @@
 | 主题切换        | `#themeToggle` + `.dark`          | `ThemeToggle`, `data-theme`  | Done     | 由 `state.ui.theme` 驱动，经 `persistence.ts` 持久化                                                 |
 | 复制工具        | 复制按钮 + 全局状态               | `CopyToolbar`                | Done     | raw word 与 LE/BE bytes 分离；C 宏默认 raw word + 命令名清洗；clipboard fallback 单测覆盖            |
 | DIRECT profiles | inline buttons                    | `DirectCoeffPanel`           | Todo     | 需绑定器件 profile 与来源                                                                            |
-| Boundary tests  | `runBoundaryTests`                | Vitest + `DebugDrawer`       | 部分完成 | 单测全通过（数量见 CI 日志）；L16 golden-case 待补；E2E 全通过（数量见 CI 日志）                     |
+| Boundary tests  | `runBoundaryTests`                | Vitest + `DebugDrawer`       | Done     | L11/L16/DIRECT/HALF/PEC golden 全覆盖；E2E 全通过（数量见 CI 日志）                                  |
 
 ## 3. 手动质量检查矩阵
 
