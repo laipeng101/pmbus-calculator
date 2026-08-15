@@ -6,6 +6,8 @@
 一款完全运行于浏览器端、无后端的 PMBus 数据格式计算器。<br>
 支持 PMBus 1.3 规范定义的 **LINEAR11 (L11)**、**LINEAR16 / VOUT (L16)**、**DIRECT** 和 **IEEE 754 半精度浮点 (HALF)** 四种编码格式。
 
+> **Stable version：** [`v1.0.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v1.0.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases)
+
 ---
 
 ## 目录
@@ -17,6 +19,7 @@
 - [PMBus 命令字典](#pmbus-命令字典)
 - [技术栈](#技术栈)
 - [浏览器兼容性](#浏览器兼容性)
+- [Known Limitations](#known-limitations)
 - [开源许可](#开源许可)
 
 ---
@@ -67,12 +70,16 @@
 
 ### 新版 Web App（主要工具）
 
+**源码开发方式：**
+
 ```bash
 npm ci
 npm run dev      # 启动 Vite 开发服务器，访问 http://localhost:5173
 npm run build    # 生产构建输出到 dist/
 npm test         # 运行 Vitest 测试
 ```
+
+**静态构建包：** `dist/` 是静态构建产物，必须通过 HTTP 静态服务器使用（例如 `npm run preview` 或任意静态托管服务），不承诺直接双击 `dist/index.html` 以 `file://` 方式打开。
 
 **操作流程：**
 
@@ -139,9 +146,16 @@ npm test         # 运行 Vitest 测试
 
 ## 浏览器兼容性
 
-当前版本的 Chrome、Edge、Firefox 与 Safari。自动化 E2E 覆盖桌面端与移动端 Chromium（Pixel 7）；其他浏览器暂无自动化测试依据。
+```text
+自动化验证：desktop Chromium + mobile Chromium。
+Firefox/Safari/其他浏览器为 best effort，尚无自动化验证依据。
+```
 
 ---
+
+## Known Limitations
+
+见 [docs/releases/v1.0.0.md#known-limitations](docs/releases/v1.0.0.md#known-limitations)。
 
 ## 开源许可
 

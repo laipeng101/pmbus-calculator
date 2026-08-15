@@ -6,6 +6,8 @@
 A fully client-side PMBus data-format calculator with no backend that runs entirely in the browser.<br>
 It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEEE 754 Half-Precision (HALF)** encoding schemes as defined in the PMBus 1.3 specification.
 
+> **Stable version:** [`v1.0.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v1.0.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases)
+
 ---
 
 ## Table of Contents
@@ -17,6 +19,7 @@ It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEE
 - [PMBus Command Dictionary](#pmbus-command-dictionary)
 - [Tech Stack](#tech-stack)
 - [Browser Compatibility](#browser-compatibility)
+- [Known Limitations](#known-limitations)
 - [License](#license)
 
 ---
@@ -68,12 +71,16 @@ Deploy `pmbus-calculator.html` to any static hosting service (GitHub Pages, Netl
 
 ### New web app (primary)
 
+**Source development:**
+
 ```bash
 npm ci
 npm run dev      # starts Vite dev server at http://localhost:5173
 npm run build    # production build to dist/
 npm test         # runs Vitest
 ```
+
+**Static build package:** the production build in `dist/` is a static bundle and must be used through an HTTP static server (for example `npm run preview` or any static hosting service). Directly double-clicking `dist/index.html` via `file://` is not supported.
 
 **Workflow:**
 
@@ -140,9 +147,13 @@ The built-in dictionary records what PMBus specifies for 13 standard commands. S
 
 ## Browser Compatibility
 
-Current versions of Chrome, Edge, Firefox, and Safari. The E2E suite runs against desktop and mobile Chromium (Pixel 7); other browsers are not yet covered by automated tests.
+Automated verification: desktop Chromium + mobile Chromium. Firefox/Safari/other browsers are best effort, with no automated verification evidence yet.
 
 ---
+
+## Known Limitations
+
+See [docs/releases/v1.0.0.md#known-limitations](docs/releases/v1.0.0.md#known-limitations).
 
 ## License
 

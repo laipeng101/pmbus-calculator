@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-16（M10.2 已合入）
+最后更新：2026-08-16（M11 release baseline 已合入）
 
 ## 当前产品基线
 
@@ -16,8 +16,15 @@
 ## 当前里程碑
 
 ```text
-M0–M10.2 baseline complete；当前无活动功能里程碑。
+M0–M11 complete；stable release v1.0.0；当前无活动功能里程碑。
 ```
+
+### M11 release baseline
+
+- 首次稳定发行统一为 `v1.0.0`；`package.json` 版本不带 `v`，Git tag 带 `v`。
+- 发布纪律、稳定公共契约与发布流程见 `docs/RELEASING.md`。
+- 变更日志见 `CHANGELOG.md`；发行说明见 `docs/releases/v1.0.0.md`。
+- GitHub Release 是当前正式发行渠道，不发布 npm 包。
 
 ## 当前有序 backlog
 
