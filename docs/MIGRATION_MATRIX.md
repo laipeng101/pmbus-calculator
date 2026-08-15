@@ -29,7 +29,8 @@
 | WEB-0017  | 2026-08-15 | M5 DIRECT 闭环：raw 唯一事实来源、Y/Value/m/b/R UI、系数校验与 golden case             | 新增/修复 | DIRECT                     | Vitest 181 pass + coverage + Playwright 32 pass + build  | 是       | Done   |
 | WEB-0018  | 2026-08-15 | M6 HALF 闭环：Value 输入、Sign/Exp/Mantissa 分区、golden cases、E2E                    | 新增/修复 | HALF                       | Vitest 214 pass + coverage + Playwright 36 pass + build  | 是       | Done   |
 | WEB-0019  | 2026-08-15 | M7 Copy：raw word 与 LE/BE bytes 分离、C 宏命令名清洗、byte 复制按钮、clipboard 测试   | 修复/新增 | GLOBAL/COPY                | Vitest 226 pass + coverage + Playwright 40 pass + build  | 是       | Done   |
-| WEB-0020  | 2026-08-15 | M8 回归：L16/PEC golden cases、CommandPicker 键盘导航/ARIA/Escape、分层覆盖策略        | 测试      | GLOBAL/L11/L16/DIRECT/HALF | Vitest 240 pass + coverage + Playwright 44 pass + build  | 是       | Review |
+| WEB-0020  | 2026-08-15 | M8 回归：L16/PEC golden cases、CommandPicker 键盘导航/ARIA/Escape、分层覆盖策略        | 测试      | GLOBAL/L11/L16/DIRECT/HALF | Vitest 240 pass + coverage + Playwright 44 pass + build  | 是       | Done   |
+| WEB-0021  | 2026-08-15 | M9 legacy 决策：`pmbus-calculator.html` 标记 read-only fallback，README 入口/状态明确  | 文档      | GLOBAL/legacy              | format/typecheck/lint/build + 全量回归                   | 是       | Review |
 
 ## 2. Legacy parity
 
@@ -59,3 +60,4 @@
 | M4.5 门禁 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 已完成           | 已完成             | 命令应用不适用   | 命令应用不适用         |
 | M5 DIRECT | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 不适用           | 不适用             | 已完成（含校验） | 不适用                 |
 | M6 HALF   | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 不适用           | 不适用             | 不适用           | 已完成（含±0/NaN/Inf） |
+| M9 legacy | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 已完成           | 已完成             | 已完成           | 已完成                 |

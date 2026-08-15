@@ -51,9 +51,10 @@
 
 ## 使用方法
 
-### 旧版单文件（立即可用）
+### 旧版单文件（read-only 兜底）
 
-计算器是一个独立的单 HTML 文件，无需构建步骤，无需服务器。
+`pmbus-calculator.html` 是独立的单 HTML 文件，无需构建步骤，无需服务器。
+它继续保留在仓库根目录，作为 **read-only legacy fallback**，用于兼容旧 URL 与离线单文件场景；不再进行功能开发，新版 Web App 是主要工具。
 
 **方式 A — 本地打开：**
 
@@ -64,7 +65,7 @@
 
 将 `pmbus-calculator.html` 部署到任意静态托管服务（GitHub Pages、Netlify 等），通过 URL 访问即可。
 
-### 新版 Web App（开发中）
+### 新版 Web App（主要工具）
 
 ```bash
 npm install
@@ -132,7 +133,7 @@ npm test         # 运行 Vitest 测试
 - **Playwright** — 桌面与移动 Chromium 项目的真实用户 E2E 流程。
 - 详见 [`AGENTS.md`](AGENTS.md)、[`docs/ROADMAP.md`](docs/ROADMAP.md) 与 [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md)。
 
-> **当前状态：** 旧版 `pmbus-calculator.html` 完全可用。新版 Web App 已具备 L11 与 L16 完整双向闭环；M4.5 稳定化门禁已通过，当前里程碑为 M5 DIRECT。
+> **当前状态：** 新版 Web App 已具备 L11 / L16 / DIRECT / HALF 完整双向闭环，是主要工具。旧版 `pmbus-calculator.html` 继续保留在根目录，作为旧 URL 与离线单文件场景的 read-only fallback。
 
 ---
 
