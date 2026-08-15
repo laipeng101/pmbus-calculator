@@ -131,7 +131,7 @@ npm test         # 运行 Vitest 测试
 - **Tailwind CSS** + CSS 变量 — 设计 Token 驱动的主题系统。
 - **Vitest** — PMBus 数学核心、reducer 与 view-model 的单元测试。
 - **Playwright** — 桌面与移动 Chromium 项目的真实用户 E2E 流程。
-- 详见 [`AGENTS.md`](AGENTS.md)、[`docs/ROADMAP.md`](docs/ROADMAP.md) 与 [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md)。
+- 实时路线图：[`docs/ROADMAP.md`](docs/ROADMAP.md) · 领域规则：[`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) · 架构决策：[`docs/adr/`](docs/adr/) · 冻结的完整历史计划：[`docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md`](docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md)。
 
 > **当前状态：** 新版 Web App 已具备 L11 / L16 / DIRECT / HALF 完整双向闭环，是主要工具。旧版 `pmbus-calculator.html` 继续保留在根目录，作为旧 URL 与离线单文件场景的 read-only fallback。
 

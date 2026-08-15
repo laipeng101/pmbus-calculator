@@ -132,7 +132,7 @@ The built-in dictionary records what PMBus specifies for 13 standard commands. S
 - **Tailwind CSS** + CSS variables — design-token-driven theming.
 - **Vitest** — unit testing for PMBus math core and reducer/view-model.
 - **Playwright** — real-user E2E flows across desktop and mobile Chromium projects.
-- See [`AGENTS.md`](AGENTS.md), [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md) for the full refactor plan.
+- Live roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md) · domain rules: [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) · architecture decisions: [`docs/adr/`](docs/adr/) · frozen full plan: [`docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md`](docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md).
 
 > **Current status:** The new web app has L11 / L16 / DIRECT / HALF fully bidirectional and is the primary tool. The legacy `pmbus-calculator.html` remains at the repository root as a read-only fallback for old URLs and offline single-file use.
 

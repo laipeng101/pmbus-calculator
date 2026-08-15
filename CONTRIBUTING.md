@@ -18,11 +18,21 @@
 - 当前为单人维护：同一 Agent 可以完成本地检查、创建 PR、等待 CI、自审与普通 merge commit 合并的闭环；不为每个小任务机械创建 Issue。
 - 不启用强制分支保护；不等待人工确认。
 
+单人无人值守闭环：
+
+```text
+latest main → one scoped branch → local verify → PR → CI green
+→ self-review → normal merge commit → main CI green
+→ delete branch → sync main
+```
+
+所有推送新提交都会使此前验收失效，必须等待最新 head 的 CI。
+
 ## 3. Fresh environment 初始化
 
 ```bash
 npm ci
-npx playwright install chromium
+npm run test:e2e:install
 ```
 
 CI 可继续使用 `npx playwright install --with-deps chromium`。
@@ -49,6 +59,14 @@ git diff --cached --check
 npm audit --audit-level=high
 ```
 
+whitespace 检查口径：
+
+- `git diff --check`：未暂存工作区；
+- `git diff --cached --check`：暂存区；
+- PR CI：完整 PR base→head；
+- push CI：完整 event.before→github.sha；
+- 不得再把 `git show --check` 描述成普通 merge commit 的完整变更检查。
+
 所有命令都必须以 exit code 0 正常结束，并记录在验收记录中。
 `npm run check` 只用于快速检查（format/typecheck/lint/test:run/build），不包含 coverage、E2E 与 audit，不得宣称它覆盖这些门禁。
 
@@ -73,7 +91,7 @@ type(scope): summary
 ## 7. PR 流程
 
 1. 填写 PR 模板中的验收清单。
-2. 确保 CI 全绿（format、typecheck、lint、coverage、E2E、build、git diff --check、npm audit --audit-level=high）。
+2. 确保 CI 全绿（format、typecheck、lint、coverage、E2E、build、PR 或 push 的完整 whitespace gate、npm audit --audit-level=high）。所有推送新提交都会使此前验收失效，必须等待最新 head 的 CI。
 3. PR 描述中写明：changed files、affected modes、测试命令与结果、剩余缺口。
 4. CI 全绿后使用普通 merge commit 合入，不使用 squash。
 

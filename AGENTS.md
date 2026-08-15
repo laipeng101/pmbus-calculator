@@ -4,6 +4,22 @@
 > 稳定规则只放在这里；里程碑状态看 `docs/ROADMAP.md`；legacy parity 看 `docs/MIGRATION_MATRIX.md`；
 > 格式/舍入/字节序/命令 profile 规则看 `docs/DOMAIN_MODEL.md`；开发流程看 `CONTRIBUTING.md`。
 
+## 0. Context Loading Policy
+
+- **Always**：`AGENTS.md`、当前 `docs/ROADMAP.md`
+- **Conditional**：
+  - 数学/格式/命令元数据任务才读 `DOMAIN_MODEL.md`
+  - Git/PR/CI 流程任务才读 `CONTRIBUTING.md`
+  - legacy/parity 任务才读 `MIGRATION_MATRIX.md`
+  - 决策相关任务只读相关 ADR
+  - 规范核查只打开所需 PDF 与具体章节
+- **Historical**：`docs/archive/**` 默认不读、不搜索；只有明确历史调查理由时才加载
+- 使用 `rg` 做普通代码搜索时，默认添加：
+
+```bash
+rg ... -g '!docs/archive/**'
+```
+
 ## 1. 项目主线
 
 ```text
@@ -75,9 +91,9 @@ tests/e2e/        Playwright 真实用户流程
 
 ## 7. 每次任务执行流程
 
-1. 读取任务 Issue、本文件、`docs/DOMAIN_MODEL.md` 中相关规则、`docs/ROADMAP.md` 当前状态。
+1. 读取任务要求、本文件、`docs/ROADMAP.md` 当前状态；按 Context Loading Policy 条件加载其他文档。
 2. 在任务开头明确：Goal、Out of scope、影响模式、规范来源、验收向量。
-3. 确认工作区干净；fresh environment 先执行 `npm ci` 与 `npx playwright install chromium`。
+3. 确认工作区干净；fresh environment 先执行 `npm ci` 与 `npm run test:e2e:install`。
 4. 只实现一个可验证的垂直切片，不夹带无关改动。
 5. 完成后必须运行：
 
@@ -85,7 +101,9 @@ tests/e2e/        Playwright 真实用户流程
    npm run verify
    ```
 
-   `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`test:coverage`、`test:e2e`、`build`、`git diff --check`、`git diff --cached --check`、`npm audit --audit-level=high`。
+   `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`test:coverage`、`test:e2e`、`build`、
+   `git diff --check`（未暂存工作区）、`git diff --cached --check`（暂存区）、`npm audit --audit-level=high`。
+   CI 的 whitespace gate 还额外检查：PR 为完整 base→head；push 为完整 event.before→github.sha。
 
 6. 输出：changed files、affected modes、实际测试命令与结果、剩余缺口。
    验收记录必须包含每条命令、exit code、实际测试数、coverage 和 CI URL。
@@ -97,11 +115,7 @@ tests/e2e/        Playwright 真实用户流程
 
 - 代码变更后检查是否需要更新：`docs/ROADMAP.md`、`docs/MIGRATION_MATRIX.md`、`README.md`。
 - 不要在多份文档中重复维护同一份进度表。
-- 变更记录写入 `docs/MIGRATION_MATRIX.md`，格式：
-
-```md
-| Change ID | Date | Files | Type | Affected Modes | Tests | Docs Updated | Status |
-```
+- 不再维护手工 WEB-xxxx 变更记录；PR、commit 和 CI 是变更审计来源。
 
 ## 9. Pull Request 检查清单
 
