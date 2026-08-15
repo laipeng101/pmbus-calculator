@@ -3,31 +3,31 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 变更记录与 legacy parity 见 [`MIGRATION_MATRIX.md`](MIGRATION_MATRIX.md)。
 
-最后更新：2026-08-15（M5–M8 已合入，M9 legacy 决策 PR 待合入）
+最后更新：2026-08-15（M0–M9 全部完成）
 
 ## 当前优先级
 
 ```text
-M9 legacy 决策（当前）
+全部里程碑完成。后续按需从最新 main 开启新工作。
 ```
 
-M4.5 / M4.5.1 已验收通过；M5 DIRECT 通过 PR #3、M6 HALF 通过 PR #4、M7 Copy 通过 PR #5、M8 回归通过 PR #6 合入 `main`。
+M4.5 / M4.5.1 已验收通过；M5 DIRECT 通过 PR #3、M6 HALF 通过 PR #4、M7 Copy 通过 PR #5、M8 回归通过 PR #6、M9 legacy 决策通过 PR #7 合入 `main`。
 
 ## 里程碑状态
 
-| Milestone | 名称                   | 状态   | 备注                                                                |
-| --------- | ---------------------- | ------ | ------------------------------------------------------------------- |
-| M0        | 准备期                 | Done   | 文件实际在仓库根目录与 `docs/`，见迁移矩阵                          |
-| M1        | Vite + React + TS 骨架 | Done   | build/lint/typecheck 通过                                           |
-| M2        | 新版 Web 视觉框架      | Done   | Playwright 双端布局验证                                             |
-| M3        | L11 模式闭环           | Done   | 双向闭环 + 超范围饱和 golden case                                   |
-| M4        | L16 / VOUT 模式闭环    | Done   | 双向闭环 + V 输入 clamp golden case                                 |
-| M4.5      | 稳定化门禁             | Done   | 质量门禁、L11/L16 纠偏、命令/预设分离、文档体系全部验收             |
-| M5        | DIRECT 模式闭环        | Done   | PR #3 已合入：`state.raw` 唯一事实来源；Y/Value/m/b/R 完整 UI       |
-| M6        | HALF 模式闭环          | Done   | PR #4 已合入：Value 输入闭环；Sign/Exponent/Mantissa 分区显示       |
-| M7        | 复制与工程输出         | Done   | PR #5 已合入：raw word 与 LE/BE bytes 分离；C 宏命令名              |
-| M8        | 测试与回归保护         | Done   | PR #6 已合入：golden 全覆盖与 CommandPicker 键盘/ARIA               |
-| M9        | 旧 HTML 下线或保留     | Review | PR 待合入：`pmbus-calculator.html` 标记为 read-only legacy fallback |
+| Milestone | 名称                   | 状态 | 备注                                                                   |
+| --------- | ---------------------- | ---- | ---------------------------------------------------------------------- |
+| M0        | 准备期                 | Done | 文件实际在仓库根目录与 `docs/`，见迁移矩阵                             |
+| M1        | Vite + React + TS 骨架 | Done | build/lint/typecheck 通过                                              |
+| M2        | 新版 Web 视觉框架      | Done | Playwright 双端布局验证                                                |
+| M3        | L11 模式闭环           | Done | 双向闭环 + 超范围饱和 golden case                                      |
+| M4        | L16 / VOUT 模式闭环    | Done | 双向闭环 + V 输入 clamp golden case                                    |
+| M4.5      | 稳定化门禁             | Done | 质量门禁、L11/L16 纠偏、命令/预设分离、文档体系全部验收                |
+| M5        | DIRECT 模式闭环        | Done | PR #3 已合入：`state.raw` 唯一事实来源；Y/Value/m/b/R 完整 UI          |
+| M6        | HALF 模式闭环          | Done | PR #4 已合入：Value 输入闭环；Sign/Exponent/Mantissa 分区显示          |
+| M7        | 复制与工程输出         | Done | PR #5 已合入：raw word 与 LE/BE bytes 分离；C 宏命令名                 |
+| M8        | 测试与回归保护         | Done | PR #6 已合入：golden 全覆盖与 CommandPicker 键盘/ARIA                  |
+| M9        | 旧 HTML 下线或保留     | Done | PR #7 已合入：`pmbus-calculator.html` 标记为 read-only legacy fallback |
 
 ## M4.5 稳定化门禁（已完成）
 
