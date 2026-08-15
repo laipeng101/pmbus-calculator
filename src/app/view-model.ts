@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { AppState, AppMode } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { getCommandConfig } from '../legacy/command-metadata'
+import { buildCMacro } from './copy-utils'
 
 export interface BitGroupVM {
   nibbleIndex: number
@@ -26,8 +27,11 @@ export interface CalculatorViewModel {
   mode: AppMode
   valueText: string
   rawHex: string
+  /** Internal 16-bit raw word, never byte-swapped for display. */
+  rawWordHex: string
   rawBytesLE: string
   rawBytesBE: string
+  cMacroText: string
   formulaText: string
   deltaText?: string
   deltaKind?: 'ok' | 'warn' | 'error'
@@ -239,11 +243,13 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   const displayedRaw =
     state.mode === 'L16' && state.byteOrder === 'be' ? PMBusMath.swapBytes(raw) : raw
+  const formulaText = computeFormula(state)
 
   return {
     mode: state.mode,
     valueText: computeValueText(state),
     rawHex: formatRawHex(displayedRaw),
+    rawWordHex: formatRawHex(raw),
     rawBytesLE: formatBytes(le, {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
@@ -252,7 +258,8 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
     }),
-    formulaText: computeFormula(state),
+    cMacroText: buildCMacro(state.commandKey, formatRawHex(raw), formulaText),
+    formulaText,
     deltaText,
     deltaKind,
     warnings: buildWarnings(state),

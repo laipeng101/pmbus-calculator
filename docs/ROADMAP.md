@@ -3,15 +3,15 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 变更记录与 legacy parity 见 [`MIGRATION_MATRIX.md`](MIGRATION_MATRIX.md)。
 
-最后更新：2026-08-15（M5 DIRECT 已合入，M6 HALF PR 待合入）
+最后更新：2026-08-15（M5/M6 已合入，M7 Copy PR 待合入）
 
 ## 当前优先级
 
 ```text
-M6 HALF（当前） → M7 Copy/工程输出 → M8 测试回归 → M9 legacy 决策
+M7 Copy/工程输出（当前） → M8 测试回归 → M9 legacy 决策
 ```
 
-M4.5 / M4.5.1 已验收通过；M5 DIRECT 已通过 PR #3 合入 `main`。
+M4.5 / M4.5.1 已验收通过；M5 DIRECT 通过 PR #3、M6 HALF 通过 PR #4 合入 `main`。
 
 ## 里程碑状态
 
@@ -24,8 +24,8 @@ M4.5 / M4.5.1 已验收通过；M5 DIRECT 已通过 PR #3 合入 `main`。
 | M4        | L16 / VOUT 模式闭环    | Done   | 双向闭环 + V 输入 clamp golden case                           |
 | M4.5      | 稳定化门禁             | Done   | 质量门禁、L11/L16 纠偏、命令/预设分离、文档体系全部验收       |
 | M5        | DIRECT 模式闭环        | Done   | PR #3 已合入：`state.raw` 唯一事实来源；Y/Value/m/b/R 完整 UI |
-| M6        | HALF 模式闭环          | Review | PR 待合入：Value 输入闭环；Sign/Exponent/Mantissa 分区显示    |
-| M7        | 复制与工程输出         | Todo   | 基础复制可用；raw word 与 LE/BE bytes 需明确定义              |
+| M6        | HALF 模式闭环          | Done   | PR #4 已合入：Value 输入闭环；Sign/Exponent/Mantissa 分区显示 |
+| M7        | 复制与工程输出         | Review | PR 待合入：raw word 与 LE/BE bytes 分离；C 宏命令名           |
 | M8        | 测试与回归保护         | Todo   | L11/DIRECT/HALF golden 已有；L16 golden 待补                  |
 | M9        | 旧 HTML 下线或保留     | Todo   | 新应用全回归前保留 legacy 为 read-only fallback               |
 
@@ -84,6 +84,13 @@ M4.5 / M4.5.1 已验收通过；M5 DIRECT 已通过 PR #3 合入 `main`。
 
 ## M7 Copy/工程输出进入条件
 
-- [ ] M6 完成并合入
-- [ ] 明确 raw word 与 on-wire LE/BE bytes 的边界
-- [ ] 偏好持久化已有测试
+- [x] M6 完成并合入
+- [x] 明确 raw word 与 on-wire LE/BE bytes 的边界
+- [x] 偏好持久化已有测试
+
+## M7 Copy/工程输出完成标准
+
+- [x] C 宏默认输出未交换 16-bit raw word；LE/BE bytes 提供独立复制按钮
+- [x] 有命令时 C 宏使用安全清洗后的命令名；无命令使用 `RAW_VALUE`
+- [x] prefix / space / LE-BE / 命令名 / clipboard fallback / 偏好 reload 均有测试
+- [x] 桌面 + 移动 Chromium E2E 覆盖复制流程

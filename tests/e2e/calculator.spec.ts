@@ -176,6 +176,33 @@ test.describe('计算器真实用户流程', () => {
     expect(clipboard).toBe('0x 01 00')
   })
 
+  test('复制 LE bytes 与 C 宏默认使用未交换 raw word', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.goto('/')
+    await page.locator('input[placeholder="0x0000"]').fill('0001')
+
+    await page.getByRole('button', { name: '📋 LE bytes' }).click()
+    let clipboard = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clipboard).toBe('0x 01 00')
+
+    await page.getByRole('button', { name: 'C 代码' }).click()
+    clipboard = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clipboard).toBe('#define RAW_VALUE 0x0001 /* Y=1 × 2^0 */')
+  })
+
+  test('选择命令后 C 宏使用安全清洗后的命令名', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.goto('/')
+    await page.locator('input[placeholder="0x0000"]').fill('0001')
+
+    await page.locator('#command-picker').click()
+    await page.getByRole('option', { name: /VOUT_COMMAND/ }).click()
+    await page.getByRole('button', { name: 'C 代码' }).click()
+
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clipboard).toBe('#define VOUT_COMMAND 0x0001 /* Y=1 × 2^0 */')
+  })
+
   test('主题切换由全局状态驱动并持久化', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('pmbus-calculator:theme', 'light')

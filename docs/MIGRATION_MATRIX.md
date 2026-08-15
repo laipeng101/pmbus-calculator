@@ -27,7 +27,8 @@
 | WEB-0015  | 2026-08-15 | 命令元数据标准定义/预设分离；`command/set` 只读；`command/apply-preset`；FAN_COMMAND_1 | 修复      | GLOBAL/命令字典            | Vitest（reducer/metadata） + Playwright                  | 是       | Done   |
 | WEB-0016  | 2026-08-15 | 单人闭环流程文档（AGENTS/CONTRIBUTING/PR模板）与 README 事实修正                       | 文档      | GLOBAL                     | format/typecheck/lint/build                              | 是       | Done   |
 | WEB-0017  | 2026-08-15 | M5 DIRECT 闭环：raw 唯一事实来源、Y/Value/m/b/R UI、系数校验与 golden case             | 新增/修复 | DIRECT                     | Vitest 181 pass + coverage + Playwright 32 pass + build  | 是       | Done   |
-| WEB-0018  | 2026-08-15 | M6 HALF 闭环：Value 输入、Sign/Exp/Mantissa 分区、golden cases、E2E                    | 新增/修复 | HALF                       | Vitest 214 pass + coverage + Playwright 36 pass + build  | 是       | Review |
+| WEB-0018  | 2026-08-15 | M6 HALF 闭环：Value 输入、Sign/Exp/Mantissa 分区、golden cases、E2E                    | 新增/修复 | HALF                       | Vitest 214 pass + coverage + Playwright 36 pass + build  | 是       | Done   |
+| WEB-0019  | 2026-08-15 | M7 Copy：raw word 与 LE/BE bytes 分离、C 宏命令名清洗、byte 复制按钮、clipboard 测试   | 修复/新增 | GLOBAL/COPY                | Vitest 226 pass + coverage + Playwright 40 pass + build  | 是       | Review |
 
 ## 2. Legacy parity
 
@@ -43,7 +44,7 @@
 | 公式界面        | `.formula-mode` DOM               | `ModeWorkspace` 内联公式区   | 部分完成 | L11/L16/DIRECT/HALF 双向；独立 FormulaEditor 待拆                                                    |
 | DebugPanel      | `#debugPanel`                     | `DebugDrawer`                | 部分完成 | 不再宣称 CI 测试状态；边界测试入口待 M8                                                              |
 | 主题切换        | `#themeToggle` + `.dark`          | `ThemeToggle`, `data-theme`  | Done     | 由 `state.ui.theme` 驱动，经 `persistence.ts` 持久化                                                 |
-| 复制工具        | 复制按钮 + 全局状态               | `CopyToolbar`                | 部分完成 | 0x/空格/LE-BE 偏好已接 UI 并持久化；clipboard fallback 已有                                          |
+| 复制工具        | 复制按钮 + 全局状态               | `CopyToolbar`                | Done     | raw word 与 LE/BE bytes 分离；C 宏默认 raw word + 命令名清洗；clipboard fallback 单测覆盖            |
 | DIRECT profiles | inline buttons                    | `DirectCoeffPanel`           | Todo     | 需绑定器件 profile 与来源                                                                            |
 | Boundary tests  | `runBoundaryTests`                | Vitest + `DebugDrawer`       | 部分完成 | 单测全通过（数量见 CI 日志）；L16 golden-case 待补；E2E 全通过（数量见 CI 日志）                     |
 

@@ -55,9 +55,11 @@
 
 ## 4. 字节序
 
-- 内部 `state.raw` 一律按 PMBus 小端语义存储。
-- L16 在 `byteOrder === 'be'` 时，Hex 输入/显示按字节交换解释。
-- 复制偏好（`copy.endian`）独立于内部字节序，只影响复制文本。
+- `state.raw` 是未交换的 16-bit raw word（寄存器值），是编码的唯一事实来源。
+- “on-wire LE/BE bytes” 是 raw word 在总线上的字节序列：LE = `[low, high]`，BE = `[high, low]`。
+- L16 在 `byteOrder === 'be'` 时，Hex 输入/显示按字节交换解释；`rawWordHex` 始终显示未交换 raw word。
+- 复制偏好（`copy.endian`）只影响 Hex 复制文本；C 宏始终输出未交换 raw word；
+  LE bytes / BE bytes 复制按钮输出独立的 byte-array 文本。
 
 ## 5. 命令与 profile
 
