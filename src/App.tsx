@@ -92,6 +92,7 @@ function App() {
         <CommandPicker
           commandKey={state.commandKey}
           onChange={(key) => dispatch({ type: 'command/set', commandKey: key })}
+          onApplyPreset={(key) => dispatch({ type: 'command/apply-preset', commandKey: key })}
         />
 
         <WorkspaceLayout

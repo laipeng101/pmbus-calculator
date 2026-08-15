@@ -171,6 +171,20 @@ function buildWarnings(state: AppState): WarningVM[] {
     if (cmd?.note) {
       warnings.push({ id: 'cmd-note', level: 'info', text: cmd.note })
     }
+    if (cmd?.encodingRule === 'device_defined') {
+      warnings.push({
+        id: 'cmd-device-defined',
+        level: 'info',
+        text: `${cmd.label} 需要器件数据手册确定数据格式；选择命令不会自动应用参数。`,
+      })
+    }
+    if (cmd?.encodingRule === 'follows_vout_mode') {
+      warnings.push({
+        id: 'cmd-follows-vout-mode',
+        level: 'info',
+        text: `${cmd.label} 的数据格式跟随 VOUT_MODE；选择命令不会自动应用参数。`,
+      })
+    }
   }
   return warnings
 }

@@ -33,18 +33,48 @@ test.describe('计算器真实用户流程', () => {
     await expect(page.locator('#value-input')).toHaveValue('1')
   })
 
-  test('命令选择会加载模式与参数并重新编码 raw', async ({ page }) => {
+  test('选择命令只显示命令信息，不自动加载参数', async ({ page }) => {
     await page.goto('/')
     const hexInput = page.locator('input[placeholder="0x0000"]')
 
     await page.locator('#command-picker').click()
     await page.getByRole('option', { name: /VOUT_COMMAND/ }).click()
 
+    await expect(hexInput).toHaveValue('0x0000')
+    await expect(page.getByRole('tab', { name: /LINEAR11/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(page.getByRole('button', { name: '应用 project-demo 预设' })).toBeVisible()
+  })
+
+  test('显式应用 project-demo 预设后才加载模式与参数并重新编码 raw', async ({ page }) => {
+    await page.goto('/')
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+
+    await page.locator('#command-picker').click()
+    await page.getByRole('option', { name: /VOUT_COMMAND/ }).click()
+    await page.getByRole('button', { name: '应用 project-demo 预设' }).click()
+
     await expect(hexInput).toHaveValue('0x0C00')
     await expect(page.getByRole('tab', { name: /LINEAR16/ })).toHaveAttribute(
       'aria-selected',
       'true',
     )
+  })
+
+  test('device_defined 命令提示需要器件数据手册且不切换模式', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+
+    await page.locator('#command-picker').click()
+    await page.getByRole('option', { name: /READ_VIN/ }).click()
+
+    await expect(page.getByRole('tab', { name: /LINEAR16/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(page.getByText(/需要器件数据手册/).first()).toBeVisible()
   })
 
   test('STATUS_WORD 不强制切换数值模式', async ({ page }) => {

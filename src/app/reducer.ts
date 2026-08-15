@@ -80,74 +80,64 @@ function withRaw(state: AppState, raw: number): AppState {
 }
 
 /**
- * Apply a command selection the way legacy `selectCommand()` did:
- * numeric commands switch mode, load their default value/format parameters,
- * and re-encode raw. STATUS/BLOCK commands are informational only and do not
- * force a numeric conversion mode.
+ * Apply an optional command preset only when the user explicitly asks for it.
+ *
+ * `command/set` never applies parameters.  `command/apply-preset` is the only
+ * path that may switch mode, load parameters, and re-encode raw.  Presets that
+ * carry project-demo values are therefore never mistaken for standard defaults.
  */
-function applyCommandSelection(state: AppState, commandKey: string | null): AppState {
+function applyCommandPreset(state: AppState, commandKey: string | null): AppState {
   if (!commandKey) return { ...state, commandKey: null }
 
   const cfg = getCommandConfig(commandKey)
   if (!cfg) return state
 
   const next = { ...state, commandKey }
+  const preset = cfg.preset
+  if (!preset) return next
 
-  if (!cfg.mode) {
-    // STATUS / BLOCK payloads: no L11/L16/DIRECT/HALF conversion applies.
-    return next
-  }
-
-  const mode = cfg.mode
-
-  if (mode === 'L16') {
-    const voutMode = cfg.voutMode ?? state.l16.voutMode
+  if (preset.mode === 'L16') {
+    const voutMode = preset.voutMode ?? state.l16.voutMode
     const parsed = PMBusMath.parseVoutMode(voutMode)
     const n =
-      typeof parsed.linearExponent === 'number' ? parsed.linearExponent : (cfg.n ?? state.l16.n)
+      typeof parsed.linearExponent === 'number' ? parsed.linearExponent : (preset.n ?? state.l16.n)
     const withL16 = {
       ...next,
       mode: 'L16' as const,
       l16: { ...next.l16, voutMode, n },
     }
-    if (cfg.val !== undefined) return encodeL16FromValue(withL16, cfg.val)
-    return withL16
+    return encodeL16FromValue(withL16, preset.value)
   }
 
-  if (mode === 'L11') {
-    const n = cfg.n ?? state.l11.n
+  if (preset.mode === 'L11') {
+    const n = preset.n ?? state.l11.n
     const withL11 = {
       ...next,
       mode: 'L11' as const,
       l11: { ...next.l11, n, valueInput: null },
     }
-    if (cfg.val !== undefined) return encodeL11FromValue(withL11, cfg.val)
-    return withL11
+    return encodeL11FromValue(withL11, preset.value)
   }
 
-  if (mode === 'DIRECT') {
+  if (preset.mode === 'DIRECT') {
     const direct = {
       y: next.direct.y,
-      m: cfg.m ?? next.direct.m,
-      b: cfg.b ?? next.direct.b,
-      r: cfg.R ?? next.direct.r,
+      m: preset.m ?? next.direct.m,
+      b: preset.b ?? next.direct.b,
+      r: preset.R ?? next.direct.r,
     }
     const withDirect = { ...next, mode: 'DIRECT' as const, direct }
-    if (cfg.val !== undefined) {
-      const y = PMBusMath.encodeDirect(cfg.val, direct.m, direct.b, direct.r)
-      return {
-        ...withDirect,
-        direct: { ...direct, y },
-        raw: y < 0 ? PMBusMath.fromSigned(y, 16) : y & 0xffff,
-      }
+    const y = PMBusMath.encodeDirect(preset.value, direct.m, direct.b, direct.r)
+    return {
+      ...withDirect,
+      direct: { ...direct, y },
+      raw: y < 0 ? PMBusMath.fromSigned(y, 16) : y & 0xffff,
     }
-    return withDirect
   }
 
-  if (mode === 'HALF') {
+  if (preset.mode === 'HALF') {
     const withHalf = { ...next, mode: 'HALF' as const }
-    if (cfg.val !== undefined) return { ...withHalf, raw: PMBusMath.encodeHalf(cfg.val) }
-    return withHalf
+    return { ...withHalf, raw: PMBusMath.encodeHalf(preset.value) }
   }
 
   return next
@@ -168,7 +158,18 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'command/set':
-      return applyCommandSelection(state, action.commandKey)
+      // Selecting a command only records the selection and shows command info.
+      // It must not switch modes or rewrite raw; device/demo presets stay inert
+      // until the user explicitly applies them.
+      return action.commandKey === null
+        ? { ...state, commandKey: null }
+        : {
+            ...state,
+            commandKey: getCommandConfig(action.commandKey) ? action.commandKey : state.commandKey,
+          }
+
+    case 'command/apply-preset':
+      return applyCommandPreset(state, action.commandKey)
 
     case 'raw/set-from-hex': {
       const cleaned = action.hex.replace(/^0x/i, '').replace(/\s/g, '')

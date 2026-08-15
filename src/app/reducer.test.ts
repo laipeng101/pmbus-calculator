@@ -13,9 +13,22 @@ describe('appReducer — state transitions', () => {
   })
 
   describe('command/set', () => {
-    it('sets commandKey', () => {
-      const s = appReducer(base, { type: 'command/set', commandKey: 'VOUT_COMMAND' })
+    it('sets commandKey only, without switching mode or rewriting raw', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const withRaw = appReducer(l16, { type: 'raw/set', raw: 0x1234 })
+      const s = appReducer(withRaw, { type: 'command/set', commandKey: 'VOUT_COMMAND' })
       expect(s.commandKey).toBe('VOUT_COMMAND')
+      expect(s.mode).toBe('L16')
+      expect(s.raw).toBe(0x1234)
+      expect(s.l16.voutMode).toBe(withRaw.l16.voutMode)
+    })
+
+    it('does not auto-apply device_defined presets', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s = appReducer(l16, { type: 'command/set', commandKey: 'READ_VIN' })
+      expect(s.commandKey).toBe('READ_VIN')
+      expect(s.mode).toBe('L16')
+      expect(s.raw).toBe(l16.raw)
     })
 
     it('clears commandKey with null', () => {
@@ -24,20 +37,9 @@ describe('appReducer — state transitions', () => {
       expect(s.commandKey).toBeNull()
     })
 
-    it('applies L16 command metadata: mode, VOUT_MODE, N, and raw', () => {
-      const s = appReducer(base, { type: 'command/set', commandKey: 'VOUT_COMMAND' })
-      expect(s.mode).toBe('L16')
-      expect(s.l16.voutMode).toBe(0x18)
-      expect(s.l16.n).toBe(-8)
-      // 12 / 2^-8 = 3072 = 0x0C00
-      expect(s.raw).toBe(0x0c00)
-    })
-
-    it('applies L11 command metadata and re-encodes raw', () => {
-      const s = appReducer(base, { type: 'command/set', commandKey: 'FAN_COMMAND' })
-      expect(s.mode).toBe('L11')
-      expect(s.l11.valueInput).toBe(5000)
-      expect(s.raw).toBe(0x1a71) // 5000 = 625 × 2^3 (N=3, Y=625)
+    it('ignores an unknown command key', () => {
+      const s = appReducer(base, { type: 'command/set', commandKey: 'NOT_A_COMMAND' })
+      expect(s.commandKey).toBeNull()
     })
 
     it('does not force a numeric mode for STATUS_WORD', () => {
@@ -51,6 +53,47 @@ describe('appReducer — state transitions', () => {
       const s = appReducer(base, { type: 'command/set', commandKey: 'READ_EIN' })
       expect(s.commandKey).toBe('READ_EIN')
       expect(s.mode).toBe('L11')
+    })
+  })
+
+  describe('command/apply-preset', () => {
+    it('applies VOUT_COMMAND project-demo preset: mode, VOUT_MODE, N, and raw', () => {
+      const s = appReducer(base, { type: 'command/apply-preset', commandKey: 'VOUT_COMMAND' })
+      expect(s.commandKey).toBe('VOUT_COMMAND')
+      expect(s.mode).toBe('L16')
+      expect(s.l16.voutMode).toBe(0x18)
+      expect(s.l16.n).toBe(-8)
+      // 12 / 2^-8 = 3072 = 0x0C00
+      expect(s.raw).toBe(0x0c00)
+    })
+
+    it('applies FAN_COMMAND_1 project-demo preset and re-encodes raw', () => {
+      const s = appReducer(base, { type: 'command/apply-preset', commandKey: 'FAN_COMMAND_1' })
+      expect(s.commandKey).toBe('FAN_COMMAND_1')
+      expect(s.mode).toBe('L11')
+      expect(s.l11.valueInput).toBe(5000)
+      expect(s.raw).toBe(0x1a71) // 5000 = 625 × 2^3 (N=3, Y=625)
+    })
+
+    it('does not apply anything for STATUS_WORD (no preset)', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s = appReducer(l16, { type: 'command/apply-preset', commandKey: 'STATUS_WORD' })
+      expect(s.commandKey).toBe('STATUS_WORD')
+      expect(s.mode).toBe('L16')
+      expect(s.raw).toBe(l16.raw)
+    })
+
+    it('does not apply anything for READ_EIN (no preset)', () => {
+      const s = appReducer(base, { type: 'command/apply-preset', commandKey: 'READ_EIN' })
+      expect(s.commandKey).toBe('READ_EIN')
+      expect(s.mode).toBe('L11')
+      expect(s.raw).toBe(base.raw)
+    })
+
+    it('clears commandKey with null', () => {
+      const withCmd = appReducer(base, { type: 'command/apply-preset', commandKey: 'VOUT_COMMAND' })
+      const s = appReducer(withCmd, { type: 'command/apply-preset', commandKey: null })
+      expect(s.commandKey).toBeNull()
     })
   })
 

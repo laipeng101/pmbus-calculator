@@ -1,22 +1,26 @@
 /**
- * Command Metadata — data source of truth for all PMBus commands.
+ * Command Metadata — single data source of truth for all PMBus commands.
  *
  * UI components must read from here; never hardcode command lists in JSX.
  *
- * Domain model notes:
- * - `dataFormat` describes how the payload is encoded on the bus.
- * - `transactionType` describes the SMBus/PMBus transaction shape.
- * - `valueType` distinguishes numeric scalar values from status/block payloads.
- * - `mode` is only set when a numeric data format maps onto the calculator's
- *   four conversion tabs. STATUS and BLOCK payloads intentionally have no mode.
- * - `profileSource` / `profileAppliesTo` separate "typical example values"
- *   from values that are standardized by PMBus. Device-specific DIRECT
- *   coefficients must always come from the device datasheet and are not
- *   shipped as if they were standard defaults.
+ * Domain model (see docs/DOMAIN_MODEL.md and docs/adr/0002):
+ * - A **standard command definition** records what PMBus specifies:
+ *   command code, transaction type, value type, units, spec section, and an
+ *   `encodingRule` that tells the user how to resolve the payload format.
+ * - A standard definition deliberately does NOT carry a calculator mode or
+ *   pre-filled numeric parameters.  For commands marked `device_defined` the
+ *   format is chosen by the device datasheet; for `follows_vout_mode` it is
+ *   chosen by VOUT_MODE.  Claiming a fixed L11/L16 format for those commands
+ *   would be a false specification.
+ * - An optional `preset` may exist.  Presets are never auto-applied by
+ *   `command/set`; the user must explicitly apply them via
+ *   `command/apply-preset`.  Every preset declares `sourceKind`
+ *   (`spec-example` | `device-datasheet` | `project-demo`), `source`,
+ *   `appliesTo`, and `direction` so a demo value can never be mistaken for a
+ *   standard or universal default.
  */
 
 export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF'
-export type CommandDataFormat = 'LINEAR11' | 'LINEAR16' | 'DIRECT' | 'STATUS' | 'BLOCK'
 export type CommandTransactionType =
   | 'write_word'
   | 'read_word'
@@ -25,226 +29,310 @@ export type CommandTransactionType =
   | 'read_byte'
 export type CommandValueType = 'scalar' | 'status' | 'block'
 
+/** How the PMBus specification tells an implementer to resolve the payload format. */
+export type CommandEncodingRule = 'follows_vout_mode' | 'device_defined' | 'status' | 'block'
+
+export type PresetSourceKind = 'spec-example' | 'device-datasheet' | 'project-demo'
+export type PresetDirection = 'read' | 'write'
+
+/**
+ * Optional pre-filled parameters for a command.
+ *
+ * A preset is only applied when the user explicitly chooses
+ * “应用演示预设” (command/apply-preset).  It never auto-applies on selection.
+ */
+export interface CommandPreset {
+  /** Calculator mode/format to apply. */
+  mode: AppMode
+
+  /** Physical value used to re-encode raw when the preset is applied. */
+  value: number
+
+  /** LINEAR11 suggested exponent (when mode is L11). */
+  n?: number
+
+  /** LINEAR16 VOUT_MODE byte (when mode is L16). */
+  voutMode?: number
+
+  /** DIRECT coefficients (when mode is DIRECT). */
+  m?: number
+  b?: number
+  R?: number
+
+  sourceKind: PresetSourceKind
+  source: string
+  appliesTo: string
+  direction: PresetDirection
+}
+
 export interface CommandMeta {
   key: string
   label: string
   cmd: number
 
-  dataFormat: CommandDataFormat
   transactionType: CommandTransactionType
   valueType: CommandValueType
+  units: string
+  spec: string
+  encodingRule: CommandEncodingRule
 
-  /** Conversion tab, only for numeric scalar payloads. */
-  mode?: AppMode
-
-  spec?: string
   note?: string
 
-  /**
-   * Where the pre-filled value comes from. Use "device datasheet required"
-   * whenever PMBus does not standardise the coefficients.
-   */
-  profileSource?: string
-  profileAppliesTo?: string
-
-  // L11 / L16 typical scalar defaults (example values, not always normative)
-  val?: number
-  n?: number
-
-  // L16 VOUT_MODE byte
-  voutMode?: number
-
-  // DIRECT coefficients — only present when a concrete device profile is known.
-  m?: number
-  b?: number
-  R?: number
+  /** Optional demo/preset parameters.  Never applied by `command/set`. */
+  preset?: CommandPreset
 }
+
+const PROJECT_DEMO = {
+  sourceKind: 'project-demo',
+  source: 'Project demo preset',
+  appliesTo: 'Demo only — not a standard or universal PMBus default',
+} as const
 
 export const COMMAND_METADATA: Record<string, CommandMeta> = {
   VOUT_COMMAND: {
     key: 'VOUT_COMMAND',
     label: 'VOUT_COMMAND',
     cmd: 0x21,
-    mode: 'L16',
-    dataFormat: 'LINEAR16',
     transactionType: 'write_word',
     valueType: 'scalar',
-    val: 12,
-    n: -8,
-    voutMode: 0x18,
-    spec: 'PMBus Part II 13.2 / Part I 8.4.1',
-    profileSource: 'PMBus Part II 13.2 typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices with LINEAR16 VOUT',
+    units: 'V',
+    spec: 'PMBus Part II §13.2 / Part I §8.4.1',
+    encodingRule: 'follows_vout_mode',
+    note: 'VOUT_COMMAND 的数据格式跟随 VOUT_MODE；选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L16',
+      value: 12,
+      voutMode: 0x18,
+      direction: 'write',
+      ...PROJECT_DEMO,
+    },
   },
   VOUT_OV_FAULT_LIMIT: {
     key: 'VOUT_OV_FAULT_LIMIT',
     label: 'VOUT_OV_FAULT_LIMIT',
     cmd: 0x40,
-    mode: 'L16',
-    dataFormat: 'LINEAR16',
     transactionType: 'write_word',
     valueType: 'scalar',
-    val: 13.2,
-    n: -8,
-    voutMode: 0x18,
-    spec: 'PMBus Part II 15.x / follows VOUT_MODE',
-    profileSource: 'PMBus Part II typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices; format follows VOUT_MODE',
+    units: 'V',
+    spec: 'PMBus Part II §15.x',
+    encodingRule: 'follows_vout_mode',
+    note: 'VOUT_OV_FAULT_LIMIT 的数据格式跟随 VOUT_MODE；选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L16',
+      value: 13.2,
+      voutMode: 0x18,
+      direction: 'write',
+      ...PROJECT_DEMO,
+    },
   },
   READ_VOUT: {
     key: 'READ_VOUT',
     label: 'READ_VOUT',
     cmd: 0x8b,
-    mode: 'L16',
-    dataFormat: 'LINEAR16',
     transactionType: 'read_word',
     valueType: 'scalar',
-    val: 12,
-    n: -8,
-    voutMode: 0x18,
-    spec: 'PMBus Part II 18.4; format follows VOUT_MODE',
-    profileSource: 'PMBus Part II 18.4 typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices; format follows VOUT_MODE',
+    units: 'V',
+    spec: 'PMBus Part II §18.4',
+    encodingRule: 'follows_vout_mode',
+    note: 'READ_VOUT 的数据格式跟随 VOUT_MODE；选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L16',
+      value: 12,
+      voutMode: 0x18,
+      direction: 'read',
+      ...PROJECT_DEMO,
+    },
   },
   READ_VIN: {
     key: 'READ_VIN',
     label: 'READ_VIN',
     cmd: 0x88,
-    mode: 'L11',
-    dataFormat: 'LINEAR11',
     transactionType: 'read_word',
     valueType: 'scalar',
-    val: 48,
-    spec: 'PMBus Part II 18.1; LINEAR11 is the preferred non-output-voltage format',
-    profileSource: 'PMBus Part II 18.1 typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices; LINEAR11 unless device datasheet says otherwise',
+    units: 'V',
+    spec: 'PMBus Part II §18.1',
+    encodingRule: 'device_defined',
+    note: 'READ_VIN 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L11',
+      value: 48,
+      direction: 'read',
+      ...PROJECT_DEMO,
+    },
   },
   READ_IOUT: {
     key: 'READ_IOUT',
     label: 'READ_IOUT',
     cmd: 0x8c,
-    mode: 'L11',
-    dataFormat: 'LINEAR11',
     transactionType: 'read_word',
     valueType: 'scalar',
-    val: 20,
-    spec: 'PMBus Part II 18.5; LINEAR11 is the preferred non-output-voltage format',
-    profileSource: 'PMBus Part II 18.5 typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices; LINEAR11 unless device datasheet says otherwise',
+    units: 'A',
+    spec: 'PMBus Part II §18.5',
+    encodingRule: 'device_defined',
+    note: 'READ_IOUT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L11',
+      value: 20,
+      direction: 'read',
+      ...PROJECT_DEMO,
+    },
   },
   READ_TEMPERATURE_1: {
     key: 'READ_TEMPERATURE_1',
     label: 'READ_TEMPERATURE_1',
     cmd: 0x8d,
-    mode: 'L11',
-    dataFormat: 'LINEAR11',
     transactionType: 'read_word',
     valueType: 'scalar',
-    val: 45,
-    spec: 'PMBus Part II 18.6; LINEAR11 is the preferred non-output-voltage format',
-    profileSource: 'PMBus Part II 18.6 typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices; LINEAR11 unless device datasheet says otherwise',
+    units: '°C',
+    spec: 'PMBus Part II §18.6',
+    encodingRule: 'device_defined',
+    note: 'READ_TEMPERATURE_1 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L11',
+      value: 45,
+      direction: 'read',
+      ...PROJECT_DEMO,
+    },
   },
   VIN_OV_FAULT_LIMIT: {
     key: 'VIN_OV_FAULT_LIMIT',
     label: 'VIN_OV_FAULT_LIMIT',
     cmd: 0x55,
-    mode: 'L11',
-    dataFormat: 'LINEAR11',
     transactionType: 'write_word',
     valueType: 'scalar',
-    val: 60,
-    spec: 'PMBus Part II 15.23; LINEAR11 is the preferred non-output-voltage format',
-    profileSource: 'PMBus Part II 15.23 typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices; LINEAR11 unless device datasheet says otherwise',
+    units: 'V',
+    spec: 'PMBus Part II §15.23',
+    encodingRule: 'device_defined',
+    note: 'VIN_OV_FAULT_LIMIT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L11',
+      value: 60,
+      direction: 'write',
+      ...PROJECT_DEMO,
+    },
   },
   OT_FAULT_LIMIT: {
     key: 'OT_FAULT_LIMIT',
     label: 'OT_FAULT_LIMIT',
     cmd: 0x4f,
-    mode: 'L11',
-    dataFormat: 'LINEAR11',
     transactionType: 'write_word',
     valueType: 'scalar',
-    val: 125,
-    spec: 'PMBus Part II 15.17; LINEAR11 is the preferred non-output-voltage format',
-    profileSource: 'PMBus Part II 15.17 typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices; LINEAR11 unless device datasheet says otherwise',
+    units: '°C',
+    spec: 'PMBus Part II §15.17',
+    encodingRule: 'device_defined',
+    note: 'OT_FAULT_LIMIT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L11',
+      value: 125,
+      direction: 'write',
+      ...PROJECT_DEMO,
+    },
   },
-  FAN_COMMAND: {
-    key: 'FAN_COMMAND',
-    label: 'FAN_COMMAND',
+  FAN_COMMAND_1: {
+    key: 'FAN_COMMAND_1',
+    label: 'FAN_COMMAND_1',
     cmd: 0x3b,
-    mode: 'L11',
-    dataFormat: 'LINEAR11',
     transactionType: 'write_word',
     valueType: 'scalar',
-    val: 5000,
-    n: 3,
-    spec: 'PMBus Part II 14.12',
-    profileSource: 'PMBus Part II 14.12 typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices',
+    units: 'RPM',
+    spec: 'PMBus Part II §14.12',
+    encodingRule: 'device_defined',
+    note: 'FAN_COMMAND_1 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L11',
+      value: 5000,
+      n: 3,
+      direction: 'write',
+      ...PROJECT_DEMO,
+    },
   },
   READ_POUT: {
     key: 'READ_POUT',
     label: 'READ_POUT',
     cmd: 0x96,
-    mode: 'L11',
-    dataFormat: 'LINEAR11',
     transactionType: 'read_word',
     valueType: 'scalar',
-    val: 120,
-    spec: 'PMBus Part II 18.11; LINEAR11 is the preferred non-output-voltage format',
-    profileSource: 'PMBus Part II 18.11 typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices; LINEAR11 unless device datasheet says otherwise',
+    units: 'W',
+    spec: 'PMBus Part II §18.11',
+    encodingRule: 'device_defined',
+    note: 'READ_POUT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L11',
+      value: 120,
+      direction: 'read',
+      ...PROJECT_DEMO,
+    },
   },
   READ_FAN_SPEED_1: {
     key: 'READ_FAN_SPEED_1',
     label: 'READ_FAN_SPEED_1',
     cmd: 0x90,
-    mode: 'L11',
-    dataFormat: 'LINEAR11',
     transactionType: 'read_word',
     valueType: 'scalar',
-    val: 3200,
-    n: 2,
-    spec: 'PMBus Part II 18.7; returns RPM in LINEAR11',
-    profileSource: 'PMBus Part II 18.7 typical example',
-    profileAppliesTo: 'General PMBus 1.3 devices',
+    units: 'RPM',
+    spec: 'PMBus Part II §18.7',
+    encodingRule: 'device_defined',
+    note: 'READ_FAN_SPEED_1 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
+    preset: {
+      mode: 'L11',
+      value: 3200,
+      n: 2,
+      direction: 'read',
+      ...PROJECT_DEMO,
+    },
   },
   STATUS_WORD: {
     key: 'STATUS_WORD',
     label: 'STATUS_WORD',
     cmd: 0x79,
-    dataFormat: 'STATUS',
     transactionType: 'read_word',
     valueType: 'status',
-    spec: 'PMBus Part II 17.2 Table 16',
-    profileSource: 'PMBus 1.3 Part II — standard status bit definitions',
-    profileAppliesTo: 'All PMBus 1.3 devices (manufacturer-specific bits may differ)',
+    units: 'bit field',
+    spec: 'PMBus Part II §17.2 Table 16',
+    encodingRule: 'status',
     note: 'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。计算器不为其分配 L11/L16/DIRECT/HALF 转换模式。',
   },
   READ_EIN: {
     key: 'READ_EIN',
     label: 'READ_EIN',
     cmd: 0x86,
-    dataFormat: 'BLOCK',
     transactionType: 'read_block',
     valueType: 'block',
-    spec: 'PMBus Part II 18.13 / command table',
-    profileSource: 'PMBus 1.3 Part II — block read payload',
-    profileAppliesTo: 'Device-specific; 6-byte accumulator format',
+    units: '—',
+    spec: 'PMBus Part II §18.13',
+    encodingRule: 'block',
     note: 'READ_EIN 属于 Block Read，多于 16 位；计算器不能代表完整 6 字节报文，仅作为命令信息展示。',
   },
-} as const
+}
 
-export const COMMAND_KEYS = Object.keys(COMMAND_METADATA) as string[]
+export const COMMAND_KEYS = Object.keys(COMMAND_METADATA) as Array<keyof typeof COMMAND_METADATA>
 
 export function getCommandConfig(key: string | null): CommandMeta | null {
   if (!key) return null
-  return COMMAND_METADATA[key] ?? null
+  const cmd = COMMAND_METADATA[key as keyof typeof COMMAND_METADATA]
+  return (cmd as CommandMeta | undefined) ?? null
 }
 
-export function getCommandsByMode(mode: AppMode): CommandMeta[] {
-  return Object.values(COMMAND_METADATA).filter((c) => c.mode === mode)
+export function describeEncodingRule(rule: CommandEncodingRule): string {
+  switch (rule) {
+    case 'follows_vout_mode':
+      return '跟随 VOUT_MODE'
+    case 'device_defined':
+      return '由器件资料决定'
+    case 'status':
+      return 'STATUS 位'
+    case 'block':
+      return 'BLOCK 块'
+  }
+}
+
+export function describePresetSource(preset: CommandPreset): string {
+  switch (preset.sourceKind) {
+    case 'spec-example':
+      return '规范示例'
+    case 'device-datasheet':
+      return '器件数据手册'
+    case 'project-demo':
+      return 'project-demo'
+  }
 }

@@ -1,12 +1,17 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { COMMAND_METADATA } from '../../legacy/command-metadata'
+import {
+  COMMAND_METADATA,
+  describeEncodingRule,
+  describePresetSource,
+} from '../../legacy/command-metadata'
 
 interface Props {
   commandKey: string | null
   onChange: (key: string | null) => void
+  onApplyPreset: (key: string) => void
 }
 
-export default function CommandPicker({ commandKey, onChange }: Props) {
+export default function CommandPicker({ commandKey, onChange, onApplyPreset }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -60,11 +65,36 @@ export default function CommandPicker({ commandKey, onChange }: Props) {
       >
         <span className="truncate">
           {selected
-            ? `${selected.label} (0x${selected.cmd.toString(16).toUpperCase().padStart(2, '0')}) — ${selected.dataFormat}${selected.mode ? ` / ${selected.mode}` : ''}`
+            ? `${selected.label} (0x${selected.cmd.toString(16).toUpperCase().padStart(2, '0')}) — ${describeEncodingRule(selected.encodingRule)}`
             : '选择命令...'}
         </span>
         <span className="ml-2 text-xs opacity-50">▼</span>
       </button>
+
+      {selected?.preset && (
+        <div
+          className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2"
+          style={{
+            background: 'var(--color-surface-muted)',
+            border: '1px dashed var(--color-border)',
+          }}
+        >
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            {describePresetSource(selected.preset)} 预设（{selected.preset.source}）— 不会自动应用
+          </span>
+          <button
+            onClick={() => onApplyPreset(selected.key)}
+            className="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+            style={{
+              background: 'var(--color-accent)',
+              color: '#fff',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            应用 project-demo 预设
+          </button>
+        </div>
+      )}
 
       {open && (
         <div
@@ -133,7 +163,8 @@ export default function CommandPicker({ commandKey, onChange }: Props) {
                     </span>
                   </div>
                   <div className="mt-0.5 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                    {cmd.dataFormat} · {cmd.transactionType} · {cmd.spec}
+                    {describeEncodingRule(cmd.encodingRule)} · {cmd.transactionType} · {cmd.units} ·{' '}
+                    {cmd.spec}
                   </div>
                 </button>
               </li>

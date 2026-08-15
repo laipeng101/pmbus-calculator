@@ -56,11 +56,15 @@
 ## 5. 命令与 profile
 
 - 命令字典唯一数据源：`src/legacy/command-metadata.ts`。
-- 每个命令必须声明：
-  - `dataFormat`：`LINEAR11` | `LINEAR16` | `DIRECT` | `STATUS` | `BLOCK`
+- 标准命令定义声明：
+  - `cmd`：命令码
   - `transactionType`：`read_word` / `write_word` / `read_block` 等
   - `valueType`：`scalar` | `status` | `block`
-- `mode` 只能用于 scalar 数值命令；`STATUS` / `BLOCK` 不得设置 `mode`。
-- 数值默认值只是 typical example，必须标 `profileSource` 与 `profileAppliesTo`。
-- DIRECT 系数必须以具体器件数据手册为准；没有来源的 DIRECT profile 禁止出现在默认命令列表中。
-- `STATUS_WORD` 是状态位摘要，`READ_EIN` 是 block read，均不分配数值转换模式。
+  - `units`：物理单位或位字段标记
+  - `spec`：规范章节
+  - `encodingRule`：`follows_vout_mode` | `device_defined` | `status` | `block`
+- 可选 `preset` 与标准定义分离；当前只允许 `sourceKind: project-demo`。
+- `command/set` 只记录选择并显示命令信息，不得切换模式、加载参数或重编码 raw。
+- 只有 `command/apply-preset` 显式触发时才应用预设；UI 必须标注“应用 project-demo 预设”。
+- DIRECT 系数必须以具体器件数据手册为准；没有真实来源的 `device-datasheet` 预设禁止内置。
+- `STATUS_WORD` 是状态位摘要（`encodingRule: status`），`READ_EIN` 是 block read（`encodingRule: block`），均不分配数值转换模式。
