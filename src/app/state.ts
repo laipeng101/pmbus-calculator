@@ -28,10 +28,16 @@ export interface AppState {
   }
 
   direct: {
-    y: number
+    /**
+     * Coefficients only.  Y is never stored here; in DIRECT mode Y is always
+     * derived from `raw` via `toSigned(raw, 16)`.  `state.raw` is the single
+     * source of truth for the encoded 16-bit word.
+     */
     m: number
     b: number
     r: number
+    /** Transient validation error for the last coefficient input. */
+    error: string | null
   }
 
   copy: {
@@ -65,10 +71,10 @@ export const INITIAL_STATE: AppState = {
   },
 
   direct: {
-    y: 0,
     m: 1,
     b: 0,
     r: 0,
+    error: null,
   },
 
   copy: {

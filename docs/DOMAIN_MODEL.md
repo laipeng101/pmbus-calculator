@@ -30,7 +30,13 @@
 ### 2.3 DIRECT
 
 - `m === 0` 时解码返回 `NaN`，UI 显示错误提示，不得崩溃。
-- `Y` 是 16-bit signed；`raw` 与 signed `Y` 必须只有一个事实来源（DIRECT 闭环完成前不得再引入第二个）。
+- `Y` 是 16-bit signed（`-32768..32767`）；`state.raw` 是唯一编码事实来源，
+  `Y = toSigned(raw, 16)` 始终派生自 `raw`，`state.direct` 只保存 `m/b/R`。
+- `m`、`b` 必须是 signed 16-bit integer（`-32768..32767`）；`R` 必须是 signed 8-bit integer（`-128..127`）。
+- 系数非法（浮点数、超范围、`m=0`）必须显示明确错误，不得静默接受。
+- 编码舍入策略（legacy 兼容）：`Y = clamp(Math.round((m × Value + b) × 10^R), -32768, 32767)`。
+  `Math.round` 对 `.5` 向正无穷方向舍入（`1.5 -> 2`，`-1.5 -> -1`）；该策略在获得官方规范
+  明确要求前保持不变，并有 golden case 覆盖。
 
 ### 2.4 HALF
 

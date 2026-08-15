@@ -15,19 +15,19 @@ M4.5 / M4.5.1 已验收通过；PR #2 已建立并合入 `main`。
 
 ## 里程碑状态
 
-| Milestone | 名称                   | 状态   | 备注                                                    |
-| --------- | ---------------------- | ------ | ------------------------------------------------------- |
-| M0        | 准备期                 | Done   | 文件实际在仓库根目录与 `docs/`，见迁移矩阵              |
-| M1        | Vite + React + TS 骨架 | Done   | build/lint/typecheck 通过                               |
-| M2        | 新版 Web 视觉框架      | Done   | Playwright 双端布局验证                                 |
-| M3        | L11 模式闭环           | Done   | 双向闭环 + 超范围饱和 golden case                       |
-| M4        | L16 / VOUT 模式闭环    | Done   | 双向闭环 + V 输入 clamp golden case                     |
-| M4.5      | 稳定化门禁             | Done   | 质量门禁、L11/L16 纠偏、命令/预设分离、文档体系全部验收 |
-| M5        | DIRECT 模式闭环        | Active | `state.raw` 作为唯一编码事实来源；Y/Value/m/b/R 完整 UI |
-| M6        | HALF 模式闭环          | Todo   | decode 已有，encode 已修，待接 UI 与 bit 分区           |
-| M7        | 复制与工程输出         | Todo   | 基础复制可用；raw word 与 LE/BE bytes 需明确定义        |
-| M8        | 测试与回归保护         | Todo   | L11 golden 已有；L16/DIRECT/HALF golden 待补            |
-| M9        | 旧 HTML 下线或保留     | Todo   | 新应用全回归前保留 legacy 为 read-only fallback         |
+| Milestone | 名称                   | 状态   | 备注                                                       |
+| --------- | ---------------------- | ------ | ---------------------------------------------------------- |
+| M0        | 准备期                 | Done   | 文件实际在仓库根目录与 `docs/`，见迁移矩阵                 |
+| M1        | Vite + React + TS 骨架 | Done   | build/lint/typecheck 通过                                  |
+| M2        | 新版 Web 视觉框架      | Done   | Playwright 双端布局验证                                    |
+| M3        | L11 模式闭环           | Done   | 双向闭环 + 超范围饱和 golden case                          |
+| M4        | L16 / VOUT 模式闭环    | Done   | 双向闭环 + V 输入 clamp golden case                        |
+| M4.5      | 稳定化门禁             | Done   | 质量门禁、L11/L16 纠偏、命令/预设分离、文档体系全部验收    |
+| M5        | DIRECT 模式闭环        | Review | PR 待合入：`state.raw` 唯一事实来源；Y/Value/m/b/R 完整 UI |
+| M6        | HALF 模式闭环          | Todo   | decode 已有，encode 已修，待接 UI 与 bit 分区              |
+| M7        | 复制与工程输出         | Todo   | 基础复制可用；raw word 与 LE/BE bytes 需明确定义           |
+| M8        | 测试与回归保护         | Todo   | L11 golden 已有；L16/DIRECT/HALF golden 待补               |
+| M9        | 旧 HTML 下线或保留     | Todo   | 新应用全回归前保留 legacy 为 read-only fallback            |
 
 ## M4.5 稳定化门禁（已完成）
 
@@ -56,8 +56,17 @@ M4.5 / M4.5.1 已验收通过；PR #2 已建立并合入 `main`。
 
 - [x] M4.5 门禁全部完成
 - [x] M3/M4 已确认为 Done
-- [ ] DIRECT 的 raw 与 signed Y 只有一个事实来源（`state.raw`）
-- [ ] DIRECT profile 绑定器件与来源，不虚构标准系数
+- [x] DIRECT 的 raw 与 signed Y 只有一个事实来源（`state.raw`）
+- [x] DIRECT profile 绑定器件与来源，不虚构标准系数
+
+## M5 DIRECT 完成标准
+
+- [x] `state.direct` 只保存 m/b/R；Y 由 `toSigned(raw, 16)` 派生
+- [x] Hex 输入、bit toggle、Y 输入、Value 输入双向同步
+- [x] Y clamp -32768..32767；m/b signed 16-bit integer；R signed 8-bit integer；m≠0
+- [x] 系数非法时显示明确错误，不静默接受浮点数或超范围值
+- [x] 保留 legacy DIRECT `Math.round` 舍入并写入 DOMAIN_MODEL，含 golden case
+- [x] 桌面 + 移动 Chromium E2E 覆盖 DIRECT 闭环
 
 ## M6 HALF 进入条件
 

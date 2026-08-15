@@ -36,6 +36,8 @@ export interface CalculatorViewModel {
   commandNote?: string
   nRangeText?: string
   voutModeInfo?: VoutModeInfoVM
+  /** DIRECT mode: signed Y derived from raw via toSigned(raw, 16). */
+  directY?: number
   visible: {
     voutMode: boolean
     directCoefficients: boolean
@@ -96,8 +98,10 @@ function computeFormula(state: AppState): string {
     }
     case 'L16':
       return `V=${state.raw} × 2^${state.l16.n}`
-    case 'DIRECT':
-      return `X=(1/${state.direct.m})×(Y×10^(-${state.direct.r})-${state.direct.b})`
+    case 'DIRECT': {
+      const y = PMBusMath.toSigned(state.raw, 16)
+      return `X=(1/${state.direct.m})×(${y}×10^(-${state.direct.r})-${state.direct.b})`
+    }
     case 'HALF':
       return 'IEEE 754 Half-Precision'
     default:
@@ -117,12 +121,8 @@ function computeValueText(state: AppState): string {
         return formatNumber(r.value)
       }
       case 'DIRECT': {
-        const r = PMBusMath.decodeDirect(
-          state.direct.y,
-          state.direct.m,
-          state.direct.b,
-          state.direct.r,
-        )
+        const y = PMBusMath.toSigned(state.raw, 16)
+        const r = PMBusMath.decodeDirect(y, state.direct.m, state.direct.b, state.direct.r)
         return Number.isNaN(r.value) ? '—' : formatNumber(r.value)
       }
       case 'HALF': {
@@ -154,6 +154,13 @@ function buildWarnings(state: AppState): WarningVM[] {
       id: 'direct-m-zero',
       level: 'error',
       text: 'DIRECT 系数 m 不能为 0',
+    })
+  }
+  if (state.direct.error) {
+    warnings.push({
+      id: 'direct-coeff-error',
+      level: 'error',
+      text: state.direct.error,
     })
   }
   if (state.mode === 'L16') {
@@ -249,6 +256,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     deltaKind,
     warnings: buildWarnings(state),
     bitGroups: buildBitGroups(raw),
+    directY: state.mode === 'DIRECT' ? PMBusMath.toSigned(raw, 16) : undefined,
     commandNote: getCommandConfig(state.commandKey)?.note,
     nRangeText,
     voutModeInfo,

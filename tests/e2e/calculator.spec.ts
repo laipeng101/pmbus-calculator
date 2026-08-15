@@ -77,6 +77,51 @@ test.describe('计算器真实用户流程', () => {
     await expect(page.getByText(/需要器件数据手册/).first()).toBeVisible()
   })
 
+  test('DIRECT：Hex→Y/Value、Y→raw、Value→raw 双向同步', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const yInput = page.getByLabel('Y (16-bit signed)')
+    const valueInput = page.locator('#value-input')
+
+    await hexInput.fill('8000')
+    await expect(yInput).toHaveValue('-32768')
+    await expect(valueInput).toHaveValue('-32768')
+
+    await yInput.fill('10')
+    await expect(hexInput).toHaveValue('0x000A')
+    await expect(valueInput).toHaveValue('10')
+
+    await valueInput.fill('5')
+    await expect(hexInput).toHaveValue('0x0005')
+    await expect(yInput).toHaveValue('5')
+  })
+
+  test('DIRECT：bit toggle 同步 Y 与 Value', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const yInput = page.getByLabel('Y (16-bit signed)')
+
+    await page.getByRole('button', { name: '位 0: 0' }).click()
+
+    await expect(hexInput).toHaveValue('0x0001')
+    await expect(yInput).toHaveValue('1')
+    await expect(page.locator('#value-input')).toHaveValue('1')
+  })
+
+  test('DIRECT：m=0 显示明确错误且 Value 不编码', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+
+    await page.getByLabel('DIRECT 系数 m').fill('0')
+
+    await expect(page.getByText(/m 不能为 0/).first()).toBeVisible()
+    await page.locator('#value-input').fill('12')
+    await expect(hexInput).toHaveValue('0x0000')
+  })
+
   test('STATUS_WORD 不强制切换数值模式', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()

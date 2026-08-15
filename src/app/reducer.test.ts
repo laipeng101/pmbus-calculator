@@ -235,10 +235,10 @@ describe('appReducer — state transitions', () => {
       expect(s.raw).toBe(base.raw)
     })
 
-    it('is a no-op outside L11/L16 mode', () => {
-      const direct = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
-      const s = appReducer(direct, { type: 'value/set', value: '12' })
-      expect(s.raw).toBe(direct.raw)
+    it('is a no-op in HALF mode', () => {
+      const half = appReducer(base, { type: 'mode/set', mode: 'HALF' })
+      const s = appReducer(half, { type: 'value/set', value: '12' })
+      expect(s.raw).toBe(half.raw)
     })
   })
 
@@ -379,36 +379,146 @@ describe('appReducer — state transitions', () => {
   })
 
   describe('direct/set-y', () => {
-    it('sets direct Y', () => {
-      const s = appReducer(base, { type: 'direct/set-y', y: '100' })
-      expect(s.direct.y).toBe(100)
+    const directMode = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+
+    it('encodes signed Y into raw (single source of truth)', () => {
+      const s = appReducer(directMode, { type: 'direct/set-y', y: '100' })
+      expect(s.raw).toBe(100)
+      expect(s.direct).toEqual(directMode.direct)
+    })
+
+    it('clamps Y to -32768..32767', () => {
+      const hi = appReducer(directMode, { type: 'direct/set-y', y: '40000' })
+      expect(hi.raw).toBe(0x7fff)
+      const lo = appReducer(directMode, { type: 'direct/set-y', y: '-40000' })
+      expect(lo.raw).toBe(0x8000)
     })
 
     it('ignores invalid string', () => {
-      const s = appReducer(base, { type: 'direct/set-y', y: 'abc' })
-      expect(s.direct.y).toBe(base.direct.y)
+      const s = appReducer(directMode, { type: 'direct/set-y', y: 'abc' })
+      expect(s.raw).toBe(directMode.raw)
+    })
+
+    it('is a no-op outside DIRECT mode', () => {
+      const s = appReducer(base, { type: 'direct/set-y', y: '100' })
+      expect(s.raw).toBe(base.raw)
     })
   })
 
   describe('direct/set-coeff', () => {
-    it('sets m', () => {
-      const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
-      expect(s.direct.m).toBe(2.5)
+    it('sets m as a signed 16-bit integer', () => {
+      const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '-10' })
+      expect(s.direct.m).toBe(-10)
+      expect(s.direct.error).toBeNull()
     })
 
-    it('sets b', () => {
-      const s = appReducer(base, { type: 'direct/set-coeff', name: 'b', value: '-10' })
-      expect(s.direct.b).toBe(-10)
+    it('sets b as a signed 16-bit integer', () => {
+      const s = appReducer(base, { type: 'direct/set-coeff', name: 'b', value: '-32768' })
+      expect(s.direct.b).toBe(-32768)
     })
 
-    it('sets r', () => {
+    it('sets r as a signed 8-bit integer', () => {
       const s = appReducer(base, { type: 'direct/set-coeff', name: 'r', value: '3' })
       expect(s.direct.r).toBe(3)
+    })
+
+    it('rejects float coefficients with an explicit error', () => {
+      const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
+      expect(s.direct.m).toBe(base.direct.m)
+      expect(s.direct.error).toContain('M 必须是')
+    })
+
+    it('rejects out-of-range m', () => {
+      const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '40000' })
+      expect(s.direct.m).toBe(base.direct.m)
+      expect(s.direct.error).toContain('M 必须是')
+    })
+
+    it('accepts m/b boundaries', () => {
+      const hi = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '32767' })
+      expect(hi.direct.m).toBe(32767)
+      const lo = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '-32768' })
+      expect(lo.direct.m).toBe(-32768)
+    })
+
+    it('accepts r boundaries and rejects out-of-range r', () => {
+      const hi = appReducer(base, { type: 'direct/set-coeff', name: 'r', value: '127' })
+      expect(hi.direct.r).toBe(127)
+      const lo = appReducer(base, { type: 'direct/set-coeff', name: 'r', value: '-128' })
+      expect(lo.direct.r).toBe(-128)
+      const bad = appReducer(base, { type: 'direct/set-coeff', name: 'r', value: '128' })
+      expect(bad.direct.r).toBe(base.direct.r)
+      expect(bad.direct.error).toContain('R 必须是')
+    })
+
+    it('stores m=0 with an explicit error (never silent)', () => {
+      const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '0' })
+      expect(s.direct.m).toBe(0)
+      expect(s.direct.error).toContain('m 不能为 0')
+    })
+
+    it('clears error after a valid coefficient is entered', () => {
+      const bad = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
+      expect(bad.direct.error).toBeTruthy()
+      const good = appReducer(bad, { type: 'direct/set-coeff', name: 'm', value: '2' })
+      expect(good.direct.m).toBe(2)
+      expect(good.direct.error).toBeNull()
     })
 
     it('ignores invalid string', () => {
       const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: 'x' })
       expect(s.direct.m).toBe(base.direct.m)
+      expect(s.direct.error).toContain('M 必须是')
+    })
+  })
+
+  describe('DIRECT value -> raw encode', () => {
+    const directMode = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+
+    it('Value 12 with m=1,b=0,R=0 -> raw 12 -> Value 12', () => {
+      const s = appReducer(directMode, { type: 'value/set', value: '12' })
+      expect(s.raw).toBe(12)
+    })
+
+    it('Value -> raw -> Value round-trips with legacy rounding', () => {
+      const s = appReducer(directMode, { type: 'value/set', value: '12.5' })
+      expect(s.raw).toBe(13) // legacy round(12.5) = 13
+      const s2 = appReducer(s, { type: 'value/set', value: '13' })
+      expect(s2.raw).toBe(13)
+    })
+
+    it('encodes negative physical values to signed Y raw', () => {
+      const s = appReducer(directMode, { type: 'value/set', value: '-5' })
+      // y = round(-5) = -5 -> fromSigned(-5,16) = 0xFFFB
+      expect(s.raw).toBe(0xfffb)
+    })
+
+    it('is a no-op when m=0', () => {
+      const zeroM = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '0' })
+      const directZero = appReducer(zeroM, { type: 'mode/set', mode: 'DIRECT' })
+      const s = appReducer(directZero, { type: 'value/set', value: '12' })
+      expect(s.raw).toBe(directZero.raw)
+    })
+  })
+
+  describe('DIRECT raw -> signed Y / Value sync', () => {
+    const directMode = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+
+    it('raw/set-from-hex updates raw for DIRECT (Y derived by view-model)', () => {
+      const s = appReducer(directMode, { type: 'raw/set-from-hex', hex: '8000' })
+      expect(s.raw).toBe(0x8000)
+    })
+
+    it('raw/set clamps and stores 16-bit raw in DIRECT', () => {
+      const hi = appReducer(directMode, { type: 'raw/set', raw: 0x1ffff })
+      expect(hi.raw).toBe(65535)
+      const lo = appReducer(directMode, { type: 'raw/set', raw: -1 })
+      expect(lo.raw).toBe(0)
+    })
+
+    it('bit/toggle toggles raw in DIRECT', () => {
+      const s = appReducer(directMode, { type: 'bit/toggle', bit: 0 })
+      expect(s.raw).toBe(0x8000)
     })
   })
 
