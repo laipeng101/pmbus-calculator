@@ -42,7 +42,6 @@ export interface AppState {
 
   ui: {
     theme: Theme
-    focusedField: string | null
     debugOpen: boolean
   }
 }
@@ -80,7 +79,6 @@ export const INITIAL_STATE: AppState = {
 
   ui: {
     theme: 'system',
-    focusedField: null,
     debugOpen: false,
   },
 }

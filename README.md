@@ -23,7 +23,7 @@ It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEE
 
 ## Features
 
-- 🔁 **Bidirectional conversion** — enter a physical value to get the hex encoding, or enter a raw hex to decode it instantly.
+- 🔁 **Bidirectional conversion** — L11 and L16 are fully bidirectional; DIRECT/HALF decode is available and their encode loops are the next milestones.
 - 📐 **Four encoding modes** — LINEAR11, LINEAR16 (VOUT), DIRECT, and IEEE 754 Half-Precision.
 - 🔲 **Interactive bit-field viewer** — a 16-bit clickable register view with nibble-level grouping and live hex preview per nibble.
 - 📋 **One-click copy** — copy the raw hex value, the decoded physical value, or a ready-to-paste C macro.
@@ -34,7 +34,7 @@ It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEE
 - 🔒 **N-lock toggle** — lock the exponent to a fixed value when fine-tuning firmware registers.
 - ⚙️ **VOUT_MODE support** — configure the `VOUT_MODE (0x20)` byte to set the LINEAR16 exponent.
 - 🔢 **Byte-order control** — switch between little-endian (PMBus standard) and big-endian byte display.
-- 🔐 **Content Security Policy** — strict CSP header; no external requests, no tracking.
+- 🔐 **Content Security Policy** — production build injects a strict CSP meta tag; no external requests, no tracking.
 
 ---
 
@@ -98,21 +98,21 @@ npm test         # runs Vitest
 
 The built-in dictionary covers the following PMBus 1.3 commands with pre-filled typical parameters:
 
-| Command               | Code   | Format                   |
-| --------------------- | ------ | ------------------------ |
-| `VOUT_COMMAND`        | `0x21` | LINEAR16                 |
-| `VOUT_OV_FAULT_LIMIT` | `0x40` | LINEAR16                 |
-| `READ_VOUT`           | `0x8B` | LINEAR16                 |
-| `READ_VIN`            | `0x88` | DIRECT                   |
-| `READ_IOUT`           | `0x8C` | DIRECT                   |
-| `READ_TEMPERATURE_1`  | `0x8D` | DIRECT                   |
-| `VIN_OV_FAULT_LIMIT`  | `0x55` | DIRECT                   |
-| `OT_FAULT_LIMIT`      | `0x4F` | DIRECT                   |
-| `FAN_COMMAND`         | `0x3B` | LINEAR11                 |
-| `READ_POUT`           | `0x96` | DIRECT                   |
-| `READ_FAN_SPEED_1`    | `0x90` | LINEAR11                 |
-| `STATUS_WORD`         | `0x79` | Status bits              |
-| `READ_EIN`            | `0x86` | DIRECT (block read note) |
+| Command               | Code   | Format                  |
+| --------------------- | ------ | ----------------------- |
+| `VOUT_COMMAND`        | `0x21` | LINEAR16                |
+| `VOUT_OV_FAULT_LIMIT` | `0x40` | LINEAR16                |
+| `READ_VOUT`           | `0x8B` | LINEAR16                |
+| `READ_VIN`            | `0x88` | LINEAR11                |
+| `READ_IOUT`           | `0x8C` | LINEAR11                |
+| `READ_TEMPERATURE_1`  | `0x8D` | LINEAR11                |
+| `VIN_OV_FAULT_LIMIT`  | `0x55` | LINEAR11                |
+| `OT_FAULT_LIMIT`      | `0x4F` | LINEAR11                |
+| `FAN_COMMAND`         | `0x3B` | LINEAR11                |
+| `READ_POUT`           | `0x96` | LINEAR11                |
+| `READ_FAN_SPEED_1`    | `0x90` | LINEAR11                |
+| `STATUS_WORD`         | `0x79` | Status bits             |
+| `READ_EIN`            | `0x86` | BLOCK (block read note) |
 
 ---
 
@@ -128,10 +128,11 @@ The built-in dictionary covers the following PMBus 1.3 commands with pre-filled 
 
 - **Vite** + **React 19** + **TypeScript** — modern component-based architecture.
 - **Tailwind CSS** + CSS variables — design-token-driven theming.
-- **Vitest** — unit testing for PMBus math core.
-- See [`AGENTS.md`](AGENTS.md) and [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md) for the full refactor plan.
+- **Vitest** — unit testing for PMBus math core and reducer/view-model.
+- **Playwright** — real-user E2E flows across desktop and mobile Chromium projects.
+- See [`AGENTS.md`](AGENTS.md), [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md) for the full refactor plan.
 
-> **Current status:** The legacy `pmbus-calculator.html` remains fully functional. The new web app is being rebuilt milestone-by-milestone; it currently has a skeleton layout and the math core migrated, but the interactive UI is not yet wired up.
+> **Current status:** The legacy `pmbus-calculator.html` remains fully functional. The new web app has L11 and L16 fully bidirectional, with DIRECT and HALF decode available; the M4.5 stabilisation gate (quality gates, E2E, docs) is the current focus before continuing DIRECT.
 
 ---
 

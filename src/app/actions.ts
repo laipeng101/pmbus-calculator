@@ -18,5 +18,4 @@ export type AppAction =
   | { type: 'copy/toggle-space' }
   | { type: 'copy/set-endian'; endian: Endian }
   | { type: 'ui/set-theme'; theme: Theme }
-  | { type: 'ui/set-focused-field'; field: string | null }
   | { type: 'ui/toggle-debug' }

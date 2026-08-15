@@ -93,8 +93,30 @@ export const PMBusMath = {
     return ((this.fromSigned(n, 5) & 0x1f) << 11) | (this.fromSigned(y, 11) & 0x7ff)
   },
 
+  /** Largest positive value representable as LINEAR11: 1023 × 2^15. */
+  maxLinear11(): number {
+    return 1023 * this.pow2(15)
+  },
+
+  /** Most negative value representable as LINEAR11: -1024 × 2^15. */
+  minLinear11(): number {
+    return -1024 * this.pow2(15)
+  },
+
   /** Find best N/Y for a given physical value */
   findBestLinear11(val: number): BestLinear11Result {
+    // Saturation: a hardware calculator must never encode an out-of-range
+    // value as 0x0000 (N=0,Y=0). Clamp to the extreme LINEAR11 code instead,
+    // and keep the large delta visible to the user.
+    const maxVal = this.maxLinear11()
+    const minVal = this.minLinear11()
+    if (val >= maxVal) {
+      return { n: 15, y: 1023, value: maxVal, delta: val - maxVal }
+    }
+    if (val <= minVal) {
+      return { n: 15, y: -1024, value: minVal, delta: val - minVal }
+    }
+
     let bestN = 0
     let bestY = 0
     let bestErr = Infinity
@@ -158,32 +180,41 @@ export const PMBusMath = {
     value = Math.abs(value)
     if (value === 0) return sign
     if (!isFinite(value)) return sign | 0x7c00
+
+    // Values above (max finite + half ulp) round to infinity per IEEE 754.
+    // Max finite binary16 = (1 + 1023/1024) × 2^15 = 65504; half ulp = 16.
+    if (value >= 65520) return sign | 0x7c00
+
+    const roundHalfEven = (x: number): number => {
+      const floor = Math.floor(x)
+      const frac = x - floor
+      if (frac > 0.5) return floor + 1
+      if (frac < 0.5) return floor
+      return floor % 2 === 0 ? floor : floor + 1
+    }
+
     let exp = Math.floor(Math.log2(value)) + 15
-    let mant = (value / this.pow2(exp - 15) - 1) * 1024
-    let raw: number
+    let mant: number
+
     if (exp <= 0) {
-      // Subnormal
+      // Subnormal range (|value| < 2^-14). One subnormal ulp = 2^-24.
       exp = 0
-      mant = Math.round(value * this.pow2(14) * 1024)
-      if (mant > 0x3ff) mant = 0x3ff
-      raw = sign | (mant & 0x03ff)
-    } else if (exp >= 31) {
-      raw = sign | 0x7c00
+      mant = roundHalfEven(value * 16777216)
+      if (mant >= 1024) {
+        // Rounded up to the smallest normal value.
+        exp = 1
+        mant = 0
+      }
     } else {
-      mant = Math.round(mant)
+      mant = roundHalfEven((value / this.pow2(exp - 15) - 1) * 1024)
       if (mant >= 1024) {
         mant = 0
         exp += 1
-        if (exp >= 31) {
-          raw = sign | 0x7c00
-        } else {
-          raw = sign | (exp << 10)
-        }
-      } else {
-        raw = sign | (exp << 10) | (mant & 0x03ff)
+        if (exp >= 31) return sign | 0x7c00
       }
     }
-    return raw
+
+    return sign | (exp << 10) | (mant & 0x03ff)
   },
 
   /** Parse VOUT_MODE byte per PMBus 1.3 Section 8.3 */

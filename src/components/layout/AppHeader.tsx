@@ -1,6 +1,12 @@
 import ThemeToggle from '../feedback/ThemeToggle'
+import type { Theme } from '../../app/state'
 
-export default function AppHeader() {
+interface Props {
+  theme: Theme
+  onThemeChange: (theme: Theme) => void
+}
+
+export default function AppHeader({ theme, onThemeChange }: Props) {
   return (
     <header className="flex items-center justify-between px-4 py-3 md:px-6 md:py-4">
       <div>
@@ -14,7 +20,7 @@ export default function AppHeader() {
           L11 / L16 / DIRECT / HALF
         </p>
       </div>
-      <ThemeToggle />
+      <ThemeToggle theme={theme} onChange={onThemeChange} />
     </header>
   )
 }

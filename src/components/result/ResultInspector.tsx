@@ -1,12 +1,23 @@
 import type { CalculatorViewModel } from '../../app/view-model'
+import type { AppState } from '../../app/state'
 import CopyToolbar from './CopyToolbar'
 import ErrorDelta from './ErrorDelta'
 
 interface Props {
   vm: CalculatorViewModel
+  copyPrefs: AppState['copy']
+  onTogglePrefix: () => void
+  onToggleSpace: () => void
+  onCopyEndianChange: (endian: AppState['copy']['endian']) => void
 }
 
-export default function ResultInspector({ vm }: Props) {
+export default function ResultInspector({
+  vm,
+  copyPrefs,
+  onTogglePrefix,
+  onToggleSpace,
+  onCopyEndianChange,
+}: Props) {
   return (
     <section
       aria-label="结果面板"
@@ -106,7 +117,13 @@ export default function ResultInspector({ vm }: Props) {
       <ErrorDelta vm={vm} />
 
       {/* Copy Tools */}
-      <CopyToolbar vm={vm} />
+      <CopyToolbar
+        vm={vm}
+        copyPrefs={copyPrefs}
+        onTogglePrefix={onTogglePrefix}
+        onToggleSpace={onToggleSpace}
+        onCopyEndianChange={onCopyEndianChange}
+      />
     </section>
   )
 }

@@ -23,6 +23,35 @@ describe('appReducer — state transitions', () => {
       const s = appReducer(withCmd, { type: 'command/set', commandKey: null })
       expect(s.commandKey).toBeNull()
     })
+
+    it('applies L16 command metadata: mode, VOUT_MODE, N, and raw', () => {
+      const s = appReducer(base, { type: 'command/set', commandKey: 'VOUT_COMMAND' })
+      expect(s.mode).toBe('L16')
+      expect(s.l16.voutMode).toBe(0x18)
+      expect(s.l16.n).toBe(-8)
+      // 12 / 2^-8 = 3072 = 0x0C00
+      expect(s.raw).toBe(0x0c00)
+    })
+
+    it('applies L11 command metadata and re-encodes raw', () => {
+      const s = appReducer(base, { type: 'command/set', commandKey: 'FAN_COMMAND' })
+      expect(s.mode).toBe('L11')
+      expect(s.l11.valueInput).toBe(5000)
+      expect(s.raw).toBe(0x1a71) // 5000 = 625 × 2^3 (N=3, Y=625)
+    })
+
+    it('does not force a numeric mode for STATUS_WORD', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s = appReducer(l16, { type: 'command/set', commandKey: 'STATUS_WORD' })
+      expect(s.commandKey).toBe('STATUS_WORD')
+      expect(s.mode).toBe('L16')
+    })
+
+    it('does not force a numeric mode for READ_EIN', () => {
+      const s = appReducer(base, { type: 'command/set', commandKey: 'READ_EIN' })
+      expect(s.commandKey).toBe('READ_EIN')
+      expect(s.mode).toBe('L11')
+    })
   })
 
   describe('raw/set-from-hex', () => {
@@ -63,9 +92,19 @@ describe('appReducer — state transitions', () => {
       expect(s.raw).toBe(0xabcd)
     })
 
-    it('masks to 16 bits', () => {
-      const s = appReducer(base, { type: 'raw/set', raw: 0x1f0f0 })
-      expect(s.raw).toBe(0xf0f0)
+    it('clamps to 0..65535 instead of wrapping', () => {
+      const hi = appReducer(base, { type: 'raw/set', raw: 0x1f0f0 })
+      expect(hi.raw).toBe(65535)
+      const lo = appReducer(base, { type: 'raw/set', raw: -1 })
+      expect(lo.raw).toBe(0)
+    })
+
+    it('clamps L16 manual V input to 0..65535', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const hi = appReducer(l16, { type: 'raw/set', raw: 70000 })
+      expect(hi.raw).toBe(65535)
+      const lo = appReducer(l16, { type: 'raw/set', raw: -1 })
+      expect(lo.raw).toBe(0)
     })
   })
 
@@ -355,18 +394,6 @@ describe('appReducer — state transitions', () => {
     it('sets theme', () => {
       const s = appReducer(base, { type: 'ui/set-theme', theme: 'dark' })
       expect(s.ui.theme).toBe('dark')
-    })
-  })
-
-  describe('ui/set-focused-field', () => {
-    it('sets focused field', () => {
-      const s = appReducer(base, { type: 'ui/set-focused-field', field: 'raw-hex' })
-      expect(s.ui.focusedField).toBe('raw-hex')
-    })
-
-    it('clears focused field', () => {
-      const s = appReducer(base, { type: 'ui/set-focused-field', field: null })
-      expect(s.ui.focusedField).toBeNull()
     })
   })
 

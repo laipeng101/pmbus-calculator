@@ -11,7 +11,7 @@ const BASE: AppState = {
   l16: { n: -8, voutMode: 0x18 },
   direct: { y: 0, m: 1, b: 0, r: 0 },
   copy: { prefix0x: true, spaceBetweenBytes: true, endian: 'le' },
-  ui: { theme: 'system', focusedField: null, debugOpen: false },
+  ui: { theme: 'system', debugOpen: false },
 }
 
 function make(overrides: Partial<AppState> = {}): AppState {

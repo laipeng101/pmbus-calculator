@@ -28,6 +28,6 @@ test.describe('首页可见性', () => {
     const toggle = page.getByLabel('展开调试面板')
     await expect(toggle).toBeVisible()
     await toggle.click()
-    await expect(page.getByText('测试回归通过：51 / 51')).toBeVisible()
+    await expect(page.getByText(/质量门禁/)).toBeVisible()
   })
 })

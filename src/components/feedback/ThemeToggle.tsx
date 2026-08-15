@@ -1,64 +1,19 @@
-import { useCallback, useEffect, useState } from 'react'
+import type { Theme } from '../../app/state'
 
-type Theme = 'light' | 'dark' | 'system'
-
-function getSystemTheme(): 'light' | 'dark' {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+interface Props {
+  theme: Theme
+  onChange: (theme: Theme) => void
 }
 
-function resolveTheme(theme: Theme): 'light' | 'dark' {
-  return theme === 'system' ? getSystemTheme() : theme
-}
+const ORDER: Theme[] = ['light', 'dark', 'system']
 
-function safeGetItem(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
+export default function ThemeToggle({ theme, onChange }: Props) {
+  const cycle = () => {
+    const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length]
+    onChange(next)
   }
-}
-
-function safeSetItem(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    // Silently fail in private mode or when storage is restricted
-  }
-}
-
-export default function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = safeGetItem('theme') as Theme | null
-    return saved ?? 'system'
-  })
-
-  useEffect(() => {
-    const resolved = resolveTheme(theme)
-    document.documentElement.setAttribute('data-theme', resolved)
-    safeSetItem('theme', theme)
-  }, [theme])
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = () => {
-      if (theme === 'system') {
-        document.documentElement.setAttribute('data-theme', getSystemTheme())
-      }
-    }
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [theme])
-
-  const cycle = useCallback(() => {
-    setTheme((prev) => {
-      const order: Theme[] = ['light', 'dark', 'system']
-      const next = order[(order.indexOf(prev) + 1) % order.length]
-      return next
-    })
-  }, [])
 
   const icon = theme === 'light' ? '☀️' : theme === 'dark' ? '🌙' : '🖥️'
-
   const label = theme === 'light' ? '亮色' : theme === 'dark' ? '暗色' : '跟随系统'
 
   return (

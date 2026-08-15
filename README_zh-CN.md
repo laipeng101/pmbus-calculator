@@ -23,7 +23,7 @@
 
 ## 功能特性
 
-- 🔁 **双向转换** — 输入物理值可得到十六进制编码，输入原始 Hex 可立即解码。
+- 🔁 **双向转换** — L11 与 L16 已完整双向闭环；DIRECT/HALF 已可解码，编码闭环为下一里程碑。
 - 📐 **四种编码模式** — LINEAR11、LINEAR16 (VOUT)、DIRECT 和 IEEE 754 半精度浮点。
 - 🔲 **可交互寄存器位视图** — 16 位可点击的位字段视图，按半字节（Nibble）分组，每个半字节实时显示对应 Hex 值。
 - 📋 **一键复制** — 可分别复制原始 Hex 值、解码后的物理值，或直接可用的 C 语言宏定义代码。
@@ -34,7 +34,7 @@
 - 🔒 **N 值锁定切换** — 在微调固件寄存器时，可将指数锁定为固定值。
 - ⚙️ **VOUT_MODE 支持** — 可配置 `VOUT_MODE (0x20)` 字节以设定 LINEAR16 的指数。
 - 🔢 **字节序控制** — 支持小端序（PMBus 标准）与大端序字节显示的切换。
-- 🔐 **内容安全策略 (CSP)** — 严格 CSP 头，无外部请求，无任何追踪。
+- 🔐 **内容安全策略 (CSP)** — 生产构建注入严格 CSP meta，无外部请求，无任何追踪。
 
 ---
 
@@ -98,21 +98,21 @@ npm test         # 运行 Vitest 测试
 
 内置字典涵盖以下 PMBus 1.3 命令及其典型预设参数：
 
-| 命令                  | 命令码 | 格式                 |
-| --------------------- | ------ | -------------------- |
-| `VOUT_COMMAND`        | `0x21` | LINEAR16             |
-| `VOUT_OV_FAULT_LIMIT` | `0x40` | LINEAR16             |
-| `READ_VOUT`           | `0x8B` | LINEAR16             |
-| `READ_VIN`            | `0x88` | DIRECT               |
-| `READ_IOUT`           | `0x8C` | DIRECT               |
-| `READ_TEMPERATURE_1`  | `0x8D` | DIRECT               |
-| `VIN_OV_FAULT_LIMIT`  | `0x55` | DIRECT               |
-| `OT_FAULT_LIMIT`      | `0x4F` | DIRECT               |
-| `FAN_COMMAND`         | `0x3B` | LINEAR11             |
-| `READ_POUT`           | `0x96` | DIRECT               |
-| `READ_FAN_SPEED_1`    | `0x90` | LINEAR11             |
-| `STATUS_WORD`         | `0x79` | 状态位字             |
-| `READ_EIN`            | `0x86` | DIRECT（块读取说明） |
+| 命令                  | 命令码 | 格式                |
+| --------------------- | ------ | ------------------- |
+| `VOUT_COMMAND`        | `0x21` | LINEAR16            |
+| `VOUT_OV_FAULT_LIMIT` | `0x40` | LINEAR16            |
+| `READ_VOUT`           | `0x8B` | LINEAR16            |
+| `READ_VIN`            | `0x88` | LINEAR11            |
+| `READ_IOUT`           | `0x8C` | LINEAR11            |
+| `READ_TEMPERATURE_1`  | `0x8D` | LINEAR11            |
+| `VIN_OV_FAULT_LIMIT`  | `0x55` | LINEAR11            |
+| `OT_FAULT_LIMIT`      | `0x4F` | LINEAR11            |
+| `FAN_COMMAND`         | `0x3B` | LINEAR11            |
+| `READ_POUT`           | `0x96` | LINEAR11            |
+| `READ_FAN_SPEED_1`    | `0x90` | LINEAR11            |
+| `STATUS_WORD`         | `0x79` | 状态位字            |
+| `READ_EIN`            | `0x86` | BLOCK（块读取说明） |
 
 ---
 
@@ -128,10 +128,11 @@ npm test         # 运行 Vitest 测试
 
 - **Vite** + **React 19** + **TypeScript** — 现代组件化架构。
 - **Tailwind CSS** + CSS 变量 — 设计 Token 驱动的主题系统。
-- **Vitest** — PMBus 数学核心的单元测试。
-- 详见 [`AGENTS.md`](AGENTS.md) 与 [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md)。
+- **Vitest** — PMBus 数学核心、reducer 与 view-model 的单元测试。
+- **Playwright** — 桌面与移动 Chromium 项目的真实用户 E2E 流程。
+- 详见 [`AGENTS.md`](AGENTS.md)、[`docs/ROADMAP.md`](docs/ROADMAP.md) 与 [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md)。
 
-> **当前状态：** 旧版 `pmbus-calculator.html` 完全可用。新版 Web App 正按里程碑分阶段重建；目前已完成骨架布局与计算核心迁移，交互式 UI 尚未接入。
+> **当前状态：** 旧版 `pmbus-calculator.html` 完全可用。新版 Web App 已具备 L11 与 L16 完整双向闭环，DIRECT/HALF 可解码；当前重点为 M4.5 稳定化门禁（质量门禁、E2E、文档体系），完成后继续 DIRECT。
 
 ---
 

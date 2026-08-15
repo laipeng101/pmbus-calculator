@@ -1,0 +1,59 @@
+name: Bug report
+description: 缺陷报告
+title: '[Bug] '
+labels: ['bug']
+body:
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 影响模式
+      options:
+        - GLOBAL
+        - L11
+        - L16
+        - DIRECT
+        - HALF
+        - COPY
+        - COMMAND
+        - THEME
+        - CI/Docs
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 从 `npm run dev` 开始的最小复现
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 依据规范/旧实现/参考实现的正确行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: spec
+    attributes:
+      label: 规范来源
+      description: PMBus 章节、IEEE 754、参考实现链接等
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: 环境
+      value: |
+        Node:
+        npm:
+        OS:
+        Browser:
+    validations:
+      required: true

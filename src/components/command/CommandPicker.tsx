@@ -60,7 +60,7 @@ export default function CommandPicker({ commandKey, onChange }: Props) {
       >
         <span className="truncate">
           {selected
-            ? `${selected.label} (0x${selected.cmd.toString(16).toUpperCase().padStart(2, '0')}) — ${selected.mode}`
+            ? `${selected.label} (0x${selected.cmd.toString(16).toUpperCase().padStart(2, '0')}) — ${selected.dataFormat}${selected.mode ? ` / ${selected.mode}` : ''}`
             : '选择命令...'}
         </span>
         <span className="ml-2 text-xs opacity-50">▼</span>
@@ -133,7 +133,7 @@ export default function CommandPicker({ commandKey, onChange }: Props) {
                     </span>
                   </div>
                   <div className="mt-0.5 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                    {cmd.mode} · {cmd.spec}
+                    {cmd.dataFormat} · {cmd.transactionType} · {cmd.spec}
                   </div>
                 </button>
               </li>

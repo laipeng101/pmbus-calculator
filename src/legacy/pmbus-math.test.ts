@@ -33,6 +33,22 @@ describe('PMBusMath — smoke tests (mechanical migration)', () => {
       expect(best.delta).toBe(0)
       expect(best.value).toBe(12)
     })
+
+    it('saturates very large positive values to the max LINEAR11 code', () => {
+      const best = PMBusMath.findBestLinear11(100000000)
+      expect(best.n).toBe(15)
+      expect(best.y).toBe(1023)
+      expect(best.value).toBe(PMBusMath.maxLinear11())
+      expect(best.delta).toBe(100000000 - PMBusMath.maxLinear11())
+    })
+
+    it('saturates very negative values to the min LINEAR11 code', () => {
+      const best = PMBusMath.findBestLinear11(-100000000)
+      expect(best.n).toBe(15)
+      expect(best.y).toBe(-1024)
+      expect(best.value).toBe(PMBusMath.minLinear11())
+      expect(best.delta).toBe(-100000000 - PMBusMath.minLinear11())
+    })
   })
 
   describe('decodeLinear16', () => {
@@ -69,6 +85,33 @@ describe('PMBusMath — smoke tests (mechanical migration)', () => {
 
     it('decodes 0x7E00 to NaN', () => {
       expect(PMBusMath.decodeHalf(0x7e00).value).toBeNaN()
+    })
+  })
+
+  describe('encodeHalf', () => {
+    it('rounds 1 + 2^-11 to 0x3C00 (tie-to-even)', () => {
+      expect(PMBusMath.encodeHalf(1 + Math.pow(2, -11))).toBe(0x3c00)
+    })
+
+    it('rounds 1 + 3×2^-11 to 0x3C02 (mantissa 1.5 -> tie-to-even)', () => {
+      expect(PMBusMath.encodeHalf(1 + 3 * Math.pow(2, -11))).toBe(0x3c02)
+    })
+
+    it('encodes max finite half 65504 as 0x7BFF', () => {
+      expect(PMBusMath.encodeHalf(65504)).toBe(0x7bff)
+    })
+
+    it('overflows values >= 65520 to +Infinity', () => {
+      expect(PMBusMath.encodeHalf(65520)).toBe(0x7c00)
+    })
+
+    it('encodes subnormal half-ulp tie to even zero', () => {
+      // 2^-25 is exactly half of the smallest subnormal ulp (2^-24).
+      expect(PMBusMath.encodeHalf(Math.pow(2, -25))).toBe(0x0000)
+    })
+
+    it('encodes a subnormal value above half ulp to 0x0002 (1.5 ulp tie-to-even)', () => {
+      expect(PMBusMath.encodeHalf(3 * Math.pow(2, -25))).toBe(0x0002)
     })
   })
 

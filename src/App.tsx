@@ -1,6 +1,14 @@
-import { useReducer, useEffect } from 'react'
+import { useEffect, useReducer } from 'react'
 import { appReducer, INITIAL_STATE } from './app/reducer'
+import type { AppState } from './app/state'
 import { useCalculatorViewModel } from './app/view-model'
+import {
+  loadPersistedState,
+  persistByteOrder,
+  persistCopy,
+  persistMode,
+  persistTheme,
+} from './app/persistence'
 import AppHeader from './components/layout/AppHeader'
 import WorkspaceLayout from './components/layout/WorkspaceLayout'
 import ModeSwitcher from './components/mode/ModeSwitcher'
@@ -10,9 +18,29 @@ import ResultInspector from './components/result/ResultInspector'
 import InfoPanel from './components/result/InfoPanel'
 import DebugDrawer from './components/debug/DebugDrawer'
 
+function resolveTheme(theme: AppState['ui']['theme']): 'light' | 'dark' {
+  if (theme !== 'system') return theme
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
 function App() {
-  const [state, dispatch] = useReducer(appReducer, INITIAL_STATE)
+  const [state, dispatch] = useReducer(appReducer, INITIAL_STATE, loadPersistedState)
   const vm = useCalculatorViewModel(state)
+
+  // Theme is owned by AppState; apply it to the document root and keep it in sync.
+  useEffect(() => {
+    const root = document.documentElement
+    const apply = () => root.setAttribute('data-theme', resolveTheme(state.ui.theme))
+    apply()
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [state.ui.theme])
+
+  useEffect(() => persistTheme(state.ui.theme), [state.ui.theme])
+  useEffect(() => persistMode(state.mode), [state.mode])
+  useEffect(() => persistByteOrder(state.byteOrder), [state.byteOrder])
+  useEffect(() => persistCopy(state.copy), [state.copy])
 
   // Keyboard shortcuts for mode switching
   useEffect(() => {
@@ -54,7 +82,10 @@ function App() {
           boxShadow: 'var(--shadow-panel)',
         }}
       >
-        <AppHeader />
+        <AppHeader
+          theme={state.ui.theme}
+          onThemeChange={(theme) => dispatch({ type: 'ui/set-theme', theme })}
+        />
 
         <ModeSwitcher mode={state.mode} onChange={(mode) => dispatch({ type: 'mode/set', mode })} />
 
@@ -67,7 +98,13 @@ function App() {
           primary={<ModeWorkspace mode={state.mode} state={state} vm={vm} dispatch={dispatch} />}
           secondary={
             <div className="space-y-4">
-              <ResultInspector vm={vm} />
+              <ResultInspector
+                vm={vm}
+                copyPrefs={state.copy}
+                onTogglePrefix={() => dispatch({ type: 'copy/toggle-prefix' })}
+                onToggleSpace={() => dispatch({ type: 'copy/toggle-space' })}
+                onCopyEndianChange={(endian) => dispatch({ type: 'copy/set-endian', endian })}
+              />
               <InfoPanel warnings={vm.warnings} />
             </div>
           }

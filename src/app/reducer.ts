@@ -2,6 +2,7 @@ import { INITIAL_STATE } from './state'
 import type { AppState } from './state'
 import type { AppAction } from './actions'
 import { PMBusMath } from '../legacy/pmbus-math'
+import { getCommandConfig } from '../legacy/command-metadata'
 
 /** Integer parser for reducer-managed numeric fields (L11 Y/N, etc.) */
 function parseIntegerSafe(s: string): number | null {
@@ -78,6 +79,80 @@ function withRaw(state: AppState, raw: number): AppState {
   }
 }
 
+/**
+ * Apply a command selection the way legacy `selectCommand()` did:
+ * numeric commands switch mode, load their default value/format parameters,
+ * and re-encode raw. STATUS/BLOCK commands are informational only and do not
+ * force a numeric conversion mode.
+ */
+function applyCommandSelection(state: AppState, commandKey: string | null): AppState {
+  if (!commandKey) return { ...state, commandKey: null }
+
+  const cfg = getCommandConfig(commandKey)
+  if (!cfg) return state
+
+  const next = { ...state, commandKey }
+
+  if (!cfg.mode) {
+    // STATUS / BLOCK payloads: no L11/L16/DIRECT/HALF conversion applies.
+    return next
+  }
+
+  const mode = cfg.mode
+
+  if (mode === 'L16') {
+    const voutMode = cfg.voutMode ?? state.l16.voutMode
+    const parsed = PMBusMath.parseVoutMode(voutMode)
+    const n =
+      typeof parsed.linearExponent === 'number' ? parsed.linearExponent : (cfg.n ?? state.l16.n)
+    const withL16 = {
+      ...next,
+      mode: 'L16' as const,
+      l16: { ...next.l16, voutMode, n },
+    }
+    if (cfg.val !== undefined) return encodeL16FromValue(withL16, cfg.val)
+    return withL16
+  }
+
+  if (mode === 'L11') {
+    const n = cfg.n ?? state.l11.n
+    const withL11 = {
+      ...next,
+      mode: 'L11' as const,
+      l11: { ...next.l11, n, valueInput: null },
+    }
+    if (cfg.val !== undefined) return encodeL11FromValue(withL11, cfg.val)
+    return withL11
+  }
+
+  if (mode === 'DIRECT') {
+    const direct = {
+      y: next.direct.y,
+      m: cfg.m ?? next.direct.m,
+      b: cfg.b ?? next.direct.b,
+      r: cfg.R ?? next.direct.r,
+    }
+    const withDirect = { ...next, mode: 'DIRECT' as const, direct }
+    if (cfg.val !== undefined) {
+      const y = PMBusMath.encodeDirect(cfg.val, direct.m, direct.b, direct.r)
+      return {
+        ...withDirect,
+        direct: { ...direct, y },
+        raw: y < 0 ? PMBusMath.fromSigned(y, 16) : y & 0xffff,
+      }
+    }
+    return withDirect
+  }
+
+  if (mode === 'HALF') {
+    const withHalf = { ...next, mode: 'HALF' as const }
+    if (cfg.val !== undefined) return { ...withHalf, raw: PMBusMath.encodeHalf(cfg.val) }
+    return withHalf
+  }
+
+  return next
+}
+
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'mode/set': {
@@ -93,7 +168,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'command/set':
-      return { ...state, commandKey: action.commandKey }
+      return applyCommandSelection(state, action.commandKey)
 
     case 'raw/set-from-hex': {
       const cleaned = action.hex.replace(/^0x/i, '').replace(/\s/g, '')
@@ -108,7 +183,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'raw/set':
       if (!Number.isFinite(action.raw)) return state
-      return withRaw(state, action.raw)
+      // Clamp, don't wrap: L16's manual V input promises 0~65535, and
+      // `raw & 0xffff` would silently turn 70000 into 4464.
+      return withRaw(state, PMBusMath.clamp(Math.trunc(action.raw), 0, 65535))
 
     case 'bit/toggle': {
       const mask = 1 << (15 - action.bit)
@@ -210,9 +287,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'ui/set-theme':
       return { ...state, ui: { ...state.ui, theme: action.theme } }
-
-    case 'ui/set-focused-field':
-      return { ...state, ui: { ...state.ui, focusedField: action.field } }
 
     case 'ui/toggle-debug':
       return { ...state, ui: { ...state.ui, debugOpen: !state.ui.debugOpen } }

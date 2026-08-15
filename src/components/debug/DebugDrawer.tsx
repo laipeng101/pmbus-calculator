@@ -46,14 +46,14 @@ export default function DebugDrawer({ open, state, onToggle }: Props) {
             border: '1px solid var(--color-border)',
           }}
         >
-          {/* Test status */}
+          {/* Quality gates — the UI must not claim CI test status at runtime */}
           <div className="flex items-center gap-2">
             <span
               className="inline-block h-2.5 w-2.5 rounded-full"
-              style={{ background: 'var(--color-success)' }}
+              style={{ background: 'var(--color-info)' }}
             />
             <span style={{ color: 'var(--color-text-secondary)' }}>
-              测试回归通过：51 / 51（13 math + 38 reducer）
+              质量门禁：npm run test:run · npm run test:e2e · npm run test:coverage
             </span>
           </div>
 

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+tests/e2e/output/
+tests/e2e/report/
+playwright-report/
+test-results/
+package-lock.json
+pmbus-calculator.html
+.claude/
+.playwright-mcp/

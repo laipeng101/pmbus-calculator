@@ -1,0 +1,56 @@
+name: Feature request
+description: 新功能或里程碑任务
+title: '[Feature] '
+labels: ['enhancement']
+body:
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 影响模式
+      options:
+        - GLOBAL
+        - L11
+        - L16
+        - DIRECT
+        - HALF
+        - COPY
+        - COMMAND
+        - THEME
+        - CI/Docs
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: 本任务要达成的可验证结果
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: 明确不做什么
+    validations:
+      required: true
+  - type: textarea
+    id: spec
+    attributes:
+      label: 规范来源
+      description: PMBus 章节、器件数据手册、IEEE 754、参考实现链接等
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收向量
+      description: golden case 输入/期望输出、E2E 路径、覆盖率要求
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: 风险与未知
+      description: 需要确认的规范、舍入、字节序或器件 profile 问题
+    validations:
+      required: false
