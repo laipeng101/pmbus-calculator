@@ -2,37 +2,31 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests/e2e',
-  testIgnore: '**/release.spec.ts',
-  outputDir: './tests/e2e/output',
+  testMatch: '**/release.spec.ts',
+  outputDir: './tests/e2e/output-release',
   fullyParallel: true,
-  forbidOnly: !!process.env.CI,
+  forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: [['list'], ['html', { outputFolder: './tests/e2e/report', open: 'never' }]],
+  reporter: [['list'], ['html', { outputFolder: './tests/e2e/report-release', open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:4173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
   projects: [
     {
-      name: 'chromium-desktop',
+      name: 'chromium-desktop-release',
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1440, height: 900 },
       },
     },
-    {
-      name: 'chromium-mobile',
-      use: {
-        ...devices['Pixel 7'],
-      },
-    },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    command: 'npm run preview -- --port 4173 --strictPort',
+    url: 'http://localhost:4173',
+    reuseExistingServer: process.env.CI ? false : true,
     timeout: 10_000,
   },
 })
