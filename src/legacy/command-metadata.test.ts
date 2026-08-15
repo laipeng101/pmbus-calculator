@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   COMMAND_METADATA,
+  describeDataBytesConflict,
   describeEncodingRule,
   describeTransactions,
   getCommandConfig,
@@ -270,6 +271,25 @@ describe('command metadata — standard definitions vs presets', () => {
     expect(COMMAND_METADATA.READ_EIN.note).toContain('§18.13 描述 6 个数据字节')
     expect(COMMAND_METADATA.READ_EIN.note).toContain('Appendix I Table 31 列为 5')
     expect(COMMAND_METADATA.READ_EIN.note).toContain('计算器不是 READ_EIN packet-length authority')
+  })
+
+  it('describeDataBytesConflict renders the default READ_EIN conflict from metadata', () => {
+    const text = describeDataBytesConflict(COMMAND_METADATA.READ_EIN.dataBytesConflict!)
+    expect(text).toContain('PMBus Part II §18.13')
+    expect(text).toContain('6')
+    expect(text).toContain('PMBus Part II Appendix I Table 31')
+    expect(text).toContain('5')
+  })
+
+  it('describeDataBytesConflict reads values and sources from the argument, not from hardcoded READ_EIN values', () => {
+    const text = describeDataBytesConflict({
+      detailedSection: { value: 7, source: 'Fixture section A' },
+      appendixTable: { value: 8, source: 'Fixture table B' },
+    })
+    expect(text).toContain('Fixture section A 描述 7 个数据字节')
+    expect(text).toContain('Fixture table B 列为 8')
+    expect(text).not.toContain('§18.13')
+    expect(text).not.toContain('Appendix I Table 31')
   })
 
   it('marks STATUS_WORD as status without a numeric preset', () => {

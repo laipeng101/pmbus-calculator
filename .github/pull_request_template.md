@@ -21,7 +21,7 @@
 
 ```bash
 npm ci
-npx playwright install chromium
+npm run test:e2e:install
 ```
 
 ## 验证
@@ -35,7 +35,8 @@ npm run lint              # exit 0
 npm run test:coverage     # exit 0，实际单测数 ___，coverage ___
 npm run test:e2e          # exit 0，实际 E2E 数 ___
 npm run build             # exit 0
-git diff --check          # exit 0
+git diff --check          # exit 0（未暂存工作区）
+git diff --cached --check # exit 0（暂存区）
 ```
 
 ## 影响范围

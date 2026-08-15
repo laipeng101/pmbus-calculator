@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import {
   COMMAND_METADATA,
+  describeDataBytesConflict,
   describeEncodingRule,
   describePresetSource,
   describeTransactions,
@@ -270,8 +271,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
                         </div>
                         {cmd.dataBytesConflict && (
                           <div className="mt-0.5 text-xs" style={{ color: 'var(--color-warning)' }}>
-                            规范内部冲突：§18.13 描述 6 个数据字节；Appendix I Table 31 列为
-                            5。请以目标器件资料及适用规范修订为准。
+                            {describeDataBytesConflict(cmd.dataBytesConflict)}
                           </div>
                         )}
                       </>
