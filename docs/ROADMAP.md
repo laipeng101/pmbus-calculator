@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-16（M10.2 进行中）
+最后更新：2026-08-16（M10.2 已合入）
 
 ## 当前产品基线
 
@@ -15,7 +15,9 @@
 
 ## 当前里程碑
 
-- M10.2 context hygiene：Review（PR 中，等待 CI）。
+```text
+M0–M10.2 baseline complete；当前无活动功能里程碑。
+```
 
 ## 当前有序 backlog
 
