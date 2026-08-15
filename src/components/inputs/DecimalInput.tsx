@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { parseHexStrict } from '../../app/hex-parse'
+import { parseDecimalIntStrict } from '../../app/decimal-parse'
 
 interface Props {
   id?: string
-  value: string
-  maxDigits: number
+  value: number
   placeholder?: string
   ariaLabel: string
   className?: string
@@ -12,42 +11,37 @@ interface Props {
   onCommit: (text: string) => void
 }
 
-function normalizeHexOnBlur(value: string, maxDigits: number): string {
+function normalizeDecimalOnBlur(value: string): string {
   const trimmed = value.trim()
   if (trimmed === '') return '0'
-  const parsed = parseHexStrict(trimmed, maxDigits)
+  const parsed = parseDecimalIntStrict(trimmed)
   return parsed.ok ? trimmed : value
 }
 
 /**
- * Controlled hexadecimal input with an editing draft and strict validation.
- *
- * The reducer still owns global-state validation via `raw/set-from-hex` /
- * `l16/set-vout-mode`.  This component adds the local draft so users can type
- * transitional and invalid strings (e.g. `0x`, `1G`) without the controlled
- * value snapping back before they finish typing.  Invalid input shows an
- * explicit error and is never committed.
+ * Controlled decimal integer input with a local editing draft and strict
+ * validation.  Invalid text (`12abc`, `1e2`, `1.5`, `+`) is shown with an
+ * explicit error and never committed; empty input resets to 0 on blur.
  */
-export default function HexInput({
+export default function DecimalInput({
   id,
   value,
-  maxDigits,
   placeholder,
   ariaLabel,
   className,
   style,
   onCommit,
 }: Props) {
-  const [draft, setDraft] = useState(value)
+  const [draft, setDraft] = useState(String(value))
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!editing) setDraft(value)
+    if (!editing) setDraft(String(value))
   }, [value, editing])
 
   const validate = (next: string): boolean => {
-    const parsed = parseHexStrict(next, maxDigits)
+    const parsed = parseDecimalIntStrict(next)
     if (!parsed.ok) {
       setError(parsed.error)
       return false
@@ -61,32 +55,29 @@ export default function HexInput({
       <input
         id={id}
         type="text"
-        inputMode="text"
+        inputMode="numeric"
         autoComplete="off"
         spellCheck={false}
-        value={editing ? draft : value}
+        value={editing ? draft : String(value)}
         placeholder={placeholder}
         aria-label={ariaLabel}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${id ?? ariaLabel}-hex-error` : undefined}
+        aria-describedby={error ? `${id ?? ariaLabel}-decimal-error` : undefined}
         className={className}
         style={style}
-        onFocus={(e) => {
-          setEditing(true)
-          e.target.select()
-        }}
+        onFocus={() => setEditing(true)}
         onChange={(e) => {
           setDraft(e.target.value)
           if (validate(e.target.value)) onCommit(e.target.value)
         }}
         onBlur={() => {
-          const fixed = normalizeHexOnBlur(draft, maxDigits)
-          if (parseHexStrict(fixed, maxDigits).ok) {
+          const fixed = normalizeDecimalOnBlur(draft)
+          if (parseDecimalIntStrict(fixed).ok) {
             setError(null)
             setDraft(fixed)
             onCommit(fixed)
           } else {
-            setDraft(value)
+            setDraft(String(value))
             setError(null)
           }
           setEditing(false)
@@ -97,7 +88,7 @@ export default function HexInput({
       />
       {error && (
         <p
-          id={`${id ?? ariaLabel}-hex-error`}
+          id={`${id ?? ariaLabel}-decimal-error`}
           role="alert"
           className="mt-1 text-xs"
           style={{ color: 'var(--color-danger)' }}

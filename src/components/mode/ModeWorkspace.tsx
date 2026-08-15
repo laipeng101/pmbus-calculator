@@ -2,6 +2,7 @@ import type { AppMode, AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
 import BitGrid from '../bits/BitGrid'
+import DecimalInput from '../inputs/DecimalInput'
 import HexInput from '../inputs/HexInput'
 import IntegerInput from '../inputs/IntegerInput'
 import ValueInput from '../inputs/ValueInput'
@@ -230,13 +231,11 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               >
                 V (16-bit 0~65535)
               </label>
-              <IntegerInput
+              <DecimalInput
+                id="l16-v-input"
                 value={state.raw}
                 ariaLabel="V (16-bit 0~65535)"
-                onCommit={(text) => {
-                  const parsed = parseInt(text, 10)
-                  if (Number.isFinite(parsed)) dispatch({ type: 'raw/set', raw: parsed })
-                }}
+                onCommit={(text) => dispatch({ type: 'raw/set', raw: text })}
                 className="w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
                 style={{
                   background: 'var(--color-surface-muted)',

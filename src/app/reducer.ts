@@ -4,6 +4,7 @@ import type { AppAction } from './actions'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { getCommandConfig } from '../legacy/command-metadata'
 import { parseHexStrict } from './hex-parse'
+import { parseDecimalIntStrict } from './decimal-parse'
 
 /** Integer parser for reducer-managed numeric fields (L11 Y/N, etc.) */
 function parseIntegerSafe(s: string): number | null {
@@ -194,11 +195,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return withRaw(state, raw)
     }
 
-    case 'raw/set':
-      if (!Number.isFinite(action.raw)) return state
+    case 'raw/set': {
+      const parsed = parseDecimalIntStrict(action.raw)
+      if (!parsed.ok) return state
       // Clamp, don't wrap: L16's manual V input promises 0~65535, and
       // `raw & 0xffff` would silently turn 70000 into 4464.
-      return withRaw(state, PMBusMath.clamp(Math.trunc(action.raw), 0, 65535))
+      return withRaw(state, PMBusMath.clamp(Math.trunc(parsed.value), 0, 65535))
+    }
 
     case 'bit/toggle': {
       const mask = 1 << (15 - action.bit)

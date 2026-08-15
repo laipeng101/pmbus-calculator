@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -43,8 +45,16 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Check diff for whitespace errors
-        run: git diff --check
+      - name: Check full PR diff for whitespace errors
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git diff --check ${{ env.BASE_SHA }} ${{ env.HEAD_SHA }}
+
+      - name: Check pushed commit for whitespace errors
+        if: github.event_name == 'push'
+        run: git show --check --stat --oneline HEAD
 
       - name: Audit dependencies
         run: npm audit --audit-level=high

@@ -5,7 +5,7 @@ export type AppAction =
   | { type: 'command/set'; commandKey: string | null }
   | { type: 'command/apply-preset'; commandKey: string | null }
   | { type: 'raw/set-from-hex'; hex: string }
-  | { type: 'raw/set'; raw: number }
+  | { type: 'raw/set'; raw: string }
   | { type: 'bit/toggle'; bit: number }
   | { type: 'value/set'; value: string }
   | { type: 'l11/set-n'; n: string }

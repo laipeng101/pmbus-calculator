@@ -46,6 +46,17 @@ export interface CommandTransactions {
   read?: CommandTransaction
 }
 
+export interface CommandDataBytesConflict {
+  detailedSection: {
+    value: number
+    source: string
+  }
+  appendixTable: {
+    value: number
+    source: string
+  }
+}
+
 export type CommandValueType = 'scalar' | 'status' | 'block'
 
 /** How the PMBus specification tells an implementer to resolve the payload format. */
@@ -98,6 +109,13 @@ export interface CommandMeta {
   units: string
   spec: string
   encodingRule: CommandEncodingRule
+
+  /**
+   * Present only when the specification itself is internally inconsistent
+   * about the number of data bytes.  The UI must show both sources instead
+   * of picking one authoritative number.
+   */
+  dataBytesConflict?: CommandDataBytesConflict
 
   note?: string
 
@@ -323,12 +341,22 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'READ_EIN',
     label: 'READ_EIN',
     cmd: 0x86,
-    transactions: { read: { type: 'block_read', dataBytes: 5 } },
+    transactions: { read: { type: 'block_read' } },
     valueType: 'block',
     units: '—',
     spec: 'PMBus Part II §18.13, Appendix I Table 31',
     encodingRule: 'block',
-    note: 'READ_EIN 属于 Block Read，返回 5 个数据字节（不含 byte count 与 PEC）；计算器不能代表完整 6 字节报文，仅作为命令信息展示。',
+    dataBytesConflict: {
+      detailedSection: {
+        value: 6,
+        source: 'PMBus Part II §18.13',
+      },
+      appendixTable: {
+        value: 5,
+        source: 'PMBus Part II Appendix I Table 31',
+      },
+    },
+    note: '规范内部冲突：§18.13 描述 6 个数据字节；Appendix I Table 31 列为 5。请以目标器件资料及适用规范修订为准。计算器不是 READ_EIN packet-length authority。',
   },
 }
 

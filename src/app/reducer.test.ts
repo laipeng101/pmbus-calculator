@@ -15,7 +15,7 @@ describe('appReducer — state transitions', () => {
   describe('command/set', () => {
     it('sets commandKey only, without switching mode or rewriting raw', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const withRaw = appReducer(l16, { type: 'raw/set', raw: 0x1234 })
+      const withRaw = appReducer(l16, { type: 'raw/set', raw: '4660' })
       const s = appReducer(withRaw, { type: 'command/set', commandKey: 'VOUT_COMMAND' })
       expect(s.commandKey).toBe('VOUT_COMMAND')
       expect(s.mode).toBe('L16')
@@ -148,23 +148,37 @@ describe('appReducer — state transitions', () => {
 
   describe('raw/set', () => {
     it('sets raw value', () => {
-      const s = appReducer(base, { type: 'raw/set', raw: 0xabcd })
+      const s = appReducer(base, { type: 'raw/set', raw: '43981' })
       expect(s.raw).toBe(0xabcd)
     })
 
     it('clamps to 0..65535 instead of wrapping', () => {
-      const hi = appReducer(base, { type: 'raw/set', raw: 0x1f0f0 })
+      const hi = appReducer(base, { type: 'raw/set', raw: '127216' })
       expect(hi.raw).toBe(65535)
-      const lo = appReducer(base, { type: 'raw/set', raw: -1 })
+      const lo = appReducer(base, { type: 'raw/set', raw: '-1' })
       expect(lo.raw).toBe(0)
     })
 
     it('clamps L16 manual V input to 0..65535', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const hi = appReducer(l16, { type: 'raw/set', raw: 70000 })
+      const hi = appReducer(l16, { type: 'raw/set', raw: '70000' })
       expect(hi.raw).toBe(65535)
-      const lo = appReducer(l16, { type: 'raw/set', raw: -1 })
+      const lo = appReducer(l16, { type: 'raw/set', raw: '-1' })
       expect(lo.raw).toBe(0)
+    })
+
+    it('rejects decimal partial parses, scientific notation, and floats', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      for (const raw of ['12abc', '1e2', '1.5', '+', '-']) {
+        const s = appReducer(l16, { type: 'raw/set', raw })
+        expect(s.raw, raw).toBe(l16.raw)
+      }
+    })
+
+    it('accepts decimal strings with surrounding whitespace and explicit sign', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      expect(appReducer(l16, { type: 'raw/set', raw: '  12  ' }).raw).toBe(12)
+      expect(appReducer(l16, { type: 'raw/set', raw: '+12' }).raw).toBe(12)
     })
   })
 
@@ -202,7 +216,7 @@ describe('appReducer — state transitions', () => {
 
     it('mode/set entering L11 syncs N and Y from current raw', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const withRaw = appReducer(l16, { type: 'raw/set', raw: 0x0801 })
+      const withRaw = appReducer(l16, { type: 'raw/set', raw: '2049' })
       expect(withRaw.l11.n).toBe(0) // not yet synced in L16
       const s = appReducer(withRaw, { type: 'mode/set', mode: 'L11' })
       expect(s.l11.n).toBe(1)
@@ -551,9 +565,9 @@ describe('appReducer — state transitions', () => {
     })
 
     it('raw/set clamps and stores 16-bit raw in DIRECT', () => {
-      const hi = appReducer(directMode, { type: 'raw/set', raw: 0x1ffff })
+      const hi = appReducer(directMode, { type: 'raw/set', raw: '131071' })
       expect(hi.raw).toBe(65535)
-      const lo = appReducer(directMode, { type: 'raw/set', raw: -1 })
+      const lo = appReducer(directMode, { type: 'raw/set', raw: '-1' })
       expect(lo.raw).toBe(0)
     })
 

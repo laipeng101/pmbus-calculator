@@ -45,6 +45,7 @@ npm run test:coverage
 npm run test:e2e
 npm run build
 git diff --check
+git diff --cached --check
 npm audit --audit-level=high
 ```
 
