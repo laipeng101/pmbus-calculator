@@ -9,7 +9,7 @@ const BASE: AppState = {
   byteOrder: 'le',
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   l16: { n: -8, voutMode: 0x18 },
-  direct: { y: 0, m: 1, b: 0, r: 0 },
+  direct: { m: 1, b: 0, r: 0, error: null },
   copy: { prefix0x: true, spaceBetweenBytes: true, endian: 'le' },
   ui: { theme: 'system', debugOpen: false },
 }
@@ -110,17 +110,25 @@ describe('toCalculatorViewModel', () => {
 
     test('m=0 produces NaN and warning', () => {
       const vm = toCalculatorViewModel(
-        make({ mode: 'DIRECT', direct: { y: 10, m: 0, b: 0, r: 0 } }),
+        make({ mode: 'DIRECT', raw: 10, direct: { m: 0, b: 0, r: 0, error: null } }),
       )
       expect(vm.valueText).toBe('—')
       expect(vm.warnings.some((w) => w.id === 'direct-m-zero')).toBe(true)
     })
 
-    test('Y=10, m=2, b=0, R=0 produces value 5', () => {
+    test('raw=0x000A (Y=10), m=2, b=0, R=0 produces value 5', () => {
       const vm = toCalculatorViewModel(
-        make({ mode: 'DIRECT', direct: { y: 10, m: 2, b: 0, r: 0 } }),
+        make({ mode: 'DIRECT', raw: 10, direct: { m: 2, b: 0, r: 0, error: null } }),
       )
       expect(vm.valueText).toBe('5')
+      expect(vm.directY).toBe(10)
+    })
+
+    test('raw=0x8000 is signed Y=-32768 in DIRECT mode', () => {
+      const vm = toCalculatorViewModel(
+        make({ mode: 'DIRECT', raw: 0x8000, direct: { m: 1, b: 0, r: 0, error: null } }),
+      )
+      expect(vm.directY).toBe(-32768)
     })
   })
 
@@ -238,8 +246,21 @@ describe('toCalculatorViewModel', () => {
     })
 
     test('DIRECT with m=0 has error warning', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'DIRECT', direct: { y: 1, m: 0, b: 0, r: 0 } }))
+      const vm = toCalculatorViewModel(
+        make({ mode: 'DIRECT', raw: 1, direct: { m: 0, b: 0, r: 0, error: null } }),
+      )
       const warning = vm.warnings.find((w) => w.id === 'direct-m-zero')
+      expect(warning?.level).toBe('error')
+    })
+
+    test('DIRECT coefficient validation error is shown', () => {
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'DIRECT',
+          direct: { m: 1, b: 0, r: 0, error: 'm 必须是 -32768..32767 的整数' },
+        }),
+      )
+      const warning = vm.warnings.find((w) => w.id === 'direct-coeff-error')
       expect(warning?.level).toBe('error')
     })
   })

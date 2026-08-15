@@ -250,38 +250,86 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         )}
 
         {mode === 'DIRECT' && (
-          <div className="grid grid-cols-3 gap-3">
-            {(
-              [
-                ['m', state.direct.m],
-                ['b', state.direct.b],
-                ['r', state.direct.r],
-              ] as const
-            ).map(([name, val]) => (
-              <div key={name}>
-                <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  {name.toUpperCase()}
-                </label>
-                <input
-                  type="number"
-                  value={val}
-                  onChange={(e) =>
-                    dispatch({
-                      type: 'direct/set-coeff',
-                      name,
-                      value: e.target.value,
-                    })
-                  }
-                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-                  style={{
-                    background: 'var(--color-surface-muted)',
-                    color: 'var(--color-text-primary)',
-                    border: '1px solid var(--color-border)',
-                    fontFamily: 'var(--font-mono)',
-                  }}
-                />
-              </div>
-            ))}
+          <div className="space-y-4">
+            {/* DIRECT formula: X = (1/m) × (Y×10^-R − b) */}
+            <div
+              className="rounded-xl px-4 py-3 text-center text-sm"
+              style={{
+                background: 'var(--color-surface-muted)',
+                border: '1px solid var(--color-border)',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              {vm.formulaText}
+            </div>
+
+            {/* Signed Y input — raw is the only source of truth */}
+            <div>
+              <label
+                className="mb-1 block text-xs font-medium"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                Y (16-bit signed，-32768 ~ 32767)
+              </label>
+              <IntegerInput
+                value={vm.directY ?? 0}
+                ariaLabel="Y (16-bit signed)"
+                onCommit={(text) => dispatch({ type: 'direct/set-y', y: text })}
+                className="w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
+                style={{
+                  background: 'var(--color-surface-muted)',
+                  color: 'var(--color-text-primary)',
+                  border: '1px solid var(--color-border)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              />
+            </div>
+
+            {/* Physical value input — encodes via legacy DIRECT rounding */}
+            <ValueInput vm={vm} dispatch={dispatch} />
+
+            {/* Coefficients: m/b signed 16-bit integer, R signed 8-bit integer */}
+            <div className="grid grid-cols-3 gap-3">
+              {(
+                [
+                  ['m', state.direct.m, -32768, 32767],
+                  ['b', state.direct.b, -32768, 32767],
+                  ['r', state.direct.r, -128, 127],
+                ] as const
+              ).map(([name, val, min, max]) => (
+                <div key={name}>
+                  <label
+                    className="mb-1 block text-xs"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    {name.toUpperCase()} ({min}..{max})
+                  </label>
+                  <IntegerInput
+                    value={val}
+                    ariaLabel={`DIRECT 系数 ${name}`}
+                    onCommit={(text) =>
+                      dispatch({
+                        type: 'direct/set-coeff',
+                        name,
+                        value: text,
+                      })
+                    }
+                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                    style={{
+                      background: 'var(--color-surface-muted)',
+                      color: 'var(--color-text-primary)',
+                      border: '1px solid var(--color-border)',
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              m、b 为 16-bit signed 整数；R 为 8-bit signed 整数；m ≠ 0。系数非法时不会静默接受。
+            </div>
           </div>
         )}
 

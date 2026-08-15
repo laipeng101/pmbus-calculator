@@ -31,6 +31,19 @@ function parseFloatSafe(s: string): number | null {
   return n
 }
 
+/** Parse a signed integer within [min, max]; returns null when invalid. */
+function parseIntegerRange(s: string, min: number, max: number): number | null {
+  const n = parseIntegerSafe(s)
+  if (n === null || n < min || n > max) return null
+  return n
+}
+
+/** Encode a physical value into DIRECT raw via legacy rounding. */
+function encodeDirectFromValue(state: AppState, value: number): AppState {
+  const y = PMBusMath.encodeDirect(value, state.direct.m, state.direct.b, state.direct.r)
+  return { ...state, raw: PMBusMath.fromSigned(y, 16) }
+}
+
 /**
  * Encode a physical value into LINEAR11 raw and canonical N/Y.
  * Mirrors legacy updateAll('val') for L11.
@@ -121,18 +134,14 @@ function applyCommandPreset(state: AppState, commandKey: string | null): AppStat
 
   if (preset.mode === 'DIRECT') {
     const direct = {
-      y: next.direct.y,
       m: preset.m ?? next.direct.m,
       b: preset.b ?? next.direct.b,
       r: preset.R ?? next.direct.r,
+      error: next.direct.error,
     }
     const withDirect = { ...next, mode: 'DIRECT' as const, direct }
     const y = PMBusMath.encodeDirect(preset.value, direct.m, direct.b, direct.r)
-    return {
-      ...withDirect,
-      direct: { ...direct, y },
-      raw: y < 0 ? PMBusMath.fromSigned(y, 16) : y & 0xffff,
-    }
+    return { ...withDirect, raw: PMBusMath.fromSigned(y, 16) }
   }
 
   if (preset.mode === 'HALF') {
@@ -198,6 +207,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (value === null || Number.isNaN(value) || !Number.isFinite(value)) return state
       if (state.mode === 'L11') return encodeL11FromValue(state, value)
       if (state.mode === 'L16') return encodeL16FromValue(state, value)
+      if (state.mode === 'DIRECT') {
+        if (state.direct.m === 0) return state
+        return encodeDirectFromValue(state, value)
+      }
       return state
     }
 
@@ -252,16 +265,42 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'direct/set-y': {
-      const y = parseInt(action.y, 10)
-      return Number.isNaN(y) ? state : { ...state, direct: { ...state.direct, y } }
+      const y = parseIntegerSafe(action.y)
+      if (y === null) return state
+      // Y is signed 16-bit; clamp then encode to raw.  raw stays the only
+      // source of truth — Y is derived back from raw by the view-model.
+      const clamped = PMBusMath.clamp(y, -32768, 32767)
+      if (state.mode !== 'DIRECT') return state
+      return { ...state, raw: PMBusMath.fromSigned(clamped, 16) }
     }
 
     case 'direct/set-coeff': {
-      const val = parseFloat(action.value)
-      if (Number.isNaN(val)) return state
+      const isM = action.name === 'm'
+      const isR = action.name === 'r'
+      const min = isR ? -128 : -32768
+      const max = isR ? 127 : 32767
+      const val = parseIntegerRange(action.value, min, max)
+      if (val === null) {
+        const label = action.name.toUpperCase()
+        return {
+          ...state,
+          direct: {
+            ...state.direct,
+            error: `${label} 必须是 ${min}..${max} 的整数，不得为浮点数或超范围值`,
+          },
+        }
+      }
+      if (isM && val === 0) {
+        // m=0 is stored so the existing m-zero warning is visible, but it is
+        // still an explicit error state rather than a silent acceptance.
+        return {
+          ...state,
+          direct: { ...state.direct, m: 0, error: 'DIRECT 系数 m 不能为 0' },
+        }
+      }
       return {
         ...state,
-        direct: { ...state.direct, [action.name]: val },
+        direct: { ...state.direct, [action.name]: val, error: null },
       }
     }
 
