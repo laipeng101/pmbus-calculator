@@ -8,7 +8,7 @@
 
 ```text
 把单文件 PMBus Calculator 重构为可维护的现代 Web App。
-当前阶段：Web-first。L11/L16 已完成，DIRECT 闭环进入前必须先通过 M4.5 稳定化门禁。
+当前阶段：Web-first。L11/L16 已完成并通过 M4.5 稳定化门禁；下一步 M5 DIRECT。
 ```
 
 不追求（除非用户明确要求进入对应阶段）：
@@ -46,10 +46,10 @@ tests/e2e/        Playwright 真实用户流程
 ## 4. 状态与组件规则
 
 - 状态入口：`src/app/state.ts` 的 `AppState`；使用 `useReducer`。
-- Action 命名使用命名空间：`mode/set`、`command/set`、`raw/set-from-hex`、`bit/toggle`、
-  `value/set`、`l11/set-n`、`l11/set-y`、`l11/toggle-auto-n`、`l16/set-vout-mode`、
-  `direct/set-y`、`direct/set-coeff`、`copy/toggle-prefix`、`copy/toggle-space`、
-  `copy/set-endian`、`ui/set-theme`。
+- Action 命名使用命名空间：`mode/set`、`command/set`、`command/apply-preset`、
+  `raw/set-from-hex`、`bit/toggle`、`value/set`、`l11/set-n`、`l11/set-y`、
+  `l11/toggle-auto-n`、`l16/set-vout-mode`、`direct/set-y`、`direct/set-coeff`、
+  `copy/toggle-prefix`、`copy/toggle-space`、`copy/set-endian`、`ui/set-theme`。
 - UI 统一使用 `toCalculatorViewModel(state)`；格式化结果不要在 JSX 中重复计算。
 - 组件只能：接收 props、显示 viewModel、dispatch(action)、维护局部 UI 状态（如 popover open）。
 - 主题由 `state.ui.theme` 驱动；`App.tsx` 负责把主题写到 `document.documentElement.dataset.theme`。
@@ -58,9 +58,11 @@ tests/e2e/        Playwright 真实用户流程
 ## 5. 命令字典与领域模型
 
 - 命令字典唯一数据源：`src/legacy/command-metadata.ts`。
-- 每个命令必须区分：`dataFormat`、`transactionType`、`valueType`。
-- `mode` 只用于能映射到 L11/L16/DIRECT/HALF 的数值命令；STATUS/BLOCK 不设 `mode`。
-- 设备相关 DIRECT 系数必须标 `profileSource`，没有器件数据手册就不允许当成标准默认值。
+- 标准命令定义包含：命令码、`transactionType`、`valueType`、`units`、`spec`、`encodingRule`。
+- `encodingRule` 只能是：`follows_vout_mode`、`device_defined`、`status`、`block`。
+- 可选 `preset` 不随 `command/set` 自动应用；只有 `command/apply-preset` 才能切换模式、
+  加载参数并重编码 raw。预设必须标 `sourceKind`（当前仅 `project-demo`）、`source`、
+  `appliesTo`、`direction`。没有真实器件数据手册就禁止内置 `device-datasheet` 预设。
 
 ## 6. 测试规则
 
@@ -73,7 +75,7 @@ tests/e2e/        Playwright 真实用户流程
 
 1. 读取任务 Issue、本文件、`docs/DOMAIN_MODEL.md` 中相关规则、`docs/ROADMAP.md` 当前状态。
 2. 在任务开头明确：Goal、Out of scope、影响模式、规范来源、验收向量。
-3. 确认工作区干净，并运行基线检查。
+3. 确认工作区干净；fresh environment 先执行 `npm ci` 与 `npx playwright install chromium`。
 4. 只实现一个可验证的垂直切片，不夹带无关改动。
 5. 完成后必须运行：
 
@@ -88,8 +90,10 @@ tests/e2e/        Playwright 真实用户流程
    ```
 
 6. 输出：changed files、affected modes、实际测试命令与结果、剩余缺口。
+   验收记录必须包含每条命令、exit code、实际测试数、coverage 和 CI URL。
 7. 只有验收条件通过，才能把里程碑从 Review 改为 Done。
-8. 规范、舍入、字节序或器件系数不明确时，必须停止并提问，禁止猜测。
+8. 器件数据不明确时不得猜测：保持禁用/留空，并在 UI 与文档中注明“需要器件数据手册”。
+   只有仓库内规范与官方规范存在无法保守处理的直接冲突时才停止。
 
 ## 8. 文档更新规则
 

@@ -3,7 +3,7 @@
 <a href="README.md"><img src="https://img.shields.io/badge/lang-en-blue.svg" alt="English"></a>
 <a href="README_zh-CN.md"><img src="https://img.shields.io/badge/lang-zh--CN-red.svg" alt="简体中文"></a>
 
-一款完全运行于浏览器端、零依赖的 PMBus 数据格式计算器。  
+一款完全运行于浏览器端、无后端的 PMBus 数据格式计算器。<br>
 支持 PMBus 1.3 规范定义的 **LINEAR11 (L11)**、**LINEAR16 / VOUT (L16)**、**DIRECT** 和 **IEEE 754 半精度浮点 (HALF)** 四种编码格式。
 
 ---
@@ -27,7 +27,7 @@
 - 📐 **四种编码模式** — LINEAR11、LINEAR16 (VOUT)、DIRECT 和 IEEE 754 半精度浮点。
 - 🔲 **可交互寄存器位视图** — 16 位可点击的位字段视图，按半字节（Nibble）分组，每个半字节实时显示对应 Hex 值。
 - 📋 **一键复制** — 可分别复制原始 Hex 值、解码后的物理值，或直接可用的 C 语言宏定义代码。
-- 📦 **PMBus 命令字典** — 快速加载 13 条标准 PMBus 1.3 命令（如 `VOUT_COMMAND`、`READ_IOUT`、`STATUS_WORD`）的典型参数。
+- 📦 **PMBus 命令字典** — 提供 13 条 PMBus 1.3 命令的标准定义（命令码、事务、单位、规范章节、编码规则）；可选 `project-demo` 演示预设仅在显式点击后应用。
 - ♾️ **最优 N 值自动求解** — LINEAR11 模式下，工具自动寻找使表示误差最小的最优指数 N。
 - 🌙 **亮色 / 暗黑模式** — 自动跟随 `prefers-color-scheme`，同时支持手动切换。
 - 📱 **完整响应式设计** — Sticky 结果面板、自适应位网格、移动端触控优化。
@@ -78,7 +78,7 @@ npm test         # 运行 Vitest 测试
 1. 选择编码模式标签页（LINEAR11 / LINEAR16 / DIRECT / IEEE 半精度）。
 2. 输入原始 Hex 值**或**物理值——另一侧字段将自动更新。
 3. 点击寄存器视图中的各个位进行翻转，观察对编码结果的影响。
-4. 使用 **PMBus 命令字典** 下拉框为已知命令快速加载典型参数。
+4. 使用 **PMBus 命令字典** 下拉框查看标准命令定义；若提供 `project-demo` 演示预设，可点击 **应用 project-demo 预设** 显式加载。
 5. 点击 **📋 Hex**、**📋 值** 或 **C 代码** 按钮，以所需格式复制结果。
 
 ---
@@ -96,23 +96,23 @@ npm test         # 运行 Vitest 测试
 
 ## PMBus 命令字典
 
-内置字典涵盖以下 PMBus 1.3 命令及其典型预设参数：
+内置字典记录 13 条 PMBus 1.3 标准命令的规范定义。选择命令只显示命令信息，不会自动应用参数；可选 `project-demo` 演示预设必须显式应用，且不是标准或通用默认值。
 
-| 命令                  | 命令码 | 格式                |
+| 命令                  | 命令码 | 编码规则            |
 | --------------------- | ------ | ------------------- |
-| `VOUT_COMMAND`        | `0x21` | LINEAR16            |
-| `VOUT_OV_FAULT_LIMIT` | `0x40` | LINEAR16            |
-| `READ_VOUT`           | `0x8B` | LINEAR16            |
-| `READ_VIN`            | `0x88` | LINEAR11            |
-| `READ_IOUT`           | `0x8C` | LINEAR11            |
-| `READ_TEMPERATURE_1`  | `0x8D` | LINEAR11            |
-| `VIN_OV_FAULT_LIMIT`  | `0x55` | LINEAR11            |
-| `OT_FAULT_LIMIT`      | `0x4F` | LINEAR11            |
-| `FAN_COMMAND`         | `0x3B` | LINEAR11            |
-| `READ_POUT`           | `0x96` | LINEAR11            |
-| `READ_FAN_SPEED_1`    | `0x90` | LINEAR11            |
-| `STATUS_WORD`         | `0x79` | 状态位字            |
-| `READ_EIN`            | `0x86` | BLOCK（块读取说明） |
+| `VOUT_COMMAND`        | `0x21` | 跟随 VOUT_MODE      |
+| `VOUT_OV_FAULT_LIMIT` | `0x40` | 跟随 VOUT_MODE      |
+| `READ_VOUT`           | `0x8B` | 跟随 VOUT_MODE      |
+| `READ_VIN`            | `0x88` | 由器件资料决定      |
+| `READ_IOUT`           | `0x8C` | 由器件资料决定      |
+| `READ_TEMPERATURE_1`  | `0x8D` | 由器件资料决定      |
+| `VIN_OV_FAULT_LIMIT`  | `0x55` | 由器件资料决定      |
+| `OT_FAULT_LIMIT`      | `0x4F` | 由器件资料决定      |
+| `FAN_COMMAND_1`       | `0x3B` | 由器件资料决定      |
+| `READ_POUT`           | `0x96` | 由器件资料决定      |
+| `READ_FAN_SPEED_1`    | `0x90` | 由器件资料决定      |
+| `STATUS_WORD`         | `0x79` | STATUS 位           |
+| `READ_EIN`            | `0x86` | BLOCK（超过 16 位） |
 
 ---
 
@@ -132,13 +132,13 @@ npm test         # 运行 Vitest 测试
 - **Playwright** — 桌面与移动 Chromium 项目的真实用户 E2E 流程。
 - 详见 [`AGENTS.md`](AGENTS.md)、[`docs/ROADMAP.md`](docs/ROADMAP.md) 与 [`docs/WEB_REFACTOR_PLAN.md`](docs/WEB_REFACTOR_PLAN.md)。
 
-> **当前状态：** 旧版 `pmbus-calculator.html` 完全可用。新版 Web App 已具备 L11 与 L16 完整双向闭环，DIRECT/HALF 可解码；当前重点为 M4.5 稳定化门禁（质量门禁、E2E、文档体系），完成后继续 DIRECT。
+> **当前状态：** 旧版 `pmbus-calculator.html` 完全可用。新版 Web App 已具备 L11 与 L16 完整双向闭环；M4.5 稳定化门禁已通过，当前里程碑为 M5 DIRECT。
 
 ---
 
 ## 浏览器兼容性
 
-任意支持 ES6+ 的现代浏览器（Chrome 60+、Firefox 55+、Safari 12+、Edge 79+）。
+当前版本的 Chrome、Edge、Firefox 与 Safari。自动化 E2E 覆盖桌面端与移动端 Chromium（Pixel 7）；其他浏览器暂无自动化测试依据。
 
 ---
 

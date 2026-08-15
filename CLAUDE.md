@@ -24,7 +24,7 @@ Claude Code 工作时必须：
 ```text
 docs ✅ → Vite React TS skeleton ✅ → design tokens ✅ → AppShell ✅ → ModeSwitcher ✅
 → CommandPicker ✅ → ResultInspector ✅ → PMBusMath legacy adapter ✅
-→ L11 loop ✅ → L16 loop ✅ → M4.5 稳定化门禁（当前）→ DIRECT loop → HALF loop
+→ L11 loop ✅ → L16 loop ✅ → M4.5 稳定化门禁 ✅ → DIRECT loop（当前）→ HALF loop
 → copy tools → tests migration → legacy cleanup
 ```
 
