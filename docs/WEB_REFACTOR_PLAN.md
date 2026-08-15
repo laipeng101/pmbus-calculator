@@ -704,22 +704,22 @@ L11 已实现 **双向闭环**：Hex/bit → raw → Y/N/Value 同步；Y/N 编�
 ### 任务
 
 - [x] VOUT_MODE 输入（`ModeWorkspace` 内联输入，写 `state.l16.voutMode`）
-- [ ] VOUT_MODE parse（`parseVoutMode` 已在 PMBusMath 迁移并有 smoke test，但 reducer 未据其推导 `l16.n`）
+- [x] VOUT_MODE parse（`parseVoutMode` 已在 reducer 中据其推导 `l16.n`）
 - [x] L16 raw value（`view-model.ts` 已调用 `decodeLinear16`，使用 `state.l16.n`）
-- [ ] byte order 控制（LE/BE 仅展示；`copy.endian` 未接 UI，`byteOrder` 未参与计算）
-- [x] L16 bit grid（复用 `BitGrid`，但图例仍为 L11 的 N/Y 分区）
-- [ ] value <-> raw 转换（decode 显示可用；encode 未接入）
+- [x] byte order 控制（L16 字节序 select 已接入 `state.byteOrder`；Hex 输入/显示按 BE 交换）
+- [x] L16 bit grid（复用 `BitGrid`，图例已按模式切换为 V [15:0]）
+- [x] value <-> raw 转换（decode 显示可用；encode 已接入 `value/set` 与手动 V 输入）
 
 ### 实际状态（2026-08-15）
 
-L16 具备 raw→value 显示与 VOUT_MODE 输入，但 VOUT_MODE 修改后 `l16.n` 不变（仍为初始 -8），非 LINEAR 模式无 warning；LE/BE 展示可用但偏好开关未接 UI。里程碑未完成。
+L16 已实现 **双向闭环**：`l16/set-vout-mode` 经 `parseVoutMode` 推导 `l16.n`（LINEAR 模式）且非 LINEAR 保持原 N；`value/set` 在 L16 模式按 `V = clamp(round(value / 2^N), 0, 65535)` 回写 raw；L16 workspace 提供 VOUT_MODE、字节序（LE/BE）、V (16-bit) 输入、物理值输入与可表示范围；`view-model` 对非 LINEAR VOUT_MODE 生成 `l16-vout-mode-nonlinear` warning，并输出 `voutModeInfo`；`BitGrid` 图例按模式切换（L16 为 V [15:0]）。测试 126 pass。
 
 ### 验收标准
 
-- [ ] VOUT_MODE=0x18 时 N=-8
-- [ ] Raw 与 Value 转换正确
-- [ ] LE/BE 显示和复制正确
-- [ ] 非 LINEAR VOUT_MODE 有明确 warning
+- [x] VOUT_MODE=0x18 时 N=-8
+- [x] Raw 与 Value 转换正确
+- [x] LE/BE 显示和复制正确（Hex 显示按字节序；LE/BE 字节展示；复制偏好仍待 M7 开关）
+- [x] 非 LINEAR VOUT_MODE 有明确 warning
 
 ---
 
@@ -821,17 +821,17 @@ HALF 具备 raw→value 的 decode 显示；无 Value 输入，encode 未接入�
 
 ### 任务
 
-- [ ] `tests/linear11.test.ts`（`pmbus-math.test.ts` 已有 13 个 smoke test；`tests/fixtures/linear11-cases.ts` 已建但未接入任何测试）
+- [x] `tests/linear11.test.ts`（`tests/fixtures/linear11-cases.ts` 已接入 21 个 golden case）
 - [ ] `tests/linear16.test.ts`
 - [ ] `tests/direct.test.ts`
 - [ ] `tests/half.test.ts`
 - [ ] `tests/pec.test.ts`（PEC smoke test 已在 `pmbus-math.test.ts` 内）
-- [x] `tests/view-model.test.ts`（26 tests，位于 `src/app/view-model.test.ts`）
+- [x] `tests/view-model.test.ts`（35 tests，位于 `src/app/view-model.test.ts`）
 - [x] `e2e/basic-flow.spec.ts`（以 `tests/e2e/home.spec.ts` 形式存在：标题/组件可见/390px 无横向滚动/调试面板展开）
 
 ### 实际状态（2026-08-15）
 
-`npm run test:run` 当前 77 pass（13 math + 38 reducer + 26 view-model）；`npm run typecheck`、`npm run build` 通过；`npm run lint` 有 3 个 `coverage/` 生成文件的 warning。L11/L16/DIRECT/HALF 的完整 roundtrip 测试尚未建立。里程碑未完成。
+`npm run test:run` 当前 126 pass（13 math + 57 reducer + 35 view-model + 21 L11 golden）；`npm run typecheck`、`npm run build` 通过；`npm run lint` 有 3 个 `coverage/` 生成文件的 warning。L11/L16/DIRECT/HALF 的完整 roundtrip 测试尚未建立。里程碑未完成。
 
 ### 验收标准
 
@@ -875,17 +875,18 @@ C. 继续提供 single HTML 构建产物
 
 在每个 PR / commit 中填写：
 
-| 变更 ID  | 日期       | 文件                                                                                                                                                                 | 变更类型           | 影响模式                  | 测试                                  | 文档同步 | 状态 |
-| -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------- | ------------------------------------- | -------- | ---- |
-| WEB-0001 | 2026-04-30 | `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `.gitignore`, `.prettierrc`, `eslint.config.js`                                                    | 配置               | 全局                      | build / lint pass                     | 是       | Done |
-| WEB-0002 | 2026-04-30 | `src/main.tsx`, `src/App.tsx`, `src/styles/tokens.css`                                                                                                               | 新增               | 全局 / THEME              | build pass                            | 是       | Done |
-| WEB-0003 | 2026-04-30 | `src/legacy/pmbus-math.ts`, `src/legacy/command-metadata.ts`, `src/legacy/legacy-adapter.ts`, `src/legacy/pmbus-math.test.ts`                                        | 迁移               | L11 / L16 / DIRECT / HALF | Vitest 13 pass                        | 是       | Done |
-| WEB-0004 | 2026-04-30 | `src/app/state.ts`, `src/app/actions.ts`, `src/app/reducer.ts`, `src/app/view-model.ts`                                                                              | 新增               | 全局                      | typecheck / lint                      | 是       | Done |
-| WEB-0005 | 2026-04-30 | `App.tsx`, `AppHeader`, `WorkspaceLayout`, `ModeSwitcher`, `ModeWorkspace`, `CommandPicker`, `ResultInspector`, `InfoPanel`, `CopyToolbar`, `BitGrid`, `ThemeToggle` | 新增               | GLOBAL / LAYOUT / THEME   | Playwright 1440px+390px               | 是       | Done |
-| WEB-0006 | 2026-04-30 | `App.tsx`, `BitGrid`, `ResultInspector`, `ModeWorkspace`, `ModeSwitcher`, `command-metadata.ts`, `vite.config.ts`, `package.json`                                    | 修复               | GLOBAL / LAYOUT / THEME   | tsc+eslint+build+vitest 13 pass       | 是       | Done |
-| WEB-0007 | 2026-04-30 | `BitGrid.tsx`, `tokens.css`, `App.tsx`                                                                                                                               | 修复               | GLOBAL / LAYOUT           | Playwright 1440px+390px               | 是       | Done |
-| WEB-0008 | 2026-04-30 | 删除 `src/legacy/legacy-adapter.ts`；新增 `src/app/reducer.test.ts`（38 tests）；配置 `simple-git-hooks` pre-commit                                                  | 清理 / 测试 / 配置 | 全局                      | 38 pass + tsc                         | 是       | Done |
-| WEB-0009 | 2026-04-30 | `docs/WEB_REFACTOR_PLAN.md`（Migration Gap 同步）；新增 `src/components/debug/DebugDrawer.tsx`；更新 `src/App.tsx`                                                   | 文档 / 新增        | GLOBAL / LAYOUT           | tsc+build+vitest 51 pass + Playwright | 是       | Done |
+| 变更 ID  | 日期       | 文件                                                                                                                                                                                                     | 变更类型           | 影响模式                  | 测试                                  | 文档同步 | 状态 |
+| -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------- | ------------------------------------- | -------- | ---- |
+| WEB-0001 | 2026-04-30 | `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `.gitignore`, `.prettierrc`, `eslint.config.js`                                                                                        | 配置               | 全局                      | build / lint pass                     | 是       | Done |
+| WEB-0002 | 2026-04-30 | `src/main.tsx`, `src/App.tsx`, `src/styles/tokens.css`                                                                                                                                                   | 新增               | 全局 / THEME              | build pass                            | 是       | Done |
+| WEB-0003 | 2026-04-30 | `src/legacy/pmbus-math.ts`, `src/legacy/command-metadata.ts`, `src/legacy/legacy-adapter.ts`, `src/legacy/pmbus-math.test.ts`                                                                            | 迁移               | L11 / L16 / DIRECT / HALF | Vitest 13 pass                        | 是       | Done |
+| WEB-0004 | 2026-04-30 | `src/app/state.ts`, `src/app/actions.ts`, `src/app/reducer.ts`, `src/app/view-model.ts`                                                                                                                  | 新增               | 全局                      | typecheck / lint                      | 是       | Done |
+| WEB-0005 | 2026-04-30 | `App.tsx`, `AppHeader`, `WorkspaceLayout`, `ModeSwitcher`, `ModeWorkspace`, `CommandPicker`, `ResultInspector`, `InfoPanel`, `CopyToolbar`, `BitGrid`, `ThemeToggle`                                     | 新增               | GLOBAL / LAYOUT / THEME   | Playwright 1440px+390px               | 是       | Done |
+| WEB-0006 | 2026-04-30 | `App.tsx`, `BitGrid`, `ResultInspector`, `ModeWorkspace`, `ModeSwitcher`, `command-metadata.ts`, `vite.config.ts`, `package.json`                                                                        | 修复               | GLOBAL / LAYOUT / THEME   | tsc+eslint+build+vitest 13 pass       | 是       | Done |
+| WEB-0007 | 2026-04-30 | `BitGrid.tsx`, `tokens.css`, `App.tsx`                                                                                                                                                                   | 修复               | GLOBAL / LAYOUT           | Playwright 1440px+390px               | 是       | Done |
+| WEB-0008 | 2026-04-30 | 删除 `src/legacy/legacy-adapter.ts`；新增 `src/app/reducer.test.ts`（38 tests）；配置 `simple-git-hooks` pre-commit                                                                                      | 清理 / 测试 / 配置 | 全局                      | 38 pass + tsc                         | 是       | Done |
+| WEB-0009 | 2026-04-30 | `docs/WEB_REFACTOR_PLAN.md`（Migration Gap 同步）；新增 `src/components/debug/DebugDrawer.tsx`；更新 `src/App.tsx`                                                                                       | 文档 / 新增        | GLOBAL / LAYOUT           | tsc+build+vitest 51 pass + Playwright | 是       | Done |
+| WEB-0013 | 2026-08-15 | `src/app/reducer.ts`, `src/app/actions.ts`, `src/app/view-model.ts`, `src/components/mode/ModeWorkspace.tsx`, `src/components/bits/BitGrid.tsx`, `src/app/reducer.test.ts`, `src/app/view-model.test.ts` | 新增 / 修复        | L16                       | Vitest 126 pass + typecheck + build   | 是       | Done |
 
 ### 10.2 变更类型
 
@@ -946,15 +947,15 @@ Reverted
 | 命令字典数据    | 内联 `COMMAND_METADATA`           | `legacy/command-metadata.ts` | Done        | 数据层迁移完成；`CommandPicker` 已从该数据源读取                                                                                     |
 | 模式 Tabs       | HTML `.tabs` + `switchMode`       | `ModeSwitcher`               | Done        | React 组件化，无 inline onclick；支持 Ctrl+1/2/3/4 快捷键                                                                            |
 | 命令字典 UI     | `#commandSelect`                  | `CommandPicker`              | Done        | 可搜索下拉框；数据来自 `command-metadata.ts`；键盘方向键导航待补                                                                     |
-| Bit Grid        | `renderBits` / `renderDirectBits` | `BitGrid`                    | 部分完成    | 保留 nibble 分组与响应式策略；图例固定为 L11 的 N/Y 分区，L16/DIRECT/HALF 下不准确                                                   |
+| Bit Grid        | `renderBits` / `renderDirectBits` | `BitGrid`                    | 部分完成    | 保留 nibble 分组与响应式策略；图例按模式切换（L11 N/Y、L16 V、HALF S+Exp/Mant、DIRECT Y）                                            |
 | 结果面板        | `#resultBox`                      | `ResultInspector`            | Done        | 桌面端右侧 sticky 面板，移动端跟随流式布局                                                                                           |
 | 信息栏          | `#infoBar`                        | `InfoPanel`                  | Done        | 警告/信息/错误三级提示，带图标和颜色区分                                                                                             |
-| 公式界面        | `.formula-mode` DOM               | `ModeWorkspace` 内联公式区   | 部分完成    | L11 双向编辑（Hex ↔ Y/N/Value）已接入；L16/DIRECT/HALF 双向待闭环；独立 FormulaEditor 组件待拆                                       |
-| DebugPanel      | `#debugPanel`                     | `DebugDrawer`                | 部分完成    | 可折叠面板与诊断信息已建；测试状态显示“51/51”已过时（实际 113 pass）；边界测试入口待 M8 接入                                         |
+| 公式界面        | `.formula-mode` DOM               | `ModeWorkspace` 内联公式区   | 部分完成    | L11 双向编辑（Hex ↔ Y/N/Value）已接入；L16 双向编辑（Hex ↔ V/Value）已接入；DIRECT/HALF 双向待闭环；独立 FormulaEditor 组件待拆      |
+| DebugPanel      | `#debugPanel`                     | `DebugDrawer`                | 部分完成    | 可折叠面板与诊断信息已建；测试状态显示“51/51”已过时（实际 126 pass）；边界测试入口待 M8 接入                                         |
 | 主题切换        | `#themeToggle` + `.dark`          | `ThemeToggle`, `data-theme`  | 部分完成    | 功能可用（light/dark/system）；但 localStorage 在组件内直接读写，未走 persistence 层/`state.ui.theme`                                |
 | 复制设置        | 复制按钮 + 全局状态               | `CopyToolbar`                | 部分完成    | Hex / 值 / C 宏复制按钮可用；0x/空格/LE-BE 偏好开关未接 UI，设置未持久化                                                             |
 | DIRECT profiles | inline buttons                    | `DirectCoeffPanel`           | Todo        | 数据化 preset profiles 未实现                                                                                                        |
-| Boundary tests  | `runBoundaryTests`                | Vitest + DebugDrawer         | In Progress | Vitest 已接入 113 pass（13 math + 48 reducer + 31 view-model + 21 L11 golden）；L11 fixture 已接入；L16/DIRECT/HALF golden-case 待补 |
+| Boundary tests  | `runBoundaryTests`                | Vitest + DebugDrawer         | In Progress | Vitest 已接入 126 pass（13 math + 57 reducer + 35 view-model + 21 L11 golden）；L11 fixture 已接入；L16/DIRECT/HALF golden-case 待补 |
 
 ---
 
@@ -1208,13 +1209,13 @@ Migration Gap 更新
 
 ## 18. 当前下一步建议
 
-M0–M3 已完成（docs、Vite React TS 骨架、tokens、AppShell、ModeSwitcher/CommandPicker/ResultInspector 静态版、PMBusMath 与 COMMAND_METADATA 迁移、L11 双向闭环）。  
+M0–M4 已完成（docs、Vite React TS 骨架、tokens、AppShell、ModeSwitcher/CommandPicker/ResultInspector 静态版、PMBusMath 与 COMMAND_METADATA 迁移、L11 双向闭环、L16/VOUT_MODE 双向闭环）。  
 当前按顺序执行：
 
 ```text
 1. M3：L11 full loop ✅（2026-08-15 双向闭环）
-2. M4：L16 / VOUT_MODE 闭环（当前主任务）
-3. M5：DIRECT 闭环
+2. M4：L16 / VOUT_MODE 闭环 ✅（2026-08-15 双向闭环）
+3. M5：DIRECT 闭环（当前主任务）
 4. M6：HALF 闭环
 5. M7：复制偏好闭环（0x / 空格 / LE-BE）
 6. M8：测试回归保护与 debug 测试迁移

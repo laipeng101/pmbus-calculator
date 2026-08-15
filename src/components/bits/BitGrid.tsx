@@ -1,18 +1,41 @@
 import type { BitGroupVM } from '../../app/view-model'
+import type { AppMode } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 
 interface Props {
+  mode: AppMode
   groups: BitGroupVM[]
   dispatch: React.Dispatch<AppAction>
 }
 
-function getBitRegion(index: number): 'n' | 'y' | 'other' {
-  if (index >= 11 && index <= 15) return 'n'
-  if (index >= 0 && index <= 10) return 'y'
-  return 'other'
+type BitRegion = 'primary' | 'secondary'
+
+function getBitRegion(index: number, mode: AppMode): BitRegion {
+  if (mode === 'L11') return index >= 11 ? 'primary' : 'secondary'
+  if (mode === 'HALF') return index >= 10 ? 'primary' : 'secondary'
+  return 'secondary' // L16 V[15:0] / DIRECT Y[15:0] use a single-value region
 }
 
-export default function BitGrid({ groups, dispatch }: Props) {
+function getLegend(mode: AppMode): Array<{ color: string; border?: string; label: string }> {
+  if (mode === 'L11') {
+    return [
+      { color: '#3b82f6', label: 'N [15:11]' },
+      { color: '#10b981', label: 'Y [10:0]' },
+    ]
+  }
+  if (mode === 'HALF') {
+    return [
+      { color: '#3b82f6', label: 'S+Exp [15:10]' },
+      { color: '#10b981', label: 'Mant [9:0]' },
+    ]
+  }
+  if (mode === 'DIRECT') {
+    return [{ color: '#10b981', label: 'Y [15:0]' }]
+  }
+  return [{ color: '#10b981', label: 'V [15:0]' }]
+}
+
+export default function BitGrid({ mode, groups, dispatch }: Props) {
   return (
     <div className="mt-4">
       <div className="bit-grid-container">
@@ -40,22 +63,22 @@ export default function BitGrid({ groups, dispatch }: Props) {
               </div>
               <div className="flex gap-0.5">
                 {group.bits.map((bit) => {
-                  const region = getBitRegion(bit.index)
+                  const region = getBitRegion(bit.index, mode)
                   const isOn = bit.value === 1
 
                   const bgColor = isOn
-                    ? region === 'n'
+                    ? region === 'primary'
                       ? '#3b82f6'
                       : '#10b981'
                     : 'var(--color-surface-muted)'
                   const borderColor = isOn
-                    ? region === 'n'
+                    ? region === 'primary'
                       ? '#2563eb'
                       : '#059669'
                     : 'var(--color-border)'
                   const textColor = isOn ? '#fff' : 'var(--color-text-muted)'
                   const shadow = isOn
-                    ? region === 'n'
+                    ? region === 'primary'
                       ? '0 4px 12px rgba(59,130,246,0.3)'
                       : '0 4px 12px rgba(16,185,129,0.3)'
                     : '0 1px 2px rgba(0,0,0,0.04)'
@@ -96,8 +119,9 @@ export default function BitGrid({ groups, dispatch }: Props) {
 
       {/* Legend */}
       <div className="mt-2 flex flex-wrap justify-center gap-3 text-[10px]">
-        <LegendItem color="#3b82f6" label="N [15:11]" />
-        <LegendItem color="#10b981" label="Y [10:0]" />
+        {getLegend(mode).map((item) => (
+          <LegendItem key={item.label} {...item} />
+        ))}
         <LegendItem color="var(--color-surface-muted)" border="var(--color-border)" label="0" />
       </div>
     </div>

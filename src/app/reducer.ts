@@ -55,6 +55,17 @@ function encodeL11FromValue(state: AppState, value: number): AppState {
   }
 }
 
+/**
+ * Encode a physical value into LINEAR16 raw (V), mirroring legacy
+ * updateAll('val') for L16: V = clamp(round(value / 2^N), 0, 65535).
+ */
+function encodeL16FromValue(state: AppState, value: number): AppState {
+  const n = PMBusMath.clamp(state.l16.n, -16, 15)
+  const p = PMBusMath.pow2(n)
+  const v = PMBusMath.clamp(Math.round(value / p), 0, 65535)
+  return { ...state, raw: v }
+}
+
 /** Set raw and, when in L11 mode, re-sync N/Y from the raw bits. */
 function withRaw(state: AppState, raw: number): AppState {
   const nextRaw = raw & 0xffff
@@ -86,11 +97,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'raw/set-from-hex': {
       const cleaned = action.hex.replace(/^0x/i, '').replace(/\s/g, '')
-      const raw = cleaned === '' ? 0 : parseInt(cleaned, 16)
-      return Number.isNaN(raw) ? state : withRaw(state, raw)
+      const parsed = cleaned === '' ? 0 : parseInt(cleaned, 16)
+      if (Number.isNaN(parsed)) return state
+      // Legacy behavior: in L16 + big-endian mode, hex input is byte-swapped
+      // into the internal little-endian PMBus word.
+      const raw =
+        state.mode === 'L16' && state.byteOrder === 'be' ? PMBusMath.swapBytes(parsed) : parsed
+      return withRaw(state, raw)
     }
 
     case 'raw/set':
+      if (!Number.isFinite(action.raw)) return state
       return withRaw(state, action.raw)
 
     case 'bit/toggle': {
@@ -99,11 +116,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'value/set': {
-      // Phase 3 (M3): L11 encode loop. Other modes are wired in their own milestones.
-      if (state.mode !== 'L11') return state
       const value = parseFloatSafe(action.value)
       if (value === null || Number.isNaN(value) || !Number.isFinite(value)) return state
-      return encodeL11FromValue(state, value)
+      if (state.mode === 'L11') return encodeL11FromValue(state, value)
+      if (state.mode === 'L16') return encodeL16FromValue(state, value)
+      return state
     }
 
     case 'l11/set-n': {
@@ -144,9 +161,16 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'l16/set-vout-mode': {
       const hex = action.hex.replace(/^0x/i, '')
       const voutMode = hex === '' ? 0 : parseInt(hex, 16)
-      return Number.isNaN(voutMode)
-        ? state
-        : { ...state, l16: { ...state.l16, voutMode: voutMode & 0xff } }
+      if (Number.isNaN(voutMode)) return state
+      const parsed = PMBusMath.parseVoutMode(voutMode)
+      const l16 = {
+        ...state.l16,
+        voutMode: voutMode & 0xff,
+        // Per PMBus 1.3: VOUT_MODE LINEAR sets N from the low 5 bits.
+        // Non-LINEAR modes must not silently change the exponent.
+        ...(typeof parsed.linearExponent === 'number' ? { n: parsed.linearExponent } : {}),
+      }
+      return { ...state, l16 }
     }
 
     case 'direct/set-y': {
@@ -162,6 +186,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         direct: { ...state.direct, [action.name]: val },
       }
     }
+
+    case 'byte-order/set':
+      return { ...state, byteOrder: action.endian }
 
     case 'copy/toggle-prefix':
       return {

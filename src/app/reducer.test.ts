@@ -153,10 +153,35 @@ describe('appReducer — state transitions', () => {
       expect(s.raw).toBe(base.raw)
     })
 
-    it('is a no-op outside L11 mode', () => {
+    it('is a no-op outside L11/L16 mode', () => {
+      const direct = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+      const s = appReducer(direct, { type: 'value/set', value: '12' })
+      expect(s.raw).toBe(direct.raw)
+    })
+  })
+
+  describe('L16 value -> raw encode', () => {
+    it('encodes with VOUT_MODE-derived N=-8', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      expect(l16.l16.n).toBe(-8)
       const s = appReducer(l16, { type: 'value/set', value: '12' })
-      expect(s.raw).toBe(l16.raw)
+      // 12 / 2^-8 = 3072 = 0x0C00
+      expect(s.raw).toBe(0x0c00)
+    })
+
+    it('encodes a fractional value with N=-8', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s = appReducer(l16, { type: 'value/set', value: '12.5' })
+      // 12.5 / 2^-8 = 3200 = 0x0C80
+      expect(s.raw).toBe(0x0c80)
+    })
+
+    it('clamps to 0..65535', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const hi = appReducer(l16, { type: 'value/set', value: '999999' })
+      expect(hi.raw).toBe(0xffff)
+      const lo = appReducer(l16, { type: 'value/set', value: '-1' })
+      expect(lo.raw).toBe(0)
     })
   })
 
@@ -210,6 +235,22 @@ describe('appReducer — state transitions', () => {
       expect(s.l16.voutMode).toBe(0x18)
     })
 
+    it('derives N for LINEAR VOUT_MODE (0x18 -> N=-8)', () => {
+      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x18' })
+      expect(s.l16.n).toBe(-8)
+    })
+
+    it('derives N for LINEAR VOUT_MODE (0x17 -> N=-9)', () => {
+      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x17' })
+      expect(s.l16.n).toBe(-9)
+    })
+
+    it('keeps previous N for non-LINEAR VOUT_MODE', () => {
+      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x20' })
+      expect(s.l16.voutMode).toBe(0x20)
+      expect(s.l16.n).toBe(base.l16.n)
+    })
+
     it('masks to 8 bits', () => {
       const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x1ff' })
       expect(s.l16.voutMode).toBe(0xff)
@@ -223,6 +264,35 @@ describe('appReducer — state transitions', () => {
     it('ignores invalid hex', () => {
       const s = appReducer(base, { type: 'l16/set-vout-mode', hex: 'gg' })
       expect(s.l16.voutMode).toBe(base.l16.voutMode)
+    })
+  })
+
+  describe('byte-order/set', () => {
+    it('sets byteOrder', () => {
+      const s = appReducer(base, { type: 'byte-order/set', endian: 'be' })
+      expect(s.byteOrder).toBe('be')
+    })
+  })
+
+  describe('raw/set-from-hex with L16 byte order', () => {
+    it('swaps bytes in BE mode', () => {
+      const be: AppState = {
+        ...base,
+        mode: 'L16',
+        byteOrder: 'be',
+      }
+      const s = appReducer(be, { type: 'raw/set-from-hex', hex: '1234' })
+      expect(s.raw).toBe(0x3412)
+    })
+
+    it('does not swap in LE mode', () => {
+      const le: AppState = {
+        ...base,
+        mode: 'L16',
+        byteOrder: 'le',
+      }
+      const s = appReducer(le, { type: 'raw/set-from-hex', hex: '1234' })
+      expect(s.raw).toBe(0x1234)
     })
   })
 

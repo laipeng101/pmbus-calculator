@@ -50,7 +50,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         </div>
 
         {/* Bit Grid */}
-        <BitGrid groups={vm.bitGroups} dispatch={dispatch} />
+        <BitGrid mode={mode} groups={vm.bitGroups} dispatch={dispatch} />
       </section>
 
       {/* Mode-specific workspace */}
@@ -155,14 +155,17 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         )}
 
         {mode === 'L16' && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
               <label className="w-24 text-sm" style={{ color: 'var(--color-text-muted)' }}>
                 VOUT_MODE
               </label>
               <input
                 type="text"
-                value={'0x' + state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')}
+                value={
+                  vm.voutModeInfo?.hex ??
+                  '0x' + state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')
+                }
                 onChange={(e) => dispatch({ type: 'l16/set-vout-mode', hex: e.target.value })}
                 className="w-24 rounded-lg px-3 py-2 text-sm outline-none"
                 style={{
@@ -171,10 +174,77 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                   border: '1px solid var(--color-border)',
                   fontFamily: 'var(--font-mono)',
                 }}
+                aria-label="VOUT_MODE"
               />
-              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                N = {state.l16.n}
+              <span
+                className="text-xs"
+                style={{
+                  color: vm.voutModeInfo?.isLinear
+                    ? 'var(--color-text-muted)'
+                    : 'var(--color-warning)',
+                }}
+              >
+                {vm.voutModeInfo?.isLinear
+                  ? `${vm.voutModeInfo.modeName}, N=${state.l16.n}`
+                  : `${vm.voutModeInfo?.modeName ?? '未知'} (非LINEAR)`}
               </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="w-24 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                字节序
+              </label>
+              <select
+                value={state.byteOrder}
+                onChange={(e) =>
+                  dispatch({ type: 'byte-order/set', endian: e.target.value as 'le' | 'be' })
+                }
+                className="rounded-lg px-3 py-2 text-sm outline-none"
+                style={{
+                  background: 'var(--color-surface-muted)',
+                  color: 'var(--color-text-primary)',
+                  border: '1px solid var(--color-border)',
+                }}
+                aria-label="L16 字节序"
+              >
+                <option value="le">LE（低字节在前）</option>
+                <option value="be">BE（高字节在前）</option>
+              </select>
+              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                Hex 输入/显示按所选字节序解释
+              </span>
+            </div>
+
+            {/* V raw input — direct LINEAR16 word value */}
+            <div>
+              <label
+                className="mb-1 block text-xs font-medium"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                V (16-bit 0~65535)
+              </label>
+              <IntegerInput
+                value={state.raw}
+                ariaLabel="V (16-bit 0~65535)"
+                onCommit={(text) => {
+                  const parsed = parseInt(text, 10)
+                  if (Number.isFinite(parsed)) dispatch({ type: 'raw/set', raw: parsed })
+                }}
+                className="w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
+                style={{
+                  background: 'var(--color-surface-muted)',
+                  color: 'var(--color-text-primary)',
+                  border: '1px solid var(--color-border)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              />
+            </div>
+
+            {/* Physical value input — encodes via value / 2^N */}
+            <ValueInput vm={vm} dispatch={dispatch} />
+
+            <div className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              {vm.nRangeText ? `可表示范围: ${vm.nRangeText}` : 'V 范围: 0 ~ 65535'}
             </div>
           </div>
         )}

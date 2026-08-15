@@ -13,6 +13,7 @@ export type AppAction =
   | { type: 'l16/set-vout-mode'; hex: string }
   | { type: 'direct/set-y'; y: string }
   | { type: 'direct/set-coeff'; name: 'm' | 'b' | 'r'; value: string }
+  | { type: 'byte-order/set'; endian: Endian }
   | { type: 'copy/toggle-prefix' }
   | { type: 'copy/toggle-space' }
   | { type: 'copy/set-endian'; endian: Endian }

@@ -15,6 +15,13 @@ export interface WarningVM {
   text: string
 }
 
+export interface VoutModeInfoVM {
+  hex: string
+  modeName: string
+  linearExponent: number | 'IEEE Half' | null
+  isLinear: boolean
+}
+
 export interface CalculatorViewModel {
   mode: AppMode
   valueText: string
@@ -28,6 +35,7 @@ export interface CalculatorViewModel {
   bitGroups: BitGroupVM[]
   commandNote?: string
   nRangeText?: string
+  voutModeInfo?: VoutModeInfoVM
   visible: {
     voutMode: boolean
     directCoefficients: boolean
@@ -148,6 +156,16 @@ function buildWarnings(state: AppState): WarningVM[] {
       text: 'DIRECT 系数 m 不能为 0',
     })
   }
+  if (state.mode === 'L16') {
+    const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+    if (!parsed || parsed.modeName !== 'LINEAR') {
+      warnings.push({
+        id: 'l16-vout-mode-nonlinear',
+        level: 'warning',
+        text: `VOUT_MODE 0x${state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')} 为 ${parsed.modeName} 模式；当前按 LINEAR16 显示，N=${state.l16.n} 保持不变`,
+      })
+    }
+  }
   if (state.commandKey) {
     const cmd = getCommandConfig(state.commandKey)
     if (cmd?.note) {
@@ -181,12 +199,29 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   if (decodedL11) {
     const p = PMBusMath.pow2(decodedL11.n)
     nRangeText = `${formatNumber(-1024 * p)} ~ ${formatNumber(1023 * p)}`
+  } else if (state.mode === 'L16') {
+    const p = PMBusMath.pow2(state.l16.n)
+    nRangeText = `0 ~ ${formatNumber(65535 * p)}`
   }
+
+  let voutModeInfo: VoutModeInfoVM | undefined
+  if (state.mode === 'L16') {
+    const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+    voutModeInfo = {
+      hex: '0x' + state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0'),
+      modeName: parsed.modeName,
+      linearExponent: parsed.linearExponent,
+      isLinear: parsed.modeName === 'LINEAR',
+    }
+  }
+
+  const displayedRaw =
+    state.mode === 'L16' && state.byteOrder === 'be' ? PMBusMath.swapBytes(raw) : raw
 
   return {
     mode: state.mode,
     valueText: computeValueText(state),
-    rawHex: formatRawHex(raw),
+    rawHex: formatRawHex(displayedRaw),
     rawBytesLE: formatBytes(le, {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
@@ -202,6 +237,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     bitGroups: buildBitGroups(raw),
     commandNote: getCommandConfig(state.commandKey)?.note,
     nRangeText,
+    voutModeInfo,
     visible: {
       voutMode: state.mode === 'L16',
       directCoefficients: state.mode === 'DIRECT',

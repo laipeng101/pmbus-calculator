@@ -76,6 +76,30 @@ describe('toCalculatorViewModel', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00 }))
       expect(vm.valueText).toBe('12')
     })
+
+    test('voutModeInfo reports LINEAR and exponent for 0x18', () => {
+      const vm = toCalculatorViewModel(
+        make({ mode: 'L16', l16: { ...BASE.l16, voutMode: 0x18, n: -8 } }),
+      )
+      expect(vm.voutModeInfo?.hex).toBe('0x18')
+      expect(vm.voutModeInfo?.isLinear).toBe(true)
+      expect(vm.voutModeInfo?.linearExponent).toBe(-8)
+    })
+
+    test('non-LINEAR VOUT_MODE produces a warning', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode: 0x20 } }))
+      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear')).toBe(true)
+    })
+
+    test('nRangeText reflects 0..65535×2^N', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, n: -8 } }))
+      expect(vm.nRangeText).toBe('0 ~ 255.99609375')
+    })
+
+    test('rawHex is byte-swapped in BE mode', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
+      expect(vm.rawHex).toBe('0x3412')
+    })
   })
 
   describe('mode=DIRECT', () => {

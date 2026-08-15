@@ -22,8 +22,8 @@ Claude Code 工作时必须：
 默认执行路线：
 
 ```text
-docs ✅ → Vite React TS skeleton ✅ → design tokens ✅ → AppShell ✅ → ModeSwitcher ✅ → CommandPicker ✅ → ResultInspector ✅ → PMBusMath legacy adapter ✅ → L11 loop ✅ → L16 loop（当前）→ DIRECT loop → HALF loop → copy tools → tests migration → legacy cleanup
+docs ✅ → Vite React TS skeleton ✅ → design tokens ✅ → AppShell ✅ → ModeSwitcher ✅ → CommandPicker ✅ → ResultInspector ✅ → PMBusMath legacy adapter ✅ → L11 loop ✅ → L16 loop ✅ → DIRECT loop（当前）→ HALF loop → copy tools → tests migration → legacy cleanup
 ```
 
-已完成的基础项不要再重复执行；当前应直接进入 **L16 full loop**。  
+已完成的基础项不要再重复执行；当前应直接进入 **DIRECT full loop**。  
 实际实现进度基线以 `docs/WEB_REFACTOR_PLAN.md` 各 Milestone 的「实际状态」小节与 `MIGRATION_LOG.md` 的迁移缺口表为准。

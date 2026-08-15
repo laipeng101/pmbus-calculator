@@ -22,6 +22,7 @@
 | WEB-0010 | 2026-08-15 | `AGENTS.md`（§10 迁移顺序状态、§20 当前优先任务）；`CLAUDE.md`（默认执行路线进度）；`docs/WEB_REFACTOR_PLAN.md`（文档状态、§18 下一步建议）                                                                                                                                                                                                                                                          | 文档               | GLOBAL                                  | 不适用                                                    | 是         | 已完成 |
 | WEB-0011 | 2026-08-15 | `docs/WEB_REFACTOR_PLAN.md`（M3–M8 实际状态、§11 Migration Gap 表）；`MIGRATION_LOG.md`（迁移缺口表、手动质量检查矩阵）                                                                                                                                                                                                                                                                              | 文档               | L11 / L16 / DIRECT / HALF / COPY / TEST | 不适用                                                    | 是         | 已完成 |
 | WEB-0012 | 2026-08-15 | `src/app/reducer.ts`, `src/app/state.ts`, `src/app/view-model.ts`, `src/components/mode/ModeWorkspace.tsx`, `src/components/result/ResultInspector.tsx`, `src/components/result/ErrorDelta.tsx`（新增）, `src/components/inputs/ValueInput.tsx`（新增）, `src/components/inputs/IntegerInput.tsx`（新增）, `src/app/reducer.test.ts`, `src/app/view-model.test.ts`, `tests/linear11.test.ts`（新增） | 新增 / 修复        | L11                                     | Vitest 113 pass + typecheck + build + Chromium 390px 实测 | 是         | 已完成 |
+| WEB-0013 | 2026-08-15 | `src/app/reducer.ts`, `src/app/actions.ts`, `src/app/view-model.ts`, `src/components/mode/ModeWorkspace.tsx`, `src/components/bits/BitGrid.tsx`, `src/app/reducer.test.ts`, `src/app/view-model.test.ts`                                                                                                                                                                                             | 新增 / 修复        | L16                                     | Vitest 126 pass + typecheck + build                       | 是         | 已完成 |
 
 ---
 
@@ -34,12 +35,12 @@
 | PMBus 数学运算  | 内联脚本 `PMBusMath`                 | `legacy/pmbus-math.ts`, 后续 `packages/core` | 已完成   | 机械迁移完成，带类型定义和 smoke test (13 pass)                                                                                       |
 | 结果框          | `#resultBox`                         | `ResultInspector`                            | 已完成   | 桌面端右侧 sticky 面板，移动端跟随流式布局                                                                                            |
 | 信息栏          | `#infoBar`                           | `InfoPanel`                                  | 已完成   | 警告/信息/错误三级提示，带图标和颜色区分                                                                                              |
-| 位图网格        | `renderBits`, `renderDirectBits`     | `BitGrid`                                    | 部分完成 | 保留 nibble 分组与响应式策略；toggle 已接 reducer；图例固定为 L11 的 N/Y 分区，L16/DIRECT/HALF 下不准确                               |
-| 公式界面        | `.formula-mode` DOM                  | `ModeWorkspace` 内联公式区                   | 部分完成 | L11 双向编辑（Hex ↔ Y/N/Value）已接入；L16/DIRECT/HALF 双向待闭环；独立 FormulaEditor 组件待拆                                        |
+| 位图网格        | `renderBits`, `renderDirectBits`     | `BitGrid`                                    | 部分完成 | 保留 nibble 分组与响应式策略；toggle 已接 reducer；图例按模式切换（L11 N/Y、L16 V、HALF S+Exp/Mant、DIRECT Y）                        |
+| 公式界面        | `.formula-mode` DOM                  | `ModeWorkspace` 内联公式区                   | 部分完成 | L11 双向编辑（Hex ↔ Y/N/Value）已接入；L16 双向编辑（Hex ↔ V/Value）已接入；DIRECT/HALF 双向待闭环；独立 FormulaEditor 组件待拆       |
 | 主题切换        | `#themeToggle`, `.dark`              | `ThemeToggle`, `data-theme`                  | 部分完成 | 功能可用（light/dark/system）；localStorage 在组件内直接读写，未走 persistence 层/`state.ui.theme`                                    |
 | 复制工具        | 复制按钮 + 全局状态                  | `CopyToolbar`                                | 部分完成 | Hex / 值 / C 宏复制按钮可用；0x/空格/LE-BE 偏好开关未接 UI，设置未持久化                                                              |
 | DIRECT profiles | inline buttons                       | `DirectCoeffPanel`                           | 待办     | 数据化 preset profiles 未实现                                                                                                         |
-| 调试测试        | `runBoundaryTests`                   | Vitest + `DebugDrawer`                       | 部分完成 | Vitest 已接入 113 pass（13 math + 48 reducer + 31 view-model + 21 L11 golden）；`DebugDrawer` 显示“51/51”过时；边界测试入口待 M8 接入 |
+| 调试测试        | `runBoundaryTests`                   | Vitest + `DebugDrawer`                       | 部分完成 | Vitest 已接入 126 pass（13 math + 57 reducer + 35 view-model + 21 L11 golden）；`DebugDrawer` 显示“51/51”过时；边界测试入口待 M8 接入 |
 
 ---
 
@@ -50,8 +51,8 @@
 | M1 骨架   | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用   | 不适用             | 不适用                | 不适用                | 不适用                |
 | M2 布局   | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 不适用             | 不适用                | 不适用                | 不适用                |
 | M3 L11    | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 已完成（双向闭环） | 不适用                | 不适用                | 不适用                |
-| M4 L16    | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 已完成（双向闭环） | 部分（decode 半闭环） | 不适用                | 不适用                |
-| M5 DIRECT | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 已完成（双向闭环） | 部分（decode 半闭环） | 部分（decode 半闭环） | 不适用                |
+| M4 L16    | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 已完成（双向闭环） | 已完成（双向闭环）    | 不适用                | 不适用                |
+| M5 DIRECT | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 已完成（双向闭环） | 已完成（双向闭环）    | 部分（decode 半闭环） | 不适用                |
 | M6 HALF   | 已完成 | 已完成 | 已完成 | 已完成 | 已完成 | 已完成   | 已完成（双向闭环） | 部分（decode 半闭环） | 部分（decode 半闭环） | 部分（decode 半闭环） |
 
 ---
