@@ -91,9 +91,8 @@ export default function DebugDrawer({ open, state, onToggle }: Props) {
             </div>
           </div>
 
-          {/* Future: boundary test runner */}
           <p className="text-xs italic" style={{ color: 'var(--color-text-muted)' }}>
-            边界测试快捷入口待 Milestone 8 接入
+            边界测试由 Vitest golden cases 覆盖，无需 UI 入口
           </p>
         </div>
       )}

@@ -23,7 +23,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run typecheck && npm run lint && npm run test:run && npm run build",
-    "postinstall": "simple-git-hooks"
+    "postinstall": "simple-git-hooks",
+    "verify": "npm run format:check && npm run typecheck && npm run lint && npm run test:coverage && npm run test:e2e && npm run build && git diff --check && npm audit --audit-level=high"
   },
   "simple-git-hooks": {
     "pre-commit": "npm run format:check && npm run typecheck && npm run test:run"

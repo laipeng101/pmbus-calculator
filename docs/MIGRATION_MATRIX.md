@@ -34,21 +34,21 @@
 
 ## 2. Legacy parity
 
-| 旧功能          | 旧位置                            | 新组件/模块                  | 状态     | 备注                                                                                                 |
-| --------------- | --------------------------------- | ---------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| PMBusMath 核心  | 内联 `PMBusMath`                  | `legacy/pmbus-math.ts`       | Done     | 机械迁移；L11 饱和与 Half 舍入已修正并有测试                                                         |
-| 命令字典数据    | 内联 `COMMAND_METADATA`           | `legacy/command-metadata.ts` | Done     | 标准定义与 project-demo 预设分离（见 ADR 0002）；`command/set` 只读；`command/apply-preset` 显式应用 |
-| 模式 Tabs       | `.tabs` + `switchMode`            | `ModeSwitcher`               | Done     | 支持 Ctrl+1/2/3/4                                                                                    |
-| 命令选择器      | `#commandSelect`                  | `CommandPicker`              | Done     | 选中命令只显示信息；显式“应用 project-demo 预设”可加载参数；键盘导航/Escape/焦点恢复/ARIA 已覆盖     |
-| Bit Grid        | `renderBits` / `renderDirectBits` | `BitGrid`                    | 部分完成 | 图例按模式切换；L11/HALF 已分区（N/Y、Sign/Exp/Mantissa）；DIRECT 分区仍简化                         |
-| 结果面板        | `#resultBox`                      | `ResultInspector`            | Done     | 展示 value/raw/LE/BE/误差/复制                                                                       |
-| 信息栏          | `#infoBar`                        | `InfoPanel`                  | Done     | 三级提示                                                                                             |
-| 公式界面        | `.formula-mode` DOM               | `ModeWorkspace` 内联公式区   | 部分完成 | L11/L16/DIRECT/HALF 双向；独立 FormulaEditor 待拆                                                    |
-| DebugPanel      | `#debugPanel`                     | `DebugDrawer`                | 部分完成 | 不再宣称 CI 测试状态；边界测试入口待 M8                                                              |
-| 主题切换        | `#themeToggle` + `.dark`          | `ThemeToggle`, `data-theme`  | Done     | 由 `state.ui.theme` 驱动，经 `persistence.ts` 持久化                                                 |
-| 复制工具        | 复制按钮 + 全局状态               | `CopyToolbar`                | Done     | raw word 与 LE/BE bytes 分离；C 宏默认 raw word + 命令名清洗；clipboard fallback 单测覆盖            |
-| DIRECT profiles | inline buttons                    | `DirectCoeffPanel`           | Todo     | 需绑定器件 profile 与来源                                                                            |
-| Boundary tests  | `runBoundaryTests`                | Vitest + `DebugDrawer`       | Done     | L11/L16/DIRECT/HALF/PEC golden 全覆盖；E2E 全通过（数量见 CI 日志）                                  |
+| 旧功能          | 旧位置                            | 新组件/模块                  | 状态   | 备注                                                                                                    |
+| --------------- | --------------------------------- | ---------------------------- | ------ | ------------------------------------------------------------------------------------------------------- |
+| PMBusMath 核心  | 内联 `PMBusMath`                  | `legacy/pmbus-math.ts`       | Done   | 机械迁移；L11 饱和与 Half 舍入已修正并有测试                                                            |
+| 命令字典数据    | 内联 `COMMAND_METADATA`           | `legacy/command-metadata.ts` | Done   | 标准定义与 project-demo 预设分离（见 ADR 0002）；`command/set` 只读；`command/apply-preset` 显式应用    |
+| 模式 Tabs       | `.tabs` + `switchMode`            | `ModeSwitcher`               | Done   | 支持 Ctrl+1/2/3/4                                                                                       |
+| 命令选择器      | `#commandSelect`                  | `CommandPicker`              | Done   | 选中命令只显示信息；显式“应用 project-demo 预设”可加载参数；键盘导航/Escape/焦点恢复/ARIA 已覆盖        |
+| Bit Grid        | `renderBits` / `renderDirectBits` | `BitGrid`                    | Done   | 图例按模式切换；L11 分区 N/Y、HALF 分区 Sign/Exp/Mantissa；L16/DIRECT 显示 16-bit 单值区域              |
+| 结果面板        | `#resultBox`                      | `ResultInspector`            | Done   | 展示 value/raw/LE/BE/误差/复制                                                                          |
+| 信息栏          | `#infoBar`                        | `InfoPanel`                  | Done   | 三级提示                                                                                                |
+| 公式界面        | `.formula-mode` DOM               | `ModeWorkspace` 内联公式区   | Done   | L11/L16/DIRECT/HALF 双向；独立 FormulaEditor 仅作可选 backlog，不作为功能缺陷                           |
+| DebugPanel      | `#debugPanel`                     | `DebugDrawer`                | Done   | 不再宣称 CI 测试状态；边界测试由 Vitest golden cases 覆盖，无需 UI 入口                                 |
+| 主题切换        | `#themeToggle` + `.dark`          | `ThemeToggle`, `data-theme`  | Done   | 由 `state.ui.theme` 驱动，经 `persistence.ts` 持久化                                                    |
+| 复制工具        | 复制按钮 + 全局状态               | `CopyToolbar`                | Done   | raw word 与 LE/BE bytes 分离；C 宏默认 raw word + 命令名清洗；clipboard fallback 单测覆盖               |
+| DIRECT profiles | inline buttons                    | `DirectCoeffPanel`           | 不实现 | 明确决策：缺少真实器件数据手册，禁止内置 `device-datasheet` 预设；UI 保持手动系数输入并提示需要数据手册 |
+| Boundary tests  | `runBoundaryTests`                | Vitest + `DebugDrawer`       | Done   | L11/L16/DIRECT/HALF/PEC golden 全覆盖；E2E 全通过（数量见 CI 日志）                                     |
 
 ## 3. 手动质量检查矩阵
 

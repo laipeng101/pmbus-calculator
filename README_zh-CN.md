@@ -23,7 +23,7 @@
 
 ## 功能特性
 
-- 🔁 **双向转换** — L11 与 L16 已完整双向闭环；DIRECT/HALF 已可解码，编码闭环为下一里程碑。
+- 🔁 **双向转换** — L11、L16、DIRECT、HALF 四种模式均已完整双向闭环（编码/解码均已实现）。
 - 📐 **四种编码模式** — LINEAR11、LINEAR16 (VOUT)、DIRECT 和 IEEE 754 半精度浮点。
 - 🔲 **可交互寄存器位视图** — 16 位可点击的位字段视图，按半字节（Nibble）分组，每个半字节实时显示对应 Hex 值。
 - 📋 **一键复制** — 可分别复制原始 Hex 值、解码后的物理值，或直接可用的 C 语言宏定义代码。
@@ -34,7 +34,7 @@
 - 🔒 **N 值锁定切换** — 在微调固件寄存器时，可将指数锁定为固定值。
 - ⚙️ **VOUT_MODE 支持** — 可配置 `VOUT_MODE (0x20)` 字节以设定 LINEAR16 的指数。
 - 🔢 **字节序控制** — 支持小端序（PMBus 标准）与大端序字节显示的切换。
-- 🔐 **内容安全策略 (CSP)** — 生产构建注入严格 CSP meta，无外部请求，无任何追踪。
+- 🔐 **内容安全策略 (CSP)** — 生产构建注入 CSP meta，限制运行时资源来源；无外部请求，无任何追踪。`style-src` 暂时允许 `unsafe-inline`（Tailwind 与运行时样式需要内联样式）。
 
 ---
 
@@ -68,7 +68,7 @@
 ### 新版 Web App（主要工具）
 
 ```bash
-npm install
+npm ci
 npm run dev      # 启动 Vite 开发服务器，访问 http://localhost:5173
 npm run build    # 生产构建输出到 dist/
 npm test         # 运行 Vitest 测试
@@ -123,9 +123,9 @@ npm test         # 运行 Vitest 测试
 
 - **纯 HTML + CSS + 原生 JavaScript** — 无框架，无任何外部依赖。
 - CSS 自定义属性驱动完整的亮色/暗黑主题。
-- 严格内容安全策略。
+- 单文件页内置静态 CSP。
 
-### 新版 Web App（重构中）
+### 新版 Web App（主要工具）
 
 - **Vite** + **React 19** + **TypeScript** — 现代组件化架构。
 - **Tailwind CSS** + CSS 变量 — 设计 Token 驱动的主题系统。
