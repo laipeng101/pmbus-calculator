@@ -152,6 +152,16 @@ describe('toCalculatorViewModel', () => {
       const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x7e00 }))
       expect(vm.valueText).toBe('NaN')
     })
+
+    test('raw=0x8000 preserves negative zero', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x8000 }))
+      expect(vm.valueText).toBe('-0')
+    })
+
+    test('raw=0x0000 preserves positive zero', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x0000 }))
+      expect(vm.valueText).toBe('0')
+    })
   })
 
   describe('bit groups', () => {

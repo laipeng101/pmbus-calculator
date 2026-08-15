@@ -52,6 +52,7 @@ function formatRawHex(raw: number): string {
 
 /** Number formatting mirroring legacy formatNumber (12 significant digits). */
 function formatNumber(v: number): string {
+  if (Object.is(v, -0)) return '-0'
   if (Number.isInteger(v)) return v.toString()
   return parseFloat(v.toPrecision(12)).toString()
 }

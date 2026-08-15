@@ -204,12 +204,23 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'value/set': {
       const value = parseFloatSafe(action.value)
-      if (value === null || Number.isNaN(value) || !Number.isFinite(value)) return state
-      if (state.mode === 'L11') return encodeL11FromValue(state, value)
-      if (state.mode === 'L16') return encodeL16FromValue(state, value)
+      if (value === null) return state
+      if (state.mode === 'L11') {
+        if (Number.isNaN(value) || !Number.isFinite(value)) return state
+        return encodeL11FromValue(state, value)
+      }
+      if (state.mode === 'L16') {
+        if (Number.isNaN(value) || !Number.isFinite(value)) return state
+        return encodeL16FromValue(state, value)
+      }
       if (state.mode === 'DIRECT') {
+        if (Number.isNaN(value) || !Number.isFinite(value)) return state
         if (state.direct.m === 0) return state
         return encodeDirectFromValue(state, value)
+      }
+      if (state.mode === 'HALF') {
+        // HALF supports NaN and ±Infinity as first-class values.
+        return { ...state, raw: PMBusMath.encodeHalf(value) }
       }
       return state
     }

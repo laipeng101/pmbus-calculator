@@ -122,6 +122,35 @@ test.describe('计算器真实用户流程', () => {
     await expect(hexInput).toHaveValue('0x0000')
   })
 
+  test('HALF：Hex→Value、Value→Hex、bit toggle 三方向同步', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /HALF/ }).click()
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const valueInput = page.locator('#value-input')
+
+    await hexInput.fill('3C00')
+    await expect(valueInput).toHaveValue('1')
+
+    await valueInput.fill('1')
+    await expect(hexInput).toHaveValue('0x3C00')
+
+    await page.getByRole('button', { name: '位 15: 0' }).click()
+    await expect(hexInput).toHaveValue('0xBC00')
+    await expect(valueInput).toHaveValue('-1')
+  })
+
+  test('HALF：NaN 作为一等值支持', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /HALF/ }).click()
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const valueInput = page.locator('#value-input')
+
+    await valueInput.fill('NaN')
+
+    await expect(hexInput).toHaveValue('0x7E00')
+    await expect(valueInput).toHaveValue('NaN')
+  })
+
   test('STATUS_WORD 不强制切换数值模式', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()

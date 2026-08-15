@@ -334,9 +334,13 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         )}
 
         {mode === 'HALF' && (
-          <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            IEEE 754 binary16 半精度浮点。符号 1 位，指数 5 位，尾数 10 位。
-          </p>
+          <div className="space-y-4">
+            <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              IEEE 754 binary16 半精度浮点。符号 1 位，指数 5 位，尾数 10 位。 Value 输入支持 +0 /
+              -0 / NaN / +Infinity / -Infinity。
+            </p>
+            <ValueInput vm={vm} dispatch={dispatch} />
+          </div>
         )}
       </section>
     </div>

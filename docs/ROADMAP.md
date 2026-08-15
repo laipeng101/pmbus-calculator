@@ -3,31 +3,31 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 变更记录与 legacy parity 见 [`MIGRATION_MATRIX.md`](MIGRATION_MATRIX.md)。
 
-最后更新：2026-08-15（M4.5.1 完成，进入 M5 DIRECT）
+最后更新：2026-08-15（M5 DIRECT 已合入，M6 HALF PR 待合入）
 
 ## 当前优先级
 
 ```text
-M5 DIRECT（当前） → M6 HALF → M7 Copy/工程输出 → M8 测试回归 → M9 legacy 决策
+M6 HALF（当前） → M7 Copy/工程输出 → M8 测试回归 → M9 legacy 决策
 ```
 
-M4.5 / M4.5.1 已验收通过；PR #2 已建立并合入 `main`。
+M4.5 / M4.5.1 已验收通过；M5 DIRECT 已通过 PR #3 合入 `main`。
 
 ## 里程碑状态
 
-| Milestone | 名称                   | 状态   | 备注                                                       |
-| --------- | ---------------------- | ------ | ---------------------------------------------------------- |
-| M0        | 准备期                 | Done   | 文件实际在仓库根目录与 `docs/`，见迁移矩阵                 |
-| M1        | Vite + React + TS 骨架 | Done   | build/lint/typecheck 通过                                  |
-| M2        | 新版 Web 视觉框架      | Done   | Playwright 双端布局验证                                    |
-| M3        | L11 模式闭环           | Done   | 双向闭环 + 超范围饱和 golden case                          |
-| M4        | L16 / VOUT 模式闭环    | Done   | 双向闭环 + V 输入 clamp golden case                        |
-| M4.5      | 稳定化门禁             | Done   | 质量门禁、L11/L16 纠偏、命令/预设分离、文档体系全部验收    |
-| M5        | DIRECT 模式闭环        | Review | PR 待合入：`state.raw` 唯一事实来源；Y/Value/m/b/R 完整 UI |
-| M6        | HALF 模式闭环          | Todo   | decode 已有，encode 已修，待接 UI 与 bit 分区              |
-| M7        | 复制与工程输出         | Todo   | 基础复制可用；raw word 与 LE/BE bytes 需明确定义           |
-| M8        | 测试与回归保护         | Todo   | L11 golden 已有；L16/DIRECT/HALF golden 待补               |
-| M9        | 旧 HTML 下线或保留     | Todo   | 新应用全回归前保留 legacy 为 read-only fallback            |
+| Milestone | 名称                   | 状态   | 备注                                                          |
+| --------- | ---------------------- | ------ | ------------------------------------------------------------- |
+| M0        | 准备期                 | Done   | 文件实际在仓库根目录与 `docs/`，见迁移矩阵                    |
+| M1        | Vite + React + TS 骨架 | Done   | build/lint/typecheck 通过                                     |
+| M2        | 新版 Web 视觉框架      | Done   | Playwright 双端布局验证                                       |
+| M3        | L11 模式闭环           | Done   | 双向闭环 + 超范围饱和 golden case                             |
+| M4        | L16 / VOUT 模式闭环    | Done   | 双向闭环 + V 输入 clamp golden case                           |
+| M4.5      | 稳定化门禁             | Done   | 质量门禁、L11/L16 纠偏、命令/预设分离、文档体系全部验收       |
+| M5        | DIRECT 模式闭环        | Done   | PR #3 已合入：`state.raw` 唯一事实来源；Y/Value/m/b/R 完整 UI |
+| M6        | HALF 模式闭环          | Review | PR 待合入：Value 输入闭环；Sign/Exponent/Mantissa 分区显示    |
+| M7        | 复制与工程输出         | Todo   | 基础复制可用；raw word 与 LE/BE bytes 需明确定义              |
+| M8        | 测试与回归保护         | Todo   | L11/DIRECT/HALF golden 已有；L16 golden 待补                  |
+| M9        | 旧 HTML 下线或保留     | Todo   | 新应用全回归前保留 legacy 为 read-only fallback               |
 
 ## M4.5 稳定化门禁（已完成）
 
@@ -70,9 +70,17 @@ M4.5 / M4.5.1 已验收通过；PR #2 已建立并合入 `main`。
 
 ## M6 HALF 进入条件
 
-- [ ] M5 完成并合入
-- [ ] `encodeHalf` 接入 UI（Value 输入）
-- [ ] Half bit grid 分区与图例
+- [x] M5 完成并合入
+- [x] `encodeHalf` 接入 UI（Value 输入）
+- [x] Half bit grid 分区与图例
+
+## M6 HALF 完成标准
+
+- [x] Value → binary16 → Value 闭环
+- [x] +0 / -0 / NaN / +Infinity / -Infinity 作为一等值支持并保留
+- [x] bit grid 分区显示 Sign[15] / Exponent[14:10] / Mantissa[9:0]
+- [x] dedicated golden cases：`0x0000/0x8000/0x0001/0x03FF/0x0400/0x3C00/0x7BFF/0x7C00/0xFC00/NaN` 与 tie-to-even 边界
+- [x] 桌面 + 移动 Chromium E2E 覆盖 Hex/Value/bit 三方向
 
 ## M7 Copy/工程输出进入条件
 

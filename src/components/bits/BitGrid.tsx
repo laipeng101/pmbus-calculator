@@ -8,11 +8,15 @@ interface Props {
   dispatch: React.Dispatch<AppAction>
 }
 
-type BitRegion = 'primary' | 'secondary'
+type BitRegion = 'primary' | 'secondary' | 'sign' | 'exponent' | 'mantissa'
 
 function getBitRegion(index: number, mode: AppMode): BitRegion {
   if (mode === 'L11') return index >= 11 ? 'primary' : 'secondary'
-  if (mode === 'HALF') return index >= 10 ? 'primary' : 'secondary'
+  if (mode === 'HALF') {
+    if (index === 15) return 'sign'
+    if (index >= 10) return 'exponent'
+    return 'mantissa'
+  }
   return 'secondary' // L16 V[15:0] / DIRECT Y[15:0] use a single-value region
 }
 
@@ -25,8 +29,9 @@ function getLegend(mode: AppMode): Array<{ color: string; border?: string; label
   }
   if (mode === 'HALF') {
     return [
-      { color: '#3b82f6', label: 'S+Exp [15:10]' },
-      { color: '#10b981', label: 'Mant [9:0]' },
+      { color: '#f59e0b', label: 'Sign [15]' },
+      { color: '#3b82f6', label: 'Exponent [14:10]' },
+      { color: '#10b981', label: 'Mantissa [9:0]' },
     ]
   }
   if (mode === 'DIRECT') {
@@ -66,22 +71,28 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
                   const region = getBitRegion(bit.index, mode)
                   const isOn = bit.value === 1
 
-                  const bgColor = isOn
-                    ? region === 'primary'
+                  const regionColor =
+                    region === 'primary' || region === 'exponent'
                       ? '#3b82f6'
-                      : '#10b981'
-                    : 'var(--color-surface-muted)'
-                  const borderColor = isOn
-                    ? region === 'primary'
+                      : region === 'sign'
+                        ? '#f59e0b'
+                        : '#10b981'
+                  const regionBorder =
+                    region === 'primary' || region === 'exponent'
                       ? '#2563eb'
-                      : '#059669'
-                    : 'var(--color-border)'
+                      : region === 'sign'
+                        ? '#d97706'
+                        : '#059669'
+                  const regionShadow =
+                    region === 'primary' || region === 'exponent'
+                      ? 'rgba(59,130,246,0.3)'
+                      : region === 'sign'
+                        ? 'rgba(245,158,11,0.3)'
+                        : 'rgba(16,185,129,0.3)'
+                  const bgColor = isOn ? regionColor : 'var(--color-surface-muted)'
+                  const borderColor = isOn ? regionBorder : 'var(--color-border)'
                   const textColor = isOn ? '#fff' : 'var(--color-text-muted)'
-                  const shadow = isOn
-                    ? region === 'primary'
-                      ? '0 4px 12px rgba(59,130,246,0.3)'
-                      : '0 4px 12px rgba(16,185,129,0.3)'
-                    : '0 1px 2px rgba(0,0,0,0.04)'
+                  const shadow = isOn ? `0 4px 12px ${regionShadow}` : '0 1px 2px rgba(0,0,0,0.04)'
 
                   return (
                     <button
