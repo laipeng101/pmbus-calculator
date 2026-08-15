@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { CalculatorViewModel } from '../../app/view-model'
 import type { AppState } from '../../app/state'
+import { copyTextToClipboard } from '../../app/copy-utils'
 
 interface Props {
   vm: CalculatorViewModel
@@ -8,24 +9,6 @@ interface Props {
   onTogglePrefix: () => void
   onToggleSpace: () => void
   onCopyEndianChange: (endian: AppState['copy']['endian']) => void
-}
-
-async function copyText(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return
-  }
-
-  // Fallback for non-secure contexts / older browsers.
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const ok = document.execCommand('copy')
-  textarea.remove()
-  if (!ok) throw new Error('copy rejected')
 }
 
 export default function CopyToolbar({
@@ -39,7 +22,7 @@ export default function CopyToolbar({
 
   const copy = useCallback(async (text: string, label: string) => {
     try {
-      await copyText(text)
+      await copyTextToClipboard(text)
       setFeedback(`已复制: ${label}`)
     } catch {
       setFeedback('复制失败')
@@ -53,11 +36,10 @@ export default function CopyToolbar({
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         <CopyButton onClick={() => copy(copyHex, 'Hex')} label="📋 Hex" />
+        <CopyButton onClick={() => copy(vm.rawBytesLE, 'LE bytes')} label="📋 LE bytes" />
+        <CopyButton onClick={() => copy(vm.rawBytesBE, 'BE bytes')} label="📋 BE bytes" />
         <CopyButton onClick={() => copy(vm.valueText, '物理值')} label="📋 值" />
-        <CopyButton
-          onClick={() => copy(`#define RAW_VALUE ${vm.rawHex} /* ${vm.formulaText} */`, 'C 宏')}
-          label="C 代码"
-        />
+        <CopyButton onClick={() => copy(vm.cMacroText, 'C 宏')} label="C 代码" />
       </div>
 
       <div

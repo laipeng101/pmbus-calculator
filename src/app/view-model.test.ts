@@ -100,6 +100,11 @@ describe('toCalculatorViewModel', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
       expect(vm.rawHex).toBe('0x3412')
     })
+
+    test('rawWordHex stays un-swapped regardless of byte order', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
+      expect(vm.rawWordHex).toBe('0x1234')
+    })
   })
 
   describe('mode=DIRECT', () => {
@@ -233,6 +238,18 @@ describe('toCalculatorViewModel', () => {
     test('HALF shows halfNote', () => {
       const vm = toCalculatorViewModel(make({ mode: 'HALF' }))
       expect(vm.visible.halfNote).toBe(true)
+    })
+  })
+
+  describe('C macro text', () => {
+    test('no command uses RAW_VALUE', () => {
+      const vm = toCalculatorViewModel(make({ raw: 0x000c }))
+      expect(vm.cMacroText).toBe('#define RAW_VALUE 0x000C /* Y=12 × 2^0 */')
+    })
+
+    test('selected command uses sanitized command name', () => {
+      const vm = toCalculatorViewModel(make({ raw: 0x000c, commandKey: 'VOUT_COMMAND' }))
+      expect(vm.cMacroText).toBe('#define VOUT_COMMAND 0x000C /* Y=12 × 2^0 */')
     })
   })
 
