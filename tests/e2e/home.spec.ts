@@ -27,7 +27,32 @@ test.describe('首页可见性', () => {
     await page.goto('/')
     const toggle = page.getByLabel('展开调试面板')
     await expect(toggle).toBeVisible()
-    await toggle.click()
+    await toggle.scrollIntoViewIfNeeded()
+    await toggle.evaluate((el: HTMLButtonElement) => el.click())
     await expect(page.getByText(/质量门禁/)).toBeVisible()
   })
+})
+
+test.describe('响应式 viewport 轻量检查', () => {
+  const widths = [1440, 1024, 768, 430, 390, 360]
+
+  for (const width of widths) {
+    test(`${width}px: 无水平溢出且主要控件可达`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/')
+
+      const body = page.locator('body')
+      const scrollWidth = await body.evaluate((el) => el.scrollWidth)
+      const clientWidth = await body.evaluate((el) => el.clientWidth)
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
+
+      await expect(page.locator('input[placeholder="0x0000"]')).toBeVisible()
+      await expect(page.getByRole('tab', { name: /LINEAR11/ })).toBeVisible()
+      await expect(page.locator('#command-picker')).toBeVisible()
+
+      const copyHex = page.getByRole('button', { name: '📋 Hex' })
+      await copyHex.scrollIntoViewIfNeeded()
+      await expect(copyHex).toBeVisible()
+    })
+  }
 })

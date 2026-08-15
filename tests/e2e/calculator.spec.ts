@@ -6,6 +6,7 @@ test.describe('计算器真实用户流程', () => {
     const hexInput = page.locator('input[placeholder="0x0000"]')
 
     await hexInput.fill('F819')
+    await hexInput.press('Tab')
 
     await expect(page.locator('#value-input')).toHaveValue('12.5')
     await expect(hexInput).toHaveValue('0xF819')
@@ -157,10 +158,13 @@ test.describe('计算器真实用户流程', () => {
 
     await trigger.click()
     await expect(trigger).toHaveAttribute('aria-expanded', 'true')
-    await expect(page.getByRole('listbox', { name: 'PMBus 命令列表' })).toBeVisible()
+    const listbox = page.getByRole('listbox', { name: 'PMBus 命令列表' })
+    await expect(listbox).toBeVisible()
+    await expect(listbox).toHaveAttribute('aria-activedescendant', 'command-option-none')
     await expect(page.getByPlaceholder('搜索命令...')).toBeFocused()
 
     await page.keyboard.press('ArrowDown') // 无命令 -> VOUT_COMMAND
+    await expect(listbox).toHaveAttribute('aria-activedescendant', 'command-option-VOUT_COMMAND')
     await page.keyboard.press('Enter')
 
     await expect(trigger).toHaveAttribute('aria-expanded', 'false')
@@ -174,6 +178,18 @@ test.describe('计算器真实用户流程', () => {
 
     await trigger.click()
     await page.keyboard.press('Escape')
+
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await expect(trigger).toBeFocused()
+    await expect(page.getByRole('listbox', { name: 'PMBus 命令列表' })).toHaveCount(0)
+  })
+
+  test('CommandPicker 外部点击关闭并恢复焦点', async ({ page }) => {
+    await page.goto('/')
+    const trigger = page.locator('#command-picker')
+
+    await trigger.click()
+    await page.locator('h1').click()
 
     await expect(trigger).toHaveAttribute('aria-expanded', 'false')
     await expect(trigger).toBeFocused()
@@ -197,9 +213,13 @@ test.describe('计算器真实用户流程', () => {
   test('复制 Hex 使用当前偏好格式', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.goto('/')
-    await page.locator('input[placeholder="0x0000"]').fill('0001')
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+    await hexInput.fill('0001')
+    await hexInput.press('Tab')
 
-    await page.getByRole('button', { name: '📋 Hex' }).click()
+    const copyHex = page.getByRole('button', { name: '📋 Hex' })
+    await copyHex.scrollIntoViewIfNeeded()
+    await copyHex.evaluate((el: HTMLButtonElement) => el.click())
 
     const clipboard = await page.evaluate(() => navigator.clipboard.readText())
     expect(clipboard).toBe('0x 01 00')
@@ -208,13 +228,19 @@ test.describe('计算器真实用户流程', () => {
   test('复制 LE bytes 与 C 宏默认使用未交换 raw word', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.goto('/')
-    await page.locator('input[placeholder="0x0000"]').fill('0001')
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+    await hexInput.fill('0001')
+    await hexInput.press('Tab')
 
-    await page.getByRole('button', { name: '📋 LE bytes' }).click()
+    const leBtn = page.getByRole('button', { name: '📋 LE bytes' })
+    await leBtn.scrollIntoViewIfNeeded()
+    await leBtn.evaluate((el: HTMLButtonElement) => el.click())
     let clipboard = await page.evaluate(() => navigator.clipboard.readText())
     expect(clipboard).toBe('0x 01 00')
 
-    await page.getByRole('button', { name: 'C 代码' }).click()
+    const cBtn = page.getByRole('button', { name: 'C 代码' })
+    await cBtn.scrollIntoViewIfNeeded()
+    await cBtn.evaluate((el: HTMLButtonElement) => el.click())
     clipboard = await page.evaluate(() => navigator.clipboard.readText())
     expect(clipboard).toBe('#define RAW_VALUE 0x0001 /* Y=1 × 2^0 */')
   })
@@ -222,14 +248,116 @@ test.describe('计算器真实用户流程', () => {
   test('选择命令后 C 宏使用安全清洗后的命令名', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.goto('/')
-    await page.locator('input[placeholder="0x0000"]').fill('0001')
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+    await hexInput.fill('0001')
+    await hexInput.press('Tab')
 
     await page.locator('#command-picker').click()
     await page.getByRole('option', { name: /VOUT_COMMAND/ }).click()
-    await page.getByRole('button', { name: 'C 代码' }).click()
+    const cBtn = page.getByRole('button', { name: 'C 代码' })
+    await cBtn.scrollIntoViewIfNeeded()
+    await cBtn.evaluate((el: HTMLButtonElement) => el.click())
 
     const clipboard = await page.evaluate(() => navigator.clipboard.readText())
     expect(clipboard).toBe('#define VOUT_COMMAND 0x0001 /* Y=1 × 2^0 */')
+  })
+
+  test('非法 Hex 输入显示明确错误且不修改全局状态', async ({ page }) => {
+    await page.goto('/')
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+
+    await hexInput.fill('1G')
+
+    await expect(page.getByText(/仅允许十六进制数字/)).toBeVisible()
+    await expect(page.locator('#value-input')).toHaveValue('0')
+  })
+
+  test('只有 0x 前缀的 Hex 输入显示明确错误', async ({ page }) => {
+    await page.goto('/')
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+
+    await hexInput.fill('0x')
+
+    await expect(page.getByText(/0x\/0X 后/)).toBeVisible()
+    await expect(page.locator('#value-input')).toHaveValue('0')
+  })
+
+  test('超长 Hex 输入显示明确错误且不被静默截断', async ({ page }) => {
+    await page.goto('/')
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+
+    await hexInput.fill('12345')
+
+    await expect(page.getByText(/最多 4 位十六进制数字/)).toBeVisible()
+    await expect(page.locator('#value-input')).toHaveValue('0')
+  })
+
+  test('DIRECT 系数错误只在 DIRECT 模式显示', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+
+    await page.getByLabel('DIRECT 系数 m').fill('2.5')
+
+    await expect(page.getByText(/M 必须是/)).toBeVisible()
+
+    await page.getByRole('tab', { name: /LINEAR11/ }).click()
+    await expect(page.getByText(/M 必须是/)).toHaveCount(0)
+
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    await expect(page.getByText(/M 必须是/)).toBeVisible()
+  })
+
+  test('复制偏好（0x/空格/字节序）在 reload 后恢复并影响复制结果', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.goto('/')
+
+    const prefixBtn = page.getByRole('button', { name: '0x 前缀' })
+    await prefixBtn.scrollIntoViewIfNeeded()
+    await prefixBtn.evaluate((el: HTMLButtonElement) => el.click())
+    const spaceBtn = page.getByRole('button', { name: '字节空格' })
+    await spaceBtn.scrollIntoViewIfNeeded()
+    await spaceBtn.evaluate((el: HTMLButtonElement) => el.click())
+    const endianBtn = page.getByRole('button', { name: 'HEX 复制: LE' })
+    await endianBtn.scrollIntoViewIfNeeded()
+    await endianBtn.evaluate((el: HTMLButtonElement) => el.click())
+
+    await expect(page.getByRole('button', { name: '0x 前缀' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    await expect(page.getByRole('button', { name: '字节空格' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    await expect(page.getByRole('button', { name: 'HEX 复制: BE' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    await page.reload()
+
+    await expect(page.getByRole('button', { name: '0x 前缀' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    await expect(page.getByRole('button', { name: '字节空格' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    await expect(page.getByRole('button', { name: 'HEX 复制: BE' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+    await hexInput.fill('1234')
+    await hexInput.press('Tab')
+    const copyHex = page.getByRole('button', { name: '📋 Hex' })
+    await copyHex.scrollIntoViewIfNeeded()
+    await copyHex.evaluate((el: HTMLButtonElement) => el.click())
+
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clipboard).toBe('1234')
   })
 
   test('主题切换由全局状态驱动并持久化', async ({ page }) => {
