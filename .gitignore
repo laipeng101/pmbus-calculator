@@ -1,3 +1,150 @@
+# =========================================================
+# Operating System
+# =========================================================
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.nfs*
+
+# =========================================================
+# Node.js / npm / pnpm / yarn
+# =========================================================
+
+node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Yarn
+.yarn-integrity
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# =========================================================
+# Build Output
+# =========================================================
+
+dist/
+build/
+out/
+*.tsbuildinfo
+*.tmp
+*.temp
+
+# Vite
+node_modules/.tmp/
+
+# =========================================================
+# Environment & Secrets
+# =========================================================
+
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Certificates / Keys
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# =========================================================
+# Testing
+# =========================================================
+
+coverage/
+*.lcov
+
+# Playwright
+playwright-report/
+test-results/
+.playwright-mcp/
+tests/e2e/output/
+tests/e2e/report/
+
+# =========================================================
+# IDE / Editor
+# =========================================================
+
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================================================
+# Caches
+# =========================================================
+
+.eslintcache
+.stylelintcache
+.prettiercache
+.parcel-cache
+.cache/
+.mf/
+
+# =========================================================
+# Deployment Platforms
+# =========================================================
+
+.vercel
+.netlify
+.firebase
+.surge
+
+# =========================================================
+# Claude Code / MCP / IDE Plugins
+# =========================================================
+
+.claude/
+everything-claude-code/
+.playwright-mcp/
+
+# =========================================================
+# Project-specific
+# =========================================================
+
+# Documentation PDFs (except document/ directory)
 *.pdf
+!document/*.pdf
+
+# Diff files used for AI context
+*.diff
+diff_for_ai.txt
+
+# Git worktrees
 .worktrees/
