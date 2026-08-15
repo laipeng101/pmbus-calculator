@@ -217,7 +217,7 @@ export const PMBusMath = {
     return sign | (exp << 10) | (mant & 0x03ff)
   },
 
-  /** Parse VOUT_MODE byte per PMBus 1.3 Section 8.3 */
+  /** Parse VOUT_MODE byte per PMBus 1.3 Part II Section 8.3. */
   parseVoutMode(byte: number): VoutModeResult {
     byte = byte & 0xff
     const modeBits = (byte >> 5) & 0x07
@@ -240,7 +240,7 @@ export const PMBusMath = {
       modeName: modeNames[modeBits] || '保留',
       param: paramBits,
       linearExponent: n,
-      description: 'VOUT_MODE per PMBus 1.3 Part I Section 8.3',
+      description: 'VOUT_MODE per PMBus 1.3 Part II Section 8.3',
     }
   },
 

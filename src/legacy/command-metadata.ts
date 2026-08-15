@@ -5,8 +5,9 @@
  *
  * Domain model (see docs/DOMAIN_MODEL.md and docs/adr/0002):
  * - A **standard command definition** records what PMBus specifies:
- *   command code, transaction type, value type, units, spec section, and an
- *   `encodingRule` that tells the user how to resolve the payload format.
+ *   command code, SMBus transactions (write and/or read), data width, value type,
+ *   units, spec section, and an `encodingRule` that tells the user how to
+ *   resolve the payload format.
  * - A standard definition deliberately does NOT carry a calculator mode or
  *   pre-filled numeric parameters.  For commands marked `device_defined` the
  *   format is chosen by the device datasheet; for `follows_vout_mode` it is
@@ -21,12 +22,30 @@
  */
 
 export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF'
-export type CommandTransactionType =
-  | 'write_word'
-  | 'read_word'
-  | 'read_block'
-  | 'write_byte'
-  | 'read_byte'
+
+export type CommandWriteTransactionType = 'send_byte' | 'write_byte' | 'write_word' | 'block_write'
+export type CommandReadTransactionType = 'read_byte' | 'read_word' | 'block_read'
+export type CommandTransactionType = CommandWriteTransactionType | CommandReadTransactionType
+
+export interface CommandTransaction {
+  type: CommandTransactionType
+  /**
+   * Number of PMBus data bytes for this transaction.  Not including PEC nor
+   * the block byte count, matching PMBus Part II Appendix I Table 31.
+   */
+  dataBytes?: number
+}
+
+/**
+ * A command can support a write transaction, a read transaction, or both.
+ * The previous single `transactionType` field could not express that and is
+ * intentionally removed.
+ */
+export interface CommandTransactions {
+  write?: CommandTransaction
+  read?: CommandTransaction
+}
+
 export type CommandValueType = 'scalar' | 'status' | 'block'
 
 /** How the PMBus specification tells an implementer to resolve the payload format. */
@@ -59,6 +78,9 @@ export interface CommandPreset {
   b?: number
   R?: number
 
+  /** Optional demo unit, e.g. FAN_COMMAND_1 project-demo uses RPM. */
+  units?: string
+
   sourceKind: PresetSourceKind
   source: string
   appliesTo: string
@@ -70,7 +92,8 @@ export interface CommandMeta {
   label: string
   cmd: number
 
-  transactionType: CommandTransactionType
+  /** Read/write SMBus transactions; both may be present for R/W commands. */
+  transactions: CommandTransactions
   valueType: CommandValueType
   units: string
   spec: string
@@ -88,15 +111,18 @@ const PROJECT_DEMO = {
   appliesTo: 'Demo only — not a standard or universal PMBus default',
 } as const
 
+const WORD_WRITE: CommandTransaction = { type: 'write_word', dataBytes: 2 }
+const WORD_READ: CommandTransaction = { type: 'read_word', dataBytes: 2 }
+
 export const COMMAND_METADATA: Record<string, CommandMeta> = {
   VOUT_COMMAND: {
     key: 'VOUT_COMMAND',
     label: 'VOUT_COMMAND',
     cmd: 0x21,
-    transactionType: 'write_word',
+    transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'scalar',
     units: 'V',
-    spec: 'PMBus Part II §13.2 / Part I §8.4.1',
+    spec: 'PMBus Part II §13.2, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
     note: 'VOUT_COMMAND 的数据格式跟随 VOUT_MODE；选择命令只显示命令信息，不会自动应用参数。',
     preset: {
@@ -111,10 +137,10 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'VOUT_OV_FAULT_LIMIT',
     label: 'VOUT_OV_FAULT_LIMIT',
     cmd: 0x40,
-    transactionType: 'write_word',
+    transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'scalar',
     units: 'V',
-    spec: 'PMBus Part II §15.x',
+    spec: 'PMBus Part II §15.2, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
     note: 'VOUT_OV_FAULT_LIMIT 的数据格式跟随 VOUT_MODE；选择命令只显示命令信息，不会自动应用参数。',
     preset: {
@@ -129,10 +155,10 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'READ_VOUT',
     label: 'READ_VOUT',
     cmd: 0x8b,
-    transactionType: 'read_word',
+    transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: 'V',
-    spec: 'PMBus Part II §18.4',
+    spec: 'PMBus Part II §18.4, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
     note: 'READ_VOUT 的数据格式跟随 VOUT_MODE；选择命令只显示命令信息，不会自动应用参数。',
     preset: {
@@ -147,10 +173,10 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'READ_VIN',
     label: 'READ_VIN',
     cmd: 0x88,
-    transactionType: 'read_word',
+    transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: 'V',
-    spec: 'PMBus Part II §18.1',
+    spec: 'PMBus Part II §18.1, Appendix I Table 31',
     encodingRule: 'device_defined',
     note: 'READ_VIN 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
     preset: {
@@ -164,10 +190,10 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'READ_IOUT',
     label: 'READ_IOUT',
     cmd: 0x8c,
-    transactionType: 'read_word',
+    transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: 'A',
-    spec: 'PMBus Part II §18.5',
+    spec: 'PMBus Part II §18.5, Appendix I Table 31',
     encodingRule: 'device_defined',
     note: 'READ_IOUT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
     preset: {
@@ -181,10 +207,10 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'READ_TEMPERATURE_1',
     label: 'READ_TEMPERATURE_1',
     cmd: 0x8d,
-    transactionType: 'read_word',
+    transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: '°C',
-    spec: 'PMBus Part II §18.6',
+    spec: 'PMBus Part II §18.6, Appendix I Table 31',
     encodingRule: 'device_defined',
     note: 'READ_TEMPERATURE_1 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
     preset: {
@@ -198,10 +224,10 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'VIN_OV_FAULT_LIMIT',
     label: 'VIN_OV_FAULT_LIMIT',
     cmd: 0x55,
-    transactionType: 'write_word',
+    transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'scalar',
     units: 'V',
-    spec: 'PMBus Part II §15.23',
+    spec: 'PMBus Part II §15.23, Appendix I Table 31',
     encodingRule: 'device_defined',
     note: 'VIN_OV_FAULT_LIMIT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
     preset: {
@@ -215,10 +241,10 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'OT_FAULT_LIMIT',
     label: 'OT_FAULT_LIMIT',
     cmd: 0x4f,
-    transactionType: 'write_word',
+    transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'scalar',
     units: '°C',
-    spec: 'PMBus Part II §15.17',
+    spec: 'PMBus Part II §15.17, Appendix I Table 31',
     encodingRule: 'device_defined',
     note: 'OT_FAULT_LIMIT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
     preset: {
@@ -232,16 +258,17 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'FAN_COMMAND_1',
     label: 'FAN_COMMAND_1',
     cmd: 0x3b,
-    transactionType: 'write_word',
+    transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'scalar',
-    units: 'RPM',
-    spec: 'PMBus Part II §14.12',
+    units: 'RPM or duty cycle (FAN_CONFIG_1_2)',
+    spec: 'PMBus Part II §14.12, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'FAN_COMMAND_1 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
+    note: 'FAN_COMMAND_1 的数据格式由器件资料决定；单位依 FAN_CONFIG_1_2，可为 RPM 或 duty cycle。需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
     preset: {
       mode: 'L11',
       value: 5000,
       n: 3,
+      units: 'RPM',
       direction: 'write',
       ...PROJECT_DEMO,
     },
@@ -250,10 +277,10 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'READ_POUT',
     label: 'READ_POUT',
     cmd: 0x96,
-    transactionType: 'read_word',
+    transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: 'W',
-    spec: 'PMBus Part II §18.11',
+    spec: 'PMBus Part II §18.11, Appendix I Table 31',
     encodingRule: 'device_defined',
     note: 'READ_POUT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
     preset: {
@@ -267,10 +294,10 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'READ_FAN_SPEED_1',
     label: 'READ_FAN_SPEED_1',
     cmd: 0x90,
-    transactionType: 'read_word',
+    transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: 'RPM',
-    spec: 'PMBus Part II §18.7',
+    spec: 'PMBus Part II §18.7, Appendix I Table 31',
     encodingRule: 'device_defined',
     note: 'READ_FAN_SPEED_1 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
     preset: {
@@ -285,23 +312,23 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     key: 'STATUS_WORD',
     label: 'STATUS_WORD',
     cmd: 0x79,
-    transactionType: 'read_word',
+    transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'status',
     units: 'bit field',
-    spec: 'PMBus Part II §17.2 Table 16',
+    spec: 'PMBus Part II §17.2 Table 16, Appendix I Table 31',
     encodingRule: 'status',
-    note: 'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。计算器不为其分配 L11/L16/DIRECT/HALF 转换模式。',
+    note: 'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。写入 STATUS_WORD 用于清除可清除的状态位；读取返回状态摘要。计算器不为其分配 L11/L16/DIRECT/HALF 转换模式。',
   },
   READ_EIN: {
     key: 'READ_EIN',
     label: 'READ_EIN',
     cmd: 0x86,
-    transactionType: 'read_block',
+    transactions: { read: { type: 'block_read', dataBytes: 5 } },
     valueType: 'block',
     units: '—',
-    spec: 'PMBus Part II §18.13',
+    spec: 'PMBus Part II §18.13, Appendix I Table 31',
     encodingRule: 'block',
-    note: 'READ_EIN 属于 Block Read，多于 16 位；计算器不能代表完整 6 字节报文，仅作为命令信息展示。',
+    note: 'READ_EIN 属于 Block Read，返回 5 个数据字节（不含 byte count 与 PEC）；计算器不能代表完整 6 字节报文，仅作为命令信息展示。',
   },
 }
 
@@ -324,6 +351,33 @@ export function describeEncodingRule(rule: CommandEncodingRule): string {
     case 'block':
       return 'BLOCK 块'
   }
+}
+
+export function describeTransactionType(type: CommandTransactionType): string {
+  switch (type) {
+    case 'send_byte':
+      return 'Send Byte'
+    case 'write_byte':
+      return 'Write Byte'
+    case 'write_word':
+      return 'Write Word'
+    case 'block_write':
+      return 'Block Write'
+    case 'read_byte':
+      return 'Read Byte'
+    case 'read_word':
+      return 'Read Word'
+    case 'block_read':
+      return 'Block Read'
+  }
+}
+
+/** Human-readable read/write transaction summary for a command. */
+export function describeTransactions(transactions: CommandTransactions): string {
+  const parts: string[] = []
+  if (transactions.write) parts.push(`写 ${describeTransactionType(transactions.write.type)}`)
+  if (transactions.read) parts.push(`读 ${describeTransactionType(transactions.read.type)}`)
+  return parts.length > 0 ? parts.join(' · ') : '—'
 }
 
 export function describePresetSource(preset: CommandPreset): string {

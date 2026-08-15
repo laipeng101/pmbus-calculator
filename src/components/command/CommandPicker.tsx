@@ -3,6 +3,7 @@ import {
   COMMAND_METADATA,
   describeEncodingRule,
   describePresetSource,
+  describeTransactions,
 } from '../../legacy/command-metadata'
 
 interface Props {
@@ -50,7 +51,9 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
   const closeAndRestoreFocus = useCallback(() => {
     setOpen(false)
     setQuery('')
-    triggerRef.current?.focus()
+    // Defer focus restoration so the browser's default focus handling for the
+    // closing interaction (e.g. mousedown outside) finishes first.
+    window.setTimeout(() => triggerRef.current?.focus(), 0)
   }, [])
 
   const selectOption = useCallback(
@@ -64,12 +67,12 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
+        closeAndRestoreFocus()
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  }, [closeAndRestoreFocus])
 
   useEffect(() => {
     if (!open) return
@@ -146,7 +149,8 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
           }}
         >
           <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            {describePresetSource(selected.preset)} 预设（{selected.preset.source}）— 不会自动应用
+            {describePresetSource(selected.preset)} 预设（{selected.preset.source}
+            {selected.preset.units ? ` · ${selected.preset.units}` : ''}）— 不会自动应用
           </span>
           <button
             onClick={() => onApplyPreset(selected.key)}
@@ -188,7 +192,12 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
               autoFocus
             />
           </div>
-          <ul role="listbox" aria-label="PMBus 命令列表" className="max-h-64 overflow-y-auto py-1">
+          <ul
+            role="listbox"
+            aria-label="PMBus 命令列表"
+            aria-activedescendant={`command-option-${activeKey || 'none'}`}
+            className="max-h-64 overflow-y-auto py-1"
+          >
             {options.map((opt) => {
               const isSelected = opt.key === commandKey
               const isActive = opt.key === activeKey
@@ -226,8 +235,8 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
                           className="mt-0.5 text-xs"
                           style={{ color: 'var(--color-text-muted)' }}
                         >
-                          {describeEncodingRule(cmd.encodingRule)} · {cmd.transactionType} ·{' '}
-                          {cmd.units} · {cmd.spec}
+                          {describeEncodingRule(cmd.encodingRule)} ·{' '}
+                          {describeTransactions(cmd.transactions)} · {cmd.units} · {cmd.spec}
                         </div>
                       </>
                     ) : (
