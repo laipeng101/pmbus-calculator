@@ -34,6 +34,7 @@ function productionCspPlugin(): Plugin {
 }
 
 export default defineConfig({
+  base: './',
   plugins: [tailwindcss(), react(), productionCspPlugin()],
   test: {
     globals: true,

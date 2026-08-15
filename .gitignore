@@ -91,6 +91,8 @@ test-results/
 .playwright-mcp/
 tests/e2e/output/
 tests/e2e/report/
+tests/e2e/output-release/
+tests/e2e/report-release/
 
 # =========================================================
 # IDE / Editor

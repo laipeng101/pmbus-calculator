@@ -17,13 +17,15 @@
 | 复制/主题/偏好      | Done：复制工具、主题与偏好持久化已接入新应用              |
 | legacy HTML         | 明确保留为 read-only fallback：`pmbus-calculator.html`    |
 
-## 仍存在的 migration gaps
+## Deferred / Blocked items
 
-- **DIRECT `device-datasheet` profiles**：缺少真实数据手册，blocked；UI 保持手动系数输入并提示需要器件数据手册。
-- **独立 FormulaEditor**：optional，不是缺陷。
-- **legacy HTML**：明确保留为 read-only fallback，不删除、不移动、不重写。
-- **更全面 viewport 业务矩阵**：optional。
-- **PMBus 新版规范升级**：独立工作，当前不得自动开展。
+以下为 Deferred / Blocked items，不是当前功能缺陷：
+
+- **DIRECT `device-datasheet` profiles**：Blocked——缺少真实数据手册；UI 保持手动系数输入并提示需要器件数据手册。
+- **独立 FormulaEditor**：Deferred（optional）——不是缺陷。
+- **legacy HTML fallback**：Deferred（明确保留）——`pmbus-calculator.html` 作为 read-only fallback 保留，不删除、不移动、不重写。
+- **更全面 viewport 业务矩阵**：Deferred（optional）。
+- **PMBus 新版规范升级**：Deferred（独立工作）——当前不得自动开展。
 
 ## 变更审计来源
 

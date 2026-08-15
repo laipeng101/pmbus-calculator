@@ -35,9 +35,19 @@ npm run lint              # exit 0
 npm run test:coverage     # exit 0，实际单测数 ___，coverage ___
 npm run test:e2e          # exit 0，实际 E2E 数 ___
 npm run build             # exit 0
+npm run test:e2e:release  # exit 0，release production smoke 数 ___
 git diff --check          # exit 0（未暂存工作区）
 git diff --cached --check # exit 0（暂存区）
 ```
+
+## 固定发布/审计字段
+
+- `npm audit` 结果:
+- 完整 branch diff base/head SHA:
+- PR CI URL / conclusion:
+- main CI URL / conclusion（合并后最终报告中记录）:
+- release production smoke 数量:
+- 不适用项（允许写 N/A 及原因）:
 
 ## 影响范围
 

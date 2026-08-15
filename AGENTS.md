@@ -10,6 +10,7 @@
 - **Conditional**：
   - 数学/格式/命令元数据任务才读 `DOMAIN_MODEL.md`
   - Git/PR/CI 流程任务才读 `CONTRIBUTING.md`
+  - 发布任务才读 `docs/RELEASING.md`
   - legacy/parity 任务才读 `MIGRATION_MATRIX.md`
   - 决策相关任务只读相关 ADR
   - 规范核查只打开所需 PDF 与具体章节
@@ -113,7 +114,8 @@ tests/e2e/        Playwright 真实用户流程
 
 ## 8. 文档更新规则
 
-- 代码变更后检查是否需要更新：`docs/ROADMAP.md`、`docs/MIGRATION_MATRIX.md`、`README.md`。
+- 文档更新继续遵循条件加载；普通代码变更不再要求每次检查全部 `docs/ROADMAP.md`、`docs/MIGRATION_MATRIX.md`、`README.md`，只需在变更实际影响对应文档时更新。
+- 发布任务才读取 `docs/RELEASING.md`，并按其规则更新 `CHANGELOG.md` 与 `docs/releases/`。
 - 不要在多份文档中重复维护同一份进度表。
 - 不再维护手工 WEB-xxxx 变更记录；PR、commit 和 CI 是变更审计来源。
 
