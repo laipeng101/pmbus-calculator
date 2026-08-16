@@ -1,0 +1,151 @@
+name: Pages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Stable GitHub Release tag to deploy
+        required: true
+        default: v1.0.0
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve release tag
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "release" ]; then
+            echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${INPUT_RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate stable SemVer tag format
+        env:
+          RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v[1-9][0-9]*\.[0-9]+\.[0-9]+$'; then
+            echo "::error::release_tag must match ^v[1-9][0-9]*\.[0-9]+\.[0-9]+$ (got: $RELEASE_TAG)"
+            exit 1
+          fi
+          echo "VERSION=$RELEASE_TAG" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify GitHub Release metadata and Git tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          release_json="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          echo "${release_json}" | jq -e --arg tag "${RELEASE_TAG}" '
+            .tag_name == $tag and
+            .draft == false and
+            .prerelease == false
+          ' >/dev/null || { echo "::error::Release metadata validation failed for ${RELEASE_TAG}"; exit 1; }
+
+          ref_json="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}")"
+          echo "${ref_json}" | jq -e '
+            .object.type as $type | ($type == "commit" or $type == "tag")
+          ' >/dev/null || { echo "::error::Git tag validation failed for ${RELEASE_TAG}"; exit 1; }
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          release_json="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          zip_name="pmbus-calculator-${RELEASE_TAG}-web.zip"
+          zip_url="$(echo "${release_json}" | jq -er --arg name "${zip_name}" '.assets[] | select(.name == $name) | .browser_download_url')"
+          sums_url="$(echo "${release_json}" | jq -er '.assets[] | select(.name == "SHA256SUMS.txt") | .browser_download_url')"
+          curl -fsSL -o "${zip_name}" "${zip_url}"
+          curl -fsSL -o SHA256SUMS.txt "${sums_url}"
+
+      - name: Verify SHA-256 checksum
+        run: sha256sum -c SHA256SUMS.txt
+
+      - name: Verify release zip before extraction
+        env:
+          VERSION: ${{ steps.resolve.outputs.tag }}
+        run: python3 .github/workflows/scripts/verify_release_zip.py "pmbus-calculator-${VERSION}-web.zip"
+
+      - name: Extract release assets to _site
+        env:
+          VERSION: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          rm -rf _site
+          mkdir -p _site
+          unzip -q "pmbus-calculator-${VERSION}-web.zip" -d _site
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run remote deployment smoke
+        id: smoke
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
+        run: npm run test:e2e:deployment
+
+      - name: Upload deployment smoke report on failure
+        if: failure() && steps.deployment.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-deployment
+          path: tests/e2e/report-deployment
+          retention-days: 7
