@@ -101,25 +101,83 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     expect(focusInfo.outlineWidth).not.toBe('0px')
   })
 
-  test('prefers-reduced-motion: reduce 关闭非必要动画', async ({ page }) => {
+  test('prefers-reduced-motion: reduce 关闭非必要动画且保留功能反馈', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.goto('/')
 
-    const tab = page.getByRole('tab', { name: /LINEAR11/ })
-    const transitionDuration = await tab.evaluate((el) => getComputedStyle(el).transitionDuration)
-    expect(transitionDuration).not.toBe('0.2s')
+    const toMs = (value: string) => parseFloat(value) * (value.endsWith('ms') ? 1 : 1000)
 
-    const popoverDuration = await page.evaluate(() => {
-      const probe = document.createElement('div')
-      probe.className = 'popover-enter'
-      document.body.appendChild(probe)
-      const duration = getComputedStyle(probe).animationDuration
-      probe.remove()
-      return duration
+    const motionMetrics = await page.evaluate(() => {
+      const selectedTab = document.querySelector(
+        '[role="tab"][aria-selected="true"]',
+      ) as HTMLElement | null
+      const tabTransitionDuration = selectedTab
+        ? getComputedStyle(selectedTab).transitionDuration
+        : '0.2s'
+
+      const popoverProbe = document.createElement('div')
+      popoverProbe.className = 'popover-enter'
+      document.body.appendChild(popoverProbe)
+      const popoverAnimationDuration = getComputedStyle(popoverProbe).animationDuration
+      popoverProbe.remove()
+
+      const transformProbe = document.createElement('div')
+      transformProbe.style.transition = 'transform 180ms ease'
+      document.body.appendChild(transformProbe)
+      const transformTransitionDuration = getComputedStyle(transformProbe).transitionDuration
+      transformProbe.remove()
+
+      return { tabTransitionDuration, popoverAnimationDuration, transformTransitionDuration }
     })
-    const popoverDurationMs =
-      parseFloat(popoverDuration) * (popoverDuration.endsWith('ms') ? 1 : 1000)
-    expect(popoverDurationMs).toBeLessThanOrEqual(1)
+
+    expect(toMs(motionMetrics.tabTransitionDuration)).toBeLessThanOrEqual(1)
+    expect(toMs(motionMetrics.popoverAnimationDuration)).toBeLessThanOrEqual(1)
+    expect(toMs(motionMetrics.transformTransitionDuration)).toBeLessThanOrEqual(1)
+
+    // 状态颜色保留：当前选中 tab 仍使用可见的背景色与前景色。
+    const selectedTab = page.getByRole('tab', { name: /LINEAR11/ })
+    const selectedStyles = await selectedTab.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return { backgroundColor: cs.backgroundColor, color: cs.color }
+    })
+    expect(selectedStyles.backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+    expect(selectedStyles.color).not.toBe('rgba(0, 0, 0, 0)')
+
+    // focus-visible 提示保留。
+    await page.evaluate(() => {
+      const active = document.activeElement as HTMLElement | null
+      active?.blur?.()
+    })
+    await page.keyboard.press('Tab')
+    const focusInfo = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null
+      return {
+        tagName: el?.tagName ?? '',
+        focusVisible: el?.matches(':focus-visible') ?? false,
+        outlineWidth: el ? getComputedStyle(el).outlineWidth : '',
+      }
+    })
+    expect(['BUTTON', 'INPUT']).toContain(focusInfo.tagName)
+    expect(focusInfo.focusVisible).toBe(true)
+    expect(focusInfo.outlineWidth).not.toBe('0px')
+
+    // active 按压反馈保留。
+    const commandPicker = page.locator('#command-picker')
+    const box = await commandPicker.boundingBox()
+    if (box == null) throw new Error('command picker bounding box missing')
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    const activeTransform = await commandPicker.evaluate((el) => getComputedStyle(el).transform)
+    await page.mouse.up()
+    expect(activeTransform).not.toBe('none')
+
+    // 功能行为不受影响。
+    const hexInput = page.locator('input[placeholder="0x0000"]')
+    await hexInput.fill('F819')
+    await hexInput.press('Tab')
+    await expect(page.locator('#value-input')).toHaveValue('12.5')
+    await expect(page.locator('.katex').first()).toBeVisible()
+    await expect(page.locator('.katex-error')).toHaveCount(0)
   })
 
   test('360/390 视口无横向滚动，长公式只在自身容器滚动', async ({ page }) => {

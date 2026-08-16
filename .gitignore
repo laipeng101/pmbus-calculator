@@ -55,6 +55,7 @@ out/
 *.tsbuildinfo
 *.tmp
 *.temp
+*.map
 
 # Vite
 node_modules/.tmp/
@@ -90,11 +91,9 @@ playwright-report/
 test-results/
 .playwright-mcp/
 tests/e2e/output/
+tests/e2e/output-*/
 tests/e2e/report/
-tests/e2e/output-release/
-tests/e2e/report-release/
-tests/e2e/output-deployment/
-tests/e2e/report-deployment/
+tests/e2e/report-*/
 
 # =========================================================
 # IDE / Editor
@@ -152,3 +151,10 @@ diff_for_ai.txt
 
 # Git worktrees
 .worktrees/
+
+# Source maps, release archives, and agent session exports
+*.zip
+*.tgz
+*.tar
+*.tar.gz
+*.jsonl

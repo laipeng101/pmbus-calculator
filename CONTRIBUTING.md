@@ -5,9 +5,10 @@
 ## 1. 开始之前
 
 1. 阅读 [`AGENTS.md`](AGENTS.md)（强制规则）。
-2. 阅读 [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) 中与本次变更相关的规则。
-3. 阅读 [`docs/ROADMAP.md`](docs/ROADMAP.md) 确认当前里程碑状态，避免重复或越界。
-4. 器件数据不明确时不得猜测：保持禁用/留空，并在 UI 与文档中注明“需要器件数据手册”。
+2. 阅读 [`docs/REPOSITORY_HYGIENE.md`](docs/REPOSITORY_HYGIENE.md)（仓库卫生与制品政策）。
+3. 阅读 [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) 中与本次变更相关的规则。
+4. 阅读 [`docs/ROADMAP.md`](docs/ROADMAP.md) 确认当前里程碑状态，避免重复或越界。
+5. 器件数据不明确时不得猜测：保持禁用/留空，并在 UI 与文档中注明“需要器件数据手册”。
    只有仓库内规范与官方规范存在无法保守处理的直接冲突时才停止。
 
 ## 2. 分支与 PR
@@ -51,13 +52,26 @@ npm run verify
 npm run format:check
 npm run typecheck
 npm run lint
+npm run check:markdown-math
 npm run test:coverage
 npm run test:e2e
 npm run build
+npm run test:e2e:release
+npm run check:repo-hygiene
 git diff --check
 git diff --cached --check
 npm audit --audit-level=high
 ```
+
+提交前建议先执行：
+
+```bash
+npm run clean
+npm run check:repo-hygiene
+git status --short
+```
+
+详细安全边界见 [`docs/REPOSITORY_HYGIENE.md`](docs/REPOSITORY_HYGIENE.md)。
 
 whitespace 检查口径：
 

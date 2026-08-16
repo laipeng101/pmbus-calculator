@@ -2,11 +2,11 @@
 
 > 所有编程 Agent（Claude / Copilot / Cursor / Codex）在本仓库工作前必须阅读并遵守本文件。
 > 稳定规则只放在这里；里程碑状态看 `docs/ROADMAP.md`；legacy parity 看 `docs/MIGRATION_MATRIX.md`；
-> 格式/舍入/字节序/命令 profile 规则看 `docs/DOMAIN_MODEL.md`；开发流程看 `CONTRIBUTING.md`。
+> 格式/舍入/字节序/命令 profile 规则看 `docs/DOMAIN_MODEL.md`；开发流程看 `CONTRIBUTING.md`；仓库卫生与制品政策看 `docs/REPOSITORY_HYGIENE.md`。
 
 ## 0. Context Loading Policy
 
-- **Always**：`AGENTS.md`、当前 `docs/ROADMAP.md`
+- **Always**：`AGENTS.md`、当前 `docs/ROADMAP.md`、`docs/REPOSITORY_HYGIENE.md`
 - **Conditional**：
   - 数学/格式/命令元数据任务才读 `DOMAIN_MODEL.md`
   - UI/公式/交互动效任务才读 `docs/UI_CONVENTIONS.md`，且视觉验收必须包含关键 viewport 截图与逐图检查
@@ -93,7 +93,7 @@ tests/e2e/        Playwright 真实用户流程
 
 ## 7. 每次任务执行流程
 
-1. 读取任务要求、本文件、`docs/ROADMAP.md` 当前状态；按 Context Loading Policy 条件加载其他文档。
+1. 读取任务要求、本文件、`docs/ROADMAP.md` 当前状态、`docs/REPOSITORY_HYGIENE.md`；按 Context Loading Policy 条件加载其他文档。
 2. 在任务开头明确：Goal、Out of scope、影响模式、规范来源、验收向量。
 3. 确认工作区干净；fresh environment 先执行 `npm ci` 与 `npm run test:e2e:install`。
 4. 只实现一个可验证的垂直切片，不夹带无关改动。
@@ -103,9 +103,11 @@ tests/e2e/        Playwright 真实用户流程
    npm run verify
    ```
 
-   `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`test:coverage`、`test:e2e`、`build`、
-   `git diff --check`（未暂存工作区）、`git diff --cached --check`（暂存区）、`npm audit --audit-level=high`。
+   `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`check:markdown-math`、`test:coverage`、
+   `test:e2e`、`build`、`test:e2e:release`、`check:repo-hygiene`、`git diff --check`（未暂存工作区）、
+   `git diff --cached --check`（暂存区）、`npm audit --audit-level=high`。
    CI 的 whitespace gate 还额外检查：PR 为完整 base→head；push 为完整 event.before→github.sha。
+   任务结束前还需执行 `docs/REPOSITORY_HYGIENE.md` 中「Agent 生命周期清理 → 任务结束」的简短门禁。
 
 6. 输出：changed files、affected modes、实际测试命令与结果、剩余缺口。
    验收记录必须包含每条命令、exit code、实际测试数、coverage 和 CI URL。
