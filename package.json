@@ -25,7 +25,8 @@
     "check": "npm run format:check && npm run typecheck && npm run lint && npm run test:run && npm run build",
     "postinstall": "simple-git-hooks",
     "verify": "npm run format:check && npm run typecheck && npm run lint && npm run test:coverage && npm run test:e2e && npm run build && npm run test:e2e:release && git diff --check && git diff --cached --check && npm audit --audit-level=high",
-    "test:e2e:release": "playwright test --config playwright.release.config.ts"
+    "test:e2e:release": "playwright test --config playwright.release.config.ts",
+    "test:e2e:deployment": "playwright test --config playwright.deployment.config.ts"
   },
   "simple-git-hooks": {
     "pre-commit": "npm run format:check && npm run typecheck && npm run test:run"
