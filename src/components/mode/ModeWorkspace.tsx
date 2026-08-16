@@ -6,7 +6,8 @@ import DecimalInput from '../inputs/DecimalInput'
 import HexInput from '../inputs/HexInput'
 import IntegerInput from '../inputs/IntegerInput'
 import ValueInput from '../inputs/ValueInput'
-import MathFormula from '../math/MathFormula'
+import { MODE_PANEL_ID, modeTabId } from './modeTabs'
+import { LockIcon, UnlockIcon } from '../icons/Icon'
 
 interface Props {
   mode: AppMode
@@ -17,14 +18,13 @@ interface Props {
 
 export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
   return (
-    <div className="space-y-4">
+    <div role="tabpanel" id={MODE_PANEL_ID} aria-labelledby={modeTabId(mode)} className="space-y-4">
       {/* Hex Input */}
       <section
         className="rounded-xl p-4"
         style={{
           background: 'var(--color-surface)',
           border: '1px solid var(--color-border)',
-          boxShadow: 'var(--shadow-panel)',
         }}
       >
         <h3
@@ -64,7 +64,6 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         style={{
           background: 'var(--color-surface)',
           border: '1px solid var(--color-border)',
-          boxShadow: 'var(--shadow-panel)',
         }}
       >
         <h3
@@ -82,18 +81,6 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
         {mode === 'L11' && (
           <div className="space-y-4">
-            {/* Typeset formula for LINEAR11 */}
-            <div
-              className="math-scroll rounded-xl px-4 py-3 text-center text-sm"
-              style={{
-                background: 'var(--color-surface-muted)',
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              <MathFormula latex={vm.formulaLatex} plainText={vm.formulaText} displayMode />
-            </div>
-
             {/* Immersive formula: Y × 2^N */}
             <div
               className="flex items-center justify-center gap-3 rounded-xl px-4 py-5"
@@ -126,7 +113,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
               <div className="text-center">
                 <div className="mb-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  2^N
+                  2<sup>N</sup>
                 </div>
                 <div className="flex items-center gap-1">
                   <IntegerInput
@@ -146,15 +133,17 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                   <button
                     type="button"
                     onClick={() => dispatch({ type: 'l11/toggle-auto-n' })}
-                    className="rounded-md px-2 py-1.5 text-lg transition-colors"
+                    className="flex min-h-10 min-w-10 items-center justify-center rounded-md px-2 py-1.5 transition-colors"
                     title={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
+                    aria-label={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
+                    aria-pressed={state.l11.autoN}
                     style={{
                       background: state.l11.autoN ? 'var(--color-accent)' : 'var(--color-surface)',
                       color: state.l11.autoN ? '#fff' : 'var(--color-text-muted)',
                       border: '1px solid var(--color-border)',
                     }}
                   >
-                    {state.l11.autoN ? '🔒' : '🔓'}
+                    {state.l11.autoN ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
                   </button>
                 </div>
               </div>
@@ -271,17 +260,16 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
         {mode === 'DIRECT' && (
           <div className="space-y-4">
-            {/* DIRECT formula: X = (1/m) × (Y×10^-R − b) */}
-            <div
-              className="math-scroll rounded-xl px-4 py-3 text-center text-sm"
+            <p
+              className="rounded-lg px-3 py-2 text-center text-xs font-medium"
               style={{
                 background: 'var(--color-surface-muted)',
-                border: '1px solid var(--color-border)',
-                color: 'var(--color-text-primary)',
+                color: 'var(--color-text-secondary)',
+                fontFamily: 'var(--font-mono)',
               }}
             >
-              <MathFormula latex={vm.formulaLatex} plainText={vm.formulaText} displayMode />
-            </div>
+              X = (1/m) × (Y × 10^(-R) - b)
+            </p>
 
             {/* Signed Y input — raw is the only source of truth */}
             <div>

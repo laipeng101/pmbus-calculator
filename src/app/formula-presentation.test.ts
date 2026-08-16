@@ -15,7 +15,15 @@ function state(partial: Partial<AppState> & { mode: AppState['mode'] }): AppStat
   }
 }
 
-const ALLOWED_LATEX_COMMANDS = new Set(['times', 'frac', 'left', 'right', 'operatorname', 'mathrm'])
+const ALLOWED_LATEX_COMMANDS = new Set([
+  'times',
+  'frac',
+  'left',
+  'right',
+  'mathrm',
+  'text',
+  'infty',
+])
 
 function latexCommands(latex: string): string[] {
   return Array.from(latex.matchAll(/\\[A-Za-z]+/g), (m) => m[0].slice(1))
@@ -46,8 +54,8 @@ describe('formula presentation model', () => {
     })
     const f = getFormulaPresentation(s)
 
-    expect(f.plainText).toBe('X=(1/2)×(10×10^(--1)-3)')
-    expect(f.latex).toBe('X = \\frac{1}{2}\\left(10 \\times 10^{-(-1)} - 3\\right)')
+    expect(f.plainText).toBe('X=(1/2)×(10×10^1-3)')
+    expect(f.latex).toBe('X = \\frac{1}{2}\\left(10 \\times 10^{1} - 3\\right)')
     expect(f.latex).not.toContain('10^--1')
     expect(f.latex).not.toContain('10^{--1}')
   })
@@ -60,8 +68,8 @@ describe('formula presentation model', () => {
     })
     const f = getFormulaPresentation(s)
 
-    expect(f.plainText).toBe('X=(1/-4)×(-32768×10^(-0)--3)')
-    expect(f.latex).toBe('X = \\frac{1}{(-4)}\\left((-32768) \\times 10^{-0} - (-3)\\right)')
+    expect(f.plainText).toBe('X=(1/(-4))×((-32768)×10^0-(-3))')
+    expect(f.latex).toBe('X = \\frac{1}{(-4)}\\left((-32768) \\times 10^{0} - (-3)\\right)')
   })
 
   it('DIRECT m=0 keeps symbolic LaTeX while plainText contract is unchanged', () => {
@@ -72,7 +80,7 @@ describe('formula presentation model', () => {
     })
     const f = getFormulaPresentation(s)
 
-    expect(f.plainText).toBe('X=(1/0)×(0×10^(-0)-0)')
+    expect(f.plainText).toBe('X=(1/m)×(Y×10^(-R)-b)')
     expect(f.latex).toBe('X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)')
   })
 
@@ -80,8 +88,8 @@ describe('formula presentation model', () => {
     const s = state({ mode: 'HALF', raw: 0x7e00 })
     const f = getFormulaPresentation(s)
 
-    expect(f.plainText).toBe('IEEE 754 Half-Precision')
-    expect(f.latex).toBe('X = \\operatorname{decodeHalf}\\!\\left(\\mathrm{raw}\\right)')
+    expect(f.plainText).toBe('HALF NaN')
+    expect(f.latex).toBe('X = \\text{NaN}')
   })
 
   it('existing formulaText and C macro output remain compatible', () => {

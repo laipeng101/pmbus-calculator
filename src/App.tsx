@@ -71,11 +71,11 @@ function App() {
 
   return (
     <div
-      className="flex min-h-screen flex-col items-center py-6 px-4"
+      className="flex min-h-screen flex-col items-center sm:px-4 sm:py-6"
       style={{ background: 'var(--color-bg)' }}
     >
       <div
-        className="w-full max-w-[1000px] rounded-2xl p-6 md:p-8"
+        className="w-full max-w-[1120px] sm:rounded-2xl sm:p-6 md:p-8"
         style={{
           background: 'var(--color-surface)',
           border: '1px solid var(--color-border)',

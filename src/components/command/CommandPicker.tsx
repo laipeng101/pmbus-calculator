@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { autoUpdate, flip, offset, shift, size, useFloating } from '@floating-ui/react-dom'
 import {
   COMMAND_METADATA,
   describeDataBytesConflict,
@@ -6,6 +8,7 @@ import {
   describePresetSource,
   describeTransactions,
 } from '../../legacy/command-metadata'
+import { ChevronDownIcon } from '../icons/Icon'
 
 interface Props {
   commandKey: string | null
@@ -26,13 +29,41 @@ function optionId(key: string): string {
   return `command-option-${key || 'none'}`
 }
 
+interface PopupBox {
+  width: number
+  maxHeight: number
+}
+
+const INITIAL_POPUP_BOX: PopupBox = { width: 0, maxHeight: 320 }
+
 export default function CommandPicker({ commandKey, onChange, onApplyPreset }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeKey, setActiveKey] = useState<string>(commandKey ?? '')
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [popupBox, setPopupBox] = useState<PopupBox>(INITIAL_POPUP_BOX)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const listboxRef = useRef<HTMLUListElement>(null)
+
+  const { refs, floatingStyles } = useFloating({
+    strategy: 'fixed',
+    placement: 'bottom-start',
+    whileElementsMounted: autoUpdate,
+    middleware: [
+      offset(6),
+      flip({ fallbackPlacements: ['top-start'] }),
+      shift({ padding: 12 }),
+      size({
+        apply({ rects, availableWidth: _availableWidth, availableHeight }) {
+          const width = rects.reference.width
+          const maxHeight = Math.max(96, availableHeight - 8)
+          setPopupBox((prev) =>
+            prev.width === width && prev.maxHeight === maxHeight ? prev : { width, maxHeight },
+          )
+        },
+      }),
+    ],
+  })
 
   const commands = useMemo(() => Object.values(COMMAND_METADATA), [])
 
@@ -55,17 +86,10 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
 
   const selected = commandKey ? (COMMAND_METADATA[commandKey] ?? null) : null
 
-  /**
-   * Close the popup.  `restoreFocus` is true for keyboard-originated closes
-   * (Escape, Enter, option click) and false for outside pointer closes so the
-   * user's newly focused control keeps focus.
-   */
   const closePopover = useCallback((restoreFocus: boolean) => {
     setOpen(false)
     setQuery('')
     if (restoreFocus) {
-      // Defer so the browser's default focus handling for the closing
-      // interaction (e.g. Enter/click) finishes first.
       window.setTimeout(() => triggerRef.current?.focus(), 0)
     }
   }, [])
@@ -79,30 +103,43 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
   )
 
   useEffect(() => {
-    if (!open) return
+    if (open === false) return
+
     function handleOutsidePointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        // Do not steal focus back to the trigger: let the clicked Hex/Value
-        // control keep the focus it is about to receive.
+      const target = e.target as Node
+      const trigger = triggerRef.current
+      const inTrigger = trigger != null && trigger.contains(target)
+      const inFloating = refs.floating.current != null && refs.floating.current.contains(target)
+      if (inTrigger === false && inFloating === false) {
         closePopover(false)
       }
     }
+
     document.addEventListener('mousedown', handleOutsidePointerDown)
     return () => document.removeEventListener('mousedown', handleOutsidePointerDown)
-  }, [open, closePopover])
+  }, [open, closePopover, refs.floating, refs.reference])
 
   useEffect(() => {
-    if (!open) return
+    if (open === false) return
     inputRef.current?.focus()
     const idx = options.findIndex((o) => o.key === commandKey)
     setActiveKey(options[idx >= 0 ? idx : 0]?.key ?? '')
   }, [open, commandKey, options])
 
-  // Keep the active option visible while navigating with ArrowUp/ArrowDown.
+  // Keep the active option visible inside the listbox only.  Never call
+  // scrollIntoView on the option directly because that can scroll the page.
   useEffect(() => {
-    if (!open) return
+    if (open === false) return
+    const list = listboxRef.current
     const el = document.getElementById(optionId(activeKey))
-    el?.scrollIntoView({ block: 'nearest' })
+    if (list == null || el == null) return
+    const listRect = list.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    if (elRect.top < listRect.top) {
+      list.scrollTop += elRect.top - listRect.top
+    } else if (elRect.bottom > listRect.bottom) {
+      list.scrollTop += elRect.bottom - listRect.bottom
+    }
   }, [open, activeKey])
 
   const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -128,7 +165,6 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
 
   const toggleOpen = () => {
     if (open) {
-      // The trigger already has focus when it is clicked; keep it there.
       setOpen(false)
       setQuery('')
     } else {
@@ -137,7 +173,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
   }
 
   return (
-    <div ref={containerRef} className="relative px-4 py-2">
+    <div className="relative px-4 py-2">
       <label
         htmlFor="command-picker"
         className="mb-1.5 block text-xs font-semibold uppercase tracking-wider"
@@ -148,13 +184,17 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
       <button
         type="button"
         id="command-picker"
-        ref={triggerRef}
+        ref={(el) => {
+          triggerRef.current = el
+          refs.setReference(el)
+        }}
         onClick={toggleOpen}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex w-full items-center justify-between rounded-lg px-4 py-2.5 text-left text-sm transition-colors"
+        aria-controls={open ? LISTBOX_ID : undefined}
+        className="flex h-10 w-full items-center justify-between rounded-lg px-4 text-left text-sm transition-colors"
         style={{
-          background: 'var(--color-surface)',
+          background: 'var(--color-surface-muted)',
           border: '1px solid var(--color-border)',
           color: 'var(--color-text-primary)',
         }}
@@ -164,7 +204,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
             ? `${selected.label} (0x${selected.cmd.toString(16).toUpperCase().padStart(2, '0')}) — ${describeEncodingRule(selected.encodingRule)}`
             : '选择命令...'}
         </span>
-        <span className="ml-2 text-xs opacity-50">▼</span>
+        <ChevronDownIcon size={16} />
       </button>
 
       {selected?.preset && (
@@ -182,11 +222,11 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
           <button
             type="button"
             onClick={() => onApplyPreset(selected.key)}
-            className="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+            className="min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
             style={{
               background: 'var(--color-accent)',
               color: '#fff',
-              border: '1px solid var(--color-border)',
+              border: '1px solid var(--color-accent)',
             }}
           >
             应用 project-demo 预设
@@ -194,100 +234,110 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
         </div>
       )}
 
-      {open && (
-        <div
-          className="popover-enter absolute left-4 right-4 bottom-full z-50 mb-1 overflow-hidden rounded-lg"
-          style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            boxShadow: 'var(--shadow-panel)',
-          }}
-        >
-          <div className="p-2">
-            <input
-              ref={inputRef}
-              type="text"
-              role="combobox"
-              aria-autocomplete="list"
-              aria-expanded="true"
-              aria-controls={LISTBOX_ID}
-              aria-activedescendant={optionId(activeKey)}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={onInputKeyDown}
-              placeholder="搜索命令..."
-              className="w-full rounded-md px-3 py-2 text-sm outline-none"
-              style={{
-                background: 'var(--color-surface-muted)',
-                color: 'var(--color-text-primary)',
-                border: '1px solid var(--color-border)',
-              }}
-              autoFocus
-            />
-          </div>
-          <ul
-            id={LISTBOX_ID}
-            role="listbox"
-            aria-label="PMBus 命令列表"
-            className="max-h-64 overflow-y-auto py-1"
+      {open &&
+        createPortal(
+          <div
+            ref={refs.setFloating}
+            className="popover-enter flex flex-col overflow-hidden rounded-lg"
+            style={{
+              ...floatingStyles,
+              width: popupBox.width > 0 ? popupBox.width : 'max-content',
+              maxHeight: popupBox.maxHeight,
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              boxShadow: 'var(--shadow-panel)',
+              zIndex: 1000,
+            }}
           >
-            {options.map((opt) => {
-              const isSelected = opt.key === commandKey
-              const isActive = opt.key === activeKey
-              const cmd = opt.key ? COMMAND_METADATA[opt.key] : null
-              return (
-                <li key={opt.key || '__none__'}>
-                  <button
-                    type="button"
-                    id={optionId(opt.key)}
-                    role="option"
-                    aria-selected={isSelected}
-                    onClick={() => selectOption(opt.key)}
-                    onMouseEnter={() => setActiveKey(opt.key)}
-                    className="w-full px-4 py-2 text-left text-sm transition-colors hover:opacity-80"
-                    style={{
-                      background: isActive
-                        ? 'var(--color-surface-muted)'
-                        : isSelected
-                          ? 'rgba(59,130,246,0.08)'
-                          : 'transparent',
-                      color: cmd ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                    }}
-                  >
-                    {cmd ? (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{cmd.label}</span>
-                          <span
-                            className="ml-2 text-xs"
+            <div className="p-2">
+              <input
+                ref={inputRef}
+                type="text"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded="true"
+                aria-controls={LISTBOX_ID}
+                aria-activedescendant={optionId(activeKey)}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onInputKeyDown}
+                placeholder="搜索命令..."
+                className="h-10 w-full rounded-md px-3 text-sm outline-none"
+                style={{
+                  background: 'var(--color-surface-muted)',
+                  color: 'var(--color-text-primary)',
+                  border: '1px solid var(--color-border)',
+                }}
+                autoFocus
+              />
+            </div>
+            <ul
+              ref={listboxRef}
+              id={LISTBOX_ID}
+              role="listbox"
+              aria-label="PMBus 命令列表"
+              className="min-h-0 flex-1 overflow-y-auto py-1"
+            >
+              {options.map((opt) => {
+                const isSelected = opt.key === commandKey
+                const isActive = opt.key === activeKey
+                const cmd = opt.key ? COMMAND_METADATA[opt.key] : null
+                return (
+                  <li key={opt.key || '__none__'}>
+                    <button
+                      type="button"
+                      id={optionId(opt.key)}
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => selectOption(opt.key)}
+                      className="w-full px-4 py-2 text-left text-sm transition-colors"
+                      style={{
+                        background: isActive
+                          ? 'var(--color-surface-muted)'
+                          : isSelected
+                            ? 'rgba(59,130,246,0.08)'
+                            : 'transparent',
+                        color: cmd ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                      }}
+                    >
+                      {cmd ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">{cmd.label}</span>
+                            <span
+                              className="ml-2 text-xs"
+                              style={{ color: 'var(--color-text-muted)' }}
+                            >
+                              0x{cmd.cmd.toString(16).toUpperCase().padStart(2, '0')}
+                            </span>
+                          </div>
+                          <div
+                            className="mt-0.5 text-xs"
                             style={{ color: 'var(--color-text-muted)' }}
                           >
-                            0x{cmd.cmd.toString(16).toUpperCase().padStart(2, '0')}
-                          </span>
-                        </div>
-                        <div
-                          className="mt-0.5 text-xs"
-                          style={{ color: 'var(--color-text-muted)' }}
-                        >
-                          {describeEncodingRule(cmd.encodingRule)} ·{' '}
-                          {describeTransactions(cmd.transactions)} · {cmd.units} · {cmd.spec}
-                        </div>
-                        {cmd.dataBytesConflict && (
-                          <div className="mt-0.5 text-xs" style={{ color: 'var(--color-warning)' }}>
-                            {describeDataBytesConflict(cmd.dataBytesConflict)}
+                            {describeEncodingRule(cmd.encodingRule)} ·{' '}
+                            {describeTransactions(cmd.transactions)} · {cmd.units} · {cmd.spec}
                           </div>
-                        )}
-                      </>
-                    ) : (
-                      opt.label
-                    )}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
+                          {cmd.dataBytesConflict && (
+                            <div
+                              className="mt-0.5 text-xs"
+                              style={{ color: 'var(--color-warning)' }}
+                            >
+                              {describeDataBytesConflict(cmd.dataBytesConflict)}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        opt.label
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

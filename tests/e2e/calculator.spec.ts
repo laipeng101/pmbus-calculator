@@ -270,7 +270,7 @@ test.describe('计算器真实用户流程', () => {
     await hexInput.fill('0001')
     await hexInput.press('Tab')
 
-    const copyHex = page.getByRole('button', { name: '📋 Hex' })
+    const copyHex = page.getByRole('button', { name: 'Hex', exact: true })
     await copyHex.scrollIntoViewIfNeeded()
     await copyHex.evaluate((el: HTMLButtonElement) => el.click())
 
@@ -285,7 +285,7 @@ test.describe('计算器真实用户流程', () => {
     await hexInput.fill('0001')
     await hexInput.press('Tab')
 
-    const leBtn = page.getByRole('button', { name: '📋 LE bytes' })
+    const leBtn = page.getByRole('button', { name: 'LE bytes' })
     await leBtn.scrollIntoViewIfNeeded()
     await leBtn.evaluate((el: HTMLButtonElement) => el.click())
     let clipboard = await page.evaluate(() => navigator.clipboard.readText())
@@ -405,7 +405,7 @@ test.describe('计算器真实用户流程', () => {
     const hexInput = page.locator('input[placeholder="0x0000"]')
     await hexInput.fill('1234')
     await hexInput.press('Tab')
-    const copyHex = page.getByRole('button', { name: '📋 Hex' })
+    const copyHex = page.getByRole('button', { name: 'Hex', exact: true })
     await copyHex.scrollIntoViewIfNeeded()
     await copyHex.evaluate((el: HTMLButtonElement) => el.click())
 

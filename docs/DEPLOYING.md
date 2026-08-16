@@ -63,6 +63,26 @@ https://laipeng101.github.io/pmbus-calculator/
 - **禁止移动旧 tag。** 旧 tag 必须保持在原 commit 上。
 - 生产站点故障时，先回滚站点；不得修改、移动或删除已发布的 Release 与资产。
 
+## Environment 部署策略
+
+`github-pages` environment 使用 deployment branch policy 保护，但必须同时允许：
+
+- `main` branch；
+- 稳定 SemVer tag pattern：`v*.*.*`（type: tag）。
+
+这样 `release published` 事件（ref 为 `refs/tags/vX.Y.Z`）才能自动部署稳定 Release。
+验证方法：
+
+```bash
+gh api repos/OWNER/REPO/environments/github-pages/deployment-branch-policies
+```
+
+或通过 GitHub 仓库 Settings → Environments → github-pages → Deployment branches 查看。
+
+如果环境策略只允许 `main`，release event 会被拒绝并记录为
+`Tag "vX.Y.Z" is not allowed to deploy to github-pages due to environment protection rules`。
+此时应添加 tag policy；不得关闭全部 environment protection。
+
 ## 安全与权限
 
 - Pages workflow 使用最小权限：`contents: read`、`pages: write`、`id-token: write`。

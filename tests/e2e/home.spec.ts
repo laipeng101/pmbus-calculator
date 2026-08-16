@@ -50,7 +50,7 @@ test.describe('响应式 viewport 轻量检查', () => {
       await expect(page.getByRole('tab', { name: /LINEAR11/ })).toBeVisible()
       await expect(page.locator('#command-picker')).toBeVisible()
 
-      const copyHex = page.getByRole('button', { name: '📋 Hex' })
+      const copyHex = page.getByRole('button', { name: 'Hex', exact: true })
       await copyHex.scrollIntoViewIfNeeded()
       await expect(copyHex).toBeVisible()
     })

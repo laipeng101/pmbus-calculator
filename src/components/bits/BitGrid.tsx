@@ -99,8 +99,9 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
                       type="button"
                       key={bit.index}
                       onClick={() => dispatch({ type: 'bit/toggle', bit: 15 - bit.index })}
-                      className="flex flex-col items-center gap-0.5"
+                      className="flex min-h-10 min-w-9 flex-col items-center justify-center gap-0.5"
                       aria-label={`位 ${bit.index}: ${isOn ? '1' : '0'}`}
+                      aria-pressed={isOn}
                       title={`Bit ${bit.index}`}
                     >
                       <div
