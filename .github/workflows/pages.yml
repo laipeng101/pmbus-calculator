@@ -8,7 +8,6 @@ on:
       release_tag:
         description: Stable GitHub Release tag to deploy
         required: true
-        default: v1.0.0
 
 permissions:
   contents: read

@@ -18,6 +18,7 @@ export default function DebugDrawer({ open, state, onToggle }: Props) {
   return (
     <div className="mt-4">
       <button
+        type="button"
         onClick={onToggle}
         aria-label={open ? '收起调试面板' : '展开调试面板'}
         aria-expanded={open}

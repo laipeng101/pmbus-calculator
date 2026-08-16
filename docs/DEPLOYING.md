@@ -10,8 +10,8 @@
   上的未发布提交发布到生产站点。
 - **不改动已发布 tag 与 Release。** 已发布的 tag 和 Release 是不可变资产；部署失败
   时不得通过移动 tag、替换资产或重新构建同名包来“修复”。
-- Pages 故障不修改 `v1.0.0` Release；若部署需要改变产品字节，应停止部署，并改为
-  规划独立的 `v1.0.1` 修复发行。
+- Pages 故障不修改任何已发布的 tag、Release 和资产；若部署需要改变产品字节，应停止部署，
+  并改为规划独立的新 PATCH 修复发行。
 
 ## 生产 URL
 
@@ -56,8 +56,8 @@ https://laipeng101.github.io/pmbus-calculator/
 
 ## 回滚方式
 
-- **重新部署上一个稳定 Release：** 手动触发 Pages workflow 并传入上一个稳定 tag
-  （当前为 `v1.0.0`）。Pages 会从该 Release 的不可变资产重新部署。
+- **重新部署上一个稳定 Release：** 手动触发 Pages workflow 并传入上一个稳定 tag。
+  Pages 会从该 Release 的不可变资产重新部署。
 - **发布新的 PATCH：** 按 `docs/RELEASING.md` 创建新的 PATCH 版本（例如 `v1.0.1`），
   合入 main 后发布 Release，Pages 会自动或手动部署新版本。
 - **禁止移动旧 tag。** 旧 tag 必须保持在原 commit 上。

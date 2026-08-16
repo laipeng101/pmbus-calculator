@@ -45,12 +45,12 @@ It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEE
 
 ## Supported Formats
 
-| Mode                | Description                                                     | Formula                       |
-| ------------------- | --------------------------------------------------------------- | ----------------------------- |
-| **LINEAR11**        | 11-bit mantissa + 5-bit signed exponent                         | `X = Y × 2^N`                 |
-| **LINEAR16 (VOUT)** | 16-bit unsigned mantissa, exponent from `VOUT_MODE`             | `X = V × 2^N`                 |
-| **DIRECT**          | Linear transform with three device-specific coefficients        | `X = (1/m) × (Y × 10^−R − b)` |
-| **IEEE Half**       | IEEE 754 binary16 (1-bit sign, 5-bit exponent, 10-bit mantissa) | standard half-precision float |
+| Mode                | Description                                                     | Formula                                                  |
+| ------------------- | --------------------------------------------------------------- | -------------------------------------------------------- |
+| **LINEAR11**        | 11-bit mantissa + 5-bit signed exponent                         | $X = Y \times 2^N$                                       |
+| **LINEAR16 (VOUT)** | 16-bit unsigned mantissa, exponent from `VOUT_MODE`             | $X = V \times 2^N$                                       |
+| **DIRECT**          | Linear transform with three device-specific coefficients        | $X = \frac{1}{m}\left(Y \times 10^{-R} - b\right)$       |
+| **IEEE Half**       | IEEE 754 binary16 (1-bit sign, 5-bit exponent, 10-bit mantissa) | $X = \operatorname{decodeHalf}\left(\mathrm{raw}\right)$ |
 
 ---
 

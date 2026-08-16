@@ -96,6 +96,7 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
 
                   return (
                     <button
+                      type="button"
                       key={bit.index}
                       onClick={() => dispatch({ type: 'bit/toggle', bit: 15 - bit.index })}
                       className="flex flex-col items-center gap-0.5"

@@ -10,7 +10,8 @@ test.describe('计算器真实用户流程', () => {
 
     await expect(page.locator('#value-input')).toHaveValue('12.5')
     await expect(hexInput).toHaveValue('0xF819')
-    await expect(page.getByText('Y=25 × 2^-1')).toBeVisible()
+    await expect(page.locator('.katex').first()).toBeVisible()
+    await expect(page.locator('.katex-error')).toHaveCount(0)
   })
 
   test('L11：Value 输入编码为 Hex', async ({ page }) => {

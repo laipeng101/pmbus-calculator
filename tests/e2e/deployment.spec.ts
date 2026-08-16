@@ -35,6 +35,7 @@ test.describe('GitHub Pages production deployment', () => {
     const failedAssets: string[] = []
     const offOriginResources: string[] = []
     const observedResources: string[] = []
+    const observedFonts: string[] = []
 
     page.on('pageerror', (error) => {
       pageErrors.push(error.message)
@@ -53,10 +54,24 @@ test.describe('GitHub Pages production deployment', () => {
       if (new URL(url).origin !== new URL(deploymentUrl!).origin) {
         offOriginResources.push(url)
       }
+      if (type === 'font') {
+        observedFonts.push(url)
+      }
     })
 
     await page.goto(deploymentUrl!)
     await expect(page.getByLabel('结果面板')).toBeVisible()
+
+    await expect(page.locator('.katex').first()).toBeVisible()
+    await expect(page.locator('.katex-error')).toHaveCount(0)
+    await expect(page.locator('.katex math').first()).toBeAttached()
+
+    const katexFontFamily = await page
+      .locator('.katex')
+      .first()
+      .evaluate((el) => getComputedStyle(el).fontFamily)
+    expect(katexFontFamily).toContain('KaTeX_Main')
+    expect(observedFonts.length).toBeGreaterThan(0)
 
     expect(pageErrors).toEqual([])
     expect(failedAssets).toEqual([])

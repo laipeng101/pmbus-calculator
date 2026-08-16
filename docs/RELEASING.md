@@ -25,7 +25,7 @@
 2. 运行完整验证：`npm ci`、`npm run test:e2e:install`、`npm run verify`、`npm run build`、`npm run test:e2e:release`。
 3. 创建 PR 并等待最新 head CI 全绿。
 4. 普通 merge commit 合入 main，等待 main push CI 全绿。
-5. 在 main CI 全绿的精确 SHA 上创建 annotated tag：`git tag -a v1.0.0 <sha> -m "PMBus Calculator v1.0.0"`。
+5. 在 main CI 全绿的精确 SHA 上创建 annotated tag（版本变量记为 `vX.Y.Z`）：`git tag -a vX.Y.Z <sha> -m "PMBus Calculator vX.Y.Z"`。
 6. 推送 tag，从 tag 的干净工作区执行 `npm ci && npm run verify && npm run build`。
 7. 创建 GitHub Release（非 draft、非 prerelease），上传源码构建产物与 `SHA256SUMS.txt`。
 

@@ -23,6 +23,7 @@ export default function ModeSwitcher({ mode, onChange }: Props) {
         const active = mode === m.key
         return (
           <button
+            type="button"
             key={m.key}
             role="tab"
             aria-selected={active}

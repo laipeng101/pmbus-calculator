@@ -2,6 +2,7 @@ import type { CalculatorViewModel } from '../../app/view-model'
 import type { AppState } from '../../app/state'
 import CopyToolbar from './CopyToolbar'
 import ErrorDelta from './ErrorDelta'
+import MathFormula from '../math/MathFormula'
 
 interface Props {
   vm: CalculatorViewModel
@@ -57,8 +58,11 @@ export default function ResultInspector({
         >
           {vm.valueText}
         </div>
-        <div className="mt-1 text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-          {vm.formulaText}
+        <div
+          className="math-scroll mt-1 text-sm font-medium"
+          style={{ color: 'var(--color-text-secondary)' }}
+        >
+          <MathFormula latex={vm.formulaLatex} plainText={vm.formulaText} displayMode />
         </div>
       </div>
 
