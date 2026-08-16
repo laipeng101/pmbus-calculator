@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-16（M15 release candidate 已合入，等待 v1.1.2 Release 与 Pages 自动部署）
+最后更新：2026-08-16（M15 Done：v1.1.2 Release 与 Pages 自动部署已完成）
 
 ## 当前产品基线
 
@@ -16,15 +16,14 @@
 ## 当前里程碑
 
 ```text
-M0–M14 complete；stable release v1.1.1；production distribution: GitHub Pages。
-M15（UI consistency / v1.1.2 PATCH）release candidate，等待 v1.1.2 Release 与 Pages 自动部署闭环。
+M0–M15 complete；stable release v1.1.2；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
-### M15 release candidate
+### M15 done
 
 - 代码与文档已合入 main；版本号 `1.1.2`。
-- 在 GitHub Release `v1.1.2` 创建、Release event 自动触发 Pages 与远程 smoke 完成前，不声明 M15 Done。
-- 发布成功后通过文档闭环 PR 将本文件与 README 当前线上版本更新为 `v1.1.2`。
+- GitHub Release `v1.1.2` 已发布，release event 已自动触发 Pages 并完成部署，远程 smoke 4 passed。
+- 对比度、公式语义、复制工具栏、移动端密度与视觉验收规则见 `docs/UI_CONVENTIONS.md`。
 
 ### M14 done
 
