@@ -218,16 +218,18 @@ function gitIndexSizes(repoRoot) {
     throw new Error(`git cat-file --batch-check failed: ${batch.stderr}`)
   }
 
-  const sizes = new Map()
-  const pathByObject = new Map(
-    [...objectByPath.entries()].map(([filePath, object]) => [object, filePath]),
-  )
+  const objectSizes = new Map()
   for (const line of batch.stdout.split('\n')) {
     const [object, , sizeText] = line.split(' ')
-    if (object && sizeText !== undefined && pathByObject.has(object)) {
+    if (object && sizeText !== undefined) {
       const size = Number(sizeText)
-      sizes.set(pathByObject.get(object), Number.isFinite(size) ? size : 0)
+      objectSizes.set(object, Number.isFinite(size) ? size : 0)
     }
+  }
+
+  const sizes = new Map()
+  for (const [filePath, object] of objectByPath) {
+    sizes.set(filePath, objectSizes.get(object) ?? 0)
   }
   return sizes
 }
