@@ -134,8 +134,8 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
       await page.getByLabel('DIRECT 系数 b').press('Tab')
       await page.getByLabel('DIRECT 系数 r').fill('-128')
       await page.getByLabel('DIRECT 系数 r').press('Tab')
-      await page.getByLabel('Y (16-bit signed)').fill('-32768')
-      await page.getByLabel('Y (16-bit signed)').press('Tab')
+      await page.getByLabel('Y（16 位有符号，−32768～32767）').fill('-32768')
+      await page.getByLabel('Y（16 位有符号，−32768～32767）').press('Tab')
 
       const body = page.locator('body')
       const scrollWidth = await body.evaluate((el) => el.scrollWidth)

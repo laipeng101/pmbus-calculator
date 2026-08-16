@@ -126,7 +126,7 @@ test.describe('contrast', () => {
         configurable: true,
       })
     })
-    const copyHex = page.getByRole('button', { name: 'Hex', exact: true })
+    const copyHex = page.getByRole('button', { name: 'Hex（LE）' })
     await copyHex.scrollIntoViewIfNeeded()
     await copyHex.click()
     const success = page.locator('.copy-feedback')

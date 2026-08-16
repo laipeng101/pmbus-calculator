@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CalculatorViewModel } from '../../app/view-model'
 import type { AppState } from '../../app/state'
 import { copyTextToClipboard } from '../../app/copy-utils'
+import { getCopyHexLabel } from '../../app/result-presentation'
 import { CopyIcon } from '../icons/Icon'
 
 interface Props {
@@ -60,11 +61,16 @@ export default function CopyToolbar({
   )
 
   const copyHex = copyPrefs.endian === 'be' ? vm.rawBytesBE : vm.rawBytesLE
+  const copyHexLabel = getCopyHexLabel(copyPrefs.endian)
 
   return (
     <div className="copy-toolbar space-y-3">
       <div className="grid grid-cols-6 gap-2">
-        <CopyButton className="col-span-2" onClick={() => copy(copyHex, 'Hex')} label="Hex" />
+        <CopyButton
+          className="col-span-2"
+          onClick={() => copy(copyHex, copyHexLabel)}
+          label={copyHexLabel}
+        />
         <CopyButton
           className="col-span-2"
           onClick={() => copy(vm.rawBytesLE, 'LE bytes')}
@@ -88,44 +94,54 @@ export default function CopyToolbar({
       </div>
 
       <div
-        className="flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-xs"
+        className="copy-prefs space-y-2 rounded-lg px-3 py-2 text-xs"
         style={{
           background: 'var(--color-surface-muted)',
           border: '1px solid var(--color-border)',
           color: 'var(--color-text-secondary)',
         }}
       >
-        <span className="font-medium" style={{ color: 'var(--color-text-muted)' }}>
-          格式偏好
-        </span>
-        <PreferenceButton pressed={copyPrefs.prefix0x} onClick={onTogglePrefix} label="0x 前缀" />
-        <PreferenceButton
-          pressed={copyPrefs.spaceBetweenBytes}
-          onClick={onToggleSpace}
-          label="字节空格"
-        />
-        <span className="font-medium" style={{ color: 'var(--color-text-muted)' }}>
-          复制字节序
-        </span>
         <div
-          className="inline-flex rounded-md p-0.5"
-          style={{
-            background: 'var(--color-surface-muted)',
-            border: '1px solid var(--color-border)',
-          }}
           role="group"
-          aria-label="复制字节序"
+          aria-labelledby="copy-hex-format-label"
+          className="flex flex-wrap items-center gap-2"
         >
-          <EndianButton
-            pressed={copyPrefs.endian === 'le'}
-            onClick={() => onCopyEndianChange('le')}
-            label="LE"
+          <span id="copy-hex-format-label" className="copy-pref-group-label">
+            Hex 格式
+          </span>
+          <PreferenceButton pressed={copyPrefs.prefix0x} onClick={onTogglePrefix} label="0x 前缀" />
+          <PreferenceButton
+            pressed={copyPrefs.spaceBetweenBytes}
+            onClick={onToggleSpace}
+            label="字节空格"
           />
-          <EndianButton
-            pressed={copyPrefs.endian === 'be'}
-            onClick={() => onCopyEndianChange('be')}
-            label="BE"
-          />
+        </div>
+        <div
+          role="group"
+          aria-labelledby="copy-hex-order-label"
+          className="flex flex-wrap items-center gap-2"
+        >
+          <span id="copy-hex-order-label" className="copy-pref-group-label">
+            Hex 复制顺序
+          </span>
+          <div
+            className="inline-flex rounded-md p-0.5"
+            style={{
+              background: 'var(--color-surface-muted)',
+              border: '1px solid var(--color-border)',
+            }}
+          >
+            <EndianButton
+              pressed={copyPrefs.endian === 'le'}
+              onClick={() => onCopyEndianChange('le')}
+              label="LE"
+            />
+            <EndianButton
+              pressed={copyPrefs.endian === 'be'}
+              onClick={() => onCopyEndianChange('be')}
+              label="BE"
+            />
+          </div>
         </div>
       </div>
 
@@ -202,6 +218,7 @@ function PreferenceButton({
         background: pressed ? 'var(--color-accent-solid)' : 'var(--color-surface)',
         color: pressed ? 'var(--color-on-accent)' : 'var(--color-text-secondary)',
         border: `1px solid ${pressed ? 'var(--color-accent-solid)' : 'var(--color-border)'}`,
+        whiteSpace: 'nowrap',
       }}
     >
       {label}
@@ -228,6 +245,7 @@ function EndianButton({
         background: pressed ? 'var(--color-accent-solid)' : 'transparent',
         color: pressed ? 'var(--color-on-accent)' : 'var(--color-text-secondary)',
         border: '1px solid transparent',
+        whiteSpace: 'nowrap',
       }}
     >
       {label}

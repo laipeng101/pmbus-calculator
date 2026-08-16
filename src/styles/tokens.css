@@ -59,6 +59,12 @@
   --color-danger-surface: #fee2e2;
   --color-danger-text: #991b1b;
   --color-danger-border: #fca5a5;
+  --color-info-surface: #dbeafe;
+  --color-info-text: #1e40af;
+  --color-info-border: #bfdbfe;
+  --color-warning-surface: #fef3c7;
+  --color-warning-text: #92400e;
+  --color-warning-border: #fcd34d;
   --color-bit-n-bg: #2563eb;
   --color-bit-n-text: #ffffff;
   --color-bit-n-border: #1d4ed8;
@@ -116,6 +122,12 @@
     --color-danger-surface: #7f1d1d;
     --color-danger-text: #fecaca;
     --color-danger-border: #f87171;
+    --color-info-surface: #172554;
+    --color-info-text: #bfdbfe;
+    --color-info-border: #1d4ed8;
+    --color-warning-surface: #451a03;
+    --color-warning-text: #fde68a;
+    --color-warning-border: #b45309;
     --color-bit-n-bg: #60a5fa;
     --color-bit-n-text: #0f172a;
     --color-bit-n-border: #93c5fd;
@@ -164,6 +176,12 @@
   --color-danger-surface: #fee2e2;
   --color-danger-text: #991b1b;
   --color-danger-border: #fca5a5;
+  --color-info-surface: #dbeafe;
+  --color-info-text: #1e40af;
+  --color-info-border: #bfdbfe;
+  --color-warning-surface: #fef3c7;
+  --color-warning-text: #92400e;
+  --color-warning-border: #fcd34d;
   --color-bit-n-bg: #2563eb;
   --color-bit-n-text: #ffffff;
   --color-bit-n-border: #1d4ed8;
@@ -210,6 +228,12 @@
   --color-danger-surface: #7f1d1d;
   --color-danger-text: #fecaca;
   --color-danger-border: #f87171;
+  --color-info-surface: #172554;
+  --color-info-text: #bfdbfe;
+  --color-info-border: #1d4ed8;
+  --color-warning-surface: #451a03;
+  --color-warning-text: #fde68a;
+  --color-warning-border: #b45309;
   --color-bit-n-bg: #60a5fa;
   --color-bit-n-text: #0f172a;
   --color-bit-n-border: #93c5fd;
@@ -504,4 +528,107 @@ select:disabled,
     grid-template-columns: repeat(4, auto);
     gap: 6px;
   }
+}
+
+/* =========================================================
+   Result value presentation
+   ========================================================= */
+
+.result-value-tile {
+  min-width: 0;
+}
+
+.result-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.result-value-xl {
+  font-size: 2.25rem;
+}
+
+.result-value-lg {
+  font-size: 1.875rem;
+}
+
+.result-value-md {
+  font-size: 1.5rem;
+}
+
+.result-value-sm {
+  font-size: 1.125rem;
+}
+
+@media (max-width: 639px) {
+  .result-value-xl {
+    font-size: 1.875rem;
+  }
+
+  .result-value-lg {
+    font-size: 1.5rem;
+  }
+
+  .result-value-md {
+    font-size: 1.25rem;
+  }
+
+  .result-value-sm {
+    font-size: 1rem;
+  }
+}
+
+.formula-summary {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+/* =========================================================
+   Copy preferences
+   ========================================================= */
+
+.copy-pref-group-label {
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* =========================================================
+   Local scroll containers — always themed, never native white
+   ========================================================= */
+
+.math-scroll,
+.popup-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-control-active) transparent;
+}
+
+.math-scroll::-webkit-scrollbar,
+.popup-list::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.math-scroll::-webkit-scrollbar-track,
+.popup-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.math-scroll::-webkit-scrollbar-thumb,
+.popup-list::-webkit-scrollbar-thumb {
+  background: var(--color-control-active);
+  border-radius: 8px;
+}
+
+.math-scroll::-webkit-scrollbar-thumb:hover,
+.popup-list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-control-hover);
 }

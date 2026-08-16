@@ -17,6 +17,9 @@
 - 已发布的 tag 和 GitHub Release 永不修改、移动或覆盖。
 - `package.json` 版本必须和最新稳定 tag 一致。
 - 发布必须来自完整 CI 全绿的 main SHA。
+- tag 必须建立在包含实现、测试、文档和版本号的最终 main commit 上，并且必须在等待该 main commit CI 成功后创建；不得在 CI 成功前打 tag。
+- Release 和 Pages 是实时发布状态的权威来源；README 不重复维护“最新 Pages 已成功”类状态，避免发布后再产生补文档 PR。
+- 发布后除非发现真实运行缺陷，不得创建补测试/补文档 PR；若发布后发现真实缺陷，按 SemVer 规则准备下一个 PATCH（例如 `v1.1.4`），不得移动已发布 tag。
 - GitHub Release 是当前正式发行渠道，不发布 npm 包（`private: true`，不得执行 `npm publish`）。
 
 ## 发布流程

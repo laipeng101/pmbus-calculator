@@ -18,10 +18,11 @@ export default function InfoPanel({ warnings }: Props) {
           style={{
             background:
               w.level === 'error'
-                ? 'rgba(239,68,68,0.1)'
+                ? 'var(--color-danger-surface)'
                 : w.level === 'warning'
-                  ? 'rgba(245,158,11,0.1)'
-                  : 'rgba(59,130,246,0.1)',
+                  ? 'var(--color-warning-surface)'
+                  : 'var(--color-info-surface)',
+            border: '1px solid var(--color-border)',
             borderLeft: `3px solid ${
               w.level === 'error'
                 ? 'var(--color-danger)'

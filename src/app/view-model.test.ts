@@ -328,3 +328,19 @@ describe('toCalculatorViewModel', () => {
     })
   })
 })
+
+describe('M16 quantization-error sign semantics', () => {
+  test('small negative delta stays ok, not warn/error', () => {
+    const vm = toCalculatorViewModel(
+      make({ raw: 0x0001, l11: { ...BASE.l11, valueInput: 0.999999 } }),
+    )
+    expect(vm.deltaText).toBe('-0.000001 (-0.0001%)')
+    expect(vm.deltaKind).toBe('ok')
+  })
+
+  test('negative warn-size delta maps to warn, not error', () => {
+    const vm = toCalculatorViewModel(make({ raw: 0x0001, l11: { ...BASE.l11, valueInput: 0.98 } }))
+    expect(vm.deltaText).toBe('-0.020000 (-2.0408%)')
+    expect(vm.deltaKind).toBe('warn')
+  })
+})

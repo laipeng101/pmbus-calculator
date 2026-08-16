@@ -23,21 +23,21 @@ function getBitRegion(index: number, mode: AppMode): BitRegion {
 function getLegend(mode: AppMode): Array<{ color: string; border?: string; label: string }> {
   if (mode === 'L11') {
     return [
-      { color: '#3b82f6', label: 'N [15:11]' },
-      { color: '#10b981', label: 'Y [10:0]' },
+      { color: 'var(--color-bit-n)', label: 'N [15:11]' },
+      { color: 'var(--color-bit-y)', label: 'Y [10:0]' },
     ]
   }
   if (mode === 'HALF') {
     return [
-      { color: '#f59e0b', label: 'Sign [15]' },
-      { color: '#3b82f6', label: 'Exponent [14:10]' },
-      { color: '#10b981', label: 'Mantissa [9:0]' },
+      { color: 'var(--color-bit-e)', label: 'Sign [15]' },
+      { color: 'var(--color-bit-n)', label: 'Exponent [14:10]' },
+      { color: 'var(--color-bit-y)', label: 'Mantissa [9:0]' },
     ]
   }
   if (mode === 'DIRECT') {
-    return [{ color: '#10b981', label: 'Y [15:0]' }]
+    return [{ color: 'var(--color-bit-y)', label: 'Y [15:0]' }]
   }
-  return [{ color: '#10b981', label: 'V [15:0]' }]
+  return [{ color: 'var(--color-bit-y)', label: 'V [15:0]' }]
 }
 
 export default function BitGrid({ mode, groups, dispatch }: Props) {
@@ -94,7 +94,7 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
                       title={`Bit ${bit.index}`}
                     >
                       <div
-                        className="flex h-8 w-7 items-center justify-center rounded text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                        className="flex h-8 w-7 items-center justify-center rounded text-sm font-bold transition-colors"
                         style={{
                           background: bgColor,
                           color: textColor,

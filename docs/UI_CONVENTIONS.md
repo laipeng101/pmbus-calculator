@@ -26,7 +26,9 @@
 
 - 公式展示层集中在 `src/app/formula-presentation.ts`，输出：
   - `plainText`：纯文本公式，继续用于复制输出和 C 宏注释，保持兼容；
-  - `latex`：KaTeX 源码，只用于屏幕排版。
+  - `latex`：KaTeX 源码，只用于屏幕排版；
+  - `genericLatex`：工作区通用关系式；
+  - `detailLines`：结果面板的语义化行数组（`summary` / `expansion`）。HALF 在 headline 已显示最终物理值时，展开式不重复最终长小数。
 - L11 / L16 / DIRECT / HALF 四种模式都从该层取得纯文本与 LaTeX；JSX 不自行拼装动态计算公式。
 - 公式只来自内部受控模板，不接受用户输入任意 TeX。
 - 必须正确处理负指数、负系数、括号、`m = 0` 和 HALF 特殊值。
@@ -43,6 +45,8 @@
 - 生产 CSP 不增加外部域；字体、CSS、JS 必须来自 Pages 同源。
 - KaTeX 输出同时包含 HTML 与 MathML；E2E 必须确认 DOM 中存在 `math` 元素且无 `.katex-error`。
 - 移动端长公式只允许公式容器局部横向滚动（`.math-scroll`），不得造成 body 横向溢出。
+- 结果主数值使用等宽 + `font-variant-numeric: tabular-nums`；按内容长度使用可预测字号档位，不省略、不换行、不 `transform: scale()`。
+- `.math-scroll` 与命令下拉列表的滚动条必须为 Firefox/WebKit/Blink 定义一致的细滚动条颜色，不得出现原生白色滚动条。
 
 ## 4. 交互状态矩阵
 
