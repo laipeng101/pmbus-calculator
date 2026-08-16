@@ -103,7 +103,7 @@ describe('cleanGenerated', () => {
     expect(() => resolveCleanTargets(root, [os.homedir()])).toThrow(/relative path/)
     expect(() => resolveCleanTargets(root, ['.'])).toThrow(/repository root itself/)
     expect(() => resolveCleanTargets(root, ['dist/..'])).toThrow(/repository root itself/)
-    expect(() => resolveCleanTargets(root, ['../..'])).toThrow(/escapes repository root/)
+    expect(() => resolveCleanTargets(root, ['dist/../..'])).toThrow(/escapes repository root/)
 
     await expect(cleanGenerated({ repoRoot: root, targets: ['dist', '/'] })).rejects.toThrow(
       /relative path/,
