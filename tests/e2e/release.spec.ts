@@ -43,6 +43,10 @@ test.describe('production build smoke', () => {
     await expect(page.locator('.katex-error')).toHaveCount(0)
     await expect(page.locator('.katex math').first()).toBeAttached()
 
+    await page.evaluate(async () => {
+      await document.fonts.ready
+    })
+
     const katexFontFamily = await page
       .locator('.katex')
       .first()
