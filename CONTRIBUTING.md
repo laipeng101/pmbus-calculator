@@ -71,6 +71,11 @@ npm run check:repo-hygiene
 git status --short
 ```
 
+第三方规范 PDF 不进入当前 Git tree：provenance、官方链接和哈希维护在
+`document/specifications.json`，PDF 按需下载到 ignored `.cache/specifications/`；
+CI 只执行 `npm run specs:check`，不依赖也不发起规范 PDF 下载。DSH 会话、
+缓存和 PDF 均不得提交；历史 tag/commit 不重写。
+
 详细安全边界见 [`docs/REPOSITORY_HYGIENE.md`](docs/REPOSITORY_HYGIENE.md)。
 
 whitespace 检查口径：

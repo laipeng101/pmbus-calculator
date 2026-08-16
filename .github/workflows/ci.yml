@@ -27,6 +27,9 @@ jobs:
       - name: Repository hygiene gate
         run: npm run check:repo-hygiene
 
+      - name: Specification manifest check
+        run: npm run specs:check
+
       - name: Format check
         run: npm run format:check
 

@@ -79,4 +79,4 @@
 - DIRECT 系数必须以具体器件数据手册为准；没有真实来源的 `device-datasheet` 预设禁止内置。
 - `STATUS_WORD` 是状态位摘要（`encodingRule: status`），`READ_EIN` 是 block read（`encodingRule: block`），均不分配数值转换模式。
 - `READ_EIN` 存在规范内部冲突：Part II §18.13 描述 6 个数据字节（accumulator 2 + rollover 1 + sample count 3），Appendix I Table 31 列为 5。实现使用 `dataBytesConflict` 显式记录两个来源，不在 UI 中提供单一权威数字；计算器不是 READ_EIN packet-length authority。
-- 当前实现基线为仓库内 PMBus Rev 1.3；官方 Rev 1.3.1 仍保留上述冲突；官方当前版本为 1.5，但本仓库不评估或声明 1.5 兼容性，未来规范升级列为独立 backlog。
+- 当前实现基线为 PMBus Rev 1.3（官方来源与校验信息见 `document/specifications.json`；规范 PDF 不再随源码树分发）。官方 Rev 1.3.1 仍保留上述冲突；官方当前版本为 1.5，但本仓库不评估或声明 1.5 兼容性，未来规范升级列为独立 backlog。

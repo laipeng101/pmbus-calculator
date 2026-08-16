@@ -60,88 +60,73 @@ function gitTreeTotal(root: string) {
 }
 
 describe('checkRepoHygiene', () => {
-  it('accepts normal source, Markdown, snapshot, document PDF, and legacy HTML', async () => {
+  it('accepts normal source, Markdown, snapshot, and legacy HTML; rejects all tracked PDFs', async () => {
     const root = await makeRepo({
       'src/index.ts': 'export const answer = 42\n',
       'docs/README.md': '# docs\n',
       'tests/e2e/visual.spec.ts-snapshots/desktop-l11.png': 'png-bytes',
-      'document/spec.pdf': '%PDF-1.4 test',
       'pmbus-calculator.html': '<html>legacy</html>',
+      'document/spec.pdf': '%PDF-1.4 test',
     })
 
     const result = checkRepoHygiene({ repoRoot: root, ...silent() })
 
-    expect(result.rejected).toEqual([])
-    expect(result.files).toHaveLength(5)
     expect(result.policyAllowlisted.snapshots).toEqual([
       'tests/e2e/visual.spec.ts-snapshots/desktop-l11.png',
     ])
-    expect(result.policyAllowlisted.documentPdfs).toEqual(['document/spec.pdf'])
     expect(result.policyAllowlisted.legacyFallbacks).toEqual(['pmbus-calculator.html'])
-    expect(result.policyAllowlistedCount).toBe(3)
+    expect(result.policyAllowlistedCount).toBe(2)
+    expect(result.rejected).toEqual([
+      expect.objectContaining({ file: 'document/spec.pdf', ruleId: 'tracked-pdf' }),
+    ])
   })
 
-  it('rejects generated directories, Playwright output/report variants, OS files, and transient exports', async () => {
-    const root = await makeRepo({
-      'dist/app.js': 'dist',
-      'build/app.js': 'build',
-      'out/app.js': 'out',
-      'coverage/lcov.info': 'SF:src/app.ts',
-      'node_modules/pkg/index.js': 'node_modules',
-      'playwright-report/index.html': 'report',
-      'test-results/results.xml': 'results',
-      'tests/e2e/output/actual.png': 'output',
-      'tests/e2e/output-visual/actual.png': 'output-visual',
-      'tests/e2e/report/index.html': 'report-e2e',
-      'tests/e2e/report-visual/index.html': 'report-visual',
-      '.DS_Store': 'ds',
-      'subdir/.DS_Store': 'ds',
-      'Thumbs.db': 'thumbs',
-      'debug.log': 'log',
-      'coverage.lcov': 'lcov',
-      'release.zip': 'zip',
-      'archive.tgz': 'tgz',
-      'archive.tar': 'tar',
-      'archive.tar.gz': 'tar.gz',
-      'app.js.map': 'map',
-      'session.jsonl': 'jsonl',
-      'test-actual.png': 'actual',
-      'test-diff.png': 'diff',
-      'test-failed.png': 'failed',
-      'docs/archive/release-evidence/v1.1.1/evidence.png': 'evidence',
-      'docs/spec.pdf': 'pdf-outside',
-    })
+  it('rejects each prohibited fixture path with its expected ruleId', async () => {
+    const fixtures: Array<{ file: string; ruleId: string }> = [
+      { file: 'dist/app.js', ruleId: 'generated-dist' },
+      { file: 'build/app.js', ruleId: 'generated-build' },
+      { file: 'out/app.js', ruleId: 'generated-out' },
+      { file: 'coverage/lcov.info', ruleId: 'generated-coverage' },
+      { file: 'node_modules/pkg/index.js', ruleId: 'generated-node_modules' },
+      { file: 'playwright-report/index.html', ruleId: 'generated-playwright-report' },
+      { file: 'test-results/results.xml', ruleId: 'generated-test-results' },
+      { file: 'tests/e2e/output/actual.png', ruleId: 'e2e-output' },
+      { file: 'tests/e2e/output-visual/actual.png', ruleId: 'e2e-output' },
+      { file: 'tests/e2e/report/index.html', ruleId: 'e2e-report' },
+      { file: 'tests/e2e/report-visual/index.html', ruleId: 'e2e-report' },
+      { file: '.DS_Store', ruleId: 'os-ds-store' },
+      { file: 'subdir/.DS_Store', ruleId: 'os-ds-store' },
+      { file: 'Thumbs.db', ruleId: 'os-thumbs-db' },
+      { file: 'debug.log', ruleId: 'log-file' },
+      { file: 'coverage.lcov', ruleId: 'lcov-file' },
+      { file: 'release.zip', ruleId: 'zip-archive' },
+      { file: 'archive.tgz', ruleId: 'tgz-archive' },
+      { file: 'archive.tar', ruleId: 'tar-archive' },
+      { file: 'archive.tar.gz', ruleId: 'tar-gz-archive' },
+      { file: 'app.js.map', ruleId: 'source-map' },
+      { file: 'session.jsonl', ruleId: 'dsh-jsonl' },
+      { file: 'test-actual.png', ruleId: 'screenshot-actual' },
+      { file: 'test-diff.png', ruleId: 'screenshot-diff' },
+      { file: 'test-failed.png', ruleId: 'screenshot-failed' },
+      { file: 'docs/archive/release-evidence/v1.1.1/evidence.png', ruleId: 'release-evidence-png' },
+      { file: 'docs/spec.pdf', ruleId: 'tracked-pdf' },
+      { file: 'document/spec.pdf', ruleId: 'tracked-pdf' },
+    ]
+
+    const root = await makeRepo(
+      Object.fromEntries(fixtures.map((fixture) => [fixture.file, 'fixture-content'])),
+    )
 
     const result = checkRepoHygiene({ repoRoot: root, ...silent() })
-    const ruleIds = new Set(result.rejected.map((item) => item.ruleId))
+    const rejectedByFile = new Map(result.rejected.map((item) => [item.file, item.ruleId]))
 
-    expect(ruleIds).toContain('generated-dist')
-    expect(ruleIds).toContain('generated-build')
-    expect(ruleIds).toContain('generated-out')
-    expect(ruleIds).toContain('generated-coverage')
-    expect(ruleIds).toContain('generated-node_modules')
-    expect(ruleIds).toContain('generated-playwright-report')
-    expect(ruleIds).toContain('generated-test-results')
-    expect(ruleIds).toContain('e2e-output')
-    expect(ruleIds).toContain('e2e-report')
-    expect(ruleIds).toContain('os-ds-store')
-    expect(ruleIds).toContain('os-thumbs-db')
-    expect(ruleIds).toContain('log-file')
-    expect(ruleIds).toContain('lcov-file')
-    expect(ruleIds).toContain('zip-archive')
-    expect(ruleIds).toContain('tgz-archive')
-    expect(ruleIds).toContain('tar-archive')
-    expect(ruleIds).toContain('tar-gz-archive')
-    expect(ruleIds).toContain('source-map')
-    expect(ruleIds).toContain('dsh-jsonl')
-    expect(ruleIds).toContain('screenshot-actual')
-    expect(ruleIds).toContain('screenshot-diff')
-    expect(ruleIds).toContain('screenshot-failed')
-    expect(ruleIds).toContain('release-evidence-png')
-    expect(ruleIds).toContain('pdf-outside-document')
+    for (const fixture of fixtures) {
+      expect(rejectedByFile.get(fixture.file)).toBe(fixture.ruleId)
+    }
+    expect(result.rejected).toHaveLength(fixtures.length)
   })
 
-  it('rejects ordinary tracked files over 1 MiB and allows document/*.pdf specification PDFs', async () => {
+  it('rejects all tracked files over 1 MiB, including document/*.pdf', async () => {
     const root = await makeRepo({
       'big.bin': Buffer.alloc(MiB + 1, 0x61),
       'document/large-spec.pdf': Buffer.alloc(MiB + 2, 0x62),
@@ -149,9 +134,16 @@ describe('checkRepoHygiene', () => {
 
     const result = checkRepoHygiene({ repoRoot: root, ...silent() })
 
-    expect(result.rejected.map((item) => item.file)).toEqual(['big.bin'])
-    expect(result.rejected[0]?.ruleId).toBe('large-file')
-    expect(result.policyAllowlisted.documentPdfs).toEqual(['document/large-spec.pdf'])
+    expect(result.rejected).toContainEqual(
+      expect.objectContaining({ file: 'big.bin', ruleId: 'large-file' }),
+    )
+    expect(result.rejected).toContainEqual(
+      expect.objectContaining({ file: 'document/large-spec.pdf', ruleId: 'tracked-pdf' }),
+    )
+    expect(result.rejected).toContainEqual(
+      expect.objectContaining({ file: 'document/large-spec.pdf', ruleId: 'large-file' }),
+    )
+    expect(result.policyAllowlisted.documentPdfs).toBeUndefined()
   })
 
   it('parses paths with spaces and Unicode via NUL-delimited git output', async () => {

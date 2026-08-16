@@ -84,12 +84,14 @@ describe('cleanGenerated', () => {
     expect(logs.some((message) => message.includes('skip (not present)'))).toBe(true)
   })
 
-  it('never removes snapshots, document PDFs, archive markdown, node_modules, or source', async () => {
+  it('never removes snapshots, specification provenance, archive markdown, node_modules, or source', async () => {
     const root = await makeTempRoot()
 
     const protectedPaths = [
       'tests/e2e/visual.spec.ts-snapshots/desktop-light-l11.png',
-      'document/spec.pdf',
+      'document/specifications.json',
+      'document/README.md',
+      'THIRD_PARTY_NOTICES.md',
       'docs/archive/release-evidence/v1.1.1/old.png',
       'node_modules/pkg/index.js',
       'src/index.ts',
@@ -108,6 +110,17 @@ describe('cleanGenerated', () => {
       await expect(fs.readFile(path.join(root, relative), 'utf8')).resolves.toBe('protected')
     }
     await expect(fs.stat(path.join(root, 'dist'))).rejects.toThrow()
+  })
+
+  it('removes the rebuildable specification download cache', async () => {
+    const root = await makeTempRoot()
+    await fs.mkdir(path.join(root, '.cache/specifications'), { recursive: true })
+    await fs.writeFile(path.join(root, '.cache/specifications', 'spec.pdf'), 'pdf')
+
+    const cleaned = await cleanGenerated({ repoRoot: root })
+
+    expect(cleaned).toContain('.cache/specifications')
+    await expect(fs.stat(path.join(root, '.cache/specifications'))).rejects.toThrow()
   })
 
   it('rejects illegal clean targets before deleting anything', async () => {
@@ -186,6 +199,6 @@ describe('cleanGenerated', () => {
   })
 
   it('exposes the current generated-target allowlist size', () => {
-    expect(GENERATED_TARGETS.length).toBe(14)
+    expect(GENERATED_TARGETS.length).toBe(15)
   })
 })

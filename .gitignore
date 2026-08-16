@@ -141,9 +141,9 @@ everything-claude-code/
 # Project-specific
 # =========================================================
 
-# Documentation PDFs (except document/ directory)
+# Third-party specification PDFs are fetched on demand into the ignored
+# .cache/specifications/ directory; they must not be tracked in Git.
 *.pdf
-!document/*.pdf
 
 # Diff files used for AI context
 *.diff

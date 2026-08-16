@@ -19,6 +19,7 @@ export const GENERATED_TARGETS = [
   'tests/e2e/report-deployment',
   'tests/e2e/output-visual',
   'tests/e2e/report-visual',
+  '.cache/specifications',
 ]
 
 const HELP = `clean-generated.mjs — remove generated build/test/report directories

@@ -163,4 +163,8 @@ Firefox/Safari/其他浏览器为 best effort，尚无自动化验证依据。
 
 ## 开源许可
 
-本项目基于 [MIT 许可证](LICENSE) 开源。
+本项目源代码基于 [MIT 许可证](LICENSE) 开源。
+
+第三方 PMBus/SMBus 规范文档**不**受本项目 MIT 许可证约束。规范来源与分发边界见
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) 与
+[`document/README.md`](document/README.md)。

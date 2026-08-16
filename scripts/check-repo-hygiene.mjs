@@ -19,10 +19,6 @@ function matchesDirVariant(p, parent, base) {
   return new RegExp(`^${parent}/${base}-[^/]+/`).test(p)
 }
 
-export function isDocumentSpecPdf(p) {
-  return /^document\/[^/]+\.pdf$/.test(p)
-}
-
 export function isSnapshotAllowlisted(p) {
   return /^tests\/e2e\/visual\.spec\.ts-snapshots\/[^/]+\.(png|webp)$/.test(p)
 }
@@ -33,14 +29,12 @@ export function isLegacyHtml(p) {
 
 export function classifyPolicyAllowlist(files) {
   const snapshots = []
-  const documentPdfs = []
   const legacyFallbacks = []
   for (const file of files) {
     if (isSnapshotAllowlisted(file)) snapshots.push(file)
-    else if (isDocumentSpecPdf(file)) documentPdfs.push(file)
     else if (isLegacyHtml(file)) legacyFallbacks.push(file)
   }
-  return { snapshots, documentPdfs, legacyFallbacks }
+  return { snapshots, legacyFallbacks }
 }
 
 const REJECT_RULES = [
@@ -183,10 +177,10 @@ const REJECT_RULES = [
     fix: 'Remove from tracking; historical release evidence remains available from the tag/commit history.',
   },
   {
-    id: 'pdf-outside-document',
-    description: 'tracked PDF outside document/*.pdf',
-    match: (p) => /\.pdf$/.test(p) && !isDocumentSpecPdf(p),
-    fix: 'Only document/*.pdf specification PDFs are allowlisted in the current policy.',
+    id: 'tracked-pdf',
+    description: 'tracked PDF file',
+    match: (p) => /\.pdf$/.test(p),
+    fix: 'Do not track PDFs in the current tree. Record provenance in document/specifications.json and fetch PDFs on demand into the ignored .cache/specifications/ directory.',
   },
 ]
 
@@ -259,7 +253,7 @@ export function checkRepoHygiene({ repoRoot, log = console.log, error = console.
     }
 
     const size = sizes.get(file) ?? 0
-    if (size > MiB && !isDocumentSpecPdf(file)) {
+    if (size > MiB) {
       const sizeMiB = (size / MiB).toFixed(2)
       rejected.push({
         file,
@@ -272,9 +266,7 @@ export function checkRepoHygiene({ repoRoot, log = console.log, error = console.
 
   const totalSize = [...sizes.values()].reduce((sum, size) => sum + size, 0)
   const policyAllowlistedCount =
-    policyAllowlisted.snapshots.length +
-    policyAllowlisted.documentPdfs.length +
-    policyAllowlisted.legacyFallbacks.length
+    policyAllowlisted.snapshots.length + policyAllowlisted.legacyFallbacks.length
 
   if (rejected.length > 0) {
     error(`repo-hygiene: rejected ${rejected.length} tracked path(s)`)
@@ -289,7 +281,6 @@ export function checkRepoHygiene({ repoRoot, log = console.log, error = console.
   log(
     `repo-hygiene: policy allowlisted: ${policyAllowlistedCount} ` +
       `(snapshots: ${policyAllowlisted.snapshots.length}, ` +
-      `document PDFs: ${policyAllowlisted.documentPdfs.length}, ` +
       `legacy fallbacks: ${policyAllowlisted.legacyFallbacks.length})`,
   )
   log(
