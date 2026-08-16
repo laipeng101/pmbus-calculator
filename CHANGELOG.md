@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-08-16
+
+### Fixed
+
+- 结果主数值：等宽 + tabular-nums，按长度使用可预测字号档位；长精确值不截断、不换行、不 scale；结果 tile 增加 min-width/overflow 防护。
+- HALF 公式：headline 已显示最终物理值时，展开式不再重复最终长小数；normal 显示 `s / E / F` 字段摘要与展开式；subnormal、zero、Infinity、NaN 保留各自语义。
+- DIRECT LaTeX：负指数渲染为 `10^{-12}`，不再出现 `10^{(-12)}`；`plainText` 与 C 宏注释保持兼容。
+- 量化误差：文案改为“量化误差”；`ok`/`warn`/`error` 分别映射 success/warning/danger，负号只表示方向。
+- 复制工具栏：Hex 主按钮动态显示 `Hex（LE）` / `Hex（BE）`；偏好区拆为“Hex 格式”与“Hex 复制顺序”两个语义分组。
+- 文案统一：`PMBus 命令`、`物理值`、`小端序（LE）`、`大端序（BE）`、`V（16 位无符号，0～65535）`、`Y（16 位有符号，−32768～32767）`、`IEEE 754 binary16（半精度）`。
+- 交互与排版：BitGrid 移除 hover 放大；InfoPanel 与图例改用设计 token；暗色滚动条统一为细滚动条并覆盖 Firefox/WebKit。
+- 视觉回归：新增 L11/L16/DIRECT/HALF 非零应力场景、亮暗主题、移动端与小高度弹层截图。
+
 ## [1.1.2] - 2026-08-16
 
 ### Fixed

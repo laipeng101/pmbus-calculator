@@ -10,6 +10,10 @@ import { MODE_PANEL_ID, modeTabId } from './modeTabs'
 import { LockIcon, UnlockIcon } from '../icons/Icon'
 import MathFormula from '../math/MathFormula'
 
+function formatSignedRange(value: number): string {
+  return String(value).replace('-', '−')
+}
+
 interface Props {
   mode: AppMode
   state: AppState
@@ -77,7 +81,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               ? 'LINEAR16 / VOUT 参数'
               : mode === 'DIRECT'
                 ? 'DIRECT 系数'
-                : 'IEEE 754 Half-Precision'}
+                : 'IEEE 754 binary16（半精度）'}
         </h3>
 
         {mode === 'L11' && (
@@ -235,12 +239,12 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 className="mb-1 block text-xs font-medium"
                 style={{ color: 'var(--color-text-muted)' }}
               >
-                V (16-bit 0~65535)
+                V（16 位无符号，0～65535）
               </label>
               <DecimalInput
                 id="l16-v-input"
                 value={state.raw}
-                ariaLabel="V (16-bit 0~65535)"
+                ariaLabel="V（16 位无符号，0～65535）"
                 onCommit={(text) => dispatch({ type: 'raw/set', raw: text })}
                 className="w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
                 style={{
@@ -283,11 +287,11 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 className="mb-1 block text-xs font-medium"
                 style={{ color: 'var(--color-text-muted)' }}
               >
-                Y (16-bit signed，-32768 ~ 32767)
+                Y（16 位有符号，−32768～32767）
               </label>
               <IntegerInput
                 value={vm.directY ?? 0}
-                ariaLabel="Y (16-bit signed)"
+                ariaLabel="Y（16 位有符号，−32768～32767）"
                 onCommit={(text) => dispatch({ type: 'direct/set-y', y: text })}
                 className="w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
                 style={{
@@ -316,7 +320,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                     className="mb-1 block text-xs"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
-                    {name.toUpperCase()} ({min}..{max})
+                    {name.toUpperCase()}（{formatSignedRange(min)}～{formatSignedRange(max)}）
                   </label>
                   <IntegerInput
                     value={val}
@@ -349,8 +353,8 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         {mode === 'HALF' && (
           <div className="space-y-4">
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-              IEEE 754 binary16 半精度浮点。符号 1 位，指数 5 位，尾数 10 位。 Value 输入支持 +0 /
-              -0 / NaN / +Infinity / -Infinity。
+              IEEE 754 binary16（半精度）：符号 1 位、指数 5 位、尾数 10 位。物理值输入支持
+              +0、-0、NaN、+Infinity、-Infinity。
             </p>
             <ValueInput vm={vm} dispatch={dispatch} />
           </div>

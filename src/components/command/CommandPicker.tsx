@@ -276,7 +276,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
               id={LISTBOX_ID}
               role="listbox"
               aria-label="PMBus 命令列表"
-              className="min-h-0 flex-1 overflow-y-auto py-1"
+              className="popup-list min-h-0 flex-1 overflow-y-auto py-1"
             >
               {options.map((opt) => {
                 const isSelected = opt.key === commandKey

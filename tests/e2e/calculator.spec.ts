@@ -68,7 +68,7 @@ test.describe('计算器真实用户流程', () => {
   test('L16：十进制 V 输入拒绝 partial parse/科学计数法/小数并显示错误', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    const vInput = page.getByLabel('V (16-bit 0~65535)')
+    const vInput = page.getByLabel('V（16 位无符号，0～65535）')
     const hexInput = page.locator('input[placeholder="0x0000"]')
 
     for (const bad of ['12abc', '1e2', '1.5']) {
@@ -106,7 +106,7 @@ test.describe('计算器真实用户流程', () => {
     await page.goto('/')
     await page.getByRole('tab', { name: /DIRECT/ }).click()
     const hexInput = page.locator('input[placeholder="0x0000"]')
-    const yInput = page.getByLabel('Y (16-bit signed)')
+    const yInput = page.getByLabel('Y（16 位有符号，−32768～32767）')
     const valueInput = page.locator('#value-input')
 
     await hexInput.fill('8000')
@@ -126,7 +126,7 @@ test.describe('计算器真实用户流程', () => {
     await page.goto('/')
     await page.getByRole('tab', { name: /DIRECT/ }).click()
     const hexInput = page.locator('input[placeholder="0x0000"]')
-    const yInput = page.getByLabel('Y (16-bit signed)')
+    const yInput = page.getByLabel('Y（16 位有符号，−32768～32767）')
 
     await page.getByRole('button', { name: '位 0: 0' }).click()
 
@@ -270,7 +270,7 @@ test.describe('计算器真实用户流程', () => {
     await hexInput.fill('0001')
     await hexInput.press('Tab')
 
-    const copyHex = page.getByRole('button', { name: 'Hex', exact: true })
+    const copyHex = page.getByRole('button', { name: 'Hex（LE）' })
     await copyHex.scrollIntoViewIfNeeded()
     await copyHex.evaluate((el: HTMLButtonElement) => el.click())
 
@@ -405,7 +405,7 @@ test.describe('计算器真实用户流程', () => {
     const hexInput = page.locator('input[placeholder="0x0000"]')
     await hexInput.fill('1234')
     await hexInput.press('Tab')
-    const copyHex = page.getByRole('button', { name: 'Hex', exact: true })
+    const copyHex = page.getByRole('button', { name: 'Hex（BE）' })
     await copyHex.scrollIntoViewIfNeeded()
     await copyHex.evaluate((el: HTMLButtonElement) => el.click())
 

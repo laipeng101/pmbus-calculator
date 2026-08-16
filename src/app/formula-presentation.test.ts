@@ -172,3 +172,41 @@ describe('formula presentation model', () => {
     }
   })
 })
+
+describe('M16 structured detail lines', () => {
+  it('DIRECT negative exponent renders as 10^{-12} and detail line is present', () => {
+    const s = state({ mode: 'DIRECT', raw: 0x8fc3, direct: { m: 1, b: 0, r: 12, error: null } })
+    const f = getFormulaPresentation(s)
+
+    expect(f.latex).toBe('X = \\frac{1}{1}\\left((-28733) \\times 10^{-12} - 0\\right)')
+    expect(f.latex).not.toContain('10^{(-12)}')
+    expect(f.detailLines).toHaveLength(1)
+    expect(f.detailLines[0]?.kind).toBe('expansion')
+    expect(f.detailLines[0]?.plainText).toBe(f.plainText)
+  })
+
+  it('HALF normal detail lines split summary and expansion without the final value', () => {
+    const f = getFormulaPresentation(state({ mode: 'HALF', raw: 0x8fc3 }))
+
+    expect(f.detailLines[0]).toEqual({
+      kind: 'summary',
+      plainText: 's = 1, E = 3, F = 963',
+      latex: 's = 1,\\ E = 3,\\ F = 963',
+    })
+    expect(f.detailLines[1]?.kind).toBe('expansion')
+    expect(f.detailLines[1]?.latex).not.toContain('-0.000473737716675')
+    // The copy/C-macro plainText contract is unchanged.
+    expect(f.plainText).toBe('HALF normal (-1)^{1}×2^(3-15)×(1+963/1024)=-0.000473737716675')
+  })
+
+  it('non-HALF modes expose one expansion detail line', () => {
+    const f = getFormulaPresentation(state({ mode: 'L11', raw: 0xf819 }))
+    expect(f.detailLines).toEqual([
+      {
+        kind: 'expansion',
+        plainText: 'Y=25 × 2^-1',
+        latex: 'X = Y \\times 2^N = 25 \\times 2^{-1}',
+      },
+    ])
+  })
+})

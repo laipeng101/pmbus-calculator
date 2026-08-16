@@ -4,6 +4,7 @@ import { PMBusMath } from '../legacy/pmbus-math'
 import { getCommandConfig } from '../legacy/command-metadata'
 import { buildCMacro } from './copy-utils'
 import { getFormulaPresentation } from './formula-presentation'
+import type { FormulaDetailLine } from './formula-presentation'
 
 export interface BitGroupVM {
   nibbleIndex: number
@@ -36,6 +37,7 @@ export interface CalculatorViewModel {
   formulaText: string
   formulaLatex: string
   formulaGenericLatex: string
+  formulaDetailLines: FormulaDetailLine[]
   deltaText?: string
   deltaKind?: 'ok' | 'warn' | 'error'
   warnings: WarningVM[]
@@ -247,6 +249,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     formulaText,
     formulaLatex: formula.latex,
     formulaGenericLatex: formula.genericLatex,
+    formulaDetailLines: formula.detailLines,
     deltaText,
     deltaKind,
     warnings: buildWarnings(state),

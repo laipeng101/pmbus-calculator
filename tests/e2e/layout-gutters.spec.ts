@@ -71,7 +71,7 @@ test.describe('gutter alignment', () => {
   test('copy toolbar uses balanced 6-column rows', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')
-    const first = page.getByRole('button', { name: 'Hex', exact: true })
+    const first = page.getByRole('button', { name: 'Hex（LE）' })
     const le = page.getByRole('button', { name: 'LE 字节' })
     const be = page.getByRole('button', { name: 'BE 字节' })
     const value = page.getByRole('button', { name: '物理值' })

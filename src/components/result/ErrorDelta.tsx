@@ -1,4 +1,5 @@
 import type { CalculatorViewModel } from '../../app/view-model'
+import { getQuantizationTextColorToken } from '../../app/result-presentation'
 
 interface Props {
   vm: CalculatorViewModel
@@ -7,19 +8,18 @@ interface Props {
 /**
  * L11 quantization-error readout.
  *
- * The color is intentionally mapped to CSS variables so it follows the active
- * theme; `deltaKind === 'ok'` means the encoded value is within tolerance.
+ * The sign of the error only indicates direction. Severity is decided by the
+ * threshold in the view-model, never by the sign.
  */
 export default function ErrorDelta({ vm }: Props) {
-  if (!vm.deltaText) return null
+  if (vm.deltaText == null || vm.deltaText === '') return null
 
-  const color =
-    vm.deltaKind === 'warn' || vm.deltaKind === 'error'
-      ? 'var(--color-danger)'
-      : 'var(--color-success)'
+  const color = getQuantizationTextColorToken(vm.deltaKind ?? 'ok')
 
   return (
     <div
+      data-testid="quantization-error"
+      data-kind={vm.deltaKind ?? 'ok'}
       className="mt-3 rounded-lg px-4 py-2 text-sm"
       style={{
         background: 'var(--color-surface-muted)',
@@ -28,7 +28,7 @@ export default function ErrorDelta({ vm }: Props) {
       }}
       aria-live="polite"
     >
-      误差:{' '}
+      量化误差:{' '}
       <span className="font-semibold" style={{ color, fontFamily: 'var(--font-mono)' }}>
         {vm.deltaText}
       </span>

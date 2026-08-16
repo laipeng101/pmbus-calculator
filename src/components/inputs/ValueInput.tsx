@@ -38,7 +38,7 @@ export default function ValueInput({ vm, dispatch }: Props) {
         style={{ color: 'var(--color-text-muted)' }}
         htmlFor="value-input"
       >
-        物理值 (Value)
+        物理值
       </label>
       <input
         id="value-input"
@@ -69,7 +69,7 @@ export default function ValueInput({ vm, dispatch }: Props) {
           fontFamily: 'var(--font-mono)',
         }}
         placeholder="0"
-        aria-label="物理值 (Value)"
+        aria-label="物理值"
       />
     </div>
   )

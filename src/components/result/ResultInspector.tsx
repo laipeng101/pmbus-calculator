@@ -1,5 +1,6 @@
 import type { CalculatorViewModel } from '../../app/view-model'
 import type { AppState } from '../../app/state'
+import { getResultValueSizeClass } from '../../app/result-presentation'
 import CopyToolbar from './CopyToolbar'
 import ErrorDelta from './ErrorDelta'
 import MathFormula from '../math/MathFormula'
@@ -19,10 +20,13 @@ export default function ResultInspector({
   onToggleSpace,
   onCopyEndianChange,
 }: Props) {
+  const valueSizeClass = getResultValueSizeClass(vm.valueText)
+
   return (
     <section
       aria-label="结果面板"
-      className="rounded-xl p-4 md:p-5"
+      data-testid="result-panel"
+      className="min-w-0 rounded-xl p-4 md:p-5"
       style={{
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
@@ -36,38 +40,67 @@ export default function ResultInspector({
         计算结果
       </h2>
 
-      {/* Primary Value — large, emphasized */}
+      {/* Primary Value — adaptive mono headline, never truncated or scaled. */}
       <div
-        className="mb-4 rounded-xl px-4 py-5 text-center md:px-6 md:py-6"
+        data-testid="result-tile"
+        className="result-value-tile mb-4 min-w-0 rounded-xl px-4 py-5 text-center md:px-6 md:py-6"
         style={{
-          background:
-            'linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(16,185,129,0.08) 100%)',
-          border: '1px solid rgba(59,130,246,0.15)',
+          background: 'var(--color-surface-muted)',
+          border: '1px solid var(--color-border)',
+          overflow: 'hidden',
         }}
       >
         <div className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
           物理值
         </div>
         <div
-          className="mt-1 text-3xl font-bold tracking-tight md:text-4xl"
+          data-testid="result-value"
+          className={`result-value result-value-${valueSizeClass}`}
           style={{
             color: 'var(--color-accent)',
-            fontFamily: 'var(--font-mono)',
           }}
           aria-live="polite"
         >
           {vm.valueText}
         </div>
-        <div
-          className="math-scroll mt-1 text-sm font-medium"
-          style={{ color: 'var(--color-text-secondary)' }}
-        >
-          <MathFormula latex={vm.formulaLatex} plainText={vm.formulaText} displayMode />
+
+        <div className="result-formula mt-1">
+          {vm.formulaDetailLines.length > 0 ? (
+            <div className="space-y-1.5">
+              {vm.formulaDetailLines.map((line, index) =>
+                line.kind === 'summary' ? (
+                  <div
+                    key={`${line.kind}-${index}`}
+                    data-testid="formula-summary"
+                    className="formula-summary"
+                  >
+                    {line.plainText}
+                  </div>
+                ) : (
+                  <div
+                    key={`${line.kind}-${index}`}
+                    className="math-scroll flex justify-center text-sm font-medium"
+                    style={{ color: 'var(--color-text-secondary)' }}
+                    data-testid="formula-line"
+                  >
+                    <MathFormula latex={line.latex} plainText={line.plainText} displayMode />
+                  </div>
+                ),
+              )}
+            </div>
+          ) : (
+            <div
+              className="math-scroll flex justify-center text-sm font-medium"
+              style={{ color: 'var(--color-text-secondary)' }}
+            >
+              <MathFormula latex={vm.formulaLatex} plainText={vm.formulaText} displayMode />
+            </div>
+          )}
         </div>
       </div>
 
       {/* Raw Hex */}
-      <div className="mb-3">
+      <div className="mb-3 min-w-0">
         <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
           原始 Hex
         </label>
@@ -85,9 +118,9 @@ export default function ResultInspector({
 
       {/* Byte Order */}
       <div className="mb-3 grid grid-cols-2 gap-3">
-        <div>
+        <div className="min-w-0">
           <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            小端序 (LE)
+            小端序（LE）
           </label>
           <div
             className="rounded-lg px-3 py-2 text-sm font-medium"
@@ -100,9 +133,9 @@ export default function ResultInspector({
             {vm.rawBytesLE}
           </div>
         </div>
-        <div>
+        <div className="min-w-0">
           <label className="mb-1 block text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            大端序 (BE)
+            大端序（BE）
           </label>
           <div
             className="rounded-lg px-3 py-2 text-sm font-medium"
