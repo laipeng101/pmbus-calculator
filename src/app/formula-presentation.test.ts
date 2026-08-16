@@ -93,6 +93,57 @@ describe('formula presentation model', () => {
     expect(f.latex).toBe('X = \\text{NaN} \\quad (E=31,\\ F=512)')
   })
 
+  it('HALF zero decomposes sign and value for +0 and -0', () => {
+    const plusZero = getFormulaPresentation(state({ mode: 'HALF', raw: 0x0000 }))
+    expect(plusZero.plainText).toBe('HALF zero (-1)^{0}×0=+0')
+    expect(plusZero.latex).toBe('X = (-1)^{0} \\times 0 = +0')
+
+    const minusZero = getFormulaPresentation(state({ mode: 'HALF', raw: 0x8000 }))
+    expect(minusZero.plainText).toBe('HALF zero (-1)^{1}×0=-0')
+    expect(minusZero.latex).toBe('X = (-1)^{1} \\times 0 = -0')
+  })
+
+  it('HALF subnormal and normal decompose exponent and fraction', () => {
+    const subnormal = getFormulaPresentation(state({ mode: 'HALF', raw: 0x0001 }))
+    expect(subnormal.plainText).toBe('HALF subnormal (-1)^{0}×2^-14×1/1024=5.96046447754e-8')
+    expect(subnormal.latex).toBe(
+      'X = (-1)^{0} \\times 2^{-14} \\times \\frac{1}{2^{10}} = 5.96046447754e-8',
+    )
+
+    const normal = getFormulaPresentation(state({ mode: 'HALF', raw: 0x3c00 }))
+    expect(normal.plainText).toBe('HALF normal (-1)^{0}×2^(15-15)×(1+0/1024)=1')
+    expect(normal.latex).toBe(
+      'X = (-1)^{0} \\times 2^{15-15} \\times \\left(1 + \\frac{0}{2^{10}}\\right) = 1',
+    )
+  })
+
+  it('HALF infinities and NaN expose E/F fields', () => {
+    const plusInf = getFormulaPresentation(state({ mode: 'HALF', raw: 0x7c00 }))
+    expect(plusInf.plainText).toBe('HALF +Infinity (E=31,F=0)')
+    expect(plusInf.latex).toBe('X = (-1)^{0} \\times \\infty = +\\infty \\quad (E=31,\\ F=0)')
+
+    const minusInf = getFormulaPresentation(state({ mode: 'HALF', raw: 0xfc00 }))
+    expect(minusInf.plainText).toBe('HALF -Infinity (E=31,F=0)')
+    expect(minusInf.latex).toBe('X = (-1)^{1} \\times \\infty = -\\infty \\quad (E=31,\\ F=0)')
+  })
+
+  it('genericLatex exposes symbolic relations for four modes', () => {
+    expect(getFormulaPresentation(state({ mode: 'L11', raw: 0 })).genericLatex).toBe(
+      'X = Y \\times 2^N',
+    )
+    expect(getFormulaPresentation(state({ mode: 'L16', raw: 0 })).genericLatex).toBe(
+      'X = V \\times 2^N',
+    )
+    expect(
+      getFormulaPresentation(
+        state({ mode: 'DIRECT', raw: 0, direct: { m: 1, b: 0, r: 0, error: null } }),
+      ).genericLatex,
+    ).toBe('X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)')
+    expect(getFormulaPresentation(state({ mode: 'HALF', raw: 0 })).genericLatex).toBe(
+      'X = \\text{IEEE 754 binary16 分段解码}',
+    )
+  })
+
   it('existing formulaText and C macro output remain compatible', () => {
     const s = state({ mode: 'L11', raw: 0x000c })
     const vm = toCalculatorViewModel(s)
