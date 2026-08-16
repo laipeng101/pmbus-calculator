@@ -5,20 +5,20 @@
 
 ## 1. 数据格式
 
-| 格式     | 公式                            | 取值范围                                                |
-| -------- | ------------------------------- | ------------------------------------------------------- |
-| LINEAR11 | `X = Y × 2^N`                   | N 5-bit signed `-16..15`，Y 11-bit signed `-1024..1023` |
-| LINEAR16 | `X = V × 2^N`                   | V 16-bit unsigned `0..65535`，N 来自 VOUT_MODE          |
-| DIRECT   | `X = (1/m) × (Y × 10^(−R) − b)` | Y 16-bit signed `-32768..32767`，m/b/R 器件相关         |
-| HALF     | IEEE 754 binary16               | 1-bit sign，5-bit exponent，10-bit mantissa             |
+| 格式     | 公式                                                     | 取值范围                                                |
+| -------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| LINEAR11 | $X = Y \times 2^N$                                       | N 5-bit signed `-16..15`，Y 11-bit signed `-1024..1023` |
+| LINEAR16 | $X = V \times 2^N$                                       | V 16-bit unsigned `0..65535`，N 来自 VOUT_MODE          |
+| DIRECT   | $X = \frac{1}{m}\left(Y \times 10^{-R} - b\right)$       | Y 16-bit signed `-32768..32767`，m/b/R 器件相关         |
+| HALF     | $X = \operatorname{decodeHalf}\left(\mathrm{raw}\right)$ | 1-bit sign，5-bit exponent，10-bit mantissa             |
 
 ## 2. 饱和与错误处理
 
 ### 2.1 LINEAR11
 
 - `findBestLinear11(val)` 必须在 `val` 超出可表示范围时饱和：
-  - `val >= 1023 × 2^15` → `N=15, Y=1023`；
-  - `val <= -1024 × 2^15` → `N=15, Y=-1024`。
+  - $val \ge 1023 \times 2^{15}$ → `N=15, Y=1023`；
+  - $val \le -1024 \times 2^{15}$ → `N=15, Y=-1024`。
 - 不得返回 `N=0,Y=0` 使 `0x0000` 被错误编码。
 - 饱和时 `delta` 保留原始差值，UI 必须显示误差警告。
 
@@ -44,7 +44,7 @@
 
 - `encodeHalf` 必须按 IEEE 754 round-to-nearest-even：
   - mantissa 0.5 的 tie 向偶数舍入；
-  - subnormal 与 normal 边界按 subnormal ulp `2^-24` 舍入；
+  - subnormal 与 normal 边界按 subnormal ulp $2^{-24}$ 舍入；
   - `|value| >= 65520` 溢出到 `±Infinity`；
   - `NaN` → `0x7E00`，`±0` 保留符号。
 

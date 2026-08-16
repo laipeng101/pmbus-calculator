@@ -146,6 +146,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
         PMBus 命令
       </label>
       <button
+        type="button"
         id="command-picker"
         ref={triggerRef}
         onClick={toggleOpen}
@@ -179,6 +180,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
             {selected.preset.units ? ` · ${selected.preset.units}` : ''}）— 不会自动应用
           </span>
           <button
+            type="button"
             onClick={() => onApplyPreset(selected.key)}
             className="rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
             style={{
@@ -194,7 +196,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
 
       {open && (
         <div
-          className="absolute left-4 right-4 bottom-full z-50 mb-1 overflow-hidden rounded-lg"
+          className="popover-enter absolute left-4 right-4 bottom-full z-50 mb-1 overflow-hidden rounded-lg"
           style={{
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
@@ -236,6 +238,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
               return (
                 <li key={opt.key || '__none__'}>
                   <button
+                    type="button"
                     id={optionId(opt.key)}
                     role="option"
                     aria-selected={isSelected}

@@ -27,13 +27,12 @@ export default function CopyToolbar({
     } catch {
       setFeedback('复制失败')
     }
-    setTimeout(() => setFeedback(null), 1500)
   }, [])
 
   const copyHex = copyPrefs.endian === 'be' ? vm.rawBytesBE : vm.rawBytesLE
 
   return (
-    <div className="space-y-2">
+    <div className="copy-toolbar space-y-2">
       <div className="flex flex-wrap gap-2">
         <CopyButton onClick={() => copy(copyHex, 'Hex')} label="📋 Hex" />
         <CopyButton onClick={() => copy(vm.rawBytesLE, 'LE bytes')} label="📋 LE bytes" />
@@ -51,6 +50,7 @@ export default function CopyToolbar({
         }}
       >
         <button
+          type="button"
           onClick={onTogglePrefix}
           aria-pressed={copyPrefs.prefix0x}
           className="rounded px-2 py-1 font-medium"
@@ -63,6 +63,7 @@ export default function CopyToolbar({
           0x 前缀
         </button>
         <button
+          type="button"
           onClick={onToggleSpace}
           aria-pressed={copyPrefs.spaceBetweenBytes}
           className="rounded px-2 py-1 font-medium"
@@ -77,6 +78,7 @@ export default function CopyToolbar({
           字节空格
         </button>
         <button
+          type="button"
           onClick={() => onCopyEndianChange(copyPrefs.endian === 'le' ? 'be' : 'le')}
           aria-pressed={copyPrefs.endian === 'be'}
           className="rounded px-2 py-1 font-medium"
@@ -92,13 +94,14 @@ export default function CopyToolbar({
 
       {feedback && (
         <div
-          className="rounded-md px-3 py-1.5 text-xs font-medium"
+          className="copy-feedback rounded-md px-3 py-1.5 text-xs font-medium"
           style={{
             background: 'var(--color-success)',
             color: '#fff',
           }}
           role="status"
           aria-live="polite"
+          onAnimationEnd={() => setFeedback(null)}
         >
           {feedback}
         </div>
@@ -110,8 +113,9 @@ export default function CopyToolbar({
 function CopyButton({ onClick, label }: { onClick: () => void; label: string }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="rounded-md px-3 py-1.5 text-xs font-medium transition-all hover:opacity-80 active:scale-95"
+      className="rounded-md px-3 py-1.5 text-xs font-medium"
       style={{
         background: 'var(--color-surface-muted)',
         color: 'var(--color-text-primary)',

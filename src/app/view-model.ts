@@ -3,6 +3,7 @@ import type { AppState, AppMode } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { getCommandConfig } from '../legacy/command-metadata'
 import { buildCMacro } from './copy-utils'
+import { getFormulaPresentation } from './formula-presentation'
 
 export interface BitGroupVM {
   nibbleIndex: number
@@ -33,6 +34,7 @@ export interface CalculatorViewModel {
   rawBytesBE: string
   cMacroText: string
   formulaText: string
+  formulaLatex: string
   deltaText?: string
   deltaKind?: 'ok' | 'warn' | 'error'
   warnings: WarningVM[]
@@ -93,25 +95,6 @@ function buildBitGroups(raw: number): BitGroupVM[] {
     })
   }
   return groups
-}
-
-function computeFormula(state: AppState): string {
-  switch (state.mode) {
-    case 'L11': {
-      const decoded = PMBusMath.decodeLinear11(state.raw)
-      return `Y=${decoded.y} × 2^${decoded.n}`
-    }
-    case 'L16':
-      return `V=${state.raw} × 2^${state.l16.n}`
-    case 'DIRECT': {
-      const y = PMBusMath.toSigned(state.raw, 16)
-      return `X=(1/${state.direct.m})×(${y}×10^(-${state.direct.r})-${state.direct.b})`
-    }
-    case 'HALF':
-      return 'IEEE 754 Half-Precision'
-    default:
-      return ''
-  }
 }
 
 function computeValueText(state: AppState): string {
@@ -243,7 +226,8 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   const displayedRaw =
     state.mode === 'L16' && state.byteOrder === 'be' ? PMBusMath.swapBytes(raw) : raw
-  const formulaText = computeFormula(state)
+  const formula = getFormulaPresentation(state)
+  const formulaText = formula.plainText
 
   return {
     mode: state.mode,
@@ -260,6 +244,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     }),
     cMacroText: buildCMacro(state.commandKey, formatRawHex(raw), formulaText),
     formulaText,
+    formulaLatex: formula.latex,
     deltaText,
     deltaKind,
     warnings: buildWarnings(state),

@@ -9,6 +9,7 @@
 - **Always**：`AGENTS.md`、当前 `docs/ROADMAP.md`
 - **Conditional**：
   - 数学/格式/命令元数据任务才读 `DOMAIN_MODEL.md`
+  - UI/公式/交互动效任务才读 `docs/UI_CONVENTIONS.md`
   - Git/PR/CI 流程任务才读 `CONTRIBUTING.md`
   - 发布任务才读 `docs/RELEASING.md`
   - legacy/parity 任务才读 `MIGRATION_MATRIX.md`
@@ -127,5 +128,6 @@ tests/e2e/        Playwright 真实用户流程
 - [ ] 未删除旧功能而不记录 Migration Gap
 - [ ] 未新增 inline onclick / 散落 localStorage / 硬编码命令字典
 - [ ] 已运行格式、lint、typecheck、单测+coverage、E2E、build
-- [ ] 已检查移动端布局影响
+- [ ] 公式变更已确认单一数据源（`formulaText` 与 `formulaLatex` 来自同一层）
+- [ ] 已检查键盘焦点（focus-visible）、移动端布局与 `prefers-reduced-motion`
 - [ ] 文档已更新，进度表与代码一致

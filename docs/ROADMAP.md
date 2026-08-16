@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-16（M12 production distribution 已合入）
+最后更新：2026-08-16（M13 release candidate 已合入，等待 v1.1.0 Release 与 Pages 部署）
 
 ## 当前产品基线
 
@@ -16,8 +16,15 @@
 ## 当前里程碑
 
 ```text
-M0–M12 complete；stable release v1.0.0；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M12 complete；stable release v1.0.0；production distribution: GitHub Pages。
+M13（统一 LaTeX 数学公式展示与交互反馈系统）release candidate，等待 v1.1.0 Release 与 Pages 部署闭环。
 ```
+
+### M13 release candidate
+
+- 代码与文档已合入 main；版本号 `1.1.0`。
+- 在 GitHub Release `v1.1.0` 创建、SHA256 校验、Pages 自动部署与远程 smoke 完成前，不声明 M13 Done。
+- 发布成功后通过小型文档闭环 PR 将本文件与 README 的当前线上版本更新为 `v1.1.0`。
 
 ### M11 release baseline
 

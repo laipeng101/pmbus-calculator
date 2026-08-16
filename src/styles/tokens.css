@@ -40,6 +40,11 @@
 
   /* Typography */
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Motion */
+  --motion-duration-fast: 120ms;
+  --motion-duration-normal: 180ms;
+  --motion-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* =========================================================
@@ -119,6 +124,138 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* =========================================================
+   Interaction states — the single source for cursor / hover /
+   active / focus-visible / disabled behaviour.
+   ========================================================= */
+
+@layer base {
+  button:not(:disabled),
+  [role='tab'],
+  [role='option'],
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input:not(:disabled),
+  textarea:not(:disabled) {
+    cursor: text;
+  }
+
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--color-accent-light);
+    outline-offset: 2px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button:not(:disabled):hover,
+  [role='tab']:hover,
+  [role='option']:hover,
+  select:not(:disabled):hover {
+    filter: brightness(0.96);
+  }
+
+  input:not(:disabled):hover,
+  textarea:not(:disabled):hover {
+    box-shadow: 0 0 0 1px var(--color-accent-light);
+  }
+}
+
+button:not(:disabled):active,
+[role='tab']:active,
+[role='option']:active,
+select:not(:disabled):active {
+  transform: translateY(1px);
+  filter: brightness(0.94);
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+[aria-disabled='true'] {
+  opacity: 0.55;
+}
+
+/* Popover entrance: short opacity/translate only. */
+.popover-enter {
+  animation: popover-enter var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+@keyframes popover-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Copy feedback fades in place without reserving layout space. */
+.copy-toolbar {
+  position: relative;
+}
+
+.copy-feedback {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.25rem;
+  z-index: 20;
+  white-space: nowrap;
+  animation: copy-feedback-fade 1.5s var(--motion-ease-out) forwards;
+}
+
+@keyframes copy-feedback-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Long formulas scroll inside their own container; never expand body. */
+.math-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+  scrollbar-width: thin;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* App shell placeholder */
 .app-shell {
   min-height: 100vh;
@@ -172,14 +309,14 @@ body {
 
 .workspace-layout {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   padding: 0 16px 24px;
 }
 
 @media (min-width: 768px) {
   .workspace-layout {
-    grid-template-columns: 1fr 300px;
+    grid-template-columns: minmax(0, 1fr) 300px;
     gap: 20px;
     padding: 0 24px 32px;
   }
@@ -187,7 +324,7 @@ body {
 
 @media (min-width: 1024px) {
   .workspace-layout {
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: minmax(0, 1fr) 320px;
     max-width: 1200px;
     margin: 0 auto;
   }

@@ -6,6 +6,7 @@ import DecimalInput from '../inputs/DecimalInput'
 import HexInput from '../inputs/HexInput'
 import IntegerInput from '../inputs/IntegerInput'
 import ValueInput from '../inputs/ValueInput'
+import MathFormula from '../math/MathFormula'
 
 interface Props {
   mode: AppMode
@@ -81,6 +82,18 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
         {mode === 'L11' && (
           <div className="space-y-4">
+            {/* Typeset formula for LINEAR11 */}
+            <div
+              className="math-scroll rounded-xl px-4 py-3 text-center text-sm"
+              style={{
+                background: 'var(--color-surface-muted)',
+                border: '1px solid var(--color-border)',
+                color: 'var(--color-text-primary)',
+              }}
+            >
+              <MathFormula latex={vm.formulaLatex} plainText={vm.formulaText} displayMode />
+            </div>
+
             {/* Immersive formula: Y × 2^N */}
             <div
               className="flex items-center justify-center gap-3 rounded-xl px-4 py-5"
@@ -131,6 +144,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                     }}
                   />
                   <button
+                    type="button"
                     onClick={() => dispatch({ type: 'l11/toggle-auto-n' })}
                     className="rounded-md px-2 py-1.5 text-lg transition-colors"
                     title={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
@@ -259,15 +273,14 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
           <div className="space-y-4">
             {/* DIRECT formula: X = (1/m) × (Y×10^-R − b) */}
             <div
-              className="rounded-xl px-4 py-3 text-center text-sm"
+              className="math-scroll rounded-xl px-4 py-3 text-center text-sm"
               style={{
                 background: 'var(--color-surface-muted)',
                 border: '1px solid var(--color-border)',
-                fontFamily: 'var(--font-mono)',
                 color: 'var(--color-text-primary)',
               }}
             >
-              {vm.formulaText}
+              <MathFormula latex={vm.formulaLatex} plainText={vm.formulaText} displayMode />
             </div>
 
             {/* Signed Y input — raw is the only source of truth */}
@@ -304,7 +317,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                   ['r', state.direct.r, -128, 127],
                 ] as const
               ).map(([name, val, min, max]) => (
-                <div key={name}>
+                <div key={name} className="min-w-0">
                   <label
                     className="mb-1 block text-xs"
                     style={{ color: 'var(--color-text-muted)' }}

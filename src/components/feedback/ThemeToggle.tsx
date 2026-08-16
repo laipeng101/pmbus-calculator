@@ -18,6 +18,7 @@ export default function ThemeToggle({ theme, onChange }: Props) {
 
   return (
     <button
+      type="button"
       onClick={cycle}
       aria-label={`当前主题: ${label}，点击切换`}
       title={`主题: ${label}`}
