@@ -1,7 +1,7 @@
 {
   "name": "pmbus-calculator",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.1.2",
   "type": "module",
   "engines": {
     "node": ">=22 <25",
@@ -25,6 +25,7 @@
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run typecheck && npm run lint && npm run test:run && npm run build",
     "postinstall": "simple-git-hooks",
+    "verify:ui": "npm run verify && npm run test:e2e:visual",
     "verify": "npm run format:check && npm run typecheck && npm run lint && npm run check:markdown-math && npm run test:coverage && npm run test:e2e && npm run build && npm run test:e2e:release && git diff --check && git diff --cached --check && npm audit --audit-level=high",
     "test:e2e:release": "playwright test --config playwright.release.config.ts",
     "test:e2e:visual": "playwright test --config playwright.visual.config.ts",

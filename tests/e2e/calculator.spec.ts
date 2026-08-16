@@ -285,7 +285,7 @@ test.describe('计算器真实用户流程', () => {
     await hexInput.fill('0001')
     await hexInput.press('Tab')
 
-    const leBtn = page.getByRole('button', { name: 'LE bytes' })
+    const leBtn = page.getByRole('button', { name: 'LE 字节' })
     await leBtn.scrollIntoViewIfNeeded()
     await leBtn.evaluate((el: HTMLButtonElement) => el.click())
     let clipboard = await page.evaluate(() => navigator.clipboard.readText())
@@ -370,7 +370,7 @@ test.describe('计算器真实用户流程', () => {
     const spaceBtn = page.getByRole('button', { name: '字节空格' })
     await spaceBtn.scrollIntoViewIfNeeded()
     await spaceBtn.evaluate((el: HTMLButtonElement) => el.click())
-    const endianBtn = page.getByRole('button', { name: 'HEX 复制: LE' })
+    const endianBtn = page.getByRole('button', { name: 'BE', exact: true })
     await endianBtn.scrollIntoViewIfNeeded()
     await endianBtn.evaluate((el: HTMLButtonElement) => el.click())
 
@@ -382,7 +382,7 @@ test.describe('计算器真实用户流程', () => {
       'aria-pressed',
       'false',
     )
-    await expect(page.getByRole('button', { name: 'HEX 复制: BE' })).toHaveAttribute(
+    await expect(page.getByRole('button', { name: 'BE', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
@@ -397,7 +397,7 @@ test.describe('计算器真实用户流程', () => {
       'aria-pressed',
       'false',
     )
-    await expect(page.getByRole('button', { name: 'HEX 复制: BE' })).toHaveAttribute(
+    await expect(page.getByRole('button', { name: 'BE', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     )

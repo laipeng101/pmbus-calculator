@@ -23,6 +23,7 @@ const ALLOWED_LATEX_COMMANDS = new Set([
   'mathrm',
   'text',
   'infty',
+  'quad',
 ])
 
 function latexCommands(latex: string): string[] {
@@ -88,8 +89,8 @@ describe('formula presentation model', () => {
     const s = state({ mode: 'HALF', raw: 0x7e00 })
     const f = getFormulaPresentation(s)
 
-    expect(f.plainText).toBe('HALF NaN')
-    expect(f.latex).toBe('X = \\text{NaN}')
+    expect(f.plainText).toBe('HALF NaN (E=31,F=512)')
+    expect(f.latex).toBe('X = \\text{NaN} \\quad (E=31,\\ F=512)')
   })
 
   it('existing formulaText and C macro output remain compatible', () => {

@@ -303,10 +303,9 @@ describe('toCalculatorViewModel', () => {
   })
 
   describe('warnings', () => {
-    test('default L11 state has Y=0 info warning', () => {
+    test('default L11 state has no Y=0 info warning', () => {
       const vm = toCalculatorViewModel(BASE)
-      expect(vm.warnings).toHaveLength(1)
-      expect(vm.warnings[0].level).toBe('info')
+      expect(vm.warnings).toHaveLength(0)
     })
 
     test('DIRECT with m=0 has error warning', () => {

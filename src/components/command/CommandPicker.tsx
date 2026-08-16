@@ -173,7 +173,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
   }
 
   return (
-    <div className="relative px-4 py-2">
+    <div className="relative px-4 py-2 sm:px-0">
       <label
         htmlFor="command-picker"
         className="mb-1.5 block text-xs font-semibold uppercase tracking-wider"

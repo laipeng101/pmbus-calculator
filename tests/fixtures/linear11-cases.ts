@@ -60,7 +60,6 @@ export interface L11SpecialCase {
 }
 
 export const L11_SPECIAL_CASES: L11SpecialCase[] = [
-  { name: 'Y=0 info', raw: 0x0000, expectedWarningType: 'info' },
   { name: 'Y=1023 overflow', raw: 0x03ff, expectedWarningType: 'overflow' },
   { name: 'Y=-1024 overflow', raw: 0x0400, expectedWarningType: 'overflow' },
 ]

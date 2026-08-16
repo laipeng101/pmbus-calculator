@@ -8,6 +8,7 @@ import IntegerInput from '../inputs/IntegerInput'
 import ValueInput from '../inputs/ValueInput'
 import { MODE_PANEL_ID, modeTabId } from './modeTabs'
 import { LockIcon, UnlockIcon } from '../icons/Icon'
+import MathFormula from '../math/MathFormula'
 
 interface Props {
   mode: AppMode
@@ -138,8 +139,10 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                     aria-label={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
                     aria-pressed={state.l11.autoN}
                     style={{
-                      background: state.l11.autoN ? 'var(--color-accent)' : 'var(--color-surface)',
-                      color: state.l11.autoN ? '#fff' : 'var(--color-text-muted)',
+                      background: state.l11.autoN
+                        ? 'var(--color-accent-solid)'
+                        : 'var(--color-surface)',
+                      color: state.l11.autoN ? 'var(--color-on-accent)' : 'var(--color-text-muted)',
                       border: '1px solid var(--color-border)',
                     }}
                   >
@@ -260,16 +263,19 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
         {mode === 'DIRECT' && (
           <div className="space-y-4">
-            <p
-              className="rounded-lg px-3 py-2 text-center text-xs font-medium"
+            <div
+              className="math-scroll rounded-lg px-3 py-2 text-center text-sm"
               style={{
                 background: 'var(--color-surface-muted)',
-                color: 'var(--color-text-secondary)',
-                fontFamily: 'var(--font-mono)',
+                color: 'var(--color-text-primary)',
               }}
             >
-              X = (1/m) × (Y × 10^(-R) - b)
-            </p>
+              <MathFormula
+                latex={vm.formulaGenericLatex}
+                plainText="X = (1/m) × (Y × 10^(-R) - b)"
+                displayMode
+              />
+            </div>
 
             {/* Signed Y input — raw is the only source of truth */}
             <div>
