@@ -8,11 +8,19 @@
 - 活动 Markdown 文档中的数学表达式使用 GitHub 官方支持的 LaTeX 语法：
   - 行内：`$...$`
   - 块级：`$$...$$`
-  - 复杂块级：````math
+  - 复杂块级 fenced math block：
+
+    ````markdown
+    ```math
+    X = \frac{1}{m}\left(Y \times 10^{-R} - b\right)
+    ```
+    ````
+
 - 只转换真正的数学表达式。API 名、函数名、命令、路径、版本号、bit range 和代码片段继续使用反引号。
 - 历史快照 `docs/archive/**` 不修改、不搜索、不重新渲染。
 - 中英文文档的公式语义必须一致。
-- 只使用 GitHub MathJax 与 KaTeX 都支持的通用 LaTeX 子集。
+- 只使用 GitHub MathJax 与 KaTeX 都支持的通用 LaTeX 子集；禁止未经验证的宏（如 `\operatorname`、`\newcommand`、`\def`）。
+- 本地 `npm run check:markdown-math` 只做文本扫描；PR 创建后必须用真实 GitHub 页面浏览器检查渲染结果并截图。
 
 ## 2. Web 公式单一数据源
 
@@ -68,3 +76,24 @@
   cursor / hover / active / focus-visible / disabled 状态；reduced-motion；360/390 无 body 横向滚动；
   light/dark 下公式与 focus ring 可读。
 - Release/Pages smoke：KaTeX CSS 与全部字体加载，资源为 Pages 同源。
+
+## 7. Popup containment
+
+- 命令下拉框使用 `@floating-ui/react-dom`，portal 渲染，默认 `bottom-start`。
+- 必须配置 `flip`、`shift`（viewport padding 8–12px）、`size`（availableHeight/availableWidth）和 `autoUpdate`。
+- popup 宽度与 trigger 一致；搜索框始终可见；可用高度不足时只让 options list 内部滚动。
+- 不得调用会滚动整个页面的 `scrollIntoView`；active option 由 list 内部滚动逻辑管理。
+- popup 打开时 resize、页面滚动、触发器靠近顶部/底部都必须保持 viewport 内完整可见。
+
+## 8. 视觉系统与验收
+
+- 表面最多三层：canvas / panel / panel-elevated；控件使用 control / control-hover / control-active。
+- 阴影只用于 elevated、sticky result 和 popup；删除全局 `filter: brightness` hover。
+- 控件高度约 40px，紧凑按钮不低于 32–36px；点击目标至少 24×24px。
+- 圆角：控件约 8px，panel 12px，shell 16px；间距以 8px 为基准。
+- 图标为 `currentColor` SVG，`aria-hidden=true`，按钮有可访问文本或 `aria-label`。
+- 中文为 UI 主语言；PMBus、L11、L16、DIRECT、HALF、Hex、LE/BE 等技术缩写保留。
+- 视觉验收不能只凭 DOM 测试；必须包含关键 viewport 截图并逐图检查。
+- visual regression 截图前等待 `document.fonts.ready`、KaTeX 完成和动画稳定。
+- reduced-motion 只关闭非必要动画，不得消除功能反馈；复制状态使用受控 timer（约 1.5–2s）。
+- KaTeX `htmlAndMathml` 已提供 MathML；外层不得用 `role="math"`/`aria-label` 覆盖；fallback 时再提供可访问名称。

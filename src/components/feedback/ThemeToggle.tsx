@@ -1,4 +1,5 @@
 import type { Theme } from '../../app/state'
+import { MonitorIcon, MoonIcon, SunIcon } from '../icons/Icon'
 
 interface Props {
   theme: Theme
@@ -13,7 +14,6 @@ export default function ThemeToggle({ theme, onChange }: Props) {
     onChange(next)
   }
 
-  const icon = theme === 'light' ? '☀️' : theme === 'dark' ? '🌙' : '🖥️'
   const label = theme === 'light' ? '亮色' : theme === 'dark' ? '暗色' : '跟随系统'
 
   return (
@@ -29,7 +29,15 @@ export default function ThemeToggle({ theme, onChange }: Props) {
         border: '1px solid var(--color-border)',
       }}
     >
-      <span>{icon}</span>
+      <span className="inline-flex" aria-hidden="true">
+        {theme === 'light' ? (
+          <SunIcon size={16} />
+        ) : theme === 'dark' ? (
+          <MoonIcon size={16} />
+        ) : (
+          <MonitorIcon size={16} />
+        )}
+      </span>
       <span className="hidden sm:inline">{label}</span>
     </button>
   )

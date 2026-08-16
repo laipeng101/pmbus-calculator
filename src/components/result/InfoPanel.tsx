@@ -1,4 +1,5 @@
 import type { WarningVM } from '../../app/view-model'
+import { ErrorIcon, InfoIcon, WarningIcon } from '../icons/Icon'
 
 interface Props {
   warnings: WarningVM[]
@@ -31,8 +32,14 @@ export default function InfoPanel({ warnings }: Props) {
             color: 'var(--color-text-primary)',
           }}
         >
-          <span className="mt-0.5 text-base">
-            {w.level === 'error' ? '⚠️' : w.level === 'warning' ? '⚡' : 'ℹ️'}
+          <span className="mt-0.5 inline-flex" aria-hidden="true" style={{ color: 'currentColor' }}>
+            {w.level === 'error' ? (
+              <ErrorIcon size={16} />
+            ) : w.level === 'warning' ? (
+              <WarningIcon size={16} />
+            ) : (
+              <InfoIcon size={16} />
+            )}
           </span>
           <span>{w.text}</span>
         </div>

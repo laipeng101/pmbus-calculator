@@ -9,7 +9,7 @@
 - **Always**：`AGENTS.md`、当前 `docs/ROADMAP.md`
 - **Conditional**：
   - 数学/格式/命令元数据任务才读 `DOMAIN_MODEL.md`
-  - UI/公式/交互动效任务才读 `docs/UI_CONVENTIONS.md`
+  - UI/公式/交互动效任务才读 `docs/UI_CONVENTIONS.md`，且视觉验收必须包含关键 viewport 截图与逐图检查
   - Git/PR/CI 流程任务才读 `CONTRIBUTING.md`
   - 发布任务才读 `docs/RELEASING.md`
   - legacy/parity 任务才读 `MIGRATION_MATRIX.md`
@@ -130,4 +130,7 @@ tests/e2e/        Playwright 真实用户流程
 - [ ] 已运行格式、lint、typecheck、单测+coverage、E2E、build
 - [ ] 公式变更已确认单一数据源（`formulaText` 与 `formulaLatex` 来自同一层）
 - [ ] 已检查键盘焦点（focus-visible）、移动端布局与 `prefers-reduced-motion`
+- [ ] UI 任务已生成并实际检查关键 viewport 截图；dropdown/popover 已测试 viewport 边界与不跳动
+- [ ] Markdown 数学变更已通过本地检查，并已用 GitHub 实际渲染页面验证
+- [ ] 发布前已确认 `github-pages` environment 允许对应稳定 tag（branch/tag policy）
 - [ ] 文档已更新，进度表与代码一致

@@ -65,11 +65,11 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     )
 
     if (hoverCapable) {
-      const filterBefore = await commandPicker.evaluate((el) => getComputedStyle(el).filter)
+      const shadowBefore = await commandPicker.evaluate((el) => getComputedStyle(el).boxShadow)
       await commandPicker.hover()
-      const filterAfter = await commandPicker.evaluate((el) => getComputedStyle(el).filter)
-      expect(filterAfter).not.toBe(filterBefore)
-      expect(filterAfter).toContain('brightness')
+      const shadowAfter = await commandPicker.evaluate((el) => getComputedStyle(el).boxShadow)
+      expect(shadowAfter).not.toBe(shadowBefore)
+      expect(shadowAfter).toContain('rgb')
 
       const box = await commandPicker.boundingBox()
       if (box == null) throw new Error('command picker bounding box missing')

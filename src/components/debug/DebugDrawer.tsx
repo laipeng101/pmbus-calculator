@@ -1,5 +1,6 @@
 import type { AppState } from '../../app/state'
 import type { AppMode } from '../../app/state'
+import { ChevronDownIcon, ChevronUpIcon } from '../icons/Icon'
 
 interface Props {
   open: boolean
@@ -15,6 +16,11 @@ const MODE_LABELS: Record<AppMode, string> = {
 }
 
 export default function DebugDrawer({ open, state, onToggle }: Props) {
+  const debugEnabled =
+    import.meta.env.DEV || new URLSearchParams(window.location.search).has('debug')
+
+  if (debugEnabled === false) return null
+
   return (
     <div className="mt-4">
       <button
@@ -29,7 +35,9 @@ export default function DebugDrawer({ open, state, onToggle }: Props) {
           border: '1px solid var(--color-border)',
         }}
       >
-        <span>{open ? '^' : 'v'}</span>
+        <span className="inline-flex" aria-hidden="true">
+          {open ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+        </span>
         <span>调试面板</span>
         <span
           className="ml-1 inline-block h-2 w-2 rounded-full"

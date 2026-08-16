@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CalculatorViewModel } from '../../app/view-model'
 import type { AppState } from '../../app/state'
 import { copyTextToClipboard } from '../../app/copy-utils'
+import { CopyIcon } from '../icons/Icon'
 
 interface Props {
   vm: CalculatorViewModel
@@ -11,6 +12,8 @@ interface Props {
   onCopyEndianChange: (endian: AppState['copy']['endian']) => void
 }
 
+const FEEDBACK_DURATION_MS = 1800
+
 export default function CopyToolbar({
   vm,
   copyPrefs,
@@ -19,25 +22,50 @@ export default function CopyToolbar({
   onCopyEndianChange,
 }: Props) {
   const [feedback, setFeedback] = useState<string | null>(null)
+  const feedbackTimerRef = useRef<number | null>(null)
 
-  const copy = useCallback(async (text: string, label: string) => {
-    try {
-      await copyTextToClipboard(text)
-      setFeedback(`已复制: ${label}`)
-    } catch {
-      setFeedback('复制失败')
+  const clearFeedbackTimer = useCallback(() => {
+    if (feedbackTimerRef.current != null) {
+      window.clearTimeout(feedbackTimerRef.current)
+      feedbackTimerRef.current = null
     }
   }, [])
+
+  useEffect(() => clearFeedbackTimer, [clearFeedbackTimer])
+
+  const showFeedback = useCallback(
+    (text: string) => {
+      clearFeedbackTimer()
+      setFeedback(text)
+      feedbackTimerRef.current = window.setTimeout(() => {
+        setFeedback(null)
+        feedbackTimerRef.current = null
+      }, FEEDBACK_DURATION_MS)
+    },
+    [clearFeedbackTimer],
+  )
+
+  const copy = useCallback(
+    async (text: string, label: string) => {
+      try {
+        await copyTextToClipboard(text)
+        showFeedback(`已复制: ${label}`)
+      } catch {
+        showFeedback('复制失败')
+      }
+    },
+    [showFeedback],
+  )
 
   const copyHex = copyPrefs.endian === 'be' ? vm.rawBytesBE : vm.rawBytesLE
 
   return (
-    <div className="copy-toolbar space-y-2">
-      <div className="flex flex-wrap gap-2">
-        <CopyButton onClick={() => copy(copyHex, 'Hex')} label="📋 Hex" />
-        <CopyButton onClick={() => copy(vm.rawBytesLE, 'LE bytes')} label="📋 LE bytes" />
-        <CopyButton onClick={() => copy(vm.rawBytesBE, 'BE bytes')} label="📋 BE bytes" />
-        <CopyButton onClick={() => copy(vm.valueText, '物理值')} label="📋 值" />
+    <div className="copy-toolbar space-y-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <CopyButton onClick={() => copy(copyHex, 'Hex')} label="Hex" />
+        <CopyButton onClick={() => copy(vm.rawBytesLE, 'LE bytes')} label="LE bytes" />
+        <CopyButton onClick={() => copy(vm.rawBytesBE, 'BE bytes')} label="BE bytes" />
+        <CopyButton onClick={() => copy(vm.valueText, '物理值')} label="物理值" />
         <CopyButton onClick={() => copy(vm.cMacroText, 'C 宏')} label="C 代码" />
       </div>
 
@@ -49,47 +77,20 @@ export default function CopyToolbar({
           color: 'var(--color-text-secondary)',
         }}
       >
-        <button
-          type="button"
-          onClick={onTogglePrefix}
-          aria-pressed={copyPrefs.prefix0x}
-          className="rounded px-2 py-1 font-medium"
-          style={{
-            background: copyPrefs.prefix0x ? 'var(--color-accent)' : 'var(--color-surface)',
-            color: copyPrefs.prefix0x ? '#fff' : 'var(--color-text-secondary)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          0x 前缀
-        </button>
-        <button
-          type="button"
+        <span className="font-medium" style={{ color: 'var(--color-text-muted)' }}>
+          格式偏好
+        </span>
+        <PreferenceButton pressed={copyPrefs.prefix0x} onClick={onTogglePrefix} label="0x 前缀" />
+        <PreferenceButton
+          pressed={copyPrefs.spaceBetweenBytes}
           onClick={onToggleSpace}
-          aria-pressed={copyPrefs.spaceBetweenBytes}
-          className="rounded px-2 py-1 font-medium"
-          style={{
-            background: copyPrefs.spaceBetweenBytes
-              ? 'var(--color-accent)'
-              : 'var(--color-surface)',
-            color: copyPrefs.spaceBetweenBytes ? '#fff' : 'var(--color-text-secondary)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          字节空格
-        </button>
-        <button
-          type="button"
+          label="字节空格"
+        />
+        <PreferenceButton
+          pressed={copyPrefs.endian === 'be'}
           onClick={() => onCopyEndianChange(copyPrefs.endian === 'le' ? 'be' : 'le')}
-          aria-pressed={copyPrefs.endian === 'be'}
-          className="rounded px-2 py-1 font-medium"
-          style={{
-            background: copyPrefs.endian === 'be' ? 'var(--color-accent)' : 'var(--color-surface)',
-            color: copyPrefs.endian === 'be' ? '#fff' : 'var(--color-text-secondary)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          HEX 复制: {copyPrefs.endian.toUpperCase()}
-        </button>
+          label={`HEX 复制: ${copyPrefs.endian.toUpperCase()}`}
+        />
       </div>
 
       {feedback && (
@@ -101,7 +102,6 @@ export default function CopyToolbar({
           }}
           role="status"
           aria-live="polite"
-          onAnimationEnd={() => setFeedback(null)}
         >
           {feedback}
         </div>
@@ -115,11 +115,39 @@ function CopyButton({ onClick, label }: { onClick: () => void; label: string }) 
     <button
       type="button"
       onClick={onClick}
-      className="rounded-md px-3 py-1.5 text-xs font-medium"
+      className="flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
       style={{
         background: 'var(--color-surface-muted)',
         color: 'var(--color-text-primary)',
         border: '1px solid var(--color-border)',
+      }}
+    >
+      <CopyIcon size={14} />
+      <span>{label}</span>
+    </button>
+  )
+}
+
+function PreferenceButton({
+  pressed,
+  onClick,
+  label,
+}: {
+  pressed: boolean
+  onClick: () => void
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={pressed}
+      className="min-h-9 rounded-md px-2.5 py-1 font-medium"
+      style={{
+        background: pressed ? 'var(--color-accent)' : 'var(--color-surface)',
+        color: pressed ? '#fff' : 'var(--color-text-secondary)',
+        border: `1px solid ${pressed ? 'var(--color-accent)' : 'var(--color-border)'}`,
+        boxShadow: pressed ? '0 0 0 1px var(--color-accent)' : 'none',
       }}
     >
       {label}

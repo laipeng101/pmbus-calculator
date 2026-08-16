@@ -5,12 +5,12 @@
 
 ## 1. 数据格式
 
-| 格式     | 公式                                                     | 取值范围                                                |
-| -------- | -------------------------------------------------------- | ------------------------------------------------------- |
-| LINEAR11 | $X = Y \times 2^N$                                       | N 5-bit signed `-16..15`，Y 11-bit signed `-1024..1023` |
-| LINEAR16 | $X = V \times 2^N$                                       | V 16-bit unsigned `0..65535`，N 来自 VOUT_MODE          |
-| DIRECT   | $X = \frac{1}{m}\left(Y \times 10^{-R} - b\right)$       | Y 16-bit signed `-32768..32767`，m/b/R 器件相关         |
-| HALF     | $X = \operatorname{decodeHalf}\left(\mathrm{raw}\right)$ | 1-bit sign，5-bit exponent，10-bit mantissa             |
+| 格式     | 公式                                               | 取值范围                                                |
+| -------- | -------------------------------------------------- | ------------------------------------------------------- |
+| LINEAR11 | $X = Y \times 2^N$                                 | N 5-bit signed `-16..15`，Y 11-bit signed `-1024..1023` |
+| LINEAR16 | $X = V \times 2^N$                                 | V 16-bit unsigned `0..65535`，N 来自 VOUT_MODE          |
+| DIRECT   | $X = \frac{1}{m}\left(Y \times 10^{-R} - b\right)$ | Y 16-bit signed `-32768..32767`，m/b/R 器件相关         |
+| HALF     | IEEE 754 binary16 分段解码（见 §2.4）              | 1-bit sign，5-bit exponent，10-bit mantissa             |
 
 ## 2. 饱和与错误处理
 

@@ -1,4 +1,6 @@
+import { useRef } from 'react'
 import type { AppMode } from '../../app/state'
+import { MODE_PANEL_ID, modeTabId } from './modeTabs'
 
 const MODES: { key: AppMode; label: string; shortcut: string }[] = [
   { key: 'L11', label: 'LINEAR11', shortcut: '1' },
@@ -13,6 +15,40 @@ interface Props {
 }
 
 export default function ModeSwitcher({ mode, onChange }: Props) {
+  const tabRefs = useRef<Partial<Record<AppMode, HTMLButtonElement | null>>>({})
+
+  const focusTab = (key: AppMode) => {
+    tabRefs.current[key]?.focus()
+  }
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, current: AppMode) => {
+    const index = MODES.findIndex((m) => m.key === current)
+    let next: AppMode | null = null
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      next = MODES[(index + 1) % MODES.length].key
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      next = MODES[(index - 1 + MODES.length) % MODES.length].key
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      next = MODES[0].key
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      next = MODES[MODES.length - 1].key
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onChange(current)
+      return
+    }
+
+    if (next != null) {
+      onChange(next)
+      focusTab(next)
+    }
+  }
+
   return (
     <nav
       aria-label="模式切换"
@@ -25,17 +61,22 @@ export default function ModeSwitcher({ mode, onChange }: Props) {
           <button
             type="button"
             key={m.key}
+            id={modeTabId(m.key)}
+            ref={(el) => {
+              tabRefs.current[m.key] = el
+            }}
             role="tab"
             aria-selected={active}
+            aria-controls={MODE_PANEL_ID}
+            tabIndex={active ? 0 : -1}
             onClick={() => onChange(m.key)}
-            className="relative rounded-full px-3 py-2 text-xs font-semibold transition-all duration-200 md:px-5 md:text-sm"
+            onKeyDown={(e) => onKeyDown(e, m.key)}
+            className="relative rounded-full px-3 py-2 text-xs font-semibold transition-colors md:px-5 md:text-sm"
             style={{
               background: active ? 'var(--color-accent)' : 'var(--color-surface)',
               color: active ? '#fff' : 'var(--color-text-primary)',
               border: `2px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
-              boxShadow: active
-                ? '0 4px 6px -1px rgb(30 64 175 / 0.2)'
-                : '0 1px 3px rgba(0,0,0,0.05)',
+              boxShadow: active ? '0 4px 6px -1px rgb(30 64 175 / 0.2)' : 'none',
             }}
           >
             {m.label}
