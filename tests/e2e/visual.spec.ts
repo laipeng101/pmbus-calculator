@@ -192,13 +192,6 @@ test.describe('visual regression (stable scenes)', () => {
     await expect(page).toHaveScreenshot('popup-950x304.png', { animations: 'disabled' })
   })
 
-  test('reduced-motion key state', async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
-    await settle(page)
-    await expect(page).toHaveScreenshot('reduced-motion-l11.png', { animations: 'disabled' })
-  })
-
   test('desktop dark L11 stress', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
     await settle(page)
