@@ -14,7 +14,7 @@
   - 发布任务才读 `docs/RELEASING.md`
   - legacy/parity 任务才读 `MIGRATION_MATRIX.md`
   - 决策相关任务只读相关 ADR
-  - 规范核查只打开所需 PDF 与具体章节
+  - 规范核查任务先读 `document/specifications.json`，只按需 `npm run specs:fetch -- --id <id>` 对应文档，下载进 ignored `.cache/specifications/`，并只打开所需章节；不提交 PDF
 - **Historical**：`docs/archive/**` 默认不读、不搜索；只有明确历史调查理由时才加载
 - 使用 `rg` 做普通代码搜索时，默认添加：
 
@@ -35,7 +35,16 @@ rg ... -g '!docs/archive/**'
 Tauri / Electron / 移动原生 / 硬件通信 / 后端 / 复杂状态库 / 算法重写 / monorepo
 ```
 
-## 2. 绝对禁止
+## 2. 规范来源与分发边界
+
+- 当前领域基线是 PMBus 1.3 / SMBus 3.0；不把 PMBus 1.5 当成当前领域基线。
+- 第三方规范 PDF 不进入当前 Git tree。来源、字节数和 SHA-256 只在
+  `document/specifications.json` 维护，PDF 由开发者按需下载到 ignored
+  `.cache/specifications/`。
+- 规范核查任务先读 manifest，只 fetch 实际需要的文档，只打开所需章节，不提交 PDF。
+- 官方来源与仓库规则直接冲突且无法保守处理时才停止。
+
+## 3. 绝对禁止
 
 1. 禁止推倒重写旧实现。必须：先迁移 → 再替换 → 再验证 → 最后删除。
 2. 禁止无测试修改以下函数：`decodeLinear11`、`encodeLinear11`、`findBestLinear11`、
@@ -46,7 +55,7 @@ Tauri / Electron / 移动原生 / 硬件通信 / 后端 / 复杂状态库 / 算�
 5. 禁止在组件中直接写 `localStorage`；必须集中在 `src/app/persistence.ts`。
 6. 禁止让 UI 在运行时宣称 CI 测试状态（例如“51/51 通过”）。
 
-## 3. 技术栈与目录
+## 4. 技术栈与目录
 
 ```text
 Vite + React 19 + TypeScript + Tailwind CSS + CSS variables + Vitest + Playwright
@@ -61,7 +70,7 @@ src/components/   组件只做展示与交互，不写算法
 tests/e2e/        Playwright 真实用户流程
 ```
 
-## 4. 状态与组件规则
+## 5. 状态与组件规则
 
 - 状态入口：`src/app/state.ts` 的 `AppState`；使用 `useReducer`。
 - Action 命名使用命名空间：`mode/set`、`command/set`、`command/apply-preset`、
@@ -73,7 +82,7 @@ tests/e2e/        Playwright 真实用户流程
 - 主题由 `state.ui.theme` 驱动；`App.tsx` 负责把主题写到 `document.documentElement.dataset.theme`。
 - 偏好持久化只允许通过 `src/app/persistence.ts`。
 
-## 5. 命令字典与领域模型
+## 6. 命令字典与领域模型
 
 - 命令字典唯一数据源：`src/legacy/command-metadata.ts`。
 - 标准命令定义包含：命令码、`transactions`（可同时表达 write/read）、`valueType`、`units`、`spec`、`encodingRule`。
@@ -82,7 +91,7 @@ tests/e2e/        Playwright 真实用户流程
   加载参数并重编码 raw。预设必须标 `sourceKind`（当前仅 `project-demo`）、`source`、
   `appliesTo`、`direction`。没有真实器件数据手册就禁止内置 `device-datasheet` 预设。
 
-## 6. 测试规则
+## 7. 测试规则
 
 - 算法测试至少覆盖 L11 / L16 / DIRECT / HALF / PEC。
 - UI E2E 至少覆盖：模式切换、Hex 输入、Value 输入、bit toggle、命令选择、复制、主题、移动端布局。
@@ -91,7 +100,7 @@ tests/e2e/        Playwright 真实用户流程
 - 分层覆盖策略：`src/app` 与 `src/legacy` 由 Vitest + v8 coverage 覆盖；
   `src/components` 为薄展示/交互层，由 Playwright E2E 覆盖，不纳入 v8 coverage 阈值。
 
-## 7. 每次任务执行流程
+## 8. 每次任务执行流程
 
 1. 读取任务要求、本文件、`docs/ROADMAP.md` 当前状态、`docs/REPOSITORY_HYGIENE.md`；按 Context Loading Policy 条件加载其他文档。
 2. 在任务开头明确：Goal、Out of scope、影响模式、规范来源、验收向量。
@@ -115,14 +124,14 @@ tests/e2e/        Playwright 真实用户流程
 8. 器件数据不明确时不得猜测：保持禁用/留空，并在 UI 与文档中注明“需要器件数据手册”。
    只有仓库内规范与官方规范存在无法保守处理的直接冲突时才停止。
 
-## 8. 文档更新规则
+## 9. 文档更新规则
 
 - 文档更新继续遵循条件加载；普通代码变更不再要求每次检查全部 `docs/ROADMAP.md`、`docs/MIGRATION_MATRIX.md`、`README.md`，只需在变更实际影响对应文档时更新。
 - 发布任务才读取 `docs/RELEASING.md`，并按其规则更新 `CHANGELOG.md` 与 `docs/releases/`。
 - 不要在多份文档中重复维护同一份进度表。
 - 不再维护手工 WEB-xxxx 变更记录；PR、commit 和 CI 是变更审计来源。
 
-## 9. Pull Request 检查清单
+## 10. Pull Request 检查清单
 
 - [ ] 已读 AGENTS.md 与相关 DOMAIN_MODEL 规则
 - [ ] 符合 Web-first 主线，未引入 Tauri/Electron/后端/硬件通信

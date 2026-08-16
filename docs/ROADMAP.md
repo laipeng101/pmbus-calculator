@@ -10,6 +10,9 @@
 - Web-first PMBus Calculator 是主线；技术栈为 Vite + React 19 + TypeScript + Tailwind CSS + Vitest + Playwright。
 - L11 / L16 / DIRECT / HALF 四种模式均已双向闭环，并有 Vitest + Playwright 回归覆盖。
 - PMBus 规范基线：PMBus 1.3。Rev 1.3.1 冲突仍以显式 conflict 模型呈现；1.5 不评估、不声明兼容。
+- 维护基线：第三方规范 PDF 不进入当前 Git tree；官方来源、字节数和 SHA-256 统一维护在
+  `document/specifications.json`，开发者按需从官方 URL 下载到 ignored `.cache/specifications/`。
+  这是分发边界维护，不是规范升级，不创建新的产品版本里程碑，也不把 PMBus 1.5 升级标成已开始。
 - `pmbus-calculator.html` 保留为 read-only legacy fallback，不删除、不移动、不重写。
 - 命令元数据唯一数据源：`src/legacy/command-metadata.ts`。
 

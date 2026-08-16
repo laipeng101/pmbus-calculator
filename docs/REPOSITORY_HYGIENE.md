@@ -11,7 +11,8 @@
 - 源码、配置、测试、Markdown 文档、package lock。
 - Playwright golden baseline：`tests/e2e/visual.spec.ts-snapshots/*.png`（darwin canonical）。
 - 未来经审核采用的同目录 lossless WebP：`tests/e2e/visual.spec.ts-snapshots/*.webp`。
-- 规范 PDF：`document/*.pdf`（当前 PMBus/SMBus 规范）。
+- 规范 provenance：`document/specifications.json`（官方 URL、字节数与 SHA-256 的唯一机器可读来源）和 `document/README.md`（开发者使用说明）。
+- `THIRD_PARTY_NOTICES.md`：第三方规范与 MIT 代码的分发边界说明。
 - `pmbus-calculator.html`：文档明确承诺的 read-only legacy/offline fallback。
 - 真实产品需要的静态资源，且必须有真实运行引用。
 
@@ -24,6 +25,8 @@
 - `.DS_Store`、`Thumbs.db`。
 - Playwright 失败截图：`*-actual.png`、`*-diff.png`、`*-failed.png`。
 - `docs/archive/release-evidence/**/*.png`：一次性 GitHub Markdown 渲染过程截图；原始证据从历史 tag/commit 追溯，不留在 active tree。
+- `.cache/specifications/`：开发者按需下载的规范 PDF 缓存；可安全 clean，不得提交。
+- 所有 PDF：当前 policy 不再跟踪任何 PDF；第三方规范 PDF 从官方 URL 下载到 ignored cache。
 
 ## 2. 图片分类
 
@@ -33,7 +36,7 @@
 | Playwright actual/diff/failed | `*-actual.png`、`*-diff.png`、`*-failed.png` | 本地临时目录或 CI Artifact；不提交     |
 | GitHub Markdown 临时渲染截图  | `docs/archive/release-evidence/**/*.png`     | 临时 Artifact；不提交，历史 tag 可追溯 |
 | 产品正式图片资源              | 源码资源目录并有真实运行引用                 | 提交到 Git                             |
-| 规范 PDF                      | `document/*.pdf`                             | 提交到 Git；再分发许可核查为独立事项   |
+| 规范 PDF                      | `.cache/specifications/*.pdf`                | ignored cache；按需下载，不提交        |
 
 ## 3. Visual snapshot 审批规则
 
@@ -81,14 +84,15 @@ CI Artifact 使用短期 retention（当前 Playwright report 为 7 天），不
 ```bash
 npm run clean                  # 安全删除允许重建的生成目录，支持 -- --dry-run
 npm run check:repo-hygiene     # 基于 git ls-files 的跟踪文件门禁
-npm run verify                 # 完整本地门禁（已包含 check:repo-hygiene）
+npm run verify                 # 完整本地门禁（已包含 specs:check 与 check:repo-hygiene）
 ```
 
 `scripts/clean-generated.mjs` 只删除硬编码允许重建的目录：
 
 `dist`、`build`、`out`、`coverage`、`playwright-report`、`test-results`、
 `tests/e2e/output`、`tests/e2e/report`、`tests/e2e/output-release`、`tests/e2e/report-release`、
-`tests/e2e/output-deployment`、`tests/e2e/report-deployment`、`tests/e2e/output-visual`、`tests/e2e/report-visual`。
+`tests/e2e/output-deployment`、`tests/e2e/report-deployment`、`tests/e2e/output-visual`、`tests/e2e/report-visual`、
+`.cache/specifications`。
 
 安全边界：
 
@@ -96,7 +100,7 @@ npm run verify                 # 完整本地门禁（已包含 check:repo-hygie
 - 校验目标位于仓库根目录内；
 - 拒绝 `/`、用户目录、仓库根目录本身、空路径和符号链接逃逸；
 - 不存在目录幂等跳过；
-- 不删除 `node_modules`、snapshot 目录、`document/`、`docs/archive/` 中剩余历史资料、源码、配置、Release notes；
+- 不删除 `node_modules`、snapshot 目录、`document/`（含 `document/specifications.json` 与 `document/README.md`）、`docs/archive/` 中剩余历史资料、源码、配置、Release notes、`THIRD_PARTY_NOTICES.md`；
 - 不使用 shell 通配符和未经解析的环境变量执行递归删除；
 - 支持 `--dry-run`。
 
@@ -109,24 +113,24 @@ npm run verify                 # 完整本地门禁（已包含 check:repo-hygie
 - `*.log`、`*.lcov`、`*.zip`、`*.tgz`、`*.tar`、`*.tar.gz`、source map（`*.map`）；
 - DSH session JSONL（`*.jsonl`）；
 - `*-actual.png`、`*-diff.png`、`*-failed.png`；
-- `docs/archive/release-evidence/**/*.png`。
+- `docs/archive/release-evidence/**/*.png`；
+- 所有 tracked PDF（含 `document/*.pdf`）。
 
 明确允许：
 
 - `tests/e2e/visual.spec.ts-snapshots/*.png` 及未来经审核采用的同目录 lossless WebP；
-- `document/*.pdf`；
 - `pmbus-calculator.html`；
+- `document/specifications.json`、`document/README.md`、`THIRD_PARTY_NOTICES.md`；
 - 正常源码与 Markdown。
 
 大文件检查：
 
-- 普通新增跟踪文件超过 1 MiB 时失败；
-- `document/*.pdf` 规范 PDF 除外；
+- 任何新增跟踪文件超过 1 MiB 时失败；
 - 未来确实需要例外时，必须通过清楚的路径 allowlist 和文档说明加入，不允许静默绕过。
 
 输出语义：
 
-- `policy allowlisted` 是政策例外总数，当前分为三类：`snapshots`（visual baseline PNG/WebP）、`document PDFs`（`document/*.pdf`）、`legacy fallbacks`（`pmbus-calculator.html`）。
+- `policy allowlisted` 是政策例外总数，当前分为两类：`snapshots`（visual baseline PNG/WebP）、`legacy fallbacks`（`pmbus-calculator.html`）。
 - tracked tree size 是当前 Git index/HEAD 中每个 tracked path 对应 blob size 的求和，按路径 entry 计数，不是 Git pack size，也不是 GitHub API 返回的 repository size。
 - 脚本结果必须与 `git ls-tree -r -l HEAD` 的 tree size 语义一致；同一 blob 被多个路径共享时，每个路径都计入。
 
@@ -182,7 +186,7 @@ npm run verify                 # 完整本地门禁（已包含 check:repo-hygie
 
 - 任何新的二进制跟踪或 >1 MiB 文件，必须在 `docs/REPOSITORY_HYGIENE.md` 或对应 PR 描述中说明：用途、运行时引用、是否可用 GitHub Release/CI Artifact 替代、保留理由。
 - 必须同步更新 `scripts/check-repo-hygiene.mjs` 的 allowlist，并保持 `git check-ignore -v` 与 `npm run check:repo-hygiene` 双通过。
-- 规范 PDF 再分发许可不在本政策内自动批准；作为独立合规核查项，发布前确认。
+- 第三方规范 PDF 不进入当前 Git tree；provenance、官方链接和哈希进入 `document/specifications.json`，PDF 由开发者按需下载到 ignored `.cache/specifications/`。历史 tag/commit 不重写。
 
 ## 8. PR 统计与流程证据
 
@@ -192,4 +196,4 @@ npm run verify                 # 完整本地门禁（已包含 check:repo-hygie
 4. 最终树大小必须使用当前 HEAD，并通过 `npm run check:repo-hygiene` 与 `git ls-tree -r -l HEAD` 交叉验证。
 5. PR CI 必须核对其 `head_sha` 等于最终 PR head。
 6. merge 后 main CI 必须核对 `head_sha` 等于最终 merge SHA。
-7. 文件数、树大小、snapshot 数量、PDF 数量和 legacy HTML 是否存在，均以 `git ls-tree -r -l HEAD` 为准。
+7. 文件数、树大小、snapshot 数量、tracked PDF 数量（当前应为 0）和 legacy HTML 是否存在，均以 `git ls-tree -r -l HEAD` 为准；manifest 记录数以 `document/specifications.json` 为准。

@@ -161,4 +161,9 @@ See [docs/releases/v1.0.0.md#known-limitations](docs/releases/v1.0.0.md#known-li
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+The project source code is licensed under the [MIT License](LICENSE).
+
+Third-party PMBus/SMBus specification documents are **not** covered by this
+project's MIT License. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+and [`document/README.md`](document/README.md) for the specification provenance
+and distribution boundary.

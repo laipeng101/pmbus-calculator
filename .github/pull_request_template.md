@@ -26,7 +26,8 @@
 - `npm run test:e2e:release` production smoke 数:
 - `npm run check:repo-hygiene` 结果:
   - tracked file count:
-  - policy allowlisted / snapshots / document PDFs / legacy fallbacks:
+  - policy allowlisted / snapshots / legacy fallbacks:
+  - `npm run specs:check` 结果 / manifest entries / tracked PDF:
   - final HEAD tree size（bytes）:
 - `git ls-tree -r -l HEAD` tree size（用于交叉核对）:
 - snapshot 新增/修改/删除数量与字节变化:
