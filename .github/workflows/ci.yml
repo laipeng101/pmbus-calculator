@@ -36,6 +36,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Markdown math gate
+        run: npm run check:markdown-math
+
       - name: Unit tests with coverage
         run: npm run test:coverage
 

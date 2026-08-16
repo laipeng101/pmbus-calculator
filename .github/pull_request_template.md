@@ -6,6 +6,51 @@
 
 <!-- 例如：Closes #12。单人维护模式下无 Issue 可写 N/A。 -->
 
+## 变更范围
+
+- Base SHA:
+- Final head SHA:
+- Changed files:
+- Affected modes:
+  <!-- 例如：L11/L16/DIRECT/HALF；本 PR 若为卫生/工具类改动可写 N/A -->
+
+## 验证
+
+<!-- 所有统计必须来自最终 committed HEAD，不要使用 working tree 或中间 commit 结果。 -->
+<!-- 每次新增修复提交后，以下统计必须重新生成并更新。 -->
+
+- `npm run verify` exit code:
+- 单测文件数与测试数:
+- coverage（All files Stmts/Branch/Funcs/Lines）:
+- `npm run test:e2e` passed/skipped 数:
+- `npm run test:e2e:release` production smoke 数:
+- `npm run check:repo-hygiene` 结果:
+  - tracked file count:
+  - policy allowlisted / snapshots / document PDFs / legacy fallbacks:
+  - final HEAD tree size（bytes）:
+- `git ls-tree -r -l HEAD` tree size（用于交叉核对）:
+- snapshot 新增/修改/删除数量与字节变化:
+- 禁止制品扫描结果（dist/build/out/coverage/report/output/DSH JSONL 等）:
+- `git diff --check origin/main...HEAD` exit code:
+
+## CI 证据
+
+<!-- CI 必须核对其 head_sha 等于最终 PR head / 最终 merge SHA。 -->
+
+- PR CI URL:
+- PR CI head SHA:
+- PR CI conclusion:
+- main CI URL（合并后补）:
+- main CI head SHA（合并后补，应等于 merge SHA）:
+- main CI conclusion（合并后补）:
+
+## Fresh environment 初始化
+
+```bash
+npm ci
+npm run test:e2e:install
+```
+
 ## Agent Checklist
 
 - [ ] 我已阅读 AGENTS.md
@@ -15,47 +60,9 @@
 - [ ] 没有删除旧功能而不记录 Migration Gap
 - [ ] 没有新增 inline onclick
 - [ ] 没有新增散落 localStorage 写入
-- [ ] 命令字典/profile 变更已在 `docs/DOMAIN_MODEL.md`、`docs/adr/` 与 `src/legacy/command-metadata.ts` 同步
+- [ ] 没有修改版本号、tag、GitHub Release 或 Pages 配置
+- [ ] 统计数字来自最终 committed HEAD，并经 `git ls-tree -r -l HEAD` 交叉核对
 
-## Fresh environment 初始化
+## 剩余缺口
 
-```bash
-npm ci
-npm run test:e2e:install
-```
-
-## 验证
-
-<!-- 替换为实际命令输出摘要；每条命令必须记录 exit code。 -->
-
-```text
-npm run format:check      # exit 0
-npm run typecheck         # exit 0
-npm run lint              # exit 0
-npm run test:coverage     # exit 0，实际单测数 ___，coverage ___
-npm run test:e2e          # exit 0，实际 E2E 数 ___
-npm run build             # exit 0
-npm run test:e2e:release  # exit 0，release production smoke 数 ___
-git diff --check          # exit 0（未暂存工作区）
-git diff --cached --check # exit 0（暂存区）
-```
-
-## 固定发布/审计字段
-
-- `npm audit` 结果:
-- 完整 branch diff base/head SHA:
-- PR CI URL / conclusion:
-- main CI URL / conclusion（合并后最终报告中记录）:
-- release production smoke 数量:
-- 不适用项（允许写 N/A 及原因）:
-
-## 影响范围
-
-- Changed files:
-- Affected modes:
-- 移动端检查（1440/1024/768/430/390/360）:
-- 剩余缺口:
-
-## 合并方式
-
-单人维护模式：Agent 自审 + CI 全绿后使用普通 merge commit 合入，不使用 squash。
+<!-- 无则写 N/A。 -->

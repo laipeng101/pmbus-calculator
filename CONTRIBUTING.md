@@ -77,6 +77,7 @@ whitespace 检查口径：
 
 - `git diff --check`：未暂存工作区；
 - `git diff --cached --check`：暂存区；
+- PR 本地全量检查：`git diff --check origin/main...HEAD`；
 - PR CI：完整 PR base→head；
 - push CI：完整 event.before→github.sha；
 - 不得再把 `git show --check` 描述成普通 merge commit 的完整变更检查。
@@ -91,7 +92,9 @@ whitespace 检查口径：
 - 每条质量命令与 exit code；
 - 单元测试实际数量与 coverage；
 - E2E 实际数量；
-- CI URL 与 conclusion。
+- CI URL、head SHA 与 conclusion。
+
+PR 统计必须来自 final committed HEAD，并通过 `npm run check:repo-hygiene` 与 `git ls-tree -r -l HEAD` 交叉验证；每次新增修复提交后必须重新采集。详细证据规则见 [`docs/REPOSITORY_HYGIENE.md`](docs/REPOSITORY_HYGIENE.md) 第 8 节。
 
 ## 6. 提交信息
 

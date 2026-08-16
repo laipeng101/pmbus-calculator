@@ -1,10 +1,11 @@
 import { execFileSync, spawnSync } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
-const MiB = 1024 * 1024
+export const MiB = 1024 * 1024
 
-function repoRootFromScript(importMetaUrl) {
+export function repoRootFromScript(importMetaUrl) {
   return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..')
 }
 
@@ -18,20 +19,28 @@ function matchesDirVariant(p, parent, base) {
   return new RegExp(`^${parent}/${base}-[^/]+/`).test(p)
 }
 
-function isDocumentSpecPdf(p) {
+export function isDocumentSpecPdf(p) {
   return /^document\/[^/]+\.pdf$/.test(p)
 }
 
-function isSnapshotAllowlisted(p) {
+export function isSnapshotAllowlisted(p) {
   return /^tests\/e2e\/visual\.spec\.ts-snapshots\/[^/]+\.(png|webp)$/.test(p)
 }
 
-function isLegacyHtml(p) {
+export function isLegacyHtml(p) {
   return p === 'pmbus-calculator.html'
 }
 
-function isBinaryAllowlisted(p) {
-  return isSnapshotAllowlisted(p) || isDocumentSpecPdf(p) || isLegacyHtml(p)
+export function classifyPolicyAllowlist(files) {
+  const snapshots = []
+  const documentPdfs = []
+  const legacyFallbacks = []
+  for (const file of files) {
+    if (isSnapshotAllowlisted(file)) snapshots.push(file)
+    else if (isDocumentSpecPdf(file)) documentPdfs.push(file)
+    else if (isLegacyHtml(file)) legacyFallbacks.push(file)
+  }
+  return { snapshots, documentPdfs, legacyFallbacks }
 }
 
 const REJECT_RULES = [
@@ -79,13 +88,13 @@ const REJECT_RULES = [
   },
   {
     id: 'e2e-output',
-    description: 'tracked tests/e2e/output*/ output directory',
+    description: 'tracked tests/e2e/output/ or tests/e2e/output-*/ output directory',
     match: (p) => matchesDirVariant(p, 'tests/e2e', 'output'),
     fix: 'Remove from tracking; e2e output dirs are temporary and ignored in .gitignore.',
   },
   {
     id: 'e2e-report',
-    description: 'tracked tests/e2e/report*/ report directory',
+    description: 'tracked tests/e2e/report/ or tests/e2e/report-*/ report directory',
     match: (p) => matchesDirVariant(p, 'tests/e2e', 'report'),
     fix: 'Remove from tracking; e2e HTML reports are CI artifacts, not source.',
   },
@@ -181,7 +190,7 @@ const REJECT_RULES = [
   },
 ]
 
-function gitLsFiles(repoRoot) {
+export function gitLsFiles(repoRoot) {
   const output = execFileSync('git', ['-C', repoRoot, 'ls-files', '-z'], {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
@@ -189,7 +198,7 @@ function gitLsFiles(repoRoot) {
   return output.split('\0').filter(Boolean)
 }
 
-function gitIndexSizes(repoRoot) {
+export function gitIndexSizes(repoRoot) {
   const staged = execFileSync('git', ['-C', repoRoot, 'ls-files', '-s', '-z'], {
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
@@ -234,16 +243,14 @@ function gitIndexSizes(repoRoot) {
   return sizes
 }
 
-function checkRepoHygiene({ repoRoot, log = console.log, error = console.error } = {}) {
+export function checkRepoHygiene({ repoRoot, log = console.log, error = console.error } = {}) {
   const files = gitLsFiles(repoRoot)
   const sizes = gitIndexSizes(repoRoot)
 
   const rejected = []
-  const binaryAllowlisted = []
+  const policyAllowlisted = classifyPolicyAllowlist(files)
 
   for (const file of files) {
-    if (isBinaryAllowlisted(file)) binaryAllowlisted.push(file)
-
     for (const rule of REJECT_RULES) {
       if (rule.match(file)) {
         rejected.push({ file, ruleId: rule.id, description: rule.description, fix: rule.fix })
@@ -264,6 +271,10 @@ function checkRepoHygiene({ repoRoot, log = console.log, error = console.error }
   }
 
   const totalSize = [...sizes.values()].reduce((sum, size) => sum + size, 0)
+  const policyAllowlistedCount =
+    policyAllowlisted.snapshots.length +
+    policyAllowlisted.documentPdfs.length +
+    policyAllowlisted.legacyFallbacks.length
 
   if (rejected.length > 0) {
     error(`repo-hygiene: rejected ${rejected.length} tracked path(s)`)
@@ -274,18 +285,25 @@ function checkRepoHygiene({ repoRoot, log = console.log, error = console.error }
     }
   }
 
-  log(`repo-hygiene: scanned ${files.length} tracked file(s) via git ls-files`)
-  log(`repo-hygiene: binary allowlisted ${binaryAllowlisted.length} tracked file(s)`)
-  log(`repo-hygiene: total tracked size ${totalSize} bytes (${(totalSize / MiB).toFixed(2)} MiB)`)
+  log(`repo-hygiene: scanned ${files.length} tracked path(s) via git ls-files`)
+  log(
+    `repo-hygiene: policy allowlisted: ${policyAllowlistedCount} ` +
+      `(snapshots: ${policyAllowlisted.snapshots.length}, ` +
+      `document PDFs: ${policyAllowlisted.documentPdfs.length}, ` +
+      `legacy fallbacks: ${policyAllowlisted.legacyFallbacks.length})`,
+  )
+  log(
+    `repo-hygiene: tracked tree size (sum of tracked path blob sizes, not Git pack size): ` +
+      `${totalSize} bytes (${(totalSize / MiB).toFixed(2)} MiB)`,
+  )
 
   if (rejected.length > 0) {
     error(`repo-hygiene: FAILED with ${rejected.length} rejected path(s)`)
-    process.exitCode = 1
   } else {
     log('repo-hygiene: OK')
   }
 
-  return { files, rejected, binaryAllowlisted, totalSize }
+  return { files, rejected, policyAllowlisted, policyAllowlistedCount, totalSize }
 }
 
 function main() {
@@ -302,13 +320,14 @@ function main() {
   }
 
   const repoRoot = repoRootFromScript(import.meta.url)
-  checkRepoHygiene({ repoRoot })
+  const result = checkRepoHygiene({ repoRoot })
+  process.exitCode = result.rejected.length > 0 ? 1 : 0
 }
 
 const isDirectRun =
   typeof process.argv[1] === 'string' &&
   process.argv[1].length > 0 &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])
 
 if (isDirectRun) {
   main()

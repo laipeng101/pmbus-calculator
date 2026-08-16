@@ -26,6 +26,24 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })))
 })
 
+const symlinkSupported = await (async () => {
+  const probeRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pmbus-clean-symlink-probe-'))
+  const target = path.join(probeRoot, 'target')
+  const link = path.join(probeRoot, 'link')
+  try {
+    await fs.mkdir(target)
+    await fs.symlink(target, link, 'dir')
+    await fs.lstat(link)
+    return true
+  } catch {
+    return false
+  } finally {
+    await fs.rm(probeRoot, { recursive: true, force: true })
+  }
+})()
+
+const symlinkTest = symlinkSupported ? it : it.skip
+
 describe('cleanGenerated', () => {
   it('--dry-run does not delete allowed directories', async () => {
     const root = await makeTempRoot()
@@ -55,7 +73,6 @@ describe('cleanGenerated', () => {
     ).resolves.toEqual(['tests/e2e/output-visual'])
     await expect(fs.stat(path.join(root, 'tests/e2e/output-visual'))).rejects.toThrow()
 
-    // Idempotent: running again succeeds and skips the missing directory.
     const logs: string[] = []
     await expect(
       cleanGenerated({
@@ -103,7 +120,7 @@ describe('cleanGenerated', () => {
     expect(() => resolveCleanTargets(root, [os.homedir()])).toThrow(/relative path/)
     expect(() => resolveCleanTargets(root, ['.'])).toThrow(/repository root itself/)
     expect(() => resolveCleanTargets(root, ['dist/..'])).toThrow(/repository root itself/)
-    expect(() => resolveCleanTargets(root, ['dist/../..'])).toThrow(/escapes repository root/)
+    expect(() => resolveCleanTargets(root, ['../outside'])).toThrow(/escapes repository root/)
 
     await expect(cleanGenerated({ repoRoot: root, targets: ['dist', '/'] })).rejects.toThrow(
       /relative path/,
@@ -111,20 +128,64 @@ describe('cleanGenerated', () => {
     await expect(fs.readFile(path.join(root, 'dist', 'app.js'), 'utf8')).resolves.toBe('generated')
   })
 
-  it('rejects symlink targets that escape the repository root', async () => {
+  it('fails on a regular file target and does not partially delete other targets', async () => {
+    const root = await makeTempRoot()
+    await fs.mkdir(path.join(root, 'coverage'), { recursive: true })
+    await fs.writeFile(path.join(root, 'coverage', 'lcov.info'), 'coverage')
+    await fs.writeFile(path.join(root, 'dist'), 'file content')
+
+    await expect(cleanGenerated({ repoRoot: root, targets: ['dist', 'coverage'] })).rejects.toThrow(
+      /non-directory clean target/,
+    )
+
+    await expect(fs.readFile(path.join(root, 'dist'), 'utf8')).resolves.toBe('file content')
+    await expect(fs.readFile(path.join(root, 'coverage', 'lcov.info'), 'utf8')).resolves.toBe(
+      'coverage',
+    )
+  })
+
+  it('--dry-run also performs full preflight and fails on a regular file target', async () => {
+    const root = await makeTempRoot()
+    await fs.writeFile(path.join(root, 'dist'), 'file content')
+
+    await expect(
+      cleanGenerated({ repoRoot: root, targets: ['dist'], dryRun: true }),
+    ).rejects.toThrow(/non-directory clean target/)
+    await expect(fs.readFile(path.join(root, 'dist'), 'utf8')).resolves.toBe('file content')
+  })
+
+  symlinkTest('rejects a target symlink and leaves the external target untouched', async () => {
     const root = await makeTempRoot()
     const outside = await makeOutsideRoot()
-
-    try {
-      await fs.symlink(outside, path.join(root, 'dist'), 'dir')
-    } catch {
-      return // symlinks unavailable on this platform; skip this assertion
-    }
+    await fs.writeFile(path.join(outside, 'outside.txt'), 'outside-content')
+    await fs.symlink(outside, path.join(root, 'dist'), 'dir')
 
     await expect(cleanGenerated({ repoRoot: root, targets: ['dist'] })).rejects.toThrow(/symlink/)
-    await expect(fs.readFile(path.join(outside, 'outside.txt')).catch(() => null)).resolves.toBe(
-      null,
+
+    const stat = await fs.lstat(path.join(root, 'dist'))
+    expect(stat.isSymbolicLink()).toBe(true)
+    await expect(fs.readFile(path.join(outside, 'outside.txt'), 'utf8')).resolves.toBe(
+      'outside-content',
     )
-    expect(GENERATED_TARGETS.length).toBeGreaterThanOrEqual(14)
+  })
+
+  symlinkTest('rejects an intermediate symlink segment', async () => {
+    const root = await makeTempRoot()
+    const outside = await makeOutsideRoot()
+    await fs.mkdir(path.join(outside, 'e2e', 'output'), { recursive: true })
+    await fs.writeFile(path.join(outside, 'e2e', 'output', 'actual.png'), 'shot')
+    await fs.symlink(outside, path.join(root, 'tests'), 'dir')
+
+    await expect(cleanGenerated({ repoRoot: root, targets: ['tests/e2e/output'] })).rejects.toThrow(
+      /symlink/,
+    )
+
+    await expect(
+      fs.readFile(path.join(outside, 'e2e', 'output', 'actual.png'), 'utf8'),
+    ).resolves.toBe('shot')
+  })
+
+  it('exposes the current generated-target allowlist size', () => {
+    expect(GENERATED_TARGETS.length).toBe(14)
   })
 })
