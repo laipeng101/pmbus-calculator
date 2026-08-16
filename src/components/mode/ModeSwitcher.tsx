@@ -53,7 +53,7 @@ export default function ModeSwitcher({ mode, onChange }: Props) {
     <nav
       aria-label="模式切换"
       role="tablist"
-      className="grid grid-cols-2 gap-2 px-4 py-3 md:flex md:flex-row md:justify-center md:gap-3"
+      className="grid grid-cols-2 gap-2 px-4 py-3 sm:px-0 md:flex md:flex-row md:justify-center md:gap-3"
     >
       {MODES.map((m) => {
         const active = mode === m.key
@@ -73,9 +73,9 @@ export default function ModeSwitcher({ mode, onChange }: Props) {
             onKeyDown={(e) => onKeyDown(e, m.key)}
             className="relative rounded-full px-3 py-2 text-xs font-semibold transition-colors md:px-5 md:text-sm"
             style={{
-              background: active ? 'var(--color-accent)' : 'var(--color-surface)',
-              color: active ? '#fff' : 'var(--color-text-primary)',
-              border: `2px solid ${active ? 'var(--color-accent)' : 'var(--color-border)'}`,
+              background: active ? 'var(--color-accent-solid)' : 'var(--color-surface)',
+              color: active ? 'var(--color-on-accent)' : 'var(--color-text-primary)',
+              border: `2px solid ${active ? 'var(--color-accent-solid)' : 'var(--color-border)'}`,
               boxShadow: active ? '0 4px 6px -1px rgb(30 64 175 / 0.2)' : 'none',
             }}
           >

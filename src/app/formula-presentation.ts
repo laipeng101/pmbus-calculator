@@ -4,8 +4,10 @@ import { PMBusMath } from '../legacy/pmbus-math'
 export interface FormulaPresentation {
   /** Plain-text formula used for copy output and C macro comments. */
   plainText: string
-  /** KaTeX source used for on-screen typeset formulas. */
+  /** KaTeX source used for on-screen dynamic formula. */
   latex: string
+  /** KaTeX source for the generic symbol relation shown in the workspace. */
+  genericLatex: string
 }
 
 function formatSignedInt(value: number): string {
@@ -31,36 +33,42 @@ function getHalfPresentation(raw: number): HalfPresentation {
   const exponent = (raw >> 10) & 0x1f
   const fraction = raw & 0x3ff
   const signText = sign ? '-' : '+'
+  const signPower = `(-1)^{${sign}}`
 
   if (exponent === 0 && fraction === 0) {
     return {
-      plainText: `HALF zero ${signText}0`,
-      latex: `X = ${signText}0`,
+      plainText: `HALF zero ${signPower}×0=${signText}0`,
+      latex: `X = ${signPower} \\times 0 = ${signText}0`,
     }
   }
 
   if (exponent === 0) {
     const value = PMBusMath.decodeHalf(raw).value
+    const valueText = formatNumber(value)
     return {
-      plainText: `HALF subnormal ${formatNumber(value)}`,
-      latex: `X = \\text{subnormal} = ${formatLatexNumber(value)}`,
+      plainText: `HALF subnormal ${signPower}×2^-14×${fraction}/1024=${valueText}`,
+      latex: `X = ${signPower} \\times 2^{-14} \\times \\frac{${fraction}}{2^{10}} = ${formatLatexNumber(value)}`,
     }
   }
 
   if (exponent === 0x1f) {
     if (fraction === 0) {
       return {
-        plainText: sign ? 'HALF -Infinity' : 'HALF +Infinity',
-        latex: sign ? 'X = -\\infty' : 'X = +\\infty',
+        plainText: `HALF ${signText}Infinity (E=31,F=0)`,
+        latex: `X = ${signPower} \\times \\infty = ${sign ? '-' : '+'}\\infty \\quad (E=31,\\ F=0)`,
       }
     }
-    return { plainText: 'HALF NaN', latex: 'X = \\text{NaN}' }
+    return {
+      plainText: `HALF NaN (E=31,F=${fraction})`,
+      latex: `X = \\text{NaN} \\quad (E=31,\\ F=${fraction})`,
+    }
   }
 
   const value = PMBusMath.decodeHalf(raw).value
+  const valueText = formatNumber(value)
   return {
-    plainText: `HALF normal ${formatNumber(value)}`,
-    latex: `X = \\text{normal} = ${formatLatexNumber(value)}`,
+    plainText: `HALF normal ${signPower}×2^(${exponent}-15)×(1+${fraction}/1024)=${valueText}`,
+    latex: `X = ${signPower} \\times 2^{${exponent}-15} \\times \\left(1 + \\frac{${fraction}}{2^{10}}\\right) = ${formatLatexNumber(value)}`,
   }
 }
 
@@ -93,6 +101,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       return {
         plainText: `Y=${decoded.y} × 2^${decoded.n}`,
         latex: `X = Y \\times 2^N = ${decoded.y} \\times 2^{${decoded.n}}`,
+        genericLatex: 'X = Y \\times 2^N',
       }
     }
 
@@ -100,6 +109,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       return {
         plainText: `V=${state.raw} × 2^${state.l16.n}`,
         latex: `X = V \\times 2^N = ${state.raw} \\times 2^{${state.l16.n}}`,
+        genericLatex: 'X = V \\times 2^N',
       }
     }
 
@@ -111,6 +121,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
         return {
           plainText: 'X=(1/m)×(Y×10^(-R)-b)',
           latex: 'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)',
+          genericLatex: 'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)',
         }
       }
 
@@ -120,14 +131,21 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       const plainText = `X=(1/${formatSignedInt(m)})×(${yTerm}×10^${exponentText}-${bTerm})`
       const latex = `X = \\frac{1}{${formatSignedInt(m)}}\\left(${yTerm} \\times 10^{${exponentText}} - ${bTerm}\\right)`
 
-      return { plainText, latex }
+      return {
+        plainText,
+        latex,
+        genericLatex: 'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)',
+      }
     }
 
     case 'HALF': {
-      return getHalfPresentation(state.raw)
+      return {
+        ...getHalfPresentation(state.raw),
+        genericLatex: 'X = \\text{IEEE 754 binary16 分段解码}',
+      }
     }
 
     default:
-      return { plainText: '', latex: '' }
+      return { plainText: '', latex: '', genericLatex: '' }
   }
 }

@@ -130,7 +130,7 @@ tests/e2e/        Playwright 真实用户流程
 - [ ] 已运行格式、lint、typecheck、单测+coverage、E2E、build
 - [ ] 公式变更已确认单一数据源（`formulaText` 与 `formulaLatex` 来自同一层）
 - [ ] 已检查键盘焦点（focus-visible）、移动端布局与 `prefers-reduced-motion`
-- [ ] UI 任务已生成并实际检查关键 viewport 截图；dropdown/popover 已测试 viewport 边界与不跳动
+- [ ] UI 任务已生成关键 viewport 截图；dropdown/popover 已测试 viewport 边界与不跳动；无图像读取能力时用几何/对比度/overflow/computed-style 断言代替目检
 - [ ] Markdown 数学变更已通过本地检查，并已用 GitHub 实际渲染页面验证
 - [ ] 发布前已确认 `github-pages` environment 允许对应稳定 tag（branch/tag policy）
 - [ ] 文档已更新，进度表与代码一致

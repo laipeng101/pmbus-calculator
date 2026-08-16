@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-08-16
+
+### Fixed
+
+- 对比度：拆分 `--color-accent` / `--color-accent-solid` / `--color-on-accent`，暗色选中 tab 改用 `#2563eb` + `#ffffff`；成功/失败反馈改用 surface/text/border token。
+- BitGrid：region 颜色改为语义 token，移除 nibble group 投影；360/390px 下 2×2 nibble 布局，bit index 字号 10px。
+- 公式：DIRECT 参数面板改为 KaTeX 通用关系式；HALF 动态公式按 sign/exponent/fraction 展示 zero/subnormal/normal/±Infinity/NaN 分解；`formulaGenericLatex` 由展示层统一提供。
+- 语义：删除 L11 默认 `Y = 0，表示零值或未初始化` 提示。
+- 布局：统一 Header/ModeSwitcher/CommandPicker/Workspace 左右 gutter；复制工具栏改为 6 列平衡网格，LE/BE 字节中文标签，复制字节序 segmented control。
+- 测试：新增 contrast、layout-gutters 测试；visual snapshot 改用稳定场景名并归档 v1.1.1 GitHub 渲染证据。
+
 ## [1.1.1] - 2026-08-16
 
 ### Fixed

@@ -35,6 +35,7 @@ export interface CalculatorViewModel {
   cMacroText: string
   formulaText: string
   formulaLatex: string
+  formulaGenericLatex: string
   deltaText?: string
   deltaKind?: 'ok' | 'warn' | 'error'
   warnings: WarningVM[]
@@ -245,6 +246,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     cMacroText: buildCMacro(state.commandKey, formatRawHex(raw), formulaText),
     formulaText,
     formulaLatex: formula.latex,
+    formulaGenericLatex: formula.genericLatex,
     deltaText,
     deltaKind,
     warnings: buildWarnings(state),

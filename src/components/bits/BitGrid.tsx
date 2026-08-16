@@ -51,8 +51,7 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
               className="flex flex-col items-center rounded-lg p-1"
               style={{
                 background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+                border: '1px solid var(--color-border-subtle)',
               }}
             >
               <div
@@ -71,35 +70,25 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
                   const region = getBitRegion(bit.index, mode)
                   const isOn = bit.value === 1
 
-                  const regionColor =
+                  const tokenPrefix =
                     region === 'primary' || region === 'exponent'
-                      ? '#3b82f6'
+                      ? 'n'
                       : region === 'sign'
-                        ? '#f59e0b'
-                        : '#10b981'
-                  const regionBorder =
-                    region === 'primary' || region === 'exponent'
-                      ? '#2563eb'
-                      : region === 'sign'
-                        ? '#d97706'
-                        : '#059669'
-                  const regionShadow =
-                    region === 'primary' || region === 'exponent'
-                      ? 'rgba(59,130,246,0.3)'
-                      : region === 'sign'
-                        ? 'rgba(245,158,11,0.3)'
-                        : 'rgba(16,185,129,0.3)'
-                  const bgColor = isOn ? regionColor : 'var(--color-surface-muted)'
+                        ? 'e'
+                        : 'y'
+                  const regionBg = `var(--color-bit-${tokenPrefix}-bg)`
+                  const regionBorder = `var(--color-bit-${tokenPrefix}-border)`
+                  const regionText = `var(--color-bit-${tokenPrefix}-text)`
+                  const bgColor = isOn ? regionBg : 'var(--color-surface-muted)'
                   const borderColor = isOn ? regionBorder : 'var(--color-border)'
-                  const textColor = isOn ? '#fff' : 'var(--color-text-muted)'
-                  const shadow = isOn ? `0 4px 12px ${regionShadow}` : '0 1px 2px rgba(0,0,0,0.04)'
+                  const textColor = isOn ? regionText : 'var(--color-text-muted)'
 
                   return (
                     <button
                       type="button"
                       key={bit.index}
                       onClick={() => dispatch({ type: 'bit/toggle', bit: 15 - bit.index })}
-                      className="flex min-h-10 min-w-9 flex-col items-center justify-center gap-0.5"
+                      className="flex min-h-10 min-w-8 flex-col items-center justify-center gap-0.5"
                       aria-label={`位 ${bit.index}: ${isOn ? '1' : '0'}`}
                       aria-pressed={isOn}
                       title={`Bit ${bit.index}`}
@@ -110,13 +99,13 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
                           background: bgColor,
                           color: textColor,
                           border: `2px solid ${borderColor}`,
-                          boxShadow: shadow,
+                          boxShadow: 'none',
                         }}
                       >
                         {bit.value}
                       </div>
                       <span
-                        className="text-[9px] font-medium"
+                        className="text-[10px] font-medium"
                         style={{ color: 'var(--color-text-muted)' }}
                       >
                         {bit.index}

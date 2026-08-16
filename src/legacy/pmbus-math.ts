@@ -253,7 +253,6 @@ export const PMBusMath = {
           type: 'overflow',
           msg: 'Y 接近极值 (±1023/±1024)，可能是饱和/溢出标记',
         }
-      if (y === 0) return { type: 'info', msg: 'Y = 0，表示零值或未初始化' }
     }
     return null
   },

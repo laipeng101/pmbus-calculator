@@ -25,7 +25,7 @@ export default function ThemeToggle({ theme, onChange }: Props) {
       className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
       style={{
         background: 'var(--color-surface-muted)',
-        color: 'var(--color-text-secondary)',
+        color: 'var(--color-text-primary)',
         border: '1px solid var(--color-border)',
       }}
     >

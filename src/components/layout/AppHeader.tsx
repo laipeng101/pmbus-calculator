@@ -8,7 +8,7 @@ interface Props {
 
 export default function AppHeader({ theme, onThemeChange }: Props) {
   return (
-    <header className="flex items-center justify-between px-4 py-3 md:px-6 md:py-4">
+    <header className="flex items-center justify-between px-4 py-3 sm:px-0 md:py-4">
       <div>
         <h1
           className="text-xl font-bold tracking-tight md:text-2xl"

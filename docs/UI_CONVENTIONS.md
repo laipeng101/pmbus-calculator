@@ -93,7 +93,10 @@
 - 圆角：控件约 8px，panel 12px，shell 16px；间距以 8px 为基准。
 - 图标为 `currentColor` SVG，`aria-hidden=true`，按钮有可访问文本或 `aria-label`。
 - 中文为 UI 主语言；PMBus、L11、L16、DIRECT、HALF、Hex、LE/BE 等技术缩写保留。
-- 视觉验收不能只凭 DOM 测试；必须包含关键 viewport 截图并逐图检查。
+- 视觉验收不能只凭 DOM 测试；必须包含关键 viewport 截图。
+- `visual snapshot` 是回归保护，不等同于设计质量批准；没有图像读取能力时，不得声称已“逐图目检”。
+- 没有图像读取能力时，必须把视觉要求转化为可执行的几何、对比度、换行、overflow、排列和 computed-style 断言；最终报告必须如实说明实际使用的验证方式。
+- `npm run verify:ui` 会在 `npm run verify` 之后运行 visual snapshot；visual snapshot 当前为 darwin 基线，CI 默认不运行 `test:e2e:visual`。
 - visual regression 截图前等待 `document.fonts.ready`、KaTeX 完成和动画稳定。
 - reduced-motion 只关闭非必要动画，不得消除功能反馈；复制状态使用受控 timer（约 1.5–2s）。
 - KaTeX `htmlAndMathml` 已提供 MathML；外层不得用 `role="math"`/`aria-label` 覆盖；fallback 时再提供可访问名称。
