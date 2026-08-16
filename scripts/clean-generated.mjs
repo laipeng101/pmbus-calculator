@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 export const GENERATED_TARGETS = [
   'dist',
@@ -31,7 +32,7 @@ Options:
 
 This script only removes a hardcoded allowlist of generated directories
 inside this repository. It refuses filesystem roots, home directories, the
-repository root itself, empty paths, and symlink escapes.
+repository root itself, empty paths, non-directory targets, and symlink escapes.
 `
 
 export function repoRootFromScript(importMetaUrl) {
@@ -112,6 +113,27 @@ async function rejectSymlinkEscape(repoRoot, absoluteTarget) {
   }
 }
 
+async function preflightCleanTarget(repoRoot, absoluteTarget) {
+  await rejectSymlinkEscape(repoRoot, absoluteTarget)
+
+  let stat = null
+  try {
+    stat = await fs.lstat(absoluteTarget)
+  } catch {
+    stat = null
+  }
+
+  if (stat === null) {
+    return { exists: false }
+  }
+
+  if (!stat.isDirectory()) {
+    throw new Error(`refusing non-directory clean target: ${absoluteTarget}`)
+  }
+
+  return { exists: true }
+}
+
 export async function cleanGenerated({
   repoRoot,
   targets = GENERATED_TARGETS,
@@ -119,38 +141,32 @@ export async function cleanGenerated({
   log = console.log,
 } = {}) {
   const resolved = resolveCleanTargets(repoRoot, targets)
-  for (const { absolute } of resolved) {
-    await rejectSymlinkEscape(repoRoot, absolute)
+
+  // Full preflight before any deletion: lexical checks, symlink checks, and
+  // target type checks all happen first so a failing target cannot leave a
+  // partial cleanup behind.
+  const preflighted = []
+  for (const { target, absolute } of resolved) {
+    const result = await preflightCleanTarget(repoRoot, absolute)
+    preflighted.push({ target, absolute, ...result })
   }
 
   const cleaned = []
-  for (const { target, absolute } of resolved) {
-    let stat = null
-    try {
-      stat = await fs.stat(absolute)
-    } catch {
-      stat = null
-    }
-
-    if (stat === null) {
-      log(`skip (not present): ${absolute}`)
-      continue
-    }
-
-    if (!stat.isDirectory()) {
-      log(`skip (not a directory): ${absolute}`)
+  for (const item of preflighted) {
+    if (!item.exists) {
+      log(`skip (not present): ${item.absolute}`)
       continue
     }
 
     if (dryRun) {
-      log(`[dry-run] would remove: ${absolute}`)
-      cleaned.push(target)
+      log(`[dry-run] would remove: ${item.absolute}`)
+      cleaned.push(item.target)
       continue
     }
 
-    await fs.rm(absolute, { recursive: true, force: false })
-    log(`removed: ${absolute}`)
-    cleaned.push(target)
+    await fs.rm(item.absolute, { recursive: true, force: false })
+    log(`removed: ${item.absolute}`)
+    cleaned.push(item.target)
   }
 
   return cleaned
@@ -181,7 +197,7 @@ function main() {
 const isDirectRun =
   typeof process.argv[1] === 'string' &&
   process.argv[1].length > 0 &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])
 
 if (isDirectRun) {
   main()

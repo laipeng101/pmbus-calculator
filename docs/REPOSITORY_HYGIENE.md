@@ -19,7 +19,7 @@
 
 - `dist/`、`build/`、`out/`、`coverage/`、`node_modules/`。
 - `playwright-report/`、`test-results/`。
-- `tests/e2e/output*/`、`tests/e2e/report*/`（含 `output-visual/`、`report-visual/` 及未来变体）。
+- `tests/e2e/output/`、`tests/e2e/output-*/`、`tests/e2e/report/`、`tests/e2e/report-*/`（含 `output-visual/`、`report-visual/` 及未来变体）。
 - `*.log`、`*.lcov`、`*.zip`、`*.tgz`、`*.tar`、`*.tar.gz`、`*.map`、`*.jsonl`。
 - `.DS_Store`、`Thumbs.db`。
 - Playwright 失败截图：`*-actual.png`、`*-diff.png`、`*-failed.png`。
@@ -104,7 +104,7 @@ npm run verify                 # 完整本地门禁（已包含 check:repo-hygie
 
 - `dist/`、`build/`、`out/`、`coverage/`、`node_modules/`；
 - `playwright-report/`、`test-results/`；
-- `tests/e2e/output*/`、`tests/e2e/report*/`；
+- `tests/e2e/output/`、`tests/e2e/output-*/`、`tests/e2e/report/`、`tests/e2e/report-*/`；
 - `.DS_Store`、`Thumbs.db`；
 - `*.log`、`*.lcov`、`*.zip`、`*.tgz`、`*.tar`、`*.tar.gz`、source map（`*.map`）；
 - DSH session JSONL（`*.jsonl`）；
@@ -123,6 +123,12 @@ npm run verify                 # 完整本地门禁（已包含 check:repo-hygie
 - 普通新增跟踪文件超过 1 MiB 时失败；
 - `document/*.pdf` 规范 PDF 除外；
 - 未来确实需要例外时，必须通过清楚的路径 allowlist 和文档说明加入，不允许静默绕过。
+
+输出语义：
+
+- `policy allowlisted` 是政策例外总数，当前分为三类：`snapshots`（visual baseline PNG/WebP）、`document PDFs`（`document/*.pdf`）、`legacy fallbacks`（`pmbus-calculator.html`）。
+- tracked tree size 是当前 Git index/HEAD 中每个 tracked path 对应 blob size 的求和，按路径 entry 计数，不是 Git pack size，也不是 GitHub API 返回的 repository size。
+- 脚本结果必须与 `git ls-tree -r -l HEAD` 的 tree size 语义一致；同一 blob 被多个路径共享时，每个路径都计入。
 
 ## 6. Agent 生命周期清理
 
@@ -177,3 +183,13 @@ npm run verify                 # 完整本地门禁（已包含 check:repo-hygie
 - 任何新的二进制跟踪或 >1 MiB 文件，必须在 `docs/REPOSITORY_HYGIENE.md` 或对应 PR 描述中说明：用途、运行时引用、是否可用 GitHub Release/CI Artifact 替代、保留理由。
 - 必须同步更新 `scripts/check-repo-hygiene.mjs` 的 allowlist，并保持 `git check-ignore -v` 与 `npm run check:repo-hygiene` 双通过。
 - 规范 PDF 再分发许可不在本政策内自动批准；作为独立合规核查项，发布前确认。
+
+## 8. PR 统计与流程证据
+
+1. PR 统计必须来自 final committed HEAD，不允许把 working tree、中间 commit 或 PR base 的统计写成最终结果。
+2. 每次新增修复提交后都要重新生成统计；旧统计立即失效。
+3. branch 全量 whitespace 检查使用 `git diff --check origin/main...HEAD`。
+4. 最终树大小必须使用当前 HEAD，并通过 `npm run check:repo-hygiene` 与 `git ls-tree -r -l HEAD` 交叉验证。
+5. PR CI 必须核对其 `head_sha` 等于最终 PR head。
+6. merge 后 main CI 必须核对 `head_sha` 等于最终 merge SHA。
+7. 文件数、树大小、snapshot 数量、PDF 数量和 legacy HTML 是否存在，均以 `git ls-tree -r -l HEAD` 为准。
