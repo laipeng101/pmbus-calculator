@@ -6,7 +6,9 @@
 A fully client-side PMBus data-format calculator with no backend that runs entirely in the browser.<br>
 It supports **LINEAR11 (L11)**, **LINEAR16 / VOUT (L16)**, **DIRECT**, and **IEEE 754 Half-Precision (HALF)** encoding schemes as defined in the PMBus 1.3 specification.
 
-> **Stable version:** [`v1.0.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v1.0.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases)
+> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v1.0.0`)
+>
+> **Stable version:** [`v1.0.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v1.0.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v1.0.0/SHA256SUMS.txt)
 
 ---
 
@@ -81,6 +83,8 @@ npm test         # runs Vitest
 ```
 
 **Static build package:** the production build in `dist/` is a static bundle and must be used through an HTTP static server (for example `npm run preview` or any static hosting service). Directly double-clicking `dist/index.html` via `file://` is not supported.
+
+**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys the immutable `v1.0.0` Release asset. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
 
 **Workflow:**
 
