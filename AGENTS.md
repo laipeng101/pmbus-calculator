@@ -112,8 +112,8 @@ tests/e2e/        Playwright 真实用户流程
    npm run verify
    ```
 
-   `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`check:markdown-math`、`test:coverage`、
-   `test:e2e`、`build`、`test:e2e:release`、`check:repo-hygiene`、`git diff --check`（未暂存工作区）、
+   `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`check:markdown-math`、`specs:check`、
+   `test:coverage`、`test:e2e`、`build`、`test:e2e:release`、`check:repo-hygiene`、`git diff --check`（未暂存工作区）、
    `git diff --cached --check`（暂存区）、`npm audit --audit-level=high`。
    CI 的 whitespace gate 还额外检查：PR 为完整 base→head；push 为完整 event.before→github.sha。
    任务结束前还需执行 `docs/REPOSITORY_HYGIENE.md` 中「Agent 生命周期清理 → 任务结束」的简短门禁。
@@ -124,14 +124,55 @@ tests/e2e/        Playwright 真实用户流程
 8. 器件数据不明确时不得猜测：保持禁用/留空，并在 UI 与文档中注明“需要器件数据手册”。
    只有仓库内规范与官方规范存在无法保守处理的直接冲突时才停止。
 
-## 9. 文档更新规则
+## 9. Shell, timeout and long-running task guardrails
+
+1. 每次 shell 调用显式指定工作目录（`cd <repo>` 开头），不得依赖 persistent shell 上一次的 cwd。
+2. 一个 shell 调用只承担一个主要动作；不把文件写入、测试、网络请求和 CI 等待拼成超长命令。
+3. 优先使用已加载的 editor/patch/write 工具修改文件。
+4. 在 DSH persistent Bash 中，禁止用单个大 heredoc 写入超过约 3 KiB 的内容。
+5. 如果只有 Bash 可用：
+   - 将内容拆为不超过约 2 KiB 的块；
+   - 每块后检查文件字节数/行数；
+   - 完成后运行格式化、语法检查或目标测试；
+   - 不使用同一超长 heredoc 原样重试。
+6. 同一命令发生 timeout 后最多允许一次诊断，不得原样重试：
+   - 先检查 `git status`、目标文件、临时文件、后台进程和 shell reset 状态；
+   - 第二次必须改变工具、拆分粒度或执行策略。
+7. 不通过调大全局 timeout 掩盖 heredoc、死锁或错误轮询。
+8. 普通搜索、编辑、静态检查和目标测试使用短前台调用。
+9. 长验证、构建、下载、CI/部署等待：
+   - 工具暴露 `run_in_background`/job 能力时使用后台任务，并通过 `job_output`/`job_kill` 管理；
+   - 没有后台能力时使用一个有明确 deadline、短于有效工具 timeout 的原生命令；
+   - 禁止长时间 `for ... sleep ...` 前台轮询；
+   - 禁止无上限 sleep 和无限重试。
+10. 网络命令必须有 connect timeout、总 timeout 和有限重试；不得静默使用第三方镜像。
+11. 大输出命令写入临时日志，只返回尾部摘要，但必须保留真实退出码：
+
+    ```bash
+    command >"$log" 2>&1
+    rc=$?
+    tail -80 "$log"
+    exit "$rc"
+    ```
+
+12. 使用 pipeline 时启用 `set -o pipefail`；不得让 `tail`、`tee` 或 `echo` 的成功掩盖原命令失败。
+13. `command; echo exit:$?` 只能用于观察，不得作为 Harness 成功状态的唯一依据。
+14. 开发阶段优先运行目标测试；最后一次代码/配置修改完成后才运行完整 `npm run verify`。
+15. 依赖没有变化时，不因 compact 或上下文恢复重复运行已经有效的长测试。
+16. push 前完成本地最终验证；原则上一次 push 形成最终 PR head。
+17. CI 必须按精确 head SHA 核对，不只按 branch 的“最新 run”猜测。
+18. CI 失败必须先本地复现和定位，不盲目 rerun。
+19. PR 描述应在 merge 前完成；除纠正事实错误外，不在 merge 后反复编辑 PR。
+20. timeout 后的检查点至少记录：命令、有效 timeout、持续时间、是否 shell reset、工作区状态、策略变化。
+
+## 10. 文档更新规则
 
 - 文档更新继续遵循条件加载；普通代码变更不再要求每次检查全部 `docs/ROADMAP.md`、`docs/MIGRATION_MATRIX.md`、`README.md`，只需在变更实际影响对应文档时更新。
 - 发布任务才读取 `docs/RELEASING.md`，并按其规则更新 `CHANGELOG.md` 与 `docs/releases/`。
 - 不要在多份文档中重复维护同一份进度表。
 - 不再维护手工 WEB-xxxx 变更记录；PR、commit 和 CI 是变更审计来源。
 
-## 10. Pull Request 检查清单
+## 11. Pull Request 检查清单
 
 - [ ] 已读 AGENTS.md 与相关 DOMAIN_MODEL 规则
 - [ ] 符合 Web-first 主线，未引入 Tauri/Electron/后端/硬件通信

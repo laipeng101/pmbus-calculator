@@ -10,6 +10,7 @@ const EXPECTED_DOCUMENT_COUNT = 4
 
 export const DEFAULT_CACHE_DIR = '.cache/specifications'
 export const DEFAULT_TIMEOUT_MS = 30_000
+export const MAX_REDIRECTS = 5
 
 export const ALLOWED_LANDING_HOSTS = ['pmbus.org', 'www.smbus.org']
 export const ALLOWED_DOWNLOAD_HOSTS = ['pmbusprod.wpenginepowered.com', 'www.smbus.org']
@@ -67,6 +68,7 @@ function pushIf(condition, errors, message) {
 
 export function validateManifest(manifest, options = {}) {
   const errors = []
+  const expectedDocumentCount = options.expectedDocumentCount ?? EXPECTED_DOCUMENT_COUNT
   const landingHosts = options.landingHosts ?? ALLOWED_LANDING_HOSTS
   const downloadHosts = options.downloadHosts ?? ALLOWED_DOWNLOAD_HOSTS
 
@@ -83,9 +85,9 @@ export function validateManifest(manifest, options = {}) {
     return { ok: false, errors, manifest }
   }
 
-  if (manifest.documents.length !== EXPECTED_DOCUMENT_COUNT) {
+  if (manifest.documents.length !== expectedDocumentCount) {
     errors.push(
-      `manifest must contain exactly ${EXPECTED_DOCUMENT_COUNT} specification records (received ${manifest.documents.length})`,
+      `manifest must contain exactly ${expectedDocumentCount} specification records (received ${manifest.documents.length})`,
     )
   }
 
@@ -156,14 +158,47 @@ export function validateManifest(manifest, options = {}) {
   return { ok: errors.length === 0, errors, manifest }
 }
 
-export function loadManifest(repoRoot) {
+export function validateDocument(document, options = {}) {
+  return validateManifest(
+    { schemaVersion: 1, documents: [document] },
+    { ...options, expectedDocumentCount: 1 },
+  )
+}
+
+export function assertValidManifest(manifest, options = {}) {
+  const validation = validateManifest(manifest, options)
+  if (validation.ok === false) {
+    throw new Error(`invalid specification manifest: ${validation.errors.join('; ')}`)
+  }
+  return validation.manifest
+}
+
+export function assertValidDocument(document, options = {}) {
+  const validation = validateDocument(document, options)
+  if (validation.ok === false) {
+    throw new Error(`invalid specification document: ${validation.errors.join('; ')}`)
+  }
+  return document
+}
+
+export async function loadManifest(repoRoot) {
   const manifestPath = path.join(repoRoot, MANIFEST_PATH)
-  return fs
-    .readFile(manifestPath, 'utf8')
-    .then((text) => JSON.parse(text))
-    .catch((error) => {
-      throw new Error(`failed to read manifest at ${manifestPath}: ${error.message ?? error}`)
-    })
+  let text
+  try {
+    text = await fs.readFile(manifestPath, 'utf8')
+  } catch (error) {
+    throw new Error(`failed to read manifest at ${manifestPath}: ${error.message ?? error}`)
+  }
+
+  let manifest
+  try {
+    manifest = JSON.parse(text)
+  } catch (error) {
+    throw new Error(`failed to parse manifest at ${manifestPath}: ${error.message ?? error}`)
+  }
+
+  assertValidManifest(manifest)
+  return manifest
 }
 
 export function gitTrackedPdfs(repoRoot) {
@@ -219,6 +254,7 @@ export function checkSpecifications({ repoRoot, log = console.log, error = conso
 }
 
 export function listSpecifications(manifest, { log = console.log } = {}) {
+  assertValidManifest(manifest)
   for (const document of manifest.documents) {
     log(
       [
@@ -269,13 +305,41 @@ function selectDocuments(manifest, { all, ids }) {
   return selected
 }
 
-function resolveCacheDir(repoRoot, cacheDir) {
-  const absolute = path.resolve(repoRoot, cacheDir)
-  const relative = path.relative(repoRoot, absolute)
+async function realpathOrThrow(target, description) {
+  try {
+    return await fs.realpath(target)
+  } catch (error) {
+    throw new Error(`failed to resolve ${description} ${target}: ${error.message ?? error}`)
+  }
+}
+
+async function rejectSymlinkSegments(repoRoot, absoluteTarget) {
+  const segments = path.relative(repoRoot, absoluteTarget).split(path.sep)
+  let current = repoRoot
+  for (const segment of segments) {
+    if (segment.length === 0) continue
+    current = path.join(current, segment)
+    let stat = null
+    try {
+      stat = await fs.lstat(current)
+    } catch {
+      stat = null
+    }
+    if (stat !== null && stat.isSymbolicLink()) {
+      throw new Error(`refusing symlink in cache path: ${current}`)
+    }
+  }
+}
+
+export async function resolveVerifiedCacheDir(repoRoot, cacheDir) {
+  const realRoot = await realpathOrThrow(repoRoot, 'repository root')
+  const absolute = path.resolve(realRoot, cacheDir)
+  const relative = path.relative(realRoot, absolute)
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error(`cache directory escapes repository root: ${cacheDir}`)
   }
-  return absolute
+  await rejectSymlinkSegments(realRoot, absolute)
+  return { realRoot, absoluteCacheDir: absolute }
 }
 
 export function isCachePathIgnored(repoRoot, cacheDir) {
@@ -294,11 +358,12 @@ async function ensureCacheIsIgnored(repoRoot, cacheDir) {
 async function existingFileState(filePath) {
   let stat = null
   try {
-    stat = await fs.stat(filePath)
+    stat = await fs.lstat(filePath)
   } catch (error) {
     if (error?.code === 'ENOENT') return null
     throw error
   }
+  if (stat.isSymbolicLink()) throw new Error(`cache path is a symbolic link: ${filePath}`)
   if (stat.isFile() === false) throw new Error(`cache path is not a regular file: ${filePath}`)
   const bytes = stat.size
   const sha256 = await sha256File(filePath)
@@ -325,13 +390,191 @@ export function sha256Buffer(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex')
 }
 
-async function writeTempFile(targetPath, buffer) {
-  const tempPath = path.join(
+function makeTempPath(targetPath) {
+  return path.join(
     path.dirname(targetPath),
     `.${path.basename(targetPath)}.tmp-${process.pid}-${crypto.randomUUID()}`,
   )
-  await fs.writeFile(tempPath, buffer, { flag: 'wx' })
-  return tempPath
+}
+
+function getResponseHeader(response, name) {
+  const headers = response.headers
+  if (headers && typeof headers.get === 'function') {
+    const value = headers.get(name)
+    return value === null ? undefined : value
+  }
+  if (headers && typeof headers === 'object') {
+    return headers[name.toLowerCase()] ?? headers[name]
+  }
+  return undefined
+}
+
+async function cancelResponseBody(response) {
+  try {
+    if (response.body && typeof response.body.cancel === 'function') {
+      await response.body.cancel()
+    }
+  } catch {
+    // best-effort cleanup; never mask the original redirect/validation error
+  }
+}
+
+function abortErrorFor(signal) {
+  if (signal && signal.reason instanceof Error) return signal.reason
+  return new Error('aborted')
+}
+
+async function raceWithSignal(promise, signal) {
+  if (signal?.aborted) throw abortErrorFor(signal)
+  return await new Promise((resolve, reject) => {
+    const onAbort = () => reject(abortErrorFor(signal))
+    signal?.addEventListener('abort', onAbort, { once: true })
+    Promise.resolve(promise).then(
+      (value) => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error) => {
+        signal?.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
+async function readChunkWithSignal(reader, signal) {
+  if (signal?.aborted) throw abortErrorFor(signal)
+  return await new Promise((resolve, reject) => {
+    const onAbort = () => {
+      reader.cancel().catch(() => {})
+      reject(abortErrorFor(signal))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    reader.read().then(
+      (result) => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve(result)
+      },
+      (error) => {
+        signal?.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
+async function streamResponseToTempFile(response, targetPath, document, signal) {
+  if (response.body === null || response.body === undefined) {
+    throw new Error(`response body is missing for ${document.downloadUrl}`)
+  }
+  const reader = response.body.getReader?.()
+  if (reader === undefined) {
+    throw new Error(`response body is not a readable stream for ${document.downloadUrl}`)
+  }
+
+  const hash = crypto.createHash('sha256')
+  let bytes = 0
+  let handle = null
+  let tempPath = null
+
+  try {
+    tempPath = makeTempPath(targetPath)
+    handle = await fs.open(tempPath, 'wx')
+
+    while (true) {
+      const { done, value } = await readChunkWithSignal(reader, signal)
+      if (done) break
+      bytes += value.byteLength
+      if (bytes > document.bytes) {
+        await reader.cancel().catch(() => {})
+        throw new Error(
+          `byte count mismatch for ${document.id}: expected ${document.bytes}, received more than ${document.bytes}`,
+        )
+      }
+      hash.update(value)
+      await handle.write(value)
+    }
+
+    await handle.close()
+    handle = null
+
+    if (bytes !== document.bytes) {
+      throw new Error(
+        `byte count mismatch for ${document.id}: expected ${document.bytes}, received ${bytes}`,
+      )
+    }
+
+    const sha256 = hash.digest('hex')
+    if (sha256 !== document.sha256) {
+      throw new Error(
+        `sha256 mismatch for ${document.id}: expected ${document.sha256}, received ${sha256}`,
+      )
+    }
+
+    return { tempPath, bytes, sha256 }
+  } catch (error) {
+    if (handle !== null) await handle.close().catch(() => {})
+    if (tempPath !== null) await fs.rm(tempPath, { force: true }).catch(() => {})
+    await reader.cancel().catch(() => {})
+    throw error
+  }
+}
+
+export async function fetchWithRedirects(
+  url,
+  { fetchImpl = fetch, signal, downloadHosts = ALLOWED_DOWNLOAD_HOSTS } = {},
+) {
+  let currentUrl = url
+  const seen = new Set()
+
+  for (let redirects = 0; ; redirects += 1) {
+    if (signal?.aborted) throw abortErrorFor(signal)
+    if (redirects > MAX_REDIRECTS) {
+      throw new Error(`too many redirects (${redirects}) for ${url}`)
+    }
+    if (matchesHost(currentUrl, downloadHosts) === false) {
+      throw new Error(`redirect target host is not allowed: ${currentUrl}`)
+    }
+    if (seen.has(currentUrl)) {
+      throw new Error(`redirect loop detected at ${currentUrl}`)
+    }
+    seen.add(currentUrl)
+
+    const response = await raceWithSignal(
+      fetchImpl(currentUrl, { redirect: 'manual', signal }),
+      signal,
+    )
+
+    if (response === null || response === undefined || typeof response.status !== 'number') {
+      throw new Error(`fetch transport returned an invalid response for ${currentUrl}`)
+    }
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = getResponseHeader(response, 'location')
+      if (location === undefined || location.length === 0) {
+        throw new Error(`redirect response missing Location for ${currentUrl}`)
+      }
+      let nextUrl
+      try {
+        nextUrl = new URL(location, currentUrl).toString()
+      } catch {
+        throw new Error(`invalid redirect Location for ${currentUrl}: ${location}`)
+      }
+      await cancelResponseBody(response)
+      currentUrl = nextUrl
+      continue
+    }
+
+    if (response.ok === false) {
+      throw new Error(`HTTP ${response.status} for ${currentUrl}`)
+    }
+
+    const finalUrl = response.url || currentUrl
+    if (matchesHost(finalUrl, downloadHosts) === false) {
+      throw new Error(`final response URL host is not allowed: ${finalUrl}`)
+    }
+    return response
+  }
 }
 
 export async function fetchOneDocument({
@@ -342,7 +585,20 @@ export async function fetchOneDocument({
   log = console.log,
   downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
 }) {
+  assertValidDocument(document, { downloadHosts })
+  if (
+    typeof cacheDir !== 'string' ||
+    cacheDir.length === 0 ||
+    path.isAbsolute(cacheDir) === false
+  ) {
+    throw new Error(`cacheDir must be an absolute path: ${cacheDir}`)
+  }
+
   const targetPath = path.join(cacheDir, document.fileName)
+  if (path.dirname(targetPath) !== cacheDir) {
+    throw new Error(`fileName escapes cache directory: ${document.fileName}`)
+  }
+
   const existing = await existingFileState(targetPath)
   if (existing && existing.bytes === document.bytes && existing.sha256 === document.sha256) {
     log(`specs:fetch skip (already valid): ${targetPath}`)
@@ -361,63 +617,52 @@ export async function fetchOneDocument({
     )
   }
 
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort(new Error(`timed out after ${timeoutMs}ms for ${document.id}`))
+  }, timeoutMs)
+
   let tempPath = null
   try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
-    let response
-    try {
-      response = await fetchImpl(document.downloadUrl, {
-        redirect: 'follow',
-        signal: controller.signal,
-      })
-    } finally {
-      clearTimeout(timer)
-    }
-
-    if (response === null || response === undefined || typeof response.ok !== 'boolean') {
-      throw new Error(`fetch transport returned an invalid response for ${document.downloadUrl}`)
-    }
-    if (response.ok === false) {
-      throw new Error(`HTTP ${response.status} for ${document.downloadUrl}`)
-    }
-
-    const finalUrl = response.url || document.downloadUrl
-    if (matchesHost(finalUrl, downloadHosts) === false) {
-      throw new Error(`final response URL host is not allowed: ${finalUrl}`)
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer())
-    if (buffer.byteLength !== document.bytes) {
-      throw new Error(
-        `byte count mismatch for ${document.id}: expected ${document.bytes}, received ${buffer.byteLength}`,
-      )
-    }
-
-    const sha256 = sha256Buffer(buffer)
-    if (sha256 !== document.sha256) {
-      throw new Error(
-        `sha256 mismatch for ${document.id}: expected ${document.sha256}, received ${sha256}`,
-      )
-    }
-
-    tempPath = await writeTempFile(targetPath, buffer)
+    const response = await fetchWithRedirects(document.downloadUrl, {
+      fetchImpl,
+      signal: controller.signal,
+      downloadHosts,
+    })
+    const streamed = await streamResponseToTempFile(
+      response,
+      targetPath,
+      document,
+      controller.signal,
+    )
+    tempPath = streamed.tempPath
     await fs.rename(tempPath, targetPath)
+    tempPath = null
+
     log(`specs:fetch OK: ${document.downloadUrl} -> ${targetPath}`)
-    log(`specs:fetch verified: ${buffer.byteLength} bytes, sha256=${sha256}`)
+    log(`specs:fetch verified: ${streamed.bytes} bytes, sha256=${streamed.sha256}`)
     return {
       id: document.id,
       status: 'downloaded',
       sourceUrl: document.downloadUrl,
       targetPath,
-      bytes: buffer.byteLength,
-      sha256,
+      bytes: streamed.bytes,
+      sha256: streamed.sha256,
     }
   } catch (error) {
     if (tempPath !== null) {
       await fs.rm(tempPath, { force: true }).catch(() => {})
     }
+    if (timedOut || controller.signal.aborted) {
+      throw new Error(
+        `timed out after ${timeoutMs}ms for ${document.id}: ${error?.message ?? error}`,
+      )
+    }
     throw error
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -432,20 +677,33 @@ export async function fetchSpecifications({
   log = console.log,
   downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
 } = {}) {
+  assertValidManifest(manifest, { downloadHosts })
+
   if (all === false && ids.length === 0) {
     throw new Error('fetch requires --all or --id <id>')
   }
+
   const selected = selectDocuments(manifest, { all, ids })
-  const absoluteCacheDir = resolveCacheDir(repoRoot, cacheDir)
+  const { realRoot, absoluteCacheDir } = await resolveVerifiedCacheDir(repoRoot, cacheDir)
   await ensureCacheIsIgnored(repoRoot, cacheDir)
   await fs.mkdir(absoluteCacheDir, { recursive: true })
+
+  const realCacheDir = await realpathOrThrow(absoluteCacheDir, 'cache directory')
+  const realCacheRelative = path.relative(realRoot, realCacheDir)
+  if (
+    realCacheRelative === '' ||
+    realCacheRelative.startsWith('..') ||
+    path.isAbsolute(realCacheRelative)
+  ) {
+    throw new Error(`cache directory resolves outside repository root: ${realCacheDir}`)
+  }
 
   const results = []
   for (const document of selected) {
     results.push(
       await fetchOneDocument({
         document,
-        cacheDir: absoluteCacheDir,
+        cacheDir: realCacheDir,
         fetchImpl,
         timeoutMs,
         log,
@@ -463,12 +721,17 @@ export async function verifyCache({
   log = console.log,
   error = console.error,
 } = {}) {
-  const absoluteCacheDir = resolveCacheDir(repoRoot, cacheDir)
+  assertValidManifest(manifest)
+
+  const { absoluteCacheDir } = await resolveVerifiedCacheDir(repoRoot, cacheDir)
   const results = []
   let failed = false
 
   for (const document of manifest.documents) {
     const targetPath = path.join(absoluteCacheDir, document.fileName)
+    if (path.dirname(targetPath) !== absoluteCacheDir) {
+      throw new Error(`fileName escapes cache directory: ${document.fileName}`)
+    }
     const state = await existingFileState(targetPath)
     if (state === null) {
       failed = true
@@ -532,8 +795,13 @@ async function main() {
       process.exitCode = 2
       return
     }
-    const manifest = await loadManifest(repoRoot)
-    listSpecifications(manifest)
+    try {
+      const manifest = await loadManifest(repoRoot)
+      listSpecifications(manifest)
+    } catch (caught) {
+      process.stderr.write(`specs:list failed: ${caught.message ?? caught}\n`)
+      process.exitCode = 1
+    }
     return
   }
 

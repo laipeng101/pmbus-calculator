@@ -53,6 +53,7 @@ npm run format:check
 npm run typecheck
 npm run lint
 npm run check:markdown-math
+npm run specs:check
 npm run test:coverage
 npm run test:e2e
 npm run build
@@ -77,6 +78,7 @@ CI 只执行 `npm run specs:check`，不依赖也不发起规范 PDF 下载。DS
 缓存和 PDF 均不得提交；历史 tag/commit 不重写。
 
 详细安全边界见 [`docs/REPOSITORY_HYGIENE.md`](docs/REPOSITORY_HYGIENE.md)。
+Shell 超时、后台等待、日志与退出码 guardrails 见 [`AGENTS.md`](AGENTS.md) 第 9 节；本文件只同步实际命令，不复制整套规则。
 
 whitespace 检查口径：
 
