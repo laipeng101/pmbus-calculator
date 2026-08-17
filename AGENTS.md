@@ -164,6 +164,10 @@ tests/e2e/        Playwright 真实用户流程
 18. CI 失败必须先本地复现和定位，不盲目 rerun。
 19. PR 描述应在 merge 前完成；除纠正事实错误外，不在 merge 后反复编辑 PR。
 20. timeout 后的检查点至少记录：命令、有效 timeout、持续时间、是否 shell reset、工作区状态、策略变化。
+21. heredoc 限制同样适用于 shell/Python/Node heredoc、测试源码、临时文件和 PR body；不得用 Python 脚本包裹大内容绕过限制。
+22. 使用 editor/patch 工具时不需要人为拆碎正常的结构化修改；只有 Bash 写入才必须 chunk ≤ 约 2 KiB 并逐块检查。
+23. 大日志必须以 `rc=$?` 捕获后 `exit "$rc"` 返回；`command; echo rc:$?; tail ...` 不能作为成功判定。
+24. 最终报告不得在没有实测 chunk 大小的情况下宣称“完全符合 guardrails”。
 
 ## 10. 文档更新规则
 
