@@ -144,6 +144,19 @@ function joinedFakeWrites(handle: { chunks: Buffer[] }) {
   return Buffer.concat(handle.chunks).toString('utf8')
 }
 
+async function makeDelayedCloseHandle(targetPath: string, delayMs: number, openFn = fs.open) {
+  const realHandle = await (openFn as typeof fs.open)(targetPath, 'wx')
+  return {
+    async write(buffer: Buffer, offset: number, length: number, position: number | null) {
+      return realHandle.write(buffer, offset, length, position)
+    },
+    async close() {
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      await realHandle.close()
+    },
+  }
+}
+
 async function makePartialFileHandle(
   targetPath: string,
   results: Array<number | Error>,
@@ -661,6 +674,41 @@ describe('specifications streaming download', () => {
     ).rejects.toThrow(/simulated disk full/)
 
     expect(partialHandle?.calls).toBe(2)
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
+  })
+
+  it('rejects when close crosses the deadline before the final rename', async () => {
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
+    const content = bufferFromString('deadline-close-content')
+    const document = makeDocument({
+      bytes: content.byteLength,
+      sha256: sha256('deadline-close-content'),
+    })
+    const originalOpen = fs.open
+    const openSpy = vi.spyOn(fs, 'open')
+    openSpy.mockImplementation((async (targetPath: unknown, ...args: unknown[]) => {
+      if (typeof targetPath === 'string' && targetPath.includes('.tmp-')) {
+        return makeDelayedCloseHandle(targetPath, 80, originalOpen)
+      }
+      return originalOpen(targetPath as never, ...(args as never[]))
+    }) as typeof fs.open)
+    const renameSpy = vi.spyOn(fs, 'rename')
+    renameSpy.mockImplementation(async () => {})
+    const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream([content]) }))
+
+    await expect(
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl,
+        timeoutMs: 20,
+        downloadHosts: ALLOWED_DOWNLOAD_HOSTS,
+      }),
+    ).rejects.toThrow(/timed out/)
+
+    expect(renameSpy).not.toHaveBeenCalled()
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
     await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
   })
 
