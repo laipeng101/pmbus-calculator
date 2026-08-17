@@ -21,6 +21,7 @@ import {
   sha256Buffer,
   validateManifest,
   verifyCache,
+  writeAll,
 } from '../scripts/specifications.mjs'
 
 const ALLOWED_DOWNLOAD_URL =
@@ -38,6 +39,7 @@ async function makeTempRoot() {
 
 afterEach(async () => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })))
 })
 
@@ -107,6 +109,63 @@ function makeStream(chunks: Array<string | Uint8Array>) {
 
 function makeNeverStream() {
   return new ReadableStream({ start() {} })
+}
+
+async function makeCacheRepo() {
+  const repoRoot = await makeTempRoot()
+  const cacheDir = DEFAULT_CACHE_DIR
+  const absCacheDir = path.join(repoRoot, cacheDir)
+  await fs.mkdir(absCacheDir, { recursive: true })
+  return { repoRoot, cacheDir, absCacheDir }
+}
+
+function makeFakeWriteHandle(results: Array<number | Error>) {
+  let call = 0
+  const chunks: Buffer[] = []
+  return {
+    chunks,
+    get calls() {
+      return call
+    },
+    async write(buffer: Buffer, offset: number, _length: number) {
+      const result = results[call]
+      call += 1
+      if (result instanceof Error) throw result
+      const bytesWritten = result as number
+      const end = Math.min(buffer.byteLength, offset + bytesWritten)
+      chunks.push(Buffer.from(buffer.subarray(offset, end)))
+      return { bytesWritten }
+    },
+    async close() {},
+  }
+}
+
+function joinedFakeWrites(handle: { chunks: Buffer[] }) {
+  return Buffer.concat(handle.chunks).toString('utf8')
+}
+
+async function makePartialFileHandle(
+  targetPath: string,
+  results: Array<number | Error>,
+  openFn = fs.open,
+) {
+  const realHandle = await (openFn as typeof fs.open)(targetPath, 'wx')
+  let call = 0
+  return {
+    get calls() {
+      return call
+    },
+    async write(buffer: Buffer, offset: number, length: number, position: number | null) {
+      const result = results[call]
+      call += 1
+      if (result instanceof Error) throw result
+      const bytesWritten = result as number
+      return realHandle.write(buffer, offset, Math.min(length, bytesWritten), position)
+    },
+    async close() {
+      await realHandle.close()
+    },
+  }
 }
 
 function mockResponse(overrides: Record<string, unknown> = {}) {
@@ -266,16 +325,22 @@ describe('specifications validation at public entry points', () => {
   })
 
   it('rejects path-escape fileName before any write', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream(['x']) }))
     const document = makeDocument({ fileName: '../../escaped.pdf' })
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, downloadHosts: ALLOWED_DOWNLOAD_HOSTS }),
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl,
+        downloadHosts: ALLOWED_DOWNLOAD_HOSTS,
+      }),
     ).rejects.toThrow(/invalid specification document/)
 
     expect(fetchImpl).not.toHaveBeenCalled()
-    await expect(fs.readdir(cacheDir)).resolves.toEqual([])
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
   })
 
   it('rejects a cache symlink pointing outside the repository', async () => {
@@ -295,29 +360,41 @@ describe('specifications validation at public entry points', () => {
   })
 
   it('rejects an existing symlink target file', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const outside = await makeTempRoot()
     const outsideFile = path.join(outside, 'doc-1.pdf')
     await fs.writeFile(outsideFile, 'outside')
-    await fs.symlink(outsideFile, path.join(cacheDir, 'doc-1.pdf'))
+    await fs.symlink(outsideFile, path.join(absCacheDir, 'doc-1.pdf'))
     const document = makeDocument()
     const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream(['x']) }))
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, downloadHosts: ALLOWED_DOWNLOAD_HOSTS }),
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl,
+        downloadHosts: ALLOWED_DOWNLOAD_HOSTS,
+      }),
     ).rejects.toThrow(/symbolic link/)
 
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
   it('rejects an existing non-regular target file', async () => {
-    const cacheDir = await makeTempRoot()
-    await fs.mkdir(path.join(cacheDir, 'doc-1.pdf'))
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
+    await fs.mkdir(path.join(absCacheDir, 'doc-1.pdf'))
     const document = makeDocument()
     const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream(['x']) }))
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, downloadHosts: ALLOWED_DOWNLOAD_HOSTS }),
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl,
+        downloadHosts: ALLOWED_DOWNLOAD_HOSTS,
+      }),
     ).rejects.toThrow(/not a regular file/)
 
     expect(fetchImpl).not.toHaveBeenCalled()
@@ -326,31 +403,31 @@ describe('specifications validation at public entry points', () => {
 
 describe('specifications fetch timeout', () => {
   it('times out while waiting for response headers', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const document = makeDocument()
     const fetchImpl = vi.fn(() => new Promise(() => {}))
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, timeoutMs: 40 }),
+      fetchOneDocument({ repoRoot, document, cacheDir, fetchImpl, timeoutMs: 40 }),
     ).rejects.toThrow(/timed out/)
 
-    await expect(fs.readdir(cacheDir)).resolves.toEqual([])
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
   })
 
   it('times out while waiting for a stalled response body', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const document = makeDocument()
     const fetchImpl = vi.fn(async () => mockResponse({ body: makeNeverStream() }))
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, timeoutMs: 40 }),
+      fetchOneDocument({ repoRoot, document, cacheDir, fetchImpl, timeoutMs: 40 }),
     ).rejects.toThrow(/timed out/)
 
-    await expect(fs.readdir(cacheDir)).resolves.toEqual([])
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
   })
 
   it('applies one absolute deadline across redirect and body reads', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const document = makeDocument()
     const firstUrl = ALLOWED_DOWNLOAD_URL
     const secondUrl = ALLOWED_DOWNLOAD_URL_2
@@ -360,17 +437,141 @@ describe('specifications fetch timeout', () => {
     })
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, timeoutMs: 60 }),
+      fetchOneDocument({ repoRoot, document, cacheDir, fetchImpl, timeoutMs: 60 }),
     ).rejects.toThrow(/timed out/)
 
     expect(fetchImpl).toHaveBeenCalledTimes(2)
-    await expect(fs.readdir(cacheDir)).resolves.toEqual([])
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
+  })
+})
+
+describe('specifications writeAll', () => {
+  it('completes a chunk across multiple partial writes', async () => {
+    const chunk = bufferFromString('partial-write-content')
+    const handle = makeFakeWriteHandle([3, 5, chunk.byteLength - 8])
+
+    await writeAll(handle, chunk, undefined)
+
+    expect(handle.calls).toBe(3)
+    expect(joinedFakeWrites(handle)).toBe('partial-write-content')
+  })
+
+  it('rejects bytesWritten === 0 instead of looping', async () => {
+    const handle = makeFakeWriteHandle([0])
+
+    await expect(writeAll(handle, bufferFromString('zero'), undefined)).rejects.toThrow(
+      /invalid bytesWritten/,
+    )
+    expect(handle.calls).toBe(1)
+  })
+
+  it('rejects negative, non-integer, or over-long bytesWritten', async () => {
+    const invalidResults = [-1, 1.5, 99]
+
+    for (const result of invalidResults) {
+      const handle = makeFakeWriteHandle([result])
+      await expect(writeAll(handle, bufferFromString('short'), undefined)).rejects.toThrow(
+        /invalid bytesWritten/,
+      )
+      expect(handle.calls).toBe(1)
+    }
+  })
+})
+
+describe('specifications fetch timeout validation', () => {
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, '50'])(
+    'rejects timeoutMs %s before fetch or cache creation',
+    async (timeoutMs) => {
+      const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
+      const document = makeDocument()
+      const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream(['x']) }))
+
+      await expect(
+        fetchOneDocument({
+          repoRoot,
+          document,
+          cacheDir,
+          fetchImpl,
+          timeoutMs: timeoutMs as number,
+        }),
+      ).rejects.toThrow(/positive safe integer/)
+
+      expect(fetchImpl).not.toHaveBeenCalled()
+      await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
+    },
+  )
+})
+
+describe('specifications single-document cache boundary', () => {
+  it('rejects a cache directory outside repoRoot before fetch or write', async () => {
+    const repoRoot = await makeTempRoot()
+    const outside = await makeTempRoot()
+    const document = makeDocument()
+    const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream(['x']) }))
+
+    await expect(
+      fetchOneDocument({ repoRoot, document, cacheDir: outside, fetchImpl }),
+    ).rejects.toThrow(/escapes repository root/)
+
+    expect(fetchImpl).not.toHaveBeenCalled()
+    await expect(fs.readdir(outside)).resolves.toEqual([])
+  })
+
+  it('rejects a symlinked cache segment before fetch', async () => {
+    const repoRoot = await makeTempRoot()
+    const outside = await makeTempRoot()
+    await fs.symlink(outside, path.join(repoRoot, '.cache'), 'dir')
+    const document = makeDocument()
+    const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream(['x']) }))
+
+    await expect(
+      fetchOneDocument({ repoRoot, document, cacheDir: DEFAULT_CACHE_DIR, fetchImpl }),
+    ).rejects.toThrow(/refusing symlink/)
+
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
+
+describe('specifications HTTP status contract', () => {
+  it('rejects status 500 even when ok is missing', async () => {
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
+    const document = makeDocument()
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({ status: 500, ok: undefined, body: makeStream(['bad']) }),
+    )
+
+    await expect(fetchOneDocument({ repoRoot, document, cacheDir, fetchImpl })).rejects.toThrow(
+      /unsupported HTTP status 500/,
+    )
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
+  })
+
+  it('rejects 304 even when Location is present', async () => {
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
+    const document = makeDocument()
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({
+        status: 304,
+        ok: false,
+        headers: { location: ALLOWED_DOWNLOAD_URL_2 },
+        body: makeStream([]),
+      }),
+    )
+
+    await expect(fetchOneDocument({ repoRoot, document, cacheDir, fetchImpl })).rejects.toThrow(
+      /unsupported HTTP status 304/,
+    )
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
   })
 })
 
 describe('specifications streaming download', () => {
   it('streams a correct body into place with bytes and SHA-256 verified', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const content = bufferFromString('correct-pdf-content')
     const document = makeDocument({
       bytes: content.byteLength,
@@ -381,6 +582,7 @@ describe('specifications streaming download', () => {
     )
 
     const result = await fetchOneDocument({
+      repoRoot,
       document,
       cacheDir,
       fetchImpl,
@@ -390,73 +592,156 @@ describe('specifications streaming download', () => {
     expect(result.status).toBe('downloaded')
     expect(result.bytes).toBe(content.byteLength)
     expect(result.sha256).toBe(sha256('correct-pdf-content'))
-    await expect(fs.readFile(path.join(cacheDir, 'doc-1.pdf'), 'utf8')).resolves.toBe(
+    await expect(fs.readFile(path.join(absCacheDir, 'doc-1.pdf'), 'utf8')).resolves.toBe(
       'correct-pdf-content',
     )
-    const entries = await fs.readdir(cacheDir)
+    const entries = await fs.readdir(absCacheDir)
     expect(entries).toEqual(['doc-1.pdf'])
   })
 
+  it('integrates partial writes into the streamed file', async () => {
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
+    const content = bufferFromString('partial-stream-content')
+    const document = makeDocument({
+      bytes: content.byteLength,
+      sha256: sha256('partial-stream-content'),
+    })
+    const partials = [4, 6, content.byteLength - 10]
+    let partialHandle: { calls: number } | undefined
+    const originalOpen = fs.open
+    const openSpy = vi.spyOn(fs, 'open')
+    openSpy.mockImplementation((async (targetPath: unknown, ...args: unknown[]) => {
+      if (typeof targetPath === 'string' && targetPath.includes('.tmp-')) {
+        partialHandle = await makePartialFileHandle(targetPath, partials, originalOpen)
+        return partialHandle
+      }
+      return originalOpen(targetPath as never, ...(args as never[]))
+    }) as typeof fs.open)
+
+    const result = await fetchOneDocument({
+      repoRoot,
+      document,
+      cacheDir,
+      fetchImpl: async () => mockResponse({ body: makeStream([content]) }),
+    })
+
+    expect(result.status).toBe('downloaded')
+    expect(partialHandle?.calls).toBe(3)
+    await expect(fs.readFile(path.join(absCacheDir, 'doc-1.pdf'), 'utf8')).resolves.toBe(
+      'partial-stream-content',
+    )
+  })
+
+  it('cleans final and temp files when a partial write fails midway', async () => {
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
+    const content = bufferFromString('partial-failure-content')
+    const document = makeDocument({
+      bytes: content.byteLength,
+      sha256: sha256('partial-failure-content'),
+    })
+    const partials = [4, new Error('simulated disk full')]
+    let partialHandle: { calls: number } | undefined
+    const originalOpen = fs.open
+    const openSpy = vi.spyOn(fs, 'open')
+    openSpy.mockImplementation((async (targetPath: unknown, ...args: unknown[]) => {
+      if (typeof targetPath === 'string' && targetPath.includes('.tmp-')) {
+        partialHandle = await makePartialFileHandle(targetPath, partials, originalOpen)
+        return partialHandle
+      }
+      return originalOpen(targetPath as never, ...(args as never[]))
+    }) as typeof fs.open)
+
+    await expect(
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl: async () => mockResponse({ body: makeStream([content]) }),
+      }),
+    ).rejects.toThrow(/simulated disk full/)
+
+    expect(partialHandle?.calls).toBe(2)
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
+  })
+
   it('skips an existing correct cache file idempotently', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const content = bufferFromString('cached-pdf-content')
     const document = makeDocument({
       bytes: content.byteLength,
       sha256: sha256('cached-pdf-content'),
     })
-    await fs.writeFile(path.join(cacheDir, 'doc-1.pdf'), content)
+    await fs.writeFile(path.join(absCacheDir, 'doc-1.pdf'), content)
     const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream(['x']) }))
 
-    const result = await fetchOneDocument({ document, cacheDir, fetchImpl })
+    const result = await fetchOneDocument({ repoRoot, document, cacheDir, fetchImpl })
 
     expect(result.status).toBe('skip')
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
   it('fails immediately when the body exceeds the manifest bytes and leaves no files', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const content = bufferFromString('too-long-body')
     const document = makeDocument({ bytes: content.byteLength - 2 })
     const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream([content]) }))
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, downloadHosts: ALLOWED_DOWNLOAD_HOSTS }),
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl,
+        downloadHosts: ALLOWED_DOWNLOAD_HOSTS,
+      }),
     ).rejects.toThrow(/byte count mismatch/)
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
-    await expect(fs.readdir(cacheDir)).resolves.toEqual([])
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
   })
 
   it('fails when the body is shorter than the manifest bytes and leaves no files', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const content = bufferFromString('short')
     const document = makeDocument({ bytes: content.byteLength + 5 })
     const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream([content]) }))
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, downloadHosts: ALLOWED_DOWNLOAD_HOSTS }),
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl,
+        downloadHosts: ALLOWED_DOWNLOAD_HOSTS,
+      }),
     ).rejects.toThrow(/byte count mismatch/)
 
-    await expect(fs.readdir(cacheDir)).resolves.toEqual([])
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
   })
 
   it('fails when the SHA-256 mismatches and leaves no files', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const content = bufferFromString('tampered-content!')
     const document = makeDocument({ bytes: content.byteLength, sha256: '0'.repeat(64) })
     const fetchImpl = vi.fn(async () => mockResponse({ body: makeStream([content]) }))
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, downloadHosts: ALLOWED_DOWNLOAD_HOSTS }),
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl,
+        downloadHosts: ALLOWED_DOWNLOAD_HOSTS,
+      }),
     ).rejects.toThrow(/sha256 mismatch/)
 
-    await expect(fs.readdir(cacheDir)).resolves.toEqual([])
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
   })
 })
 
 describe('specifications redirect handling', () => {
   it('follows an allowed HTTPS redirect and downloads the final body', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir } = await makeCacheRepo()
     const content = bufferFromString('redirect-pdf-content')
     const document = makeDocument({
       downloadUrl: ALLOWED_DOWNLOAD_URL,
@@ -469,7 +754,7 @@ describe('specifications redirect handling', () => {
       return mockResponse({ url: ALLOWED_DOWNLOAD_URL_2, body: makeStream([content]) })
     })
 
-    const result = await fetchOneDocument({ document, cacheDir, fetchImpl })
+    const result = await fetchOneDocument({ repoRoot, document, cacheDir, fetchImpl })
 
     expect(result.status).toBe('downloaded')
     expect(fetchImpl).toHaveBeenCalledTimes(2)
@@ -486,36 +771,48 @@ describe('specifications redirect handling', () => {
   })
 
   it('rejects a redirect to a non-allowlisted host before making the next request', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const document = makeDocument()
     const fetchImpl = vi.fn(async () =>
       redirectResponse('https://evil.example.com/file.pdf', ALLOWED_DOWNLOAD_URL),
     )
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, downloadHosts: ALLOWED_DOWNLOAD_HOSTS }),
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl,
+        downloadHosts: ALLOWED_DOWNLOAD_HOSTS,
+      }),
     ).rejects.toThrow(/redirect target host is not allowed/)
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
-    await expect(fs.readdir(cacheDir)).resolves.toEqual([])
+    await expect(fs.readdir(absCacheDir)).resolves.toEqual([])
   })
 
   it('rejects a redirect loop', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir } = await makeCacheRepo()
     const document = makeDocument()
     const fetchImpl = vi.fn(async () =>
       redirectResponse(ALLOWED_DOWNLOAD_URL, ALLOWED_DOWNLOAD_URL),
     )
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, downloadHosts: ALLOWED_DOWNLOAD_HOSTS }),
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl,
+        downloadHosts: ALLOWED_DOWNLOAD_HOSTS,
+      }),
     ).rejects.toThrow(/redirect loop/)
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
   it('rejects redirect chains longer than MAX_REDIRECTS', async () => {
-    const cacheDir = await makeTempRoot()
+    const { repoRoot, cacheDir } = await makeCacheRepo()
     const document = makeDocument()
     const urls = Array.from(
       { length: MAX_REDIRECTS + 2 },
@@ -527,7 +824,13 @@ describe('specifications redirect handling', () => {
     })
 
     await expect(
-      fetchOneDocument({ document, cacheDir, fetchImpl, downloadHosts: ALLOWED_DOWNLOAD_HOSTS }),
+      fetchOneDocument({
+        repoRoot,
+        document,
+        cacheDir,
+        fetchImpl,
+        downloadHosts: ALLOWED_DOWNLOAD_HOSTS,
+      }),
     ).rejects.toThrow(/too many redirects/)
 
     expect(fetchImpl).toHaveBeenCalledTimes(MAX_REDIRECTS + 1)

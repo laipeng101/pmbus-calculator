@@ -14,6 +14,7 @@ export const MAX_REDIRECTS = 5
 
 export const ALLOWED_LANDING_HOSTS = ['pmbus.org', 'www.smbus.org']
 export const ALLOWED_DOWNLOAD_HOSTS = ['pmbusprod.wpenginepowered.com', 'www.smbus.org']
+export const SUPPORTED_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 
 const HELP = `specifications.mjs — manage third-party PMBus/SMBus specification PDF provenance and cache
 
@@ -179,6 +180,13 @@ export function assertValidDocument(document, options = {}) {
     throw new Error(`invalid specification document: ${validation.errors.join('; ')}`)
   }
   return document
+}
+
+export function assertValidTimeoutMs(timeoutMs) {
+  if (Number.isSafeInteger(timeoutMs) === false || timeoutMs <= 0) {
+    throw new Error(`timeoutMs must be a positive safe integer: ${timeoutMs}`)
+  }
+  return timeoutMs
 }
 
 export async function loadManifest(repoRoot) {
@@ -463,6 +471,23 @@ async function readChunkWithSignal(reader, signal) {
   })
 }
 
+export async function writeAll(handle, buffer, signal) {
+  let offset = 0
+  while (offset < buffer.byteLength) {
+    if (signal?.aborted) throw abortErrorFor(signal)
+    const { bytesWritten } = await handle.write(buffer, offset, buffer.byteLength - offset, null)
+    if (Number.isSafeInteger(bytesWritten) === false || bytesWritten <= 0) {
+      throw new Error(`invalid bytesWritten from FileHandle.write: ${bytesWritten}`)
+    }
+    if (bytesWritten > buffer.byteLength - offset) {
+      throw new Error(
+        `invalid bytesWritten ${bytesWritten} exceeds remaining buffer length ${buffer.byteLength - offset}`,
+      )
+    }
+    offset += bytesWritten
+  }
+}
+
 async function streamResponseToTempFile(response, targetPath, document, signal) {
   if (response.body === null || response.body === undefined) {
     throw new Error(`response body is missing for ${document.downloadUrl}`)
@@ -484,15 +509,15 @@ async function streamResponseToTempFile(response, targetPath, document, signal) 
     while (true) {
       const { done, value } = await readChunkWithSignal(reader, signal)
       if (done) break
-      bytes += value.byteLength
-      if (bytes > document.bytes) {
+      if (bytes + value.byteLength > document.bytes) {
         await reader.cancel().catch(() => {})
         throw new Error(
           `byte count mismatch for ${document.id}: expected ${document.bytes}, received more than ${document.bytes}`,
         )
       }
+      await writeAll(handle, value, signal)
+      bytes += value.byteLength
       hash.update(value)
-      await handle.write(value)
     }
 
     await handle.close()
@@ -545,11 +570,20 @@ export async function fetchWithRedirects(
       signal,
     )
 
-    if (response === null || response === undefined || typeof response.status !== 'number') {
+    if (
+      response === null ||
+      response === undefined ||
+      Number.isInteger(response.status) === false
+    ) {
       throw new Error(`fetch transport returned an invalid response for ${currentUrl}`)
     }
 
-    if (response.status >= 300 && response.status < 400) {
+    const status = response.status
+    if (status < 200 || status > 599) {
+      throw new Error(`invalid HTTP status ${status} for ${currentUrl}`)
+    }
+
+    if (SUPPORTED_REDIRECT_STATUSES.has(status)) {
       const location = getResponseHeader(response, 'location')
       if (location === undefined || location.length === 0) {
         throw new Error(`redirect response missing Location for ${currentUrl}`)
@@ -565,19 +599,20 @@ export async function fetchWithRedirects(
       continue
     }
 
-    if (response.ok === false) {
-      throw new Error(`HTTP ${response.status} for ${currentUrl}`)
+    if (status >= 200 && status < 300) {
+      const finalUrl = response.url || currentUrl
+      if (matchesHost(finalUrl, downloadHosts) === false) {
+        throw new Error(`final response URL host is not allowed: ${finalUrl}`)
+      }
+      return response
     }
 
-    const finalUrl = response.url || currentUrl
-    if (matchesHost(finalUrl, downloadHosts) === false) {
-      throw new Error(`final response URL host is not allowed: ${finalUrl}`)
-    }
-    return response
+    throw new Error(`unsupported HTTP status ${status} for ${currentUrl}`)
   }
 }
 
 export async function fetchOneDocument({
+  repoRoot,
   document,
   cacheDir,
   fetchImpl = fetch,
@@ -586,16 +621,26 @@ export async function fetchOneDocument({
   downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
 }) {
   assertValidDocument(document, { downloadHosts })
-  if (
-    typeof cacheDir !== 'string' ||
-    cacheDir.length === 0 ||
-    path.isAbsolute(cacheDir) === false
-  ) {
-    throw new Error(`cacheDir must be an absolute path: ${cacheDir}`)
+  assertValidTimeoutMs(timeoutMs)
+  if (typeof repoRoot !== 'string' || repoRoot.length === 0) {
+    throw new Error(`repoRoot must be a non-empty path: ${repoRoot}`)
   }
 
-  const targetPath = path.join(cacheDir, document.fileName)
-  if (path.dirname(targetPath) !== cacheDir) {
+  const { realRoot, absoluteCacheDir } = await resolveVerifiedCacheDir(repoRoot, cacheDir)
+  await fs.mkdir(absoluteCacheDir, { recursive: true })
+
+  const realCacheDir = await realpathOrThrow(absoluteCacheDir, 'cache directory')
+  const realCacheRelative = path.relative(realRoot, realCacheDir)
+  if (
+    realCacheRelative === '' ||
+    realCacheRelative.startsWith('..') ||
+    path.isAbsolute(realCacheRelative)
+  ) {
+    throw new Error(`cache directory resolves outside repository root: ${realCacheDir}`)
+  }
+
+  const targetPath = path.join(realCacheDir, document.fileName)
+  if (path.dirname(targetPath) !== realCacheDir) {
     throw new Error(`fileName escapes cache directory: ${document.fileName}`)
   }
 
@@ -678,6 +723,7 @@ export async function fetchSpecifications({
   downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
 } = {}) {
   assertValidManifest(manifest, { downloadHosts })
+  assertValidTimeoutMs(timeoutMs)
 
   if (all === false && ids.length === 0) {
     throw new Error('fetch requires --all or --id <id>')
@@ -702,6 +748,7 @@ export async function fetchSpecifications({
   for (const document of selected) {
     results.push(
       await fetchOneDocument({
+        repoRoot,
         document,
         cacheDir: realCacheDir,
         fetchImpl,
