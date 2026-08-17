@@ -683,6 +683,10 @@ export async function fetchOneDocument({
       controller.signal,
     )
     tempPath = streamed.tempPath
+    if (controller.signal.aborted) {
+      throw new Error(`timed out after ${timeoutMs}ms for ${document.id}`)
+    }
+    clearTimeout(timer)
     await fs.rename(tempPath, targetPath)
     tempPath = null
 
