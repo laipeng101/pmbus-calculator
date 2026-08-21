@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-16（M16 Done：v1.1.3 result presentation, interaction polish and release provenance hardening）
+最后更新：2026-08-22（M17 Review：生产样式源码隔离与可复现构建）
 
 ## 当前产品基线
 
@@ -19,8 +19,22 @@
 ## 当前里程碑
 
 ```text
-M0–M16 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M16 complete；M17 in review（生产样式源码隔离与可复现构建）；stable release v1.1.3；production distribution: GitHub Pages。
 ```
+
+### M17 review — 生产样式源码隔离与可复现构建
+
+- 问题：`src/styles/tokens.css` 此前依赖 Tailwind v4 默认的工作目录候选词扫描，非生产文件
+  （`scripts/`、`tests/`、`docs/` 以及 `src/` 内 colocated 单测）中的英文文本会泄漏成 utility
+  规则（如 `lowercase`、`table`），造成 v1.1.3 之后 main 构建 CSS 与制品哈希的无意义漂移。
+- 修复：改为显式 source 配置——`source(none)` 关闭自动扫描，`@source '../'` 只登记 `src/`，
+  `@source not '../**/*.test.ts'` 排除 colocated 测试；`index.html` 无 utility class，不纳入扫描。
+- 门禁：`npm run check:tailwind-scope`（`scripts/check-tailwind-scope.mjs`）检查真实 `dist/`：
+  生产范围外 canary utility（单一来源 `tests/tailwind-source-canary.ts`）不得生成、已知泄漏规则
+  （`.lowercase` / `.table`）不得出现、产品必需 utility 必须存在；已接入 `verify` 链与 CI（Build 之后）。
+- 行为不变：算法、舍入、字节序、复制格式、命令元数据与持久化契约零改动；JS 制品内容与基线一致；
+  两次干净构建制品树逐文件 SHA-256 完全一致。
+- 状态依据：本地验证通过；PR head 与 main 的精确 SHA CI 通过后翻 Done。
 
 ### M15 done
 

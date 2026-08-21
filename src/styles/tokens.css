@@ -1,4 +1,16 @@
-@import 'tailwindcss';
+/*
+ * Tailwind must only scan real production sources. `source(none)` disables
+ * the default working-directory candidate scan (which leaks utility classes
+ * from non-product files such as scripts/ and tests/ — e.g. the English word
+ * "lowercase" in specification error messages); `@source '../'` then registers
+ * src/ (relative to this file) as the only candidate source, minus the unit
+ * tests colocated under src/ whose prose also yields candidates (e.g. "table"
+ * in golden-table descriptions). index.html holds no utility classes and is
+ * intentionally not scanned.
+ */
+@import 'tailwindcss' source(none);
+@source '../';
+@source not '../**/*.test.ts';
 
 /* =========================================================
    PMBus Calculator Design Tokens
