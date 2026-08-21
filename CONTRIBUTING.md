@@ -29,6 +29,12 @@ latest main → one scoped branch → local verify → PR → CI green
 
 所有推送新提交都会使此前验收失效，必须等待最新 head 的 CI。
 
+里程碑闭环采用单 PR（M18 起）：`docs/ROADMAP.md` 以 main 上的版本为正式事实来源；
+实现分支在最终提交中一并把对应里程碑翻为 `Done`（含完成日期），最终 PR head CI
+全绿并 merge 后，Done 才在 main 正式生效。不再创建第二个纯文档 PR 只为补写
+Review → Done、CI URL 或 SHA；merge SHA 与 main CI 结论写入最终任务报告。
+main CI 真实失败时诊断并创建实际修复 PR，不能用 bookkeeping PR 掩盖失败。
+
 ## 3. Fresh environment 初始化
 
 ```bash
@@ -71,6 +77,11 @@ npm run clean
 npm run check:repo-hygiene
 git status --short
 ```
+
+`npm run verify:light`（format:check、check:markdown-math、check:repo-hygiene 与两个
+whitespace 检查）只用于 `scripts/classify-ci-scope.mjs` 判定为 pure light-only 的任务；
+mixed/unknown 或产品相关变更必须完整 `npm run verify`。无参数调用 `npm run ci:classify`
+返回用法错误并 exit 2，不会悄悄得到 light。
 
 第三方规范 PDF 不进入当前 Git tree：provenance、官方链接和哈希维护在
 `document/specifications.json`，PDF 按需下载到 ignored `.cache/specifications/`；
@@ -115,7 +126,10 @@ type(scope): summary
 ## 7. PR 流程
 
 1. 填写 PR 模板中的验收清单。
-2. 确保 CI 全绿（format、typecheck、lint、coverage、E2E、build、PR 或 push 的完整 whitespace gate、npm audit --audit-level=high）。所有推送新提交都会使此前验收失效，必须等待最新 head 的 CI。
+2. 确保 CI 全绿。CI 由 `scripts/classify-ci-scope.mjs` 分级（fail closed）：纯 light-only
+   变更执行轻量门禁与完整 whitespace gate，跳过的门禁在 PR 中如实标 `policy-skipped`；
+   full/mixed/unknown 变更执行完整 format、typecheck、lint、coverage、E2E、build、
+   whitespace gate 与 audit。所有推送新提交都会使此前验收失效，必须等待最新 head 的 CI。
 3. PR 描述中写明：changed files、affected modes、测试命令与结果、剩余缺口。
 4. CI 全绿后使用普通 merge commit 合入，不使用 squash。
 

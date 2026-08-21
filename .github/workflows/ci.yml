@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+# Cost-aware CI cancellation (M18): a new push to a PR cancels that PR's
+# outdated run. Different PRs, PR vs main, and main pushes never share a
+# group; main never cancels in progress so every merge SHA keeps its
+# verification evidence.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -21,43 +29,64 @@ jobs:
           node-version: 22
           cache: 'npm'
 
+      # Single source of truth for the light/full split: scripts/classify-ci-scope.mjs
+      # (fail closed — anything not proven light runs the full tier below).
+      # `!= 'false'` keeps the gate fail-closed if this step ever dies without
+      # writing outputs.
+      - name: Classify CI scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/classify-ci-scope.mjs --event "$EVENT_NAME" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
+
       - name: Install dependencies
         run: npm ci
 
       - name: Repository hygiene gate
         run: npm run check:repo-hygiene
 
-      - name: Specification manifest check
-        run: npm run specs:check
-
       - name: Format check
         run: npm run format:check
-
-      - name: Type check
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
 
       - name: Markdown math gate
         run: npm run check:markdown-math
 
+      - name: Specification manifest check
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run specs:check
+
+      - name: Type check
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run typecheck
+
+      - name: Lint
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run lint
+
       - name: Unit tests with coverage
+        if: steps.scope.outputs.run_full != 'false'
         run: npm run test:coverage
 
       - name: Install Playwright browsers
+        if: steps.scope.outputs.run_full != 'false'
         run: npx playwright install --with-deps chromium
 
       - name: Run Playwright E2E
+        if: steps.scope.outputs.run_full != 'false'
         run: npm run test:e2e
 
       - name: Build
+        if: steps.scope.outputs.run_full != 'false'
         run: npm run build
 
       - name: Tailwind source scope gate
+        if: steps.scope.outputs.run_full != 'false'
         run: npm run check:tailwind-scope
 
       - name: Run production release smoke
+        if: steps.scope.outputs.run_full != 'false'
         run: npm run test:e2e:release
 
       - name: Check full PR diff for whitespace errors
@@ -83,11 +112,14 @@ jobs:
           fi
 
       - name: Audit dependencies
+        if: steps.scope.outputs.run_full != 'false'
         run: npm audit --audit-level=high
 
+      # Playwright reports only exist in the full tier; keep light-tier
+      # failures from trying to upload directories that were never produced.
       - name: Upload Playwright report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure()
+        if: failure() && steps.scope.outputs.run_full != 'false'
         with:
           name: playwright-report
           path: tests/e2e/report
@@ -95,7 +127,7 @@ jobs:
 
       - name: Upload Playwright release smoke report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure()
+        if: failure() && steps.scope.outputs.run_full != 'false'
         with:
           name: playwright-report-release
           path: tests/e2e/report-release

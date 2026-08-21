@@ -116,11 +116,18 @@ tests/e2e/        Playwright 真实用户流程
    `test:coverage`、`test:e2e`、`build`、`test:e2e:release`、`check:repo-hygiene`、`git diff --check`（未暂存工作区）、
    `git diff --cached --check`（暂存区）、`npm audit --audit-level=high`。
    CI 的 whitespace gate 还额外检查：PR 为完整 base→head；push 为完整 event.before→github.sha。
+   CI 按 `scripts/classify-ci-scope.mjs` 分级（fail closed）：纯 light-only 变更在 CI 中跳过
+   coverage/E2E/build/audit，本地对应入口是 `npm run verify:light`；mixed/unknown 或
+   产品相关变更必须完整 `npm run verify`。
    任务结束前还需执行 `docs/REPOSITORY_HYGIENE.md` 中「Agent 生命周期清理 → 任务结束」的简短门禁。
 
 6. 输出：changed files、affected modes、实际测试命令与结果、剩余缺口。
    验收记录必须包含每条命令、exit code、实际测试数、coverage 和 CI URL。
-7. 只有验收条件通过，才能把里程碑从 Review 改为 Done。
+7. 里程碑 Done 采用单 PR 闭环：`docs/ROADMAP.md` 只有 main 上的版本是正式事实来源；
+   实现分支在最终提交中同时包含对应里程碑的 `Done` 状态与完成日期。本地验证通过、
+   最终 PR head CI 全绿后才 merge；合入前分支中的 Done 只是未合入提案。CI URL、
+   head SHA、merge SHA 与 main CI 结论属于 PR、Actions 与最终执行报告的审计证据，
+   不写入 ROADMAP，也不为此创建第二个纯文档 PR；main CI 真实失败时创建实际修复 PR。
 8. 器件数据不明确时不得猜测：保持禁用/留空，并在 UI 与文档中注明“需要器件数据手册”。
    只有仓库内规范与官方规范存在无法保守处理的直接冲突时才停止。
 
@@ -189,4 +196,6 @@ tests/e2e/        Playwright 真实用户流程
 - [ ] UI 任务已生成关键 viewport 截图；dropdown/popover 已测试 viewport 边界与不跳动；无图像读取能力时用几何/对比度/overflow/computed-style 断言代替目检
 - [ ] Markdown 数学变更已通过本地检查，并已用 GitHub 实际渲染页面验证
 - [ ] 发布前已确认 `github-pages` environment 允许对应稳定 tag（branch/tag policy）
+- [ ] CI tier（light/full）已标注；policy-skipped 门禁如实说明，未虚构测试数
+- [ ] 里程碑 Done 已在实现 PR 最终提交中翻转，未创建第二个 bookkeeping PR
 - [ ] 文档已更新，进度表与代码一致
