@@ -54,6 +54,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Tailwind source scope gate
+        run: npm run check:tailwind-scope
+
       - name: Run production release smoke
         run: npm run test:e2e:release
 
