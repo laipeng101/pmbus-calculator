@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-22（M17 Review：生产样式源码隔离与可复现构建）
+最后更新：2026-08-22（M17 Done：生产样式源码隔离与可复现构建）
 
 ## 当前产品基线
 
@@ -19,10 +19,10 @@
 ## 当前里程碑
 
 ```text
-M0–M16 complete；M17 in review（生产样式源码隔离与可复现构建）；stable release v1.1.3；production distribution: GitHub Pages。
+M0–M17 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
-### M17 review — 生产样式源码隔离与可复现构建
+### M17 done — 生产样式源码隔离与可复现构建
 
 - 问题：`src/styles/tokens.css` 此前依赖 Tailwind v4 默认的工作目录候选词扫描，非生产文件
   （`scripts/`、`tests/`、`docs/` 以及 `src/` 内 colocated 单测）中的英文文本会泄漏成 utility
@@ -34,7 +34,8 @@ M0–M16 complete；M17 in review（生产样式源码隔离与可复现构建�
   （`.lowercase` / `.table`）不得出现、产品必需 utility 必须存在；已接入 `verify` 链与 CI（Build 之后）。
 - 行为不变：算法、舍入、字节序、复制格式、命令元数据与持久化契约零改动；JS 制品内容与基线一致；
   两次干净构建制品树逐文件 SHA-256 完全一致。
-- 状态依据：本地验证通过；PR head 与 main 的精确 SHA CI 通过后翻 Done。
+- 状态依据：PR #30 head `ae753e1` CI 全绿；main merge SHA `bbbe9f9` CI 全绿；本地 `npm run verify`、
+  visual（23 passed，snapshot 零变化）与两次干净构建逐文件 SHA-256 一致性均通过。
 
 ### M15 done
 
