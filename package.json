@@ -27,6 +27,8 @@
     "postinstall": "simple-git-hooks",
     "verify:ui": "npm run verify && npm run test:e2e:visual",
     "verify": "npm run format:check && npm run typecheck && npm run lint && npm run check:markdown-math && npm run specs:check && npm run test:coverage && npm run test:e2e && npm run build && npm run check:tailwind-scope && npm run test:e2e:release && npm run check:repo-hygiene && git diff --check && git diff --cached --check && npm audit --audit-level=high",
+    "verify:light": "npm run format:check && npm run check:markdown-math && npm run check:repo-hygiene && git diff --check && git diff --cached --check",
+    "ci:classify": "node scripts/classify-ci-scope.mjs",
     "test:e2e:release": "playwright test --config playwright.release.config.ts",
     "test:e2e:visual": "playwright test --config playwright.visual.config.ts",
     "test:e2e:deployment": "playwright test --config playwright.deployment.config.ts",

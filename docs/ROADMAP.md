@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-22（M17 Done：生产样式源码隔离与可复现构建）
+最后更新：2026-08-22（M18 Done：成本感知 CI 分级与单 PR 闭环）
 
 ## 当前产品基线
 
@@ -19,8 +19,37 @@
 ## 当前里程碑
 
 ```text
-M0–M17 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M18 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M18 done — 成本感知 CI 分级与单 PR 闭环
+
+- Workflow 级 concurrency：同一 PR 的新提交自动取消该 PR 的过时 run（`cancel-in-progress`
+  仅 pull_request 事件为真）；不同 PR、PR 与 main、main push 互不取消，main 不设
+  cancel-in-progress，保留每个 merge SHA 的验证证据。
+- 单一来源分类器 `scripts/classify-ci-scope.mjs`：light-only allowlist 只在该脚本维护
+  （`docs/**`、根级 README/README_zh-CN/CHANGELOG/AGENTS/CLAUDE/CONTRIBUTING/LICENSE/
+  THIRD_PARTY_NOTICES/.gitignore、`document/README.md`、`.github/ISSUE_TEMPLATE/**`、
+  `.github/pull_request_template.md`）；全部 changed paths 命中才 light；diff 使用
+  `--name-only --no-renames -z` 与 merge-base（PR `base...head`）/`before..sha`（push）语义。
+- Fail closed：空变更集、缺失/非法 SHA、全零 push before、git diff 失败、未知事件、
+  任意未知路径、light/full 混合一律 full；分类器自身、测试、workflow、配置与依赖变更
+  均为 full；changed paths 只进日志，`$GITHUB_OUTPUT` 只写受控常量
+  （`tier`/`run_full`/`changed_count`/`reason`）。
+- CI 仍为单一 `check` job：npm ci、repo hygiene、format、markdown math 与完整
+  PR base→head / push before→head whitespace gate 两个 tier 都执行；
+  specs/typecheck/lint/coverage/Playwright/build/Tailwind gate/release smoke/audit
+  仅 full tier（`run_full != 'false'` 的 fail-closed 条件控制全部重型步骤）；不使用
+  workflow 级 `paths`/`paths-ignore`，required check 名称不变，Playwright report
+  上传仅限 full tier 失败时。
+- 本地入口：`npm run verify:light` 仅限分类器确认的 pure light-only 任务；
+  `npm run verify` 完整强度不变。
+- 单 PR 里程碑闭环：`docs/ROADMAP.md` 以 main 为正式事实来源，Done 在实现 PR 最终
+  提交中翻转，PR head CI 全绿后 merge；不再创建第二个 bookkeeping PR；CI URL 与
+  SHA 属于 PR/Actions/最终报告的审计证据，不写入 ROADMAP。
+- 产品算法、UI 与 snapshot 零改动（0/0/0）。
+- 状态依据：分类器单测（含真实 git 临时仓库集成）、历史 commit range 验证与本地
+  `npm run verify`；PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
 
 ### M17 done — 生产样式源码隔离与可复现构建
 
