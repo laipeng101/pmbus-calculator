@@ -134,6 +134,7 @@ tests/e2e/report-*/
 # =========================================================
 
 .claude/
+.zcode/plans/
 everything-claude-code/
 .playwright-mcp/
 
