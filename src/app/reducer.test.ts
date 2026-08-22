@@ -440,7 +440,7 @@ describe('appReducer — state transitions', () => {
     it('sets m as a signed 16-bit integer', () => {
       const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '-10' })
       expect(s.direct.m).toBe(-10)
-      expect(s.direct.error).toBeNull()
+      expect(s.direct.errors.m).toBeNull()
     })
 
     it('sets b as a signed 16-bit integer', () => {
@@ -456,13 +456,13 @@ describe('appReducer — state transitions', () => {
     it('rejects float coefficients with an explicit error', () => {
       const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
       expect(s.direct.m).toBe(base.direct.m)
-      expect(s.direct.error).toContain('M 必须是')
+      expect(s.direct.errors.m).toContain('M 必须是')
     })
 
     it('rejects out-of-range m', () => {
       const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '40000' })
       expect(s.direct.m).toBe(base.direct.m)
-      expect(s.direct.error).toContain('M 必须是')
+      expect(s.direct.errors.m).toContain('M 必须是')
     })
 
     it('accepts m/b boundaries', () => {
@@ -479,27 +479,27 @@ describe('appReducer — state transitions', () => {
       expect(lo.direct.r).toBe(-128)
       const bad = appReducer(base, { type: 'direct/set-coeff', name: 'r', value: '128' })
       expect(bad.direct.r).toBe(base.direct.r)
-      expect(bad.direct.error).toContain('R 必须是')
+      expect(bad.direct.errors.r).toContain('R 必须是')
     })
 
     it('stores m=0 with an explicit error (never silent)', () => {
       const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '0' })
       expect(s.direct.m).toBe(0)
-      expect(s.direct.error).toContain('m 不能为 0')
+      expect(s.direct.errors.m).toContain('m 不能为 0')
     })
 
     it('clears error after a valid coefficient is entered', () => {
       const bad = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
-      expect(bad.direct.error).toBeTruthy()
+      expect(bad.direct.errors.m).toBeTruthy()
       const good = appReducer(bad, { type: 'direct/set-coeff', name: 'm', value: '2' })
       expect(good.direct.m).toBe(2)
-      expect(good.direct.error).toBeNull()
+      expect(good.direct.errors.m).toBeNull()
     })
 
     it('ignores invalid string', () => {
       const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: 'x' })
       expect(s.direct.m).toBe(base.direct.m)
-      expect(s.direct.error).toContain('M 必须是')
+      expect(s.direct.errors.m).toContain('M 必须是')
     })
   })
 
@@ -578,9 +578,9 @@ describe('appReducer — state transitions', () => {
   })
 
   describe('DIRECT error isolation', () => {
-    it('keeps invalid coefficient error in state.direct.error for DIRECT display', () => {
+    it('keeps invalid coefficient error in state.direct.errors for DIRECT display', () => {
       const bad = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
-      expect(bad.direct.error).toBeTruthy()
+      expect(bad.direct.errors.m).toBeTruthy()
       expect(bad.raw).toBe(base.raw)
     })
 
@@ -590,15 +590,96 @@ describe('appReducer — state transitions', () => {
       const bad = appReducer(withRaw, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
       expect(bad.raw).toBe(0x1234)
       expect(bad.direct.m).toBe(withRaw.direct.m)
-      expect(bad.direct.error).toBeTruthy()
+      expect(bad.direct.errors.m).toBeTruthy()
     })
 
     it('keeps the error stored after switching away and back (mode-scoped display, not state reset)', () => {
       const bad = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
       const away = appReducer(bad, { type: 'mode/set', mode: 'L11' })
-      expect(away.direct.error).toBeTruthy()
+      expect(away.direct.errors.m).toBeTruthy()
       const back = appReducer(away, { type: 'mode/set', mode: 'DIRECT' })
-      expect(back.direct.error).toBeTruthy()
+      expect(back.direct.errors.m).toBeTruthy()
+    })
+  })
+
+  describe('M21 统一整数语法（可选正负号 + 十进制数字）', () => {
+    it('l11/set-n rejects 1e2 instead of clamping 100 to 15', () => {
+      const s = appReducer(base, { type: 'l11/set-n', n: '1e2' })
+      expect(s.l11.n).toBe(base.l11.n)
+      expect(s.raw).toBe(base.raw)
+    })
+
+    it('l11/set-n rejects 0x10 instead of accepting hex 16', () => {
+      const s = appReducer(base, { type: 'l11/set-n', n: '0x10' })
+      expect(s.l11.n).toBe(base.l11.n)
+      expect(s.raw).toBe(base.raw)
+    })
+
+    it('l11/set-y rejects 1e2 and 0x10', () => {
+      for (const y of ['1e2', '0x10']) {
+        const s = appReducer(base, { type: 'l11/set-y', y })
+        expect(s.l11.y, y).toBe(base.l11.y)
+        expect(s.raw, y).toBe(base.raw)
+      }
+    })
+
+    it('direct/set-y rejects 1e2 and 0x10', () => {
+      const directMode = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+      for (const y of ['1e2', '0x10']) {
+        const s = appReducer(directMode, { type: 'direct/set-y', y })
+        expect(s.raw, y).toBe(directMode.raw)
+      }
+    })
+
+    it('direct/set-coeff rejects 1e2 and 0x10 with a per-field error', () => {
+      for (const value of ['1e2', '0x10']) {
+        const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value })
+        expect(s.direct.m, value).toBe(base.direct.m)
+        expect(s.direct.errors.m, value).toContain('M 必须是')
+      }
+    })
+
+    it('keeps clamping semantics for safe out-of-range integers in clamp fields', () => {
+      const n = appReducer(base, { type: 'l11/set-n', n: '500' })
+      expect(n.l11.n).toBe(15)
+      const y = appReducer(base, { type: 'l11/set-y', y: '5000' })
+      expect(y.l11.y).toBe(1023)
+    })
+  })
+
+  describe('DIRECT per-field coefficient errors', () => {
+    it('keeps the m error when b is edited invalid (no overwrite, no clear)', () => {
+      const badM = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
+      const badB = appReducer(badM, { type: 'direct/set-coeff', name: 'b', value: '1.5' })
+      expect(badB.direct.errors.m).toContain('M 必须是')
+      expect(badB.direct.errors.b).toContain('B 必须是')
+    })
+
+    it('clears only the edited field error on valid input', () => {
+      const badM = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
+      const badB = appReducer(badM, { type: 'direct/set-coeff', name: 'b', value: '1.5' })
+      const fixedB = appReducer(badB, { type: 'direct/set-coeff', name: 'b', value: '3' })
+      expect(fixedB.direct.b).toBe(3)
+      expect(fixedB.direct.errors.b).toBeNull()
+      expect(fixedB.direct.errors.m).toContain('M 必须是')
+    })
+
+    it('stores m=0 error on the m field only and clears it when m becomes non-zero', () => {
+      const zeroM = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '0' })
+      expect(zeroM.direct.m).toBe(0)
+      expect(zeroM.direct.errors.m).toContain('m 不能为 0')
+      expect(zeroM.direct.errors.b).toBeNull()
+      const fixed = appReducer(zeroM, { type: 'direct/set-coeff', name: 'm', value: '2' })
+      expect(fixed.direct.m).toBe(2)
+      expect(fixed.direct.errors.m).toBeNull()
+    })
+
+    it('preserves per-field errors across mode switches', () => {
+      const badM = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
+      const away = appReducer(badM, { type: 'mode/set', mode: 'L11' })
+      expect(away.direct.errors.m).toContain('M 必须是')
+      const back = appReducer(away, { type: 'mode/set', mode: 'DIRECT' })
+      expect(back.direct.errors.m).toContain('M 必须是')
     })
   })
 

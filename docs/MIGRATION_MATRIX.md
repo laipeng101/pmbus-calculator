@@ -5,7 +5,7 @@
 > M0–M10.1 的完整历史质量矩阵与 WEB-0000…WEB-0023 变更日志已冻结到
 > [`archive/web-refactor-m0-m10.1/MIGRATION_MATRIX_FULL.md`](archive/web-refactor-m0-m10.1/MIGRATION_MATRIX_FULL.md)。
 
-最后更新：2026-08-16
+最后更新：2026-08-22（M21：viewport 业务矩阵 gap 关闭）
 
 ## 当前 parity
 
@@ -24,8 +24,10 @@
 - **DIRECT `device-datasheet` profiles**：Blocked——缺少真实数据手册；UI 保持手动系数输入并提示需要器件数据手册。
 - **独立 FormulaEditor**：Deferred（optional）——不是缺陷。
 - **legacy HTML fallback**：Deferred（明确保留）——`pmbus-calculator.html` 作为 read-only fallback 保留，不删除、不移动、不重写。
-- **更全面 viewport 业务矩阵**：Deferred（optional）。
 - **PMBus 新版规范升级**：Deferred（独立工作）——当前不得自动开展。
+
+> 「更全面 viewport 业务矩阵」Deferred 项已于 M21 关闭：四模式 + CommandPicker +
+> 全局快捷键的 pairwise 业务矩阵已交付（`tests/e2e/input-interaction.spec.ts`）。
 
 ## 变更审计来源
 

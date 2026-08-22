@@ -2,6 +2,7 @@ import { useEffect, useReducer } from 'react'
 import { appReducer, INITIAL_STATE } from './app/reducer'
 import type { AppState } from './app/state'
 import { useCalculatorViewModel } from './app/view-model'
+import { isEditableEventTarget } from './app/editable-target'
 import {
   loadPersistedState,
   persistByteOrder,
@@ -42,10 +43,14 @@ function App() {
   useEffect(() => persistByteOrder(state.byteOrder), [state.byteOrder])
   useEffect(() => persistCopy(state.copy), [state.copy])
 
-  // Keyboard shortcuts for mode switching
+  // Keyboard shortcuts for mode switching: Ctrl+1..4 only outside editing
+  // contexts (input/textarea/select/contenteditable/role=textbox/combobox)
+  // and only as a bare Ctrl combo — Meta/Alt/Shift variants stay with the
+  // browser/OS.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!e.ctrlKey) return
+      if (!e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+      if (isEditableEventTarget(e.target)) return
       switch (e.key) {
         case '1':
           dispatch({ type: 'mode/set', mode: 'L11' })

@@ -9,7 +9,7 @@ const BASE: AppState = {
   byteOrder: 'le',
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   l16: { n: -8, voutMode: 0x18 },
-  direct: { m: 1, b: 0, r: 0, error: null },
+  direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
   copy: { prefix0x: true, spaceBetweenBytes: true, endian: 'le' },
   ui: { theme: 'system', debugOpen: false },
 }
@@ -113,17 +113,30 @@ describe('toCalculatorViewModel', () => {
       expect(vm.valueText).toBe('0')
     })
 
-    test('m=0 produces NaN and warning', () => {
+    test('m=0 produces NaN value text without an InfoPanel warning (inline-only error)', () => {
       const vm = toCalculatorViewModel(
-        make({ mode: 'DIRECT', raw: 10, direct: { m: 0, b: 0, r: 0, error: null } }),
+        make({
+          mode: 'DIRECT',
+          raw: 10,
+          direct: {
+            m: 0,
+            b: 0,
+            r: 0,
+            errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null },
+          },
+        }),
       )
       expect(vm.valueText).toBe('—')
-      expect(vm.warnings.some((w) => w.id === 'direct-m-zero')).toBe(true)
+      expect(vm.warnings.some((w) => w.id === 'direct-m-zero')).toBe(false)
     })
 
     test('raw=0x000A (Y=10), m=2, b=0, R=0 produces value 5', () => {
       const vm = toCalculatorViewModel(
-        make({ mode: 'DIRECT', raw: 10, direct: { m: 2, b: 0, r: 0, error: null } }),
+        make({
+          mode: 'DIRECT',
+          raw: 10,
+          direct: { m: 2, b: 0, r: 0, errors: { m: null, b: null, r: null } },
+        }),
       )
       expect(vm.valueText).toBe('5')
       expect(vm.directY).toBe(10)
@@ -131,7 +144,11 @@ describe('toCalculatorViewModel', () => {
 
     test('raw=0x8000 is signed Y=-32768 in DIRECT mode', () => {
       const vm = toCalculatorViewModel(
-        make({ mode: 'DIRECT', raw: 0x8000, direct: { m: 1, b: 0, r: 0, error: null } }),
+        make({
+          mode: 'DIRECT',
+          raw: 0x8000,
+          direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
+        }),
       )
       expect(vm.directY).toBe(-32768)
     })
@@ -253,33 +270,18 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
-  describe('DIRECT error visibility', () => {
-    test('DIRECT coefficient validation error is shown in DIRECT mode', () => {
-      const vm = toCalculatorViewModel(
-        make({
-          mode: 'DIRECT',
-          direct: { m: 1, b: 0, r: 0, error: 'm 必须是 -32768..32767 的整数' },
-        }),
-      )
-      expect(vm.warnings.find((w) => w.id === 'direct-coeff-error')?.level).toBe('error')
-    })
-
-    test('DIRECT coefficient error is hidden after switching to L11', () => {
-      const vm = toCalculatorViewModel(
-        make({
-          mode: 'L11',
-          direct: { m: 1, b: 0, r: 0, error: 'm 必须是 -32768..32767 的整数' },
-        }),
-      )
-      expect(vm.warnings.find((w) => w.id === 'direct-coeff-error')).toBeUndefined()
-    })
-
-    test('DIRECT coefficient error is hidden in L16 and HALF modes', () => {
-      for (const mode of ['L16', 'HALF'] as const) {
+  describe('DIRECT error visibility (inline-only, no InfoPanel duplication)', () => {
+    test('coefficient errors never surface as InfoPanel warnings in any mode', () => {
+      for (const mode of ['DIRECT', 'L11', 'L16', 'HALF'] as const) {
         const vm = toCalculatorViewModel(
           make({
             mode,
-            direct: { m: 1, b: 0, r: 0, error: 'm 必须是 -32768..32767 的整数' },
+            direct: {
+              m: 1,
+              b: 0,
+              r: 0,
+              errors: { m: 'm 必须是 -32768..32767 的整数', b: null, r: null },
+            },
           }),
         )
         expect(
@@ -287,6 +289,22 @@ describe('toCalculatorViewModel', () => {
           mode,
         ).toBeUndefined()
       }
+    })
+
+    test('m=0 error is inline-only: no direct-m-zero InfoPanel warning', () => {
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'DIRECT',
+          raw: 1,
+          direct: {
+            m: 0,
+            b: 0,
+            r: 0,
+            errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null },
+          },
+        }),
+      )
+      expect(vm.warnings.find((w) => w.id === 'direct-m-zero')).toBeUndefined()
     })
   })
 
@@ -306,25 +324,6 @@ describe('toCalculatorViewModel', () => {
     test('default L11 state has no Y=0 info warning', () => {
       const vm = toCalculatorViewModel(BASE)
       expect(vm.warnings).toHaveLength(0)
-    })
-
-    test('DIRECT with m=0 has error warning', () => {
-      const vm = toCalculatorViewModel(
-        make({ mode: 'DIRECT', raw: 1, direct: { m: 0, b: 0, r: 0, error: null } }),
-      )
-      const warning = vm.warnings.find((w) => w.id === 'direct-m-zero')
-      expect(warning?.level).toBe('error')
-    })
-
-    test('DIRECT coefficient validation error is shown', () => {
-      const vm = toCalculatorViewModel(
-        make({
-          mode: 'DIRECT',
-          direct: { m: 1, b: 0, r: 0, error: 'm 必须是 -32768..32767 的整数' },
-        }),
-      )
-      const warning = vm.warnings.find((w) => w.id === 'direct-coeff-error')
-      expect(warning?.level).toBe('error')
     })
   })
 })

@@ -36,8 +36,13 @@ export interface AppState {
     m: number
     b: number
     r: number
-    /** Transient validation error for the last coefficient input. */
-    error: string | null
+    /**
+     * Per-field validation errors for the coefficient inputs.  Editing one
+     * coefficient never overwrites or clears another field's still-valid
+     * error; errors survive mode switches and are rendered inline next to
+     * the corresponding field (never duplicated in the InfoPanel).
+     */
+    errors: { m: string | null; b: string | null; r: string | null }
   }
 
   copy: {
@@ -74,7 +79,7 @@ export const INITIAL_STATE: AppState = {
     m: 1,
     b: 0,
     r: 0,
-    error: null,
+    errors: { m: null, b: null, r: null },
   },
 
   copy: {
