@@ -17,7 +17,12 @@
 //
 // Diff semantics: PR uses merge-base (`base...head`); push uses
 // (`before..sha`). `--no-renames -z` keeps both sides of a rename so moving a
-// production file into docs/ still classifies as full.
+// production file into docs/ still classifies as full. The M19-B workflow no
+// longer triggers on main pushes; the push classification is kept for
+// historical verification and local tooling only.
+//
+// workflow_dispatch (the M19-B manual full-verification entry) is always full
+// and never depends on base/head SHAs or the changed-path list.
 //
 // If a light path ever becomes an input to Vite, Tailwind, tests, a generator,
 // or the product runtime, it MUST be moved out of the allowlist in the same PR.
@@ -137,6 +142,9 @@ export function classifyCiScope({
   cwd = process.cwd(),
   spawnSyncImpl = spawnSync,
 }) {
+  if (event === 'workflow_dispatch') {
+    return fullResult('manual workflow dispatch always runs full', [])
+  }
   if (event !== 'pull_request' && event !== 'push') {
     return fullResult('unrecognized event name — fail closed to full', [])
   }
@@ -192,6 +200,7 @@ function usage() {
       'Usage:\n' +
       '  node scripts/classify-ci-scope.mjs --event pull_request --base-sha <sha> --head-sha <sha>\n' +
       '  node scripts/classify-ci-scope.mjs --event push --base-sha <before-sha> --head-sha <sha>\n' +
+      '  node scripts/classify-ci-scope.mjs --event workflow_dispatch   (always full)\n' +
       '\n' +
       'Writes tier/run_full/changed_count/reason to $GITHUB_OUTPUT when set.\n',
   )
