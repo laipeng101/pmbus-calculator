@@ -51,7 +51,7 @@ describe('formula presentation model', () => {
     const s = state({
       mode: 'DIRECT',
       raw: 0x000a,
-      direct: { m: 2, b: 3, r: -1, error: null },
+      direct: { m: 2, b: 3, r: -1, errors: { m: null, b: null, r: null } },
     })
     const f = getFormulaPresentation(s)
 
@@ -65,7 +65,7 @@ describe('formula presentation model', () => {
     const s = state({
       mode: 'DIRECT',
       raw: 0x8000,
-      direct: { m: -4, b: -3, r: 0, error: null },
+      direct: { m: -4, b: -3, r: 0, errors: { m: null, b: null, r: null } },
     })
     const f = getFormulaPresentation(s)
 
@@ -77,7 +77,12 @@ describe('formula presentation model', () => {
     const s = state({
       mode: 'DIRECT',
       raw: 0,
-      direct: { m: 0, b: 0, r: 0, error: 'DIRECT 系数 m 不能为 0' },
+      direct: {
+        m: 0,
+        b: 0,
+        r: 0,
+        errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null },
+      },
     })
     const f = getFormulaPresentation(s)
 
@@ -136,7 +141,11 @@ describe('formula presentation model', () => {
     )
     expect(
       getFormulaPresentation(
-        state({ mode: 'DIRECT', raw: 0, direct: { m: 1, b: 0, r: 0, error: null } }),
+        state({
+          mode: 'DIRECT',
+          raw: 0,
+          direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
+        }),
       ).genericLatex,
     ).toBe('X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)')
     expect(getFormulaPresentation(state({ mode: 'HALF', raw: 0 })).genericLatex).toBe(
@@ -159,8 +168,16 @@ describe('formula presentation model', () => {
     const samples = [
       state({ mode: 'L11', raw: 0xf819 }),
       state({ mode: 'L16', raw: 0xffff, l16: { n: -16, voutMode: 0x18 } }),
-      state({ mode: 'DIRECT', raw: 0x8000, direct: { m: -4, b: -3, r: -128, error: null } }),
-      state({ mode: 'DIRECT', raw: 0, direct: { m: 0, b: 0, r: 0, error: null } }),
+      state({
+        mode: 'DIRECT',
+        raw: 0x8000,
+        direct: { m: -4, b: -3, r: -128, errors: { m: null, b: null, r: null } },
+      }),
+      state({
+        mode: 'DIRECT',
+        raw: 0,
+        direct: { m: 0, b: 0, r: 0, errors: { m: null, b: null, r: null } },
+      }),
       state({ mode: 'HALF', raw: 0x7e00 }),
     ]
 
@@ -175,7 +192,11 @@ describe('formula presentation model', () => {
 
 describe('M16 structured detail lines', () => {
   it('DIRECT negative exponent renders as 10^{-12} and detail line is present', () => {
-    const s = state({ mode: 'DIRECT', raw: 0x8fc3, direct: { m: 1, b: 0, r: 12, error: null } })
+    const s = state({
+      mode: 'DIRECT',
+      raw: 0x8fc3,
+      direct: { m: 1, b: 0, r: 12, errors: { m: null, b: null, r: null } },
+    })
     const f = getFormulaPresentation(s)
 
     expect(f.latex).toBe('X = \\frac{1}{1}\\left((-28733) \\times 10^{-12} - 0\\right)')

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { parseDecimalIntStrict } from '../../app/decimal-parse'
+import { isTransitionalIntegerText, parseIntegerStrict } from '../../app/int-parse'
 
 interface Props {
-  id?: string
+  id: string
   value: number
   placeholder?: string
   ariaLabel: string
@@ -11,17 +11,13 @@ interface Props {
   onCommit: (text: string) => void
 }
 
-function normalizeDecimalOnBlur(value: string): string {
-  const trimmed = value.trim()
-  if (trimmed === '') return '0'
-  const parsed = parseDecimalIntStrict(trimmed)
-  return parsed.ok ? trimmed : value
-}
-
 /**
- * Controlled decimal integer input with a local editing draft and strict
- * validation.  Invalid text (`12abc`, `1e2`, `1.5`, `+`) is shown with an
- * explicit error and never committed; empty input resets to 0 on blur.
+ * Controlled decimal integer input (L16 V) sharing the unified editing model:
+ *
+ * - 过渡态（空串、单独正负号）暂存，不逐键报错；
+ * - 非法文本（`12abc`、`1e2`、`1.5`、`+`）不修改 committed state，并显示
+ *   字段级唯一可见错误；blur 不静默回滚，非法 draft 保留；
+ * - 空输入 blur 归一化为 0；超范围由 reducer 按既有 clamp 合同处理。
  */
 export default function DecimalInput({
   id,
@@ -37,17 +33,38 @@ export default function DecimalInput({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!editing) setDraft(String(value))
-  }, [value, editing])
+    if (!editing && !error) setDraft(String(value))
+  }, [value, editing, error])
 
-  const validate = (next: string): boolean => {
-    const parsed = parseDecimalIntStrict(next)
+  const handleChange = (text: string) => {
+    setDraft(text)
+    if (isTransitionalIntegerText(text)) {
+      setError(null)
+      return
+    }
+    const parsed = parseIntegerStrict(text)
     if (!parsed.ok) {
       setError(parsed.error)
-      return false
+      return
     }
     setError(null)
-    return true
+    onCommit(text)
+  }
+
+  const handleBlur = () => {
+    const trimmed = draft.trim()
+    // Normalize unfinished states (empty / lone sign) to 0.
+    const text = isTransitionalIntegerText(trimmed) ? '0' : trimmed
+    const parsed = parseIntegerStrict(text)
+    if (!parsed.ok) {
+      // Keep the invalid draft visible together with its error.
+      setError(parsed.error)
+    } else {
+      setError(null)
+      setDraft(text)
+      onCommit(text)
+    }
+    setEditing(false)
   }
 
   return (
@@ -58,37 +75,23 @@ export default function DecimalInput({
         inputMode="numeric"
         autoComplete="off"
         spellCheck={false}
-        value={editing ? draft : String(value)}
+        value={editing || error ? draft : String(value)}
         placeholder={placeholder}
         aria-label={ariaLabel}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${id ?? ariaLabel}-decimal-error` : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
         className={className}
         style={style}
         onFocus={() => setEditing(true)}
-        onChange={(e) => {
-          setDraft(e.target.value)
-          if (validate(e.target.value)) onCommit(e.target.value)
-        }}
-        onBlur={() => {
-          const fixed = normalizeDecimalOnBlur(draft)
-          if (parseDecimalIntStrict(fixed).ok) {
-            setError(null)
-            setDraft(fixed)
-            onCommit(fixed)
-          } else {
-            setDraft(String(value))
-            setError(null)
-          }
-          setEditing(false)
-        }}
+        onChange={(e) => handleChange(e.target.value)}
+        onBlur={handleBlur}
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
         }}
       />
       {error && (
         <p
-          id={`${id ?? ariaLabel}-decimal-error`}
+          id={`${id}-error`}
           role="alert"
           className="mt-1 text-xs"
           style={{ color: 'var(--color-danger)' }}

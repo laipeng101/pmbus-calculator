@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { parseHexStrict } from '../../app/hex-parse'
 
 interface Props {
-  id?: string
+  id: string
   value: string
   maxDigits: number
   placeholder?: string
@@ -12,21 +12,14 @@ interface Props {
   onCommit: (text: string) => void
 }
 
-function normalizeHexOnBlur(value: string, maxDigits: number): string {
-  const trimmed = value.trim()
-  if (trimmed === '') return '0'
-  const parsed = parseHexStrict(trimmed, maxDigits)
-  return parsed.ok ? trimmed : value
-}
-
 /**
- * Controlled hexadecimal input with an editing draft and strict validation.
+ * Controlled hexadecimal input sharing the unified editing model:
  *
- * The reducer still owns global-state validation via `raw/set-from-hex` /
- * `l16/set-vout-mode`.  This component adds the local draft so users can type
- * transitional and invalid strings (e.g. `0x`, `1G`) without the controlled
- * value snapping back before they finish typing.  Invalid input shows an
- * explicit error and is never committed.
+ * - 过渡 draft（`0x`、部分输入）暂存，不被 committed 值强行重置；
+ * - 非法文本（`1G`、超长、裸 `0x`）不修改 committed state，并显示字段级
+ *   唯一可见错误；blur 不静默回滚，非法 draft 保留；
+ * - 空输入 blur 归一化为 0。reducer 仍通过 `raw/set-from-hex` /
+ *   `l16/set-vout-mode` 拥有全局校验。
  */
 export default function HexInput({
   id,
@@ -43,17 +36,33 @@ export default function HexInput({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!editing) setDraft(value)
-  }, [value, editing])
+    if (!editing && !error) setDraft(value)
+  }, [value, editing, error])
 
-  const validate = (next: string): boolean => {
-    const parsed = parseHexStrict(next, maxDigits)
+  const handleChange = (text: string) => {
+    setDraft(text)
+    const parsed = parseHexStrict(text, maxDigits)
     if (!parsed.ok) {
       setError(parsed.error)
-      return false
+      return
     }
     setError(null)
-    return true
+    onCommit(text)
+  }
+
+  const handleBlur = () => {
+    const trimmed = draft.trim()
+    const text = trimmed === '' ? '0' : trimmed
+    const parsed = parseHexStrict(text, maxDigits)
+    if (!parsed.ok) {
+      // Keep the invalid draft visible together with its error.
+      setError(parsed.error)
+    } else {
+      setError(null)
+      setDraft(text)
+      onCommit(text)
+    }
+    setEditing(false)
   }
 
   return (
@@ -64,40 +73,26 @@ export default function HexInput({
         inputMode="text"
         autoComplete="off"
         spellCheck={false}
-        value={editing ? draft : value}
+        value={editing || error ? draft : value}
         placeholder={placeholder}
         aria-label={ariaLabel}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${id ?? ariaLabel}-hex-error` : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
         className={className}
         style={style}
         onFocus={(e) => {
           setEditing(true)
           e.target.select()
         }}
-        onChange={(e) => {
-          setDraft(e.target.value)
-          if (validate(e.target.value)) onCommit(e.target.value)
-        }}
-        onBlur={() => {
-          const fixed = normalizeHexOnBlur(draft, maxDigits)
-          if (parseHexStrict(fixed, maxDigits).ok) {
-            setError(null)
-            setDraft(fixed)
-            onCommit(fixed)
-          } else {
-            setDraft(value)
-            setError(null)
-          }
-          setEditing(false)
-        }}
+        onChange={(e) => handleChange(e.target.value)}
+        onBlur={handleBlur}
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
         }}
       />
       {error && (
         <p
-          id={`${id ?? ariaLabel}-hex-error`}
+          id={`${id}-error`}
           role="alert"
           className="mt-1 text-xs"
           style={{ color: 'var(--color-danger)' }}

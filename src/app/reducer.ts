@@ -4,33 +4,19 @@ import type { AppAction } from './actions'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { getCommandConfig } from '../legacy/command-metadata'
 import { parseHexStrict } from './hex-parse'
-import { parseDecimalIntStrict } from './decimal-parse'
+import { parseIntegerStrict } from './int-parse'
+import { parseFloatSafe } from './float-parse'
 
-/** Integer parser for reducer-managed numeric fields (L11 Y/N, etc.) */
+/**
+ * Strict integer parser for reducer-managed numeric fields (L11 N/Y, DIRECT
+ * Y and coefficients).  Unified syntax: 可选正负号 + 十进制数字 — rejects
+ * `1e2`, `0x10`, `1.5`, `12abc` and unsafe integers instead of relying on
+ * Number()'s lenient coercion.
+ */
 function parseIntegerSafe(s: string): number | null {
-  s = String(s).trim()
-  if (!s || s === '-' || s === '+') return null
-  const n = Number(s)
-  if (!Number.isFinite(n) || !Number.isInteger(n)) return null
-  return n
-}
-
-/** Float parser mirroring legacy parseFloatSafe behavior. */
-function parseFloatSafe(s: string): number | null {
-  s = String(s).trim()
-  if (!s) return null
-  const lower = s.toLowerCase()
-  if (lower === 'nan') return NaN
-  if (lower === 'infinity' || lower === '+infinity') return Infinity
-  if (lower === '-infinity') return -Infinity
-  // Allow transitional inputs like ".", ".0", "+.", "-."
-  if (/^[+-]?\.0*$/.test(s)) return 0
-  if (!/^[+-]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[eE][+-]?\d+)?$/.test(s)) return null
-  let n = Number(s)
-  if (Number.isNaN(n)) return null
-  if (n > 1e20) n = 1e20
-  if (n < -1e20) n = -1e20
-  return n
+  const parsed = parseIntegerStrict(s)
+  if (!parsed.ok || parsed.empty) return null
+  return parsed.value
 }
 
 /** Parse a signed integer within [min, max]; returns null when invalid. */
@@ -139,7 +125,7 @@ function applyCommandPreset(state: AppState, commandKey: string | null): AppStat
       m: preset.m ?? next.direct.m,
       b: preset.b ?? next.direct.b,
       r: preset.R ?? next.direct.r,
-      error: null,
+      errors: { m: null, b: null, r: null } as AppState['direct']['errors'],
     }
     const withDirect = { ...next, mode: 'DIRECT' as const, direct }
     const y = PMBusMath.encodeDirect(preset.value, direct.m, direct.b, direct.r)
@@ -196,7 +182,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'raw/set': {
-      const parsed = parseDecimalIntStrict(action.raw)
+      const parsed = parseIntegerStrict(action.raw)
       if (!parsed.ok) return state
       // Clamp, don't wrap: L16's manual V input promises 0~65535, and
       // `raw & 0xffff` would silently turn 70000 into 4464.
@@ -296,28 +282,41 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const isR = action.name === 'r'
       const min = isR ? -128 : -32768
       const max = isR ? 127 : 32767
+      const label = action.name.toUpperCase()
       const val = parseIntegerRange(action.value, min, max)
       if (val === null) {
-        const label = action.name.toUpperCase()
+        // Per-field error: reject and keep the last valid value without
+        // touching the other fields' stored values or errors.
         return {
           ...state,
           direct: {
             ...state.direct,
-            error: `${label} 必须是 ${min}..${max} 的整数，不得为浮点数或超范围值`,
+            errors: {
+              ...state.direct.errors,
+              [action.name]: `${label} 必须是 ${min}..${max} 的整数，不得为浮点数或超范围值`,
+            },
           },
         }
       }
       if (isM && val === 0) {
-        // m=0 is stored so the existing m-zero warning is visible, but it is
+        // m=0 is stored so the field-level m=0 error stays visible, but it is
         // still an explicit error state rather than a silent acceptance.
         return {
           ...state,
-          direct: { ...state.direct, m: 0, error: 'DIRECT 系数 m 不能为 0' },
+          direct: {
+            ...state.direct,
+            m: 0,
+            errors: { ...state.direct.errors, m: 'DIRECT 系数 m 不能为 0' },
+          },
         }
       }
       return {
         ...state,
-        direct: { ...state.direct, [action.name]: val, error: null },
+        direct: {
+          ...state.direct,
+          [action.name]: val,
+          errors: { ...state.direct.errors, [action.name]: null },
+        },
       }
     }
 

@@ -254,6 +254,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
                 ref={inputRef}
                 type="text"
                 role="combobox"
+                aria-label="搜索命令"
                 aria-autocomplete="list"
                 aria-expanded="true"
                 aria-controls={LISTBOX_ID}

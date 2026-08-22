@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-22（M20 Done：Vitest 4 成对升级、engines 收紧与 Node 24 secondary LTS CI 兼容检查）
+最后更新：2026-08-22（M21 Done：输入校验可访问性与键盘交互可靠性）
 
 ## 当前产品基线
 
@@ -19,8 +19,44 @@
 ## 当前里程碑
 
 ```text
-M0–M20 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M21 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M21 done — 输入校验可访问性与键盘交互可靠性
+
+- 统一整数语法为「可选正负号 + 十进制数字」：`src/app/int-parse.ts`（由 decimal-parse
+  泛化重命名）成为 reducer 与所有整数输入组件的唯一解析来源；`1e2`、`1.5`、`12abc`、
+  `0x10`、仅正负号、unsafe integer 在 L11 N/Y、DIRECT Y、DIRECT m/b/R 一律拒绝，
+  此前 `Number()` 宽松转换会把 `1e2`/`0x10` 当合法值接受。
+- 统一输入编辑模型（IntegerInput / ValueInput / DecimalInput / HexInput）：过渡态
+  （空串、单独正负号、`1e`、`1.` 等）暂存且不逐键报错；非法文本不进入 committed
+  state/raw/结果；非法最终值在字段级显示唯一可见错误并保留 draft，不再静默回滚；
+  合法修正后错误、ARIA 状态与旧 draft 同时清除；`aria-invalid` 仅在确实非法时出现，
+  `aria-describedby` 指向真实存在的唯一错误节点。HALF 继续接受 NaN/±Infinity，
+  其他模式对非有限值给出字段级错误。
+- DIRECT 系数错误改为按字段隔离的 `state.direct.errors.{m,b,r}`：编辑无关字段不再
+  覆盖或清除仍有效的字段错误，错误跨模式切换保留；m=0 仍为显式存储的非法状态。
+  系数错误只内联显示在对应字段旁，InfoPanel 不再重复播报同一错误（移除
+  direct-coeff-error / direct-m-zero 重复警告）。
+- 全局快捷键 `Ctrl+1..4` 仅在非编辑上下文生效：新增 `src/app/editable-target.ts`
+  （input/textarea/select/contenteditable/role=textbox/role=combobox，含祖先匹配，
+  带单测）供 `App.tsx` 判定；同时拒绝 Meta/Ctrl+Alt/Ctrl+Shift 变体。编辑区按快捷键
+  不再切换模式、不丢 draft、不抢焦点。
+- CommandPicker 补齐 combobox 语义：搜索框获得显式 `aria-label`（不依赖 placeholder
+  兜底）；query 变化后 active option 重置为 selected-or-first 的既有行为由回归测试
+  锁定（`aria-activedescendant` 始终指向真实存在的 option）。
+- 数值范围合同保持不变：L11 N/Y、DIRECT Y、L16 V 超范围继续 clamp；DIRECT m/b/R
+  超范围继续拒绝并保留最后有效值；`m ≠ 0`。`parseFloatSafe` 迁移到
+  `src/app/float-parse.ts` 供 reducer 与 ValueInput 共用，行为不变。
+- 有界 viewport 业务矩阵（`tests/e2e/input-interaction.spec.ts`，pairwise 而非笛卡尔积）：
+  L11@360×800 light（手动 Y/N）、L16@390×844 dark（V 非法+clamp）、DIRECT@768×1024
+  light（m/b/R 与 Y 字段级错误）、HALF@1280×900 dark（NaN/±Infinity 合法、垃圾文本
+  非法）、CommandPicker@950×304、快捷键 desktop+mobile 双 project；每个非法场景断言
+  draft、`aria-invalid`、错误关联 ID、raw 未破坏、修正后清除、无横向 overflow、
+  错误不截断不遮挡。视觉验收含 5 张错误态截图逐图检查；visual snapshot 零变化
+  （+0/~0/-0），稳定页面布局与基线逐字节一致。
+- 产品算法、命令元数据、依赖与 CI 配置零改动。状态依据：本地 `npm run verify` 全绿；
+  PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
 
 ### M20 done — 测试运行时依赖链健康与受支持 Node LTS 对齐
 
@@ -175,8 +211,11 @@ glob@10.5.0` 在 `npm ci` 输出真实弃用警告（Node 22/24 一致）；成�
 1. READ_EIN 权威字节数选择：需要目标器件数据手册或适用规范修订，blocked。
 2. DIRECT `device-datasheet` profiles：需要真实器件数据手册，blocked。
 3. 独立 FormulaEditor：optional，不是缺陷。
-4. 更全面 viewport 业务矩阵：optional。
-5. PMBus 新版规范升级：独立工作，当前不得自动开展。
+4. PMBus 新版规范升级：独立工作，当前不得自动开展。
+
+> M21 已交付四模式有界 viewport 业务矩阵（L11/L16/DIRECT/HALF + CommandPicker +
+> 快捷键，pairwise 组合）；原「更全面 viewport 业务矩阵」backlog 项随之关闭。
+> 后续如需笛卡尔积级扩展（全主题 × 全 viewport），另行立项。
 
 ## blocked 条件
 

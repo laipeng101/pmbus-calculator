@@ -140,20 +140,9 @@ function buildWarnings(state: AppState): WarningVM[] {
       text: special.msg,
     })
   }
-  if (state.mode === 'DIRECT' && state.direct.m === 0) {
-    warnings.push({
-      id: 'direct-m-zero',
-      level: 'error',
-      text: 'DIRECT 系数 m 不能为 0',
-    })
-  }
-  if (state.mode === 'DIRECT' && state.direct.error) {
-    warnings.push({
-      id: 'direct-coeff-error',
-      level: 'error',
-      text: state.direct.error,
-    })
-  }
+  // DIRECT coefficient errors (including m=0) live in state.direct.errors and
+  // are rendered inline next to the corresponding input; the InfoPanel must
+  // not announce the same error a second time.
   if (state.mode === 'L16') {
     const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
     if (!parsed || parsed.modeName !== 'LINEAR') {

@@ -42,7 +42,7 @@ describe('appReducer — DIRECT preset error clearing (mocked metadata)', () => 
       name: 'm',
       value: '2.5',
     })
-    expect(bad.direct.error).toBeTruthy()
+    expect(bad.direct.errors.m).toBeTruthy()
 
     const applied = appReducer(bad, {
       type: 'command/apply-preset',
@@ -50,7 +50,7 @@ describe('appReducer — DIRECT preset error clearing (mocked metadata)', () => 
     })
 
     expect(applied.mode).toBe('DIRECT')
-    expect(applied.direct.error).toBeNull()
+    expect(applied.direct.errors).toEqual({ m: null, b: null, r: null })
     expect(applied.direct.m).toBe(2)
     expect(applied.direct.b).toBe(0)
     expect(applied.direct.r).toBe(0)

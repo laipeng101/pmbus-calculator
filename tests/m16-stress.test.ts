@@ -64,14 +64,22 @@ describe('M16 non-zero stress golden cases', () => {
     expect(r.value).toBeCloseTo(-2.8733e-8, 16)
 
     const vm = toCalculatorViewModel(
-      base({ mode: 'DIRECT', raw: 0x8fc3, direct: { m: 1, b: 0, r: 12, error: null } }),
+      base({
+        mode: 'DIRECT',
+        raw: 0x8fc3,
+        direct: { m: 1, b: 0, r: 12, errors: { m: null, b: null, r: null } },
+      }),
     )
     expect(vm.directY).toBe(-28733)
     expect(vm.valueText).toBe('-2.8733e-8')
     expect(vm.formulaText).toBe('X=(1/1)×((-28733)×10^(-12)-0)')
 
     const f = getFormulaPresentation(
-      base({ mode: 'DIRECT', raw: 0x8fc3, direct: { m: 1, b: 0, r: 12, error: null } }),
+      base({
+        mode: 'DIRECT',
+        raw: 0x8fc3,
+        direct: { m: 1, b: 0, r: 12, errors: { m: null, b: null, r: null } },
+      }),
     )
     expect(f.latex).toBe('X = \\frac{1}{1}\\left((-28733) \\times 10^{-12} - 0\\right)')
     expect(f.latex).not.toContain('10^{(-12)}')

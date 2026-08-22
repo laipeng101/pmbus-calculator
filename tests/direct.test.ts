@@ -53,26 +53,37 @@ describe('DIRECT coefficient boundaries', () => {
     }
   })
 
-  it('rejects float and out-of-range coefficients with an explicit error', () => {
+  it('rejects float and out-of-range coefficients with an explicit per-field error', () => {
     expect(
-      appReducer(INITIAL_STATE, { type: 'direct/set-coeff', name: 'm', value: '1.5' }).direct.error,
+      appReducer(INITIAL_STATE, { type: 'direct/set-coeff', name: 'm', value: '1.5' }).direct.errors
+        .m,
     ).toContain('M 必须是')
     expect(
       appReducer(INITIAL_STATE, { type: 'direct/set-coeff', name: 'm', value: '32768' }).direct
-        .error,
+        .errors.m,
     ).toContain('M 必须是')
     expect(
-      appReducer(INITIAL_STATE, { type: 'direct/set-coeff', name: 'r', value: '128' }).direct.error,
+      appReducer(INITIAL_STATE, { type: 'direct/set-coeff', name: 'r', value: '128' }).direct.errors
+        .r,
     ).toContain('R 必须是')
   })
 
-  it('m=0 decodes to NaN and surfaces an error warning', () => {
+  it('m=0 decodes to NaN; the error is field-level inline, not an InfoPanel warning', () => {
     const r = PMBusMath.decodeDirect(1, 0, 0, 0)
     expect(Number.isNaN(r.value)).toBe(true)
 
-    const vm = toCalculatorViewModel(directState({ direct: { m: 0, b: 0, r: 0, error: null } }))
+    const vm = toCalculatorViewModel(
+      directState({
+        direct: {
+          m: 0,
+          b: 0,
+          r: 0,
+          errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null },
+        },
+      }),
+    )
     expect(vm.valueText).toBe('—')
-    expect(vm.warnings.some((w) => w.id === 'direct-m-zero')).toBe(true)
+    expect(vm.warnings.some((w) => w.id === 'direct-m-zero')).toBe(false)
   })
 })
 

@@ -89,7 +89,33 @@
 - 不得调用会滚动整个页面的 `scrollIntoView`；active option 由 list 内部滚动逻辑管理。
 - popup 打开时 resize、页面滚动、触发器靠近顶部/底部都必须保持 viewport 内完整可见。
 
-## 8. 视觉系统与验收
+## 8. 输入编辑与错误合同（M21 起长期稳定）
+
+- 整数语法统一为「可选正负号 + 十进制数字」；`src/app/int-parse.ts` 是 reducer 与
+  所有整数输入组件的唯一解析来源，拒绝 `1e2`、`1.5`、`12abc`、`0x10`、仅正负号与
+  unsafe integer。物理值解析统一走 `src/app/float-parse.ts`（`parseFloatSafe` +
+  过渡态分类），reducer 与组件不得各自维护规则。
+- 统一编辑模型：编辑中的过渡态（空串、单独正负号、`1e`、`1.`、`0x` 等）暂存，
+  不逐键重置、不逐键报错；非法文本不得修改 committed state、raw、公式或结果。
+- 非法最终值必须有字段级、可见、唯一的错误，不得静默回滚；blur 后非法 draft
+  保留并保持错误。合法修正后错误、ARIA 状态与旧 draft 同时清除。
+- `aria-invalid="true"` 只在字段确实非法时出现；`aria-describedby` 指向当前可见、
+  唯一、真实存在的错误节点（`{input-id}-error`）。同一错误不得同时出现在内联提示
+  和 InfoPanel；DIRECT 系数错误按 `state.direct.errors.{m,b,r}` 字段隔离，编辑
+  无关字段不得覆盖或清除另一字段仍有效的错误。
+- 数值范围合同：L11 N/Y、DIRECT Y、L16 V 超范围 clamp；DIRECT m/b/R 超范围拒绝
+  并保留最后有效值；`m ≠ 0`（m=0 为显式存储的非法状态）。HALF 接受
+  NaN/±Infinity，其他模式拒绝非有限值。
+- 模式切换后不得留下与当前显示值矛盾的 stale error（错误随字段所在 workspace
+  卸载清除；DIRECT 系数错误随状态保留、只在 DIRECT 模式渲染）。
+- 全局快捷键 `Ctrl+1..4` 仅在非编辑上下文生效：`src/app/editable-target.ts` 判定
+  input/textarea/select/contenteditable/role=textbox/role=combobox（含祖先），
+  且 Meta/Alt/Shift 变体一律不作为快捷键。编辑区按快捷键不得切换模式、丢 draft
+  或抢焦点；不得通过删除快捷键或隐藏提示规避问题。
+- CommandPicker 搜索框必须有显式可访问名称（不依赖 placeholder 兜底）；
+  `aria-activedescendant` 在 query 过滤后必须指向当前 DOM 中真实存在的 option。
+
+## 9. 视觉系统与验收
 
 - 表面最多三层：canvas / panel / panel-elevated；控件使用 control / control-hover / control-active。
 - 阴影只用于 elevated、sticky result 和 popup；删除全局 `filter: brightness` hover。
@@ -105,7 +131,7 @@
 - reduced-motion 只关闭非必要动画，不得消除功能反馈；复制状态使用受控 timer（约 1.5–2s）。
 - KaTeX `htmlAndMathml` 已提供 MathML；外层不得用 `role="math"`/`aria-label` 覆盖；fallback 时再提供可访问名称。
 
-## 9. 视觉基线治理
+## 10. 视觉基线治理
 
 > 完整政策见 [`docs/REPOSITORY_HYGIENE.md`](REPOSITORY_HYGIENE.md) 第 3 节；本文件只保留 UI 任务必须遵守的摘要。
 

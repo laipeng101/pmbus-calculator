@@ -98,18 +98,21 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 <div className="mb-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
                   Y (11-bit)
                 </div>
-                <IntegerInput
-                  value={state.l11.y}
-                  ariaLabel="Y (11-bit)"
-                  onCommit={(text) => dispatch({ type: 'l11/set-y', y: text })}
-                  className="w-28 rounded-lg px-3 py-2 text-center text-lg font-bold outline-none"
-                  style={{
-                    background: 'var(--color-surface)',
-                    color: 'var(--color-text-primary)',
-                    border: '1px solid var(--color-border)',
-                    fontFamily: 'var(--font-mono)',
-                  }}
-                />
+                <div className="mx-auto w-28">
+                  <IntegerInput
+                    id="l11-y-input"
+                    value={state.l11.y}
+                    ariaLabel="Y (11-bit)"
+                    onCommit={(text) => dispatch({ type: 'l11/set-y', y: text })}
+                    className="w-full rounded-lg px-3 py-2 text-center text-lg font-bold outline-none"
+                    style={{
+                      background: 'var(--color-surface)',
+                      color: 'var(--color-text-primary)',
+                      border: '1px solid var(--color-border)',
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="text-2xl font-bold" style={{ color: 'var(--color-text-secondary)' }}>
@@ -121,20 +124,23 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                   2<sup>N</sup>
                 </div>
                 <div className="flex items-center gap-1">
-                  <IntegerInput
-                    value={state.l11.n}
-                    disabled={state.l11.autoN}
-                    ariaLabel="N 值 (指数)"
-                    onCommit={(text) => dispatch({ type: 'l11/set-n', n: text })}
-                    className="w-20 rounded-lg px-2 py-2 text-center text-lg font-bold outline-none"
-                    style={{
-                      background: 'var(--color-surface)',
-                      color: 'var(--color-text-primary)',
-                      border: '1px solid var(--color-border)',
-                      fontFamily: 'var(--font-mono)',
-                      opacity: state.l11.autoN ? 0.6 : 1,
-                    }}
-                  />
+                  <div className="w-20">
+                    <IntegerInput
+                      id="l11-n-input"
+                      value={state.l11.n}
+                      disabled={state.l11.autoN}
+                      ariaLabel="N 值 (指数)"
+                      onCommit={(text) => dispatch({ type: 'l11/set-n', n: text })}
+                      className="w-full rounded-lg px-2 py-2 text-center text-lg font-bold outline-none"
+                      style={{
+                        background: 'var(--color-surface)',
+                        color: 'var(--color-text-primary)',
+                        border: '1px solid var(--color-border)',
+                        fontFamily: 'var(--font-mono)',
+                        opacity: state.l11.autoN ? 0.6 : 1,
+                      }}
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => dispatch({ type: 'l11/toggle-auto-n' })}
@@ -290,6 +296,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 Y（16 位有符号，−32768～32767）
               </label>
               <IntegerInput
+                id="direct-y-input"
                 value={vm.directY ?? 0}
                 ariaLabel="Y（16 位有符号，−32768～32767）"
                 onCommit={(text) => dispatch({ type: 'direct/set-y', y: text })}
@@ -323,8 +330,11 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                     {name.toUpperCase()}（{formatSignedRange(min)}～{formatSignedRange(max)}）
                   </label>
                   <IntegerInput
+                    id={`direct-coeff-${name}-input`}
                     value={val}
                     ariaLabel={`DIRECT 系数 ${name}`}
+                    rangeBehavior="reject"
+                    stateError={state.direct.errors[name]}
                     onCommit={(text) =>
                       dispatch({
                         type: 'direct/set-coeff',
