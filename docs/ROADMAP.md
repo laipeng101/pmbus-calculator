@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-22（M19-B Done：受保护 main 与合并后重复 CI 消除）
+最后更新：2026-08-22（M20 Done：Vitest 4 成对升级、engines 收紧与 Node 24 secondary LTS CI 兼容检查）
 
 ## 当前产品基线
 
@@ -19,8 +19,37 @@
 ## 当前里程碑
 
 ```text
-M0–M19-B complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M20 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M20 done — 测试运行时依赖链健康与受支持 Node LTS 对齐
+
+- 退出问题重调查（全部为本轮实测，未复用任何旧证据）：M19-A 记录过一次的 Node 24 下
+  Vitest 完成后不退出问题，本轮在 Node 24.19.0（目标/workflow 回归、4× 全量单测、
+  coverage）与 Node 22.23.2（隔离 worktree、fresh `npm ci`、目标/workflow 回归、
+  3× 全量单测、coverage）共 10 次 Vitest 3.2.7 运行中全部断言完成后正常自退（rc=0），
+  未复现；不作为缺陷修复立项。
+- 立项依据为依赖链健康：当前 `@vitest/coverage-v8@3.2.7 → test-exclude@7.0.2 →
+glob@10.5.0` 在 `npm ci` 输出真实弃用警告（Node 22/24 一致）；成对升级到
+  `vitest@^4.1.11` + `@vitest/coverage-v8@^4.1.11`（peer 兼容现有 Vite 6.4.3，
+  Node engines `^20 || ^22 || >=24`）后 glob 完全移出依赖树（`npm ls glob` 为空），
+  fresh `npm ci` 零弃用警告、0 漏洞，lockfile 净减约 570 行。
+- 升级验证（隔离 worktree 双版本矩阵）：目标测试（99）、全量 492 单测、coverage、
+  typecheck、lint、build 在 Node 22 与 Node 24 下全部通过；Vitest 4 的 AST-based
+  V8 coverage 数字更准确（约 91.9/87.7/94.9/94.7），仍高于 80/70/80/80 阈值，
+  阈值不降低；生产 build 产物与升级前逐字节一致（同 hash）；产品算法、UI 与
+  snapshot 零改动（0/0/0）。
+- engines 收紧为 `>=22 <23 || >=24 <25`：只表达项目实际验证与承诺的 Node 版本
+  （CI 主验证 22 + 兼容检查 24），排除已 EOL 的奇数版本 23 与未验证的 25+。
+- CI 保持单一 `check` job 与单一 required check：full tier 末尾新增 secondary LTS
+  兼容检查——重新 setup Node 24（同一 reviewed setup-node SHA）后
+  `npm ci && npm run test:run`，把本地开发实际使用的运行时纳入持续验证；
+  light tier 不执行；不新增 job；Playwright 报告上传条件不变。
+- `tests/ci-workflow.test.ts` 扩展：两个 setup-node 步骤同 SHA 固定、主验证仍为
+  Node 22 且不被 full-tier 条件门控、secondary setup 与
+  `npm ci && npm run test:run` 均受统一 full-tier 条件门控。
+- 状态依据：本地 `npm run verify` 与 workflow 回归测试通过；PR/CI 审计证据见对应
+  PR 与 Actions 运行，不在本文件维护。
 
 ### M19-B done — 受保护 main 与合并后重复 CI 消除
 

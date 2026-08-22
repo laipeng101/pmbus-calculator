@@ -139,6 +139,23 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm audit --audit-level=high
 
+      # Secondary LTS compatibility (M20): engines deliberately supports the
+      # two maintained LTS lines (22 and 24). Primary verification stays on
+      # Node 22; this light re-check reinstalls under Node 24 and runs the
+      # unit suite so the runtime local development actually uses stays
+      # continuously validated — inside the same single `check` job, without
+      # a second job or a second required check. Light tier skips it.
+      - name: Setup Node.js 24 (secondary LTS)
+        if: steps.scope.outputs.run_full != 'false'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Unit tests on secondary LTS (Node 24)
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm ci && npm run test:run
+
       # Playwright reports are uploaded only when the exact test step that
       # produces them ran and failed: never on the light tier, and never when
       # an earlier non-Playwright step (typecheck/lint/coverage/build) failed
