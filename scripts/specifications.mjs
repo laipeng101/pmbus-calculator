@@ -51,10 +51,19 @@ Commands:
   verify-cache  Offline verification of files already present in the cache.
 `
 
+/**
+ * @param {string} importMetaUrl
+ * @returns {string}
+ */
 export function repoRootFromScript(importMetaUrl) {
   return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..')
 }
 
+/**
+ * @param {string} url
+ * @param {string[]} allowlist
+ * @returns {boolean}
+ */
 function matchesHost(url, allowlist) {
   try {
     const parsed = new URL(url)
@@ -64,6 +73,10 @@ function matchesHost(url, allowlist) {
   }
 }
 
+/**
+ * @param {string} fileName
+ * @returns {boolean}
+ */
 export function isSafeFileName(fileName) {
   if (typeof fileName !== 'string' || fileName.length === 0) return false
   if (fileName === '.' || fileName === '..') return false
@@ -72,18 +85,37 @@ export function isSafeFileName(fileName) {
   return true
 }
 
+/**
+ * @param {*} value
+ * @returns {boolean}
+ */
 export function isValidSha256(value) {
   return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
 }
 
+/**
+ * @param {*} value
+ * @returns {boolean}
+ */
 export function isValidBytes(value) {
   return Number.isInteger(value) && value > 0
 }
 
-function pushIf(condition, errors, message) {
-  if (condition) errors.push(message)
-}
+// pushIf is intentionally unused; kept for symmetry with validation patterns.
+// /**
+//  * @param {boolean} condition
+//  * @param {string[]} errors
+//  * @param {string} message
+//  */
+// function pushIf(condition, errors, message) {
+//   if (condition) errors.push(message)
+// }
 
+/**
+ * @param {*} manifest
+ * @param {{ expectedDocumentCount?: number, landingHosts?: string[], downloadHosts?: string[] }} [options]
+ * @returns {{ ok: boolean, errors: string[], manifest: * }}
+ */
 export function validateManifest(manifest, options = {}) {
   const errors = []
   const expectedDocumentCount = options.expectedDocumentCount ?? EXPECTED_DOCUMENT_COUNT
@@ -176,6 +208,11 @@ export function validateManifest(manifest, options = {}) {
   return { ok: errors.length === 0, errors, manifest }
 }
 
+/**
+ * @param {*} document
+ * @param {{ expectedDocumentCount?: number, landingHosts?: string[], downloadHosts?: string[] }} [options]
+ * @returns {{ ok: boolean, errors: string[], manifest: * }}
+ */
 export function validateDocument(document, options = {}) {
   return validateManifest(
     { schemaVersion: 1, documents: [document] },
@@ -183,6 +220,11 @@ export function validateDocument(document, options = {}) {
   )
 }
 
+/**
+ * @param {*} manifest
+ * @param {{ expectedDocumentCount?: number, landingHosts?: string[], downloadHosts?: string[] }} [options]
+ * @returns {*}
+ */
 export function assertValidManifest(manifest, options = {}) {
   const validation = validateManifest(manifest, options)
   if (validation.ok === false) {
@@ -191,6 +233,11 @@ export function assertValidManifest(manifest, options = {}) {
   return validation.manifest
 }
 
+/**
+ * @param {*} document
+ * @param {{ expectedDocumentCount?: number, landingHosts?: string[], downloadHosts?: string[] }} [options]
+ * @returns {*}
+ */
 export function assertValidDocument(document, options = {}) {
   const validation = validateDocument(document, options)
   if (validation.ok === false) {
@@ -199,6 +246,10 @@ export function assertValidDocument(document, options = {}) {
   return document
 }
 
+/**
+ * @param {number} timeoutMs
+ * @returns {number}
+ */
 export function assertValidTimeoutMs(timeoutMs) {
   if (Number.isSafeInteger(timeoutMs) === false || timeoutMs <= 0) {
     throw new Error(`timeoutMs must be a positive safe integer: ${timeoutMs}`)
@@ -206,19 +257,23 @@ export function assertValidTimeoutMs(timeoutMs) {
   return timeoutMs
 }
 
+/**
+ * @param {string} repoRoot
+ * @returns {Promise<*>}
+ */
 export async function loadManifest(repoRoot) {
   const manifestPath = path.join(repoRoot, MANIFEST_PATH)
   let text
   try {
     text = await fs.readFile(manifestPath, 'utf8')
-  } catch (error) {
+  } catch (/** @type {*} */ error) {
     throw new Error(`failed to read manifest at ${manifestPath}: ${error.message ?? error}`)
   }
 
   let manifest
   try {
     manifest = JSON.parse(text)
-  } catch (error) {
+  } catch (/** @type {*} */ error) {
     throw new Error(`failed to parse manifest at ${manifestPath}: ${error.message ?? error}`)
   }
 
@@ -226,6 +281,10 @@ export async function loadManifest(repoRoot) {
   return manifest
 }
 
+/**
+ * @param {string} repoRoot
+ * @returns {string[]}
+ */
 export function gitTrackedPdfs(repoRoot) {
   const output = execFileSync('git', ['-C', repoRoot, 'ls-files', '-z', '--', '*.pdf'], {
     encoding: 'utf8',
@@ -238,6 +297,7 @@ export function gitTrackedPdfs(repoRoot) {
  * @param {{ repoRoot?: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} [options]
  */
 export function checkSpecifications({ repoRoot, log = console.log, error = console.error } = {}) {
+  /** @type {{ manifest: *, manifestOk: boolean, trackedPdfs: string[], ok: boolean, errors: string[] }} */
   const result = {
     manifest: null,
     manifestOk: false,
@@ -247,18 +307,22 @@ export function checkSpecifications({ repoRoot, log = console.log, error = conso
   }
 
   try {
-    result.manifest = JSON.parse(readFileSync(path.join(repoRoot, MANIFEST_PATH), 'utf8'))
+    result.manifest = JSON.parse(
+      readFileSync(path.join(/** @type {string} */ (repoRoot), MANIFEST_PATH), 'utf8'),
+    )
     const validation = validateManifest(result.manifest)
     result.manifestOk = validation.ok
     result.errors.push(...validation.errors)
-  } catch (caught) {
-    result.errors.push(caught.message ?? caught)
+  } catch (/** @type {*} */ caught) {
+    result.errors.push(/** @type {*} */ (caught).message ?? caught)
   }
 
   try {
-    result.trackedPdfs = gitTrackedPdfs(repoRoot)
-  } catch (caught) {
-    result.errors.push(`failed to inspect tracked PDFs: ${caught.message ?? caught}`)
+    result.trackedPdfs = gitTrackedPdfs(/** @type {string} */ (repoRoot))
+  } catch (/** @type {*} */ caught) {
+    result.errors.push(
+      `failed to inspect tracked PDFs: ${/** @type {*} */ (caught).message ?? caught}`,
+    )
   }
 
   if (result.trackedPdfs.length > 0) {
@@ -271,7 +335,7 @@ export function checkSpecifications({ repoRoot, log = console.log, error = conso
 
   if (result.ok) {
     log('specs:check OK')
-    log(`specs:check manifest entries: ${result.manifest.documents.length}`)
+    log(`specs:check manifest entries: ${/** @type {*} */ (result.manifest).documents.length}`)
     log('specs:check tracked PDFs: 0')
   } else {
     for (const message of result.errors) error(`specs:check error: ${message}`)
@@ -302,8 +366,13 @@ export function listSpecifications(manifest, { log = console.log } = {}) {
   return manifest.documents
 }
 
+/**
+ * @param {string[]} args
+ * @returns {{ all: boolean, ids: string[] }}
+ */
 export function parseFetchArgs(args) {
   const all = args.includes('--all')
+  /** @type {string[]} */
   const ids = []
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]
@@ -322,12 +391,20 @@ export function parseFetchArgs(args) {
   return { all, ids }
 }
 
+/**
+ * @param {*} manifest
+ * @param {{ all: boolean, ids: string[] }} options
+ * @returns {Array<*>}
+ */
 function selectDocuments(manifest, { all, ids }) {
   if (all === false && ids.length === 0) {
     throw new Error('fetch requires --all or --id <id>')
   }
   if (all) return manifest.documents
-  const byId = new Map(manifest.documents.map((document) => [document.id, document]))
+  const byId = new Map(
+    manifest.documents.map((/** @type {*} */ document) => [document.id, document]),
+  )
+  /** @type {Array<*>} */
   const selected = []
   for (const id of ids) {
     const document = byId.get(id)
@@ -337,14 +414,26 @@ function selectDocuments(manifest, { all, ids }) {
   return selected
 }
 
+/**
+ * @param {string} target
+ * @param {string} description
+ * @returns {Promise<string>}
+ */
 async function realpathOrThrow(target, description) {
   try {
     return await fs.realpath(target)
-  } catch (error) {
-    throw new Error(`failed to resolve ${description} ${target}: ${error.message ?? error}`)
+  } catch (/** @type {*} */ error) {
+    throw new Error(
+      `failed to resolve ${description} ${target}: ${/** @type {*} */ (error).message ?? error}`,
+    )
   }
 }
 
+/**
+ * @param {string} repoRoot
+ * @param {string} absoluteTarget
+ * @returns {Promise<void>}
+ */
 async function rejectSymlinkSegments(repoRoot, absoluteTarget) {
   const segments = path.relative(repoRoot, absoluteTarget).split(path.sep)
   let current = repoRoot
@@ -368,8 +457,8 @@ async function rejectSymlinkSegments(repoRoot, absoluteTarget) {
  * @param {string} [cacheDir]
  */
 export async function resolveVerifiedCacheDir(repoRoot, cacheDir) {
-  const realRoot = await realpathOrThrow(repoRoot, 'repository root')
-  const absolute = path.resolve(realRoot, cacheDir)
+  const realRoot = await realpathOrThrow(/** @type {string} */ (repoRoot), 'repository root')
+  const absolute = path.resolve(realRoot, /** @type {string} */ (cacheDir))
   const relative = path.relative(realRoot, absolute)
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error(`cache directory escapes repository root: ${cacheDir}`)
@@ -378,6 +467,11 @@ export async function resolveVerifiedCacheDir(repoRoot, cacheDir) {
   return { realRoot, absoluteCacheDir: absolute }
 }
 
+/**
+ * @param {string} repoRoot
+ * @param {string} cacheDir
+ * @returns {boolean}
+ */
 export function isCachePathIgnored(repoRoot, cacheDir) {
   const probe = spawnSync('git', ['-C', repoRoot, 'check-ignore', '-q', '--', cacheDir], {
     encoding: 'utf8',
@@ -385,18 +479,27 @@ export function isCachePathIgnored(repoRoot, cacheDir) {
   return probe.status === 0
 }
 
+/**
+ * @param {string} repoRoot
+ * @param {string} cacheDir
+ * @returns {Promise<void>}
+ */
 async function ensureCacheIsIgnored(repoRoot, cacheDir) {
   if (isCachePathIgnored(repoRoot, cacheDir) === false) {
     throw new Error(`cache directory must be git-ignored before downloading: ${cacheDir}`)
   }
 }
 
+/**
+ * @param {string} filePath
+ * @returns {Promise<{ filePath: string, bytes: number, sha256: string } | null>}
+ */
 async function existingFileState(filePath) {
   let stat = null
   try {
     stat = await fs.lstat(filePath)
-  } catch (error) {
-    if (error?.code === 'ENOENT') return null
+  } catch (/** @type {*} */ error) {
+    if (/** @type {*} */ (error)?.code === 'ENOENT') return null
     throw error
   }
   if (stat.isSymbolicLink()) throw new Error(`cache path is a symbolic link: ${filePath}`)
@@ -406,6 +509,10 @@ async function existingFileState(filePath) {
   return { filePath, bytes, sha256 }
 }
 
+/**
+ * @param {string} filePath
+ * @returns {Promise<string>}
+ */
 export async function sha256File(filePath) {
   const hash = crypto.createHash('sha256')
   const handle = await fs.open(filePath, 'r')
@@ -422,10 +529,18 @@ export async function sha256File(filePath) {
   return hash.digest('hex')
 }
 
+/**
+ * @param {Buffer} buffer
+ * @returns {string}
+ */
 export function sha256Buffer(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex')
 }
 
+/**
+ * @param {string} targetPath
+ * @returns {string}
+ */
 function makeTempPath(targetPath) {
   return path.join(
     path.dirname(targetPath),
@@ -433,6 +548,11 @@ function makeTempPath(targetPath) {
   )
 }
 
+/**
+ * @param {*} response
+ * @param {string} name
+ * @returns {string | undefined}
+ */
 function getResponseHeader(response, name) {
   const headers = response.headers
   if (headers && typeof headers.get === 'function') {
@@ -445,6 +565,10 @@ function getResponseHeader(response, name) {
   return undefined
 }
 
+/**
+ * @param {*} response
+ * @returns {Promise<void>}
+ */
 async function cancelResponseBody(response) {
   try {
     if (response.body && typeof response.body.cancel === 'function') {
@@ -455,11 +579,20 @@ async function cancelResponseBody(response) {
   }
 }
 
+/**
+ * @param {AbortSignal} signal
+ * @returns {Error}
+ */
 function abortErrorFor(signal) {
   if (signal && signal.reason instanceof Error) return signal.reason
   return new Error('aborted')
 }
 
+/**
+ * @param {Promise<*>} promise
+ * @param {AbortSignal} signal
+ * @returns {Promise<*>}
+ */
 async function raceWithSignal(promise, signal) {
   if (signal?.aborted) throw abortErrorFor(signal)
   return await new Promise((resolve, reject) => {
@@ -478,6 +611,11 @@ async function raceWithSignal(promise, signal) {
   })
 }
 
+/**
+ * @param {ReadableStreamDefaultReader<Uint8Array>} reader
+ * @param {AbortSignal} signal
+ * @returns {Promise<{ value?: Uint8Array, done: boolean }>}
+ */
 async function readChunkWithSignal(reader, signal) {
   if (signal?.aborted) throw abortErrorFor(signal)
   return await new Promise((resolve, reject) => {
@@ -487,7 +625,7 @@ async function readChunkWithSignal(reader, signal) {
     }
     signal?.addEventListener('abort', onAbort, { once: true })
     reader.read().then(
-      (result) => {
+      (/** @type {*} */ result) => {
         signal?.removeEventListener('abort', onAbort)
         resolve(result)
       },
@@ -499,6 +637,12 @@ async function readChunkWithSignal(reader, signal) {
   })
 }
 
+/**
+ * @param {{ write: (buffer: Buffer, offset: number, length: number, position: null) => Promise<{ bytesWritten: number }>, close?: () => Promise<void> }} handle
+ * @param {Buffer} buffer
+ * @param {AbortSignal | undefined} signal
+ * @returns {Promise<void>}
+ */
 export async function writeAll(handle, buffer, signal) {
   let offset = 0
   while (offset < buffer.byteLength) {
@@ -516,6 +660,13 @@ export async function writeAll(handle, buffer, signal) {
   }
 }
 
+/**
+ * @param {*} response
+ * @param {string} targetPath
+ * @param {*} document
+ * @param {AbortSignal} signal
+ * @returns {Promise<{ tempPath: string, bytes: number, sha256: string }>}
+ */
 async function streamResponseToTempFile(response, targetPath, document, signal) {
   if (response.body === null || response.body === undefined) {
     throw new Error(`response body is missing for ${document.downloadUrl}`)
@@ -537,15 +688,16 @@ async function streamResponseToTempFile(response, targetPath, document, signal) 
     while (true) {
       const { done, value } = await readChunkWithSignal(reader, signal)
       if (done) break
+      if (!value) continue
       if (bytes + value.byteLength > document.bytes) {
         await reader.cancel().catch(() => {})
         throw new Error(
           `byte count mismatch for ${document.id}: expected ${document.bytes}, received more than ${document.bytes}`,
         )
       }
-      await writeAll(handle, value, signal)
+      await writeAll(handle, /** @type {Buffer} */ (value), signal)
       bytes += value.byteLength
-      hash.update(value)
+      hash.update(/** @type {Buffer} */ (value))
     }
 
     await handle.close()
@@ -580,7 +732,11 @@ async function streamResponseToTempFile(response, targetPath, document, signal) 
  */
 export async function fetchWithRedirects(
   url,
-  { fetchImpl = fetch, signal, downloadHosts = ALLOWED_DOWNLOAD_HOSTS } = {},
+  {
+    fetchImpl = /** @type {FetchLike} */ (fetch),
+    signal,
+    downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
+  } = {},
 ) {
   let currentUrl = url
   const seen = new Set()
@@ -600,7 +756,7 @@ export async function fetchWithRedirects(
 
     const response = await raceWithSignal(
       fetchImpl(currentUrl, { redirect: 'manual', signal }),
-      signal,
+      /** @type {AbortSignal} */ (signal),
     )
 
     if (
@@ -647,15 +803,17 @@ export async function fetchWithRedirects(
 /**
  * @param {{ repoRoot: string, document: any, cacheDir?: string, fetchImpl?: FetchLike, timeoutMs?: number, log?: (...data: any[]) => void, downloadHosts?: string[] }} [options]
  */
-export async function fetchOneDocument({
-  repoRoot,
-  document,
-  cacheDir,
-  fetchImpl = fetch,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
-  log = console.log,
-  downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
-}) {
+export async function fetchOneDocument(
+  {
+    repoRoot,
+    document,
+    cacheDir,
+    fetchImpl = /** @type {FetchLike} */ (fetch),
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    log = console.log,
+    downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
+  } = /** @type {{ repoRoot: string, document: any, cacheDir?: string, fetchImpl?: FetchLike, timeoutMs?: number, log?: (...data: any[]) => void, downloadHosts?: string[] }} */ ({}),
+) {
   assertValidDocument(document, { downloadHosts })
   assertValidTimeoutMs(timeoutMs)
   if (typeof repoRoot !== 'string' || repoRoot.length === 0) {
@@ -742,7 +900,7 @@ export async function fetchOneDocument({
     }
     if (timedOut || controller.signal.aborted) {
       throw new Error(
-        `timed out after ${timeoutMs}ms for ${document.id}: ${error?.message ?? error}`,
+        `timed out after ${timeoutMs}ms for ${document.id}: ${/** @type {*} */ (error)?.message ?? error}`,
       )
     }
     throw error
@@ -754,17 +912,19 @@ export async function fetchOneDocument({
 /**
  * @param {{ repoRoot: string, manifest: any, all?: boolean, ids?: string[], cacheDir?: string, fetchImpl?: FetchLike, timeoutMs?: number, log?: (...data: any[]) => void, downloadHosts?: string[] }} [options]
  */
-export async function fetchSpecifications({
-  repoRoot,
-  manifest,
-  all = false,
-  ids = [],
-  cacheDir = DEFAULT_CACHE_DIR,
-  fetchImpl = fetch,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
-  log = console.log,
-  downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
-} = {}) {
+export async function fetchSpecifications(
+  {
+    repoRoot,
+    manifest,
+    all = false,
+    ids = [],
+    cacheDir = DEFAULT_CACHE_DIR,
+    fetchImpl = /** @type {FetchLike} */ (fetch),
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    log = console.log,
+    downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
+  } = /** @type {{ repoRoot: string, manifest: any, all?: boolean, ids?: string[], cacheDir?: string, fetchImpl?: FetchLike, timeoutMs?: number, log?: (...data: any[]) => void, downloadHosts?: string[] }} */ ({}),
+) {
   assertValidManifest(manifest, { downloadHosts })
   assertValidTimeoutMs(timeoutMs)
 
@@ -807,13 +967,15 @@ export async function fetchSpecifications({
 /**
  * @param {{ repoRoot: string, manifest: any, cacheDir?: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} [options]
  */
-export async function verifyCache({
-  repoRoot,
-  manifest,
-  cacheDir = DEFAULT_CACHE_DIR,
-  log = console.log,
-  error = console.error,
-} = {}) {
+export async function verifyCache(
+  {
+    repoRoot,
+    manifest,
+    cacheDir = DEFAULT_CACHE_DIR,
+    log = console.log,
+    error = console.error,
+  } = /** @type {{ repoRoot: string, manifest: any, cacheDir?: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} */ ({}),
+) {
   assertValidManifest(manifest)
 
   const { absoluteCacheDir } = await resolveVerifiedCacheDir(repoRoot, cacheDir)
@@ -891,8 +1053,8 @@ async function main() {
     try {
       const manifest = await loadManifest(repoRoot)
       listSpecifications(manifest)
-    } catch (caught) {
-      process.stderr.write(`specs:list failed: ${caught.message ?? caught}\n`)
+    } catch (/** @type {*} */ caught) {
+      process.stderr.write(`specs:list failed: ${/** @type {*} */ (caught).message ?? caught}\n`)
       process.exitCode = 1
     }
     return
@@ -903,8 +1065,8 @@ async function main() {
       const { all, ids } = parseFetchArgs(commandArgs)
       const manifest = await loadManifest(repoRoot)
       await fetchSpecifications({ repoRoot, manifest, all, ids })
-    } catch (caught) {
-      process.stderr.write(`specs:fetch failed: ${caught.message ?? caught}\n`)
+    } catch (/** @type {*} */ caught) {
+      process.stderr.write(`specs:fetch failed: ${/** @type {*} */ (caught).message ?? caught}\n`)
       process.exitCode = 1
     }
     return
@@ -920,8 +1082,10 @@ async function main() {
       const manifest = await loadManifest(repoRoot)
       const result = await verifyCache({ repoRoot, manifest })
       process.exitCode = result.ok ? 0 : 1
-    } catch (caught) {
-      process.stderr.write(`specs:verify-cache failed: ${caught.message ?? caught}\n`)
+    } catch (/** @type {*} */ caught) {
+      process.stderr.write(
+        `specs:verify-cache failed: ${/** @type {*} */ (caught).message ?? caught}\n`,
+      )
       process.exitCode = 1
     }
     return

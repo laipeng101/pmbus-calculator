@@ -1,18 +1,20 @@
-// Gate: offline release contract consistency (M23).
+// Gate: offline release contract consistency (M23, hardened M24).
 //
 // The single source of truth for the current version is package.json. Every
 // other release surface is validated against it so a version bump can never
 // land half-applied:
-// - package-lock.json top-level and root-package version,
-// - CHANGELOG.md section with a real release date,
-// - docs/releases/vX.Y.Z.md with a matching title,
-// - README.md and README_zh-CN.md stable/live/release/checksum links,
-// - docs/ROADMAP.md stable release declaration,
-// - the expected immutable Release artifact names.
+// - package-lock.json top-level AND root-package version (both required),
+// - CHANGELOG.md with a real Gregorian calendar date,
+// - docs/releases/vX.Y.Z.md whose first non-empty line is the exact title,
+// - README.md and README_zh-CN.md Live Demo line, stable tag link, SHA256SUMS
+//   download link, and deployed-version declaration,
+// - docs/ROADMAP.md exactly one stable release declaration,
+// - the immutable Release artifact names read from actual surfaces
+//   (Pages workflow and RELEASING.md), never self-generated.
 //
 // Fully offline by design: no network, no GitHub login, no Pages, and no
 // remote tag or GitHub Release needs to exist yet — safe to run in PR CI
-// before anything is published. The version is never hardcoded here; every
+// before anything is published. The version is never hardcoded; every
 // expectation is derived from the package.json version passed in.
 
 import { realpathSync } from 'node:fs'
@@ -21,11 +23,22 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-const RELEASES_URL_VERSION_PATTERN = /\/releases\/(?:tag|download)\/v(\d+\.\d+\.\d+)(?:\/|$)/g
+const RELEASES_URL_VERSION_PATTERN = /\/releases\/(?:tag|download)\/v(\d+\.\d+\.\d+)/g
 const CHANGELOG_SECTION_PATTERN = /^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})$/m
 const ROADMAP_STABLE_PATTERN = /stable release v(\d+\.\d+\.\d+)/
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+$/
 
+// Live Demo line patterns (both English and Chinese README variants).
+// Must match the line that declares the currently deployed version.
+const LIVE_DEMO_PATTERNS = [
+  /currently deploys `v(\d+\.\d+\.\d+)`/,
+  /当前部署版本 `v(\d+\.\d+\.\d+)`/,
+]
+
+/**
+ * @param {string} importMetaUrl
+ * @returns {string}
+ */
 export function repoRootFromScript(importMetaUrl) {
   return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..')
 }
@@ -49,6 +62,67 @@ export function isPlainSemver(version) {
 }
 
 /**
+ * Validate a YYYY-MM-DD string is a real Gregorian calendar date.
+ * @param {string} dateStr
+ * @returns {boolean}
+ */
+export function isValidGregorianDate(dateStr) {
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return false
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (month < 1 || month > 12) return false
+  if (day < 1) return false
+  const daysInMonth = new Date(year, month, 0).getDate()
+  return day <= daysInMonth
+}
+
+/**
+ * Read the artifact naming template from the Pages workflow.
+ * Returns the template for the zip name, e.g. "pmbus-calculator-${RELEASE_TAG}-web.zip".
+ * The template is then applied with the current version to verify correctness.
+ * @param {string} repoRoot
+ * @returns {Promise<{ zipTemplate: string | null, hasSums: boolean }>}
+ */
+async function readPagesArtifactTemplate(repoRoot) {
+  const pagesWorkflow = await fs.readFile(
+    path.join(repoRoot, '.github/workflows/pages.yml'),
+    'utf8',
+  )
+  const zipMatch = pagesWorkflow.match(/zip_name\s*=\s*"([^"]+)"/)
+  const hasSums = /SHA256SUMS\.txt/.test(pagesWorkflow)
+  return {
+    zipTemplate: zipMatch ? zipMatch[1] : null,
+    hasSums,
+  }
+}
+
+/**
+ * Check that RELEASING.md references the correct artifact zip name pattern.
+ * RELEASING.md uses template placeholders like vX.Y.Z, so we check for both
+ * the template form and the actual version-specific form.
+ * @param {string} repoRoot
+ * @param {string} version
+ * @returns {Promise<string[]>}
+ */
+export async function checkReleasingArtifactNames(repoRoot, version) {
+  const errors = []
+  const releasing = await fs.readFile(path.join(repoRoot, 'docs', 'RELEASING.md'), 'utf8')
+  const expectedZip = `pmbus-calculator-v${version}-web.zip`
+  const expectedTemplate = 'pmbus-calculator-vX.Y.Z-web.zip'
+  if (!releasing.includes(expectedZip) && !releasing.includes(expectedTemplate)) {
+    errors.push(
+      `docs/RELEASING.md does not reference the zip artifact name (expected ${expectedZip} or ${expectedTemplate})`,
+    )
+  }
+  if (!releasing.includes('SHA256SUMS.txt')) {
+    errors.push('docs/RELEASING.md does not reference SHA256SUMS.txt')
+  }
+  return errors
+}
+
+/**
  * Validate the cross-file release contract against one version.
  *
  * @param {{
@@ -58,7 +132,8 @@ export function isPlainSemver(version) {
  *   releaseNotes: { exists: boolean, content: string },
  *   readmes: Array<{ name: string, content: string }>,
  *   roadmap: string,
- *   artifactNames: string[],
+ *   pagesZipTemplate: string | null,
+ *   pagesHasSums: boolean,
  * }} contract
  * @returns {{ ok: boolean, errors: string[] }}
  */
@@ -71,57 +146,88 @@ export function validateReleaseContract(contract) {
     return { ok: false, errors }
   }
 
+  // Lockfile: both top-level version and root package version must be present and match.
+  if (contract.lockVersions.length < 2) {
+    errors.push(
+      `package-lock.json must have both top-level "version" and "packages[\"\"]" version (got ${contract.lockVersions.length} entries)`,
+    )
+  }
   for (const lockVersion of contract.lockVersions) {
     if (lockVersion !== version) {
       errors.push(`package-lock.json version ${lockVersion} does not match ${version}`)
     }
   }
-  if (contract.lockVersions.length === 0) {
-    errors.push('package-lock.json version fields could not be read')
-  }
 
+  // CHANGELOG: version section with a real Gregorian date.
   const changelogMatch = contract.changelog.match(CHANGELOG_SECTION_PATTERN)
   if (changelogMatch === null || changelogMatch[1] !== version) {
     errors.push(`CHANGELOG.md has no "## [${version}] - YYYY-MM-DD" section`)
+  } else if (!isValidGregorianDate(changelogMatch[2])) {
+    errors.push(`CHANGELOG.md date ${changelogMatch[2]} is not a valid Gregorian date`)
   }
 
+  // Release notes: first non-empty line must be exactly the title.
   if (!contract.releaseNotes.exists) {
     errors.push(`docs/releases/v${version}.md does not exist`)
-  } else if (!contract.releaseNotes.content.includes(`# PMBus Calculator v${version}`)) {
-    errors.push(`docs/releases/v${version}.md title does not declare v${version}`)
+  } else {
+    const firstLine = contract.releaseNotes.content
+      .split('\n')
+      .map((l) => l.trim())
+      .find((l) => l.length > 0)
+    const expectedTitle = `# PMBus Calculator v${version}`
+    if (firstLine !== expectedTitle) {
+      errors.push(
+        `docs/releases/v${version}.md first line must be "${expectedTitle}" (got: "${firstLine}")`,
+      )
+    }
   }
 
   for (const readme of contract.readmes) {
     validateReadme(readme.name, readme.content, version, errors)
   }
 
-  const roadmapMatch = contract.roadmap.match(ROADMAP_STABLE_PATTERN)
-  if (roadmapMatch === null || roadmapMatch[1] !== version) {
+  // ROADMAP: exactly one stable release declaration matching the current version.
+  const roadmapMatches = [
+    ...contract.roadmap.matchAll(new RegExp(ROADMAP_STABLE_PATTERN.source, 'g')),
+  ]
+  if (roadmapMatches.length === 0) {
+    errors.push('docs/ROADMAP.md stable release declaration is missing')
+  } else if (roadmapMatches.length > 1) {
+    const versions = roadmapMatches.map((m) => `v${m[1]}`)
     errors.push(
-      `docs/ROADMAP.md stable release declaration is ${
-        roadmapMatch === null ? 'missing' : `v${roadmapMatch[1]}`
-      }, expected v${version}`,
+      `docs/ROADMAP.md has ${roadmapMatches.length} stable release declarations (${versions.join(', ')}), expected exactly 1 (v${version})`,
+    )
+  } else if (roadmapMatches[0][1] !== version) {
+    errors.push(
+      `docs/ROADMAP.md stable release declaration is v${roadmapMatches[0][1]}, expected v${version}`,
     )
   }
 
-  const expected = expectedArtifactNames(version)
-  const mismatched = contract.artifactNames.filter((name) => !expected.includes(name))
-  const missing = expected.filter((name) => !contract.artifactNames.includes(name))
-  for (const name of mismatched) {
-    errors.push(`unexpected release artifact name: ${name}`)
+  // Artifact names: the Pages workflow template must produce the correct names.
+  if (contract.pagesZipTemplate === null) {
+    errors.push('.github/workflows/pages.yml is missing the zip_name template')
+  } else {
+    const applied = contract.pagesZipTemplate.replace('${RELEASE_TAG}', `v${version}`)
+    const expectedZip = `pmbus-calculator-v${version}-web.zip`
+    if (applied !== expectedZip) {
+      errors.push(
+        `Pages workflow zip template "${contract.pagesZipTemplate}" yields "${applied}" but expected "${expectedZip}"`,
+      )
+    }
   }
-  for (const name of missing) {
-    errors.push(`missing expected release artifact: ${name}`)
+  if (!contract.pagesHasSums) {
+    errors.push('.github/workflows/pages.yml does not reference SHA256SUMS.txt')
   }
 
   return { ok: errors.length === 0, errors }
 }
 
 /**
- * README rules: every GitHub releases URL (tag or download) must point at the
- * current version, and the stable tag link, the SHA256SUMS download link, and
- * a backticked `vX.Y.Z` live-deployment declaration must each exist. Links to
- * repository docs like docs/releases/v1.0.0.md are not GitHub release URLs
+ * README rules:
+ * 1. Live Demo line must declare the current version.
+ * 2. Every GitHub releases URL (tag or download) must point at the current version.
+ * 3. Stable tag link, SHA256SUMS download link, and backticked `vX.Y.Z` must each exist.
+ * Links to repository docs like docs/releases/v1.0.0.md are not GitHub release URLs
  * and stay allowed.
  * @param {string} name
  * @param {string} content
@@ -129,6 +235,20 @@ export function validateReleaseContract(contract) {
  * @param {string[]} errors
  */
 function validateReadme(name, content, version, errors) {
+  // 1. Live Demo line must declare the current version.
+  let liveDemoOk = false
+  for (const pattern of LIVE_DEMO_PATTERNS) {
+    const match = content.match(pattern)
+    if (match && match[1] === version) {
+      liveDemoOk = true
+      break
+    }
+  }
+  if (!liveDemoOk) {
+    errors.push(`${name} Live Demo line does not declare the current version v${version}`)
+  }
+
+  // 2. All GitHub release URLs must point at the current version.
   const urlVersions = new Set()
   for (const match of content.matchAll(RELEASES_URL_VERSION_PATTERN)) {
     urlVersions.add(match[1])
@@ -149,7 +269,21 @@ function validateReadme(name, content, version, errors) {
   }
 }
 
-async function readContract(repoRoot) {
+/**
+ * Read the full release contract from the real repository files.
+ * @param {string} repoRoot
+ * @returns {Promise<{
+ *   version: string,
+ *   lockVersions: string[],
+ *   changelog: string,
+ *   releaseNotes: { exists: boolean, content: string },
+ *   readmes: Array<{ name: string, content: string }>,
+ *   roadmap: string,
+ *   pagesZipTemplate: string | null,
+ *   pagesHasSums: boolean
+ * }>}
+ */
+export async function readContract(repoRoot) {
   const pkg = JSON.parse(await fs.readFile(path.join(repoRoot, 'package.json'), 'utf8'))
   const lock = JSON.parse(await fs.readFile(path.join(repoRoot, 'package-lock.json'), 'utf8'))
   const releaseNotesPath = path.join(repoRoot, 'docs', 'releases', `v${pkg.version}.md`)
@@ -158,11 +292,15 @@ async function readContract(repoRoot) {
     .then(() => true)
     .catch(() => false)
 
+  const lockVersions = [lock.version, lock.packages?.['']?.version].filter(
+    (value) => typeof value === 'string',
+  )
+
+  const { zipTemplate, hasSums } = await readPagesArtifactTemplate(repoRoot)
+
   return {
     version: pkg.version,
-    lockVersions: [lock.version, lock.packages?.['']?.version].filter(
-      (value) => typeof value === 'string',
-    ),
+    lockVersions,
     changelog: await fs.readFile(path.join(repoRoot, 'CHANGELOG.md'), 'utf8'),
     releaseNotes: {
       exists: releaseNotesExists,
@@ -175,7 +313,8 @@ async function readContract(repoRoot) {
       })),
     ),
     roadmap: await fs.readFile(path.join(repoRoot, 'docs', 'ROADMAP.md'), 'utf8'),
-    artifactNames: expectedArtifactNames(pkg.version),
+    pagesZipTemplate: zipTemplate,
+    pagesHasSums: hasSums,
   }
 }
 
@@ -186,15 +325,27 @@ async function main() {
     process.exit(2)
   }
 
+  /** @type {Awaited<ReturnType<typeof readContract>>} */
   const contract = await readContract(repoRootFromScript(import.meta.url))
-  const result = validateReleaseContract(contract)
-  process.stdout.write(`release-contract: checking version ${contract.version}\n`)
+  const result = validateReleaseContract(/** @type {any} */ (contract))
+
+  // Also check RELEASING.md artifact references
+  const releasingErrors = await checkReleasingArtifactNames(
+    repoRootFromScript(import.meta.url),
+    /** @type {*} */ (contract).version,
+  )
+  result.errors.push(...releasingErrors)
+  if (releasingErrors.length > 0) result.ok = false
+
+  process.stdout.write(
+    `release-contract: checking version ${/** @type {*} */ (contract).version}\n`,
+  )
   for (const message of result.errors) {
     process.stderr.write(`release-contract: ${message}\n`)
   }
   if (result.ok) {
     process.stdout.write(
-      `release-contract: expected artifacts: ${contract.artifactNames.join(', ')}\n`,
+      `release-contract: pages zip template: ${/** @type {*} */ (contract).pagesZipTemplate}\n`,
     )
     process.stdout.write('release-contract: OK\n')
   } else {

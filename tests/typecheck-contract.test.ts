@@ -31,11 +31,16 @@ describe('typecheck contract (M23)', () => {
     expect(root.files).toEqual([])
   })
 
-  it('references exactly the app, node, and tests projects', () => {
+  it('references exactly the app, node, scripts, and tests projects (M24)', () => {
     const root = readJson('tsconfig.json')
     const references = root.references as Array<{ path: string }> | undefined
     const paths = (references ?? []).map((ref) => ref.path)
-    expect(paths).toEqual(['./tsconfig.app.json', './tsconfig.node.json', './tsconfig.tests.json'])
+    expect(paths).toEqual([
+      './tsconfig.app.json',
+      './tsconfig.node.json',
+      './tsconfig.scripts.json',
+      './tsconfig.tests.json',
+    ])
   })
 
   it('runs typecheck in build mode over the referenced projects', () => {
@@ -95,5 +100,37 @@ describe('typecheck contract (M23)', () => {
     const devDependencies = pkg.devDependencies as Record<string, string>
     // Node typings must not depend on transitive luck.
     expect(devDependencies['@types/node']).toMatch(/^\^?\d+\.\d+\.\d+/)
+  })
+
+  it('locks @types/node major to the engines minimum supported Node major (M24)', () => {
+    const pkg = readJson('package.json')
+    const devDependencies = pkg.devDependencies as Record<string, string>
+    const engines = pkg.engines as Record<string, string>
+    const dtNodeVersion = devDependencies['@types/node']
+    const dtMajor = Number(dtNodeVersion.replace(/^[\^~]/, '').split('.')[0])
+    // Extract the minimum supported major from engines, e.g. ">=22 <23 || >=24 <25" → 22
+    const engineMinMatch = engines.node?.match(/>=(\d+)/)
+    expect(engineMinMatch).toBeTruthy()
+    const engineMinMajor = Number(engineMinMatch![1])
+    expect(dtMajor).toBe(engineMinMajor)
+    // @types/node must not drift to a higher Current version than the minimum
+    // supported runtime. Node 26 is not in engines.
+    expect(dtMajor).toBeLessThan(26)
+  })
+
+  it('includes scripts checkJs project with strict + checkJs enabled (M24)', () => {
+    const scripts = readJson('tsconfig.scripts.json') as {
+      compilerOptions?: Record<string, unknown>
+      include?: string[]
+    }
+    const options = scripts.compilerOptions ?? {}
+    expect(options.strict).toBe(true)
+    expect(options.checkJs).toBe(true)
+    expect(options.allowJs).toBe(true)
+    expect(options.noEmit).toBe(true)
+    expect(options.types).toEqual(['node'])
+    expect(String(options.tsBuildInfoFile)).toMatch(/^\.\/node_modules\/\.tmp\//)
+    const include = scripts.include ?? []
+    expect(include).toContain('scripts/**/*.mjs')
   })
 })
