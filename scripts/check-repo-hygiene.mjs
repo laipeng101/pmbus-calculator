@@ -5,24 +5,47 @@ import { fileURLToPath } from 'node:url'
 
 export const MiB = 1024 * 1024
 
+/**
+ * @param {string} importMetaUrl
+ * @returns {string}
+ */
 export function repoRootFromScript(importMetaUrl) {
   return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..')
 }
 
+/**
+ * @param {string} p
+ * @param {string} dir
+ * @returns {boolean}
+ */
 function matchesDirOrUnder(p, dir) {
   return p === dir || p.startsWith(`${dir}/`)
 }
 
+/**
+ * @param {string} p
+ * @param {string} parent
+ * @param {string} base
+ * @returns {boolean}
+ */
 function matchesDirVariant(p, parent, base) {
   const prefix = `${parent}/${base}`
   if (p === prefix || p.startsWith(`${prefix}/`)) return true
   return new RegExp(`^${parent}/${base}-[^/]+/`).test(p)
 }
 
+/**
+ * @param {string} p
+ * @returns {boolean}
+ */
 export function isSnapshotAllowlisted(p) {
   return /^tests\/e2e\/visual\.spec\.ts-snapshots\/[^/]+\.(png|webp)$/.test(p)
 }
 
+/**
+ * @param {string} p
+ * @returns {boolean}
+ */
 export function isLegacyHtml(p) {
   return p === 'pmbus-calculator.html'
 }
@@ -41,6 +64,7 @@ export function classifyPolicyAllowlist(files) {
   return { snapshots, legacyFallbacks }
 }
 
+/** @type {{ id: string, description: string, match: (p: string) => boolean, fix: string }[]} */
 const REJECT_RULES = [
   {
     id: 'generated-dist',
@@ -252,9 +276,11 @@ export function gitIndexSizes(repoRoot) {
 /**
  * @param {{ repoRoot: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} [options]
  */
-export function checkRepoHygiene({ repoRoot, log = console.log, error = console.error } = {}) {
-  const files = gitLsFiles(repoRoot)
-  const sizes = gitIndexSizes(repoRoot)
+export function checkRepoHygiene(
+  { repoRoot, log = console.log, error = console.error } = /** @type {any} */ ({}),
+) {
+  const files = gitLsFiles(/** @type {string} */ (repoRoot))
+  const sizes = gitIndexSizes(/** @type {string} */ (repoRoot))
 
   const rejected = []
   const policyAllowlisted = classifyPolicyAllowlist(files)

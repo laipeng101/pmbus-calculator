@@ -31,10 +31,18 @@ const REQUIRED_PRODUCT_UTILITIES = ['flex', 'uppercase', 'min-w-0', 'italic']
 // needs one of these classes for real, remove it here and say why in the PR.
 const FORBIDDEN_LEAKED_SELECTORS = ['lowercase', 'table']
 
+/**
+ * @param {string} importMetaUrl
+ * @returns {string}
+ */
 export function repoRootFromScript(importMetaUrl) {
   return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..')
 }
 
+/**
+ * @param {string} canarySource
+ * @returns {string}
+ */
 export function parseCanaryUtility(canarySource) {
   const pattern = new RegExp(`export\\s+const\\s+${CANARY_EXPORT_NAME}\\s*=\\s*['"]([^'"]+)['"]`)
   const match = canarySource.match(pattern)
@@ -48,16 +56,28 @@ export function parseCanaryUtility(canarySource) {
 
 // The generated rule embeds the arbitrary value (e.g. `.w-\[77\.125rem\]{…}`)
 // so the search needle is the bracket payload when present, else the literal.
+/**
+ * @param {string} canaryUtility
+ * @returns {string}
+ */
 export function canarySearchNeedle(canaryUtility) {
   const match = canaryUtility.match(/\[(.+)\]/)
   return match ? match[1] : canaryUtility
 }
 
+/**
+ * @param {string} selector
+ * @returns {RegExp}
+ */
 function escapedRuleRegex(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   return new RegExp(`\\.${escaped}\\{`)
 }
 
+/**
+ * @param {string} root
+ * @returns {Promise<string[]>}
+ */
 async function walkFiles(root) {
   const files = []
   const entries = await fs.readdir(root, { withFileTypes: true })
@@ -72,13 +92,17 @@ async function walkFiles(root) {
   return files
 }
 
+/**
+ * @param {{ distDir: string, canaryPath: string, productionSrcDir: string }} params
+ * @returns {Promise<{ ok: boolean, errors: string[], canaryUtility: string, tailwindCss: string[] }>}
+ */
 export async function checkTailwindScope({ distDir, canaryPath, productionSrcDir }) {
   const errors = []
   let canaryUtility = ''
 
   try {
     canaryUtility = parseCanaryUtility(await fs.readFile(canaryPath, 'utf8'))
-  } catch (error) {
+  } catch (/** @type {*} */ error) {
     errors.push(`cannot read canary utility from ${canaryPath}: ${error.message}`)
   }
 
@@ -100,6 +124,7 @@ export async function checkTailwindScope({ distDir, canaryPath, productionSrcDir
     }
   }
 
+  /** @type {string[]} */
   let cssFiles = []
   try {
     cssFiles = (await walkFiles(distDir)).filter((file) => file.endsWith('.css'))

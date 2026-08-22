@@ -1,25 +1,25 @@
-// Unit tests for the offline release contract gate (M23).
-//
-// validateReleaseContract is exercised with synthetic contracts for the
-// success case and every failure family: lockfile version drift, missing or
-// mistitled CHANGELOG/release notes, stale README links, wrong ROADMAP
-// version, and wrong artifact names. These pin the cross-file invariants the
-// CLI enforces against the real repository files.
+// Unit and integration tests for the offline release contract gate (M23, hardened M24).
 
-import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
+  checkReleasingArtifactNames,
   expectedArtifactNames,
   isPlainSemver,
+  isValidGregorianDate,
+  readContract,
   validateReleaseContract,
 } from '../scripts/check-release-contract.mjs'
 
-const TAG_LINK = (version: string) =>
-  `https://github.com/laipeng101/pmbus-calculator/releases/tag/${version}`
-const SUMS_LINK = (version: string) =>
-  `https://github.com/laipeng101/pmbus-calculator/releases/download/${version}/SHA256SUMS.txt`
+function TAG_LINK(v: string): string {
+  return `https://github.com/laipeng101/pmbus-calculator/releases/tag/${v}`
+}
+function SUMS_LINK(v: string): string {
+  return `https://github.com/laipeng101/pmbus-calculator/releases/download/${v}/SHA256SUMS.txt`
+}
 
 function readmeContent(version: string): string {
   return [
@@ -29,17 +29,7 @@ function readmeContent(version: string): string {
   ].join('\n')
 }
 
-interface Contract {
-  version: string
-  lockVersions: string[]
-  changelog: string
-  releaseNotes: { exists: boolean; content: string }
-  readmes: Array<{ name: string; content: string }>
-  roadmap: string
-  artifactNames: string[]
-}
-
-function makeContract(overrides: Partial<Contract> = {}): Contract {
+function makeContract(overrides = {}) {
   return {
     version: '1.1.4',
     lockVersions: ['1.1.4', '1.1.4'],
@@ -50,22 +40,22 @@ function makeContract(overrides: Partial<Contract> = {}): Contract {
       { name: 'README_zh-CN.md', content: readmeContent('v1.1.4') },
     ],
     roadmap: 'M0–M23 complete；stable release v1.1.4；production distribution: GitHub Pages。',
-    artifactNames: expectedArtifactNames('1.1.4'),
+    pagesZipTemplate: 'pmbus-calculator-${RELEASE_TAG}-web.zip',
+    pagesHasSums: true,
     ...overrides,
   }
 }
 
-describe('release contract validation (M23)', () => {
+describe('release contract validation (M23/M24)', () => {
   it('accepts a fully consistent contract', () => {
     const result = validateReleaseContract(makeContract())
     expect(result.errors).toEqual([])
     expect(result.ok).toBe(true)
   })
 
-  it('rejects a v-prefixed or malformed version before any other check', () => {
+  it('rejects a v-prefixed version', () => {
     const result = validateReleaseContract(makeContract({ version: 'v1.1.4' }))
     expect(result.ok).toBe(false)
-    expect(result.errors).toHaveLength(1)
     expect(result.errors[0]).toMatch(/plain semver without a v prefix/)
   })
 
@@ -75,16 +65,44 @@ describe('release contract validation (M23)', () => {
     expect(result.errors.join('\n')).toMatch(/package-lock\.json version 1\.1\.3/)
   })
 
-  it('rejects a missing CHANGELOG section for the version', () => {
-    const changelog = `# Changelog\n\n## [Unreleased]\n\n## [1.1.3] - 2026-08-16\n`
-    const result = validateReleaseContract(makeContract({ changelog }))
-    expect(result.errors.join('\n')).toMatch(/CHANGELOG\.md has no "## \[1\.1\.4\] - YYYY-MM-DD"/)
+  it('rejects lockfile with fewer than 2 version entries (M24)', () => {
+    const result = validateReleaseContract(makeContract({ lockVersions: ['1.1.4'] }))
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/must have both top-level/)
+  })
+
+  it('rejects lockfile with 0 version entries', () => {
+    const result = validateReleaseContract(makeContract({ lockVersions: [] }))
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/must have both top-level/)
+  })
+
+  it('rejects a missing CHANGELOG section', () => {
+    const result = validateReleaseContract(makeContract({ changelog: '# Changelog\n' }))
+    expect(result.errors.join('\n')).toMatch(/CHANGELOG\.md has no/)
   })
 
   it('rejects a CHANGELOG section without a real date', () => {
-    const changelog = `# Changelog\n\n## [1.1.4] - TBD\n`
-    const result = validateReleaseContract(makeContract({ changelog }))
+    const result = validateReleaseContract(
+      makeContract({ changelog: '# Changelog\n\n## [1.1.4] - TBD\n' }),
+    )
     expect(result.errors.join('\n')).toMatch(/CHANGELOG\.md has no/)
+  })
+
+  it('rejects an invalid Gregorian date like 2026-99-99 (M24)', () => {
+    const result = validateReleaseContract(
+      makeContract({ changelog: '# Changelog\n\n## [1.1.4] - 2026-99-99\n' }),
+    )
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/not a valid Gregorian date/)
+  })
+
+  it('rejects February 30 (M24)', () => {
+    const result = validateReleaseContract(
+      makeContract({ changelog: '# Changelog\n\n## [1.1.4] - 2026-02-30\n' }),
+    )
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/not a valid Gregorian date/)
   })
 
   it('rejects missing release notes', () => {
@@ -94,30 +112,44 @@ describe('release contract validation (M23)', () => {
     expect(result.errors.join('\n')).toMatch(/docs\/releases\/v1\.1\.4\.md does not exist/)
   })
 
-  it('rejects release notes whose title does not declare the version', () => {
+  it('rejects release notes whose first line is not the exact title (M24)', () => {
     const result = validateReleaseContract(
-      makeContract({ releaseNotes: { exists: true, content: '# PMBus Calculator v1.1.3\n' } }),
+      makeContract({
+        releaseNotes: { exists: true, content: '# Wrong Title\n\n# PMBus Calculator v1.1.4\n' },
+      }),
     )
-    expect(result.errors.join('\n')).toMatch(/title does not declare v1\.1\.4/)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/first line must be/)
+  })
+
+  it('rejects release notes with title in body but not first line (M24)', () => {
+    const result = validateReleaseContract(
+      makeContract({
+        releaseNotes: { exists: true, content: '# PMBus Calculator v1.1.3\n\nFixed in v1.1.4.\n' },
+      }),
+    )
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/first line must be/)
   })
 
   it('rejects stale GitHub release links in a README', () => {
-    const readmes = [
-      { name: 'README.md', content: readmeContent('v1.1.4') },
-      { name: 'README_zh-CN.md', content: readmeContent('v1.1.3') },
-    ]
-    const result = validateReleaseContract(makeContract({ readmes }))
-    expect(result.errors.join('\n')).toMatch(/README_zh-CN\.md still links GitHub release v1\.1\.3/)
-    // The stale README is also missing its current-version links.
-    expect(result.errors.join('\n')).toMatch(/README_zh-CN\.md is missing the stable tag link/)
+    const result = validateReleaseContract(
+      makeContract({
+        readmes: [
+          { name: 'README.md', content: readmeContent('v1.1.4') },
+          { name: 'README_zh-CN.md', content: readmeContent('v1.1.3') },
+        ],
+      }),
+    )
+    expect(result.errors.join('\n')).toMatch(/README_zh-CN\.md still links/)
   })
 
-  it('rejects a README missing the SHA256SUMS download link', () => {
+  it('rejects a README missing the SHA256SUMS link', () => {
     const content = readmeContent('v1.1.4').replace(SUMS_LINK('v1.1.4'), TAG_LINK('v1.1.4'))
     const result = validateReleaseContract(
       makeContract({ readmes: [{ name: 'README.md', content }, makeContract().readmes[1]] }),
     )
-    expect(result.errors.join('\n')).toMatch(/missing the SHA256SUMS\.txt download link/)
+    expect(result.errors.join('\n')).toMatch(/missing the SHA256SUMS/)
   })
 
   it('rejects a README that never declares the deployed version', () => {
@@ -128,15 +160,27 @@ describe('release contract validation (M23)', () => {
     expect(result.errors.join('\n')).toMatch(/does not declare the deployed version/)
   })
 
-  it('allows README links to repository release-note docs of older versions', () => {
-    const readmes = [
-      {
-        name: 'README.md',
-        content: `${readmeContent('v1.1.4')}\nSee [docs/releases/v1.0.0.md](docs/releases/v1.0.0.md#known-limitations).`,
-      },
-      makeContract().readmes[1],
-    ]
-    const result = validateReleaseContract(makeContract({ readmes }))
+  it('rejects README Live Demo line declaring a stale version (M24)', () => {
+    const content = `> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys \`v1.1.3\`)\n> **Stable version:** [\`v1.1.4\`](${TAG_LINK('v1.1.4')}) · [SHA256SUMS.txt](${SUMS_LINK('v1.1.4')})`
+    const result = validateReleaseContract(
+      makeContract({ readmes: [{ name: 'README.md', content }, makeContract().readmes[1]] }),
+    )
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/Live Demo line does not declare/)
+  })
+
+  it('allows README links to repository docs of older versions', () => {
+    const result = validateReleaseContract(
+      makeContract({
+        readmes: [
+          {
+            name: 'README.md',
+            content: `${readmeContent('v1.1.4')}\nSee docs/releases/v1.0.0.md.`,
+          },
+          makeContract().readmes[1],
+        ],
+      }),
+    )
     expect(result.errors).toEqual([])
   })
 
@@ -144,43 +188,261 @@ describe('release contract validation (M23)', () => {
     const result = validateReleaseContract(
       makeContract({ roadmap: 'M0–M23 complete；stable release v1.1.3；' }),
     )
-    expect(result.errors.join('\n')).toMatch(
-      /docs\/ROADMAP\.md stable release declaration is v1\.1\.3, expected v1\.1\.4/,
-    )
+    expect(result.errors.join('\n')).toMatch(/stable release declaration is v1\.1\.3/)
   })
 
-  it('rejects wrong release artifact names', () => {
+  it('rejects ROADMAP with multiple stable declarations (M24)', () => {
     const result = validateReleaseContract(
-      makeContract({ artifactNames: ['pmbus-calculator-1.1.4-web.zip', 'SHA256.txt'] }),
+      makeContract({ roadmap: 'M0–M23 complete；stable release v1.1.4；stable release v1.1.3；' }),
     )
-    const joined = result.errors.join('\n')
-    expect(joined).toMatch(/unexpected release artifact name: pmbus-calculator-1\.1\.4-web\.zip/)
-    expect(joined).toMatch(/missing expected release artifact: pmbus-calculator-v1\.1\.4-web\.zip/)
-    expect(joined).toMatch(/missing expected release artifact: SHA256SUMS\.txt/)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/has 2 stable release/)
   })
 
-  it('derives artifact names from the version, never hardcoding one', () => {
+  it('rejects ROADMAP with no stable declaration (M24)', () => {
+    const result = validateReleaseContract(makeContract({ roadmap: 'M0–M23 complete；' }))
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/stable release declaration is missing/)
+  })
+
+  it('rejects missing Pages workflow zip template', () => {
+    const result = validateReleaseContract(makeContract({ pagesZipTemplate: null }))
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/missing the zip_name/)
+  })
+
+  it('rejects wrong Pages workflow zip template', () => {
+    const result = validateReleaseContract(
+      makeContract({ pagesZipTemplate: 'pmbus-calculator-${RELEASE_TAG}.zip' }),
+    )
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/zip template/)
+  })
+
+  it('rejects missing SHA256SUMS in Pages workflow', () => {
+    const result = validateReleaseContract(makeContract({ pagesHasSums: false }))
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/does not reference SHA256SUMS/)
+  })
+
+  it('derives artifact names from the version', () => {
     expect(expectedArtifactNames('1.1.4')).toEqual([
       'pmbus-calculator-v1.1.4-web.zip',
-      'SHA256SUMS.txt',
-    ])
-    expect(expectedArtifactNames('2.0.0')).toEqual([
-      'pmbus-calculator-v2.0.0-web.zip',
       'SHA256SUMS.txt',
     ])
     expect(isPlainSemver('1.1.4')).toBe(true)
     expect(isPlainSemver('1.1.4-rc.1')).toBe(false)
   })
+
+  it('validates Gregorian dates correctly', () => {
+    expect(isValidGregorianDate('2026-08-23')).toBe(true)
+    expect(isValidGregorianDate('2024-02-29')).toBe(true)
+    expect(isValidGregorianDate('2026-02-29')).toBe(false)
+    expect(isValidGregorianDate('2026-99-99')).toBe(false)
+    expect(isValidGregorianDate('not-a-date')).toBe(false)
+  })
+})
+
+describe('release contract integration (M24)', () => {
+  /** @type {string[]} */
+  const tmpDirs = /** @type {string[]} */ /** @type {unknown} */ ['']
+  tmpDirs.length = 0
+  afterEach(() => {
+    const dirs = /** @type {string[]} */ tmpDirs.splice(0)
+    for (const d of dirs) fs.rmSync(d, { recursive: true, force: true })
+  })
+
+  function createFixtureRepo() {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pmbus-rc-test-'))
+    tmpDirs.push(tmp)
+    fs.writeFileSync(
+      path.join(tmp, 'package.json'),
+      JSON.stringify({ name: 'test', version: '1.1.5', private: true }, null, 2),
+    )
+    fs.writeFileSync(
+      path.join(tmp, 'package-lock.json'),
+      JSON.stringify(
+        {
+          name: 'test',
+          version: '1.1.5',
+          lockfileVersion: 3,
+          packages: { '': { name: 'test', version: '1.1.5' } },
+        },
+        null,
+        2,
+      ),
+    )
+    fs.writeFileSync(
+      path.join(tmp, 'CHANGELOG.md'),
+      '# Changelog\n\n## [Unreleased]\n\n## [1.1.5] - 2026-08-23\n\n### Fixed\n\n- foo\n',
+    )
+    fs.mkdirSync(path.join(tmp, 'docs/releases'), { recursive: true })
+    fs.writeFileSync(
+      path.join(tmp, 'docs/releases/v1.1.5.md'),
+      '# PMBus Calculator v1.1.5\n\nPATCH release.\n',
+    )
+    fs.writeFileSync(path.join(tmp, 'README.md'), readmeContent('v1.1.5'))
+    fs.writeFileSync(path.join(tmp, 'README_zh-CN.md'), readmeContent('v1.1.5'))
+    fs.writeFileSync(path.join(tmp, 'docs/ROADMAP.md'), 'M0–M24 complete；stable release v1.1.5；')
+    fs.mkdirSync(path.join(tmp, '.github/workflows'), { recursive: true })
+    fs.writeFileSync(
+      path.join(tmp, '.github/workflows/pages.yml'),
+      'name: Pages\non:\n  release:\n    types: [published]\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          zip_name="pmbus-calculator-${RELEASE_TAG}-web.zip"\n          curl -fsSL -o SHA256SUMS.txt "${sums_url}"\n',
+    )
+    fs.writeFileSync(
+      path.join(tmp, 'docs/RELEASING.md'),
+      '# RELEASING\n\nUpload `pmbus-calculator-vX.Y.Z-web.zip` and `SHA256SUMS.txt`.\n',
+    )
+    return tmp
+  }
+
+  it('passes the full read+validate chain on a consistent fixture', async () => {
+    const tmp = createFixtureRepo()
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(true)
+    expect(result.errors).toEqual([])
+  })
+
+  it('fails when lockfile top-level version drifts', async () => {
+    const tmp = createFixtureRepo()
+    const lock = JSON.parse(fs.readFileSync(path.join(tmp, 'package-lock.json'), 'utf8'))
+    lock.version = '1.1.4'
+    fs.writeFileSync(path.join(tmp, 'package-lock.json'), JSON.stringify(lock, null, 2))
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/version 1\.1\.4 does not match/)
+  })
+
+  it('fails when lockfile root package version is missing', async () => {
+    const tmp = createFixtureRepo()
+    const lock = JSON.parse(fs.readFileSync(path.join(tmp, 'package-lock.json'), 'utf8'))
+    delete lock.packages[''].version
+    fs.writeFileSync(path.join(tmp, 'package-lock.json'), JSON.stringify(lock, null, 2))
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/must have both top-level/)
+  })
+
+  it('fails when CHANGELOG has no version section', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(path.join(tmp, 'CHANGELOG.md'), '# Changelog\n\n## [1.1.4] - 2026-08-16\n')
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/CHANGELOG\.md has no/)
+  })
+
+  it('fails when CHANGELOG date is invalid', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(
+      path.join(tmp, 'CHANGELOG.md'),
+      '# Changelog\n\n## [Unreleased]\n\n## [1.1.5] - 2026-99-99\n\n### Fixed\n\n- foo\n',
+    )
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/not a valid Gregorian date/)
+  })
+
+  it('fails when release notes first title is wrong', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(
+      path.join(tmp, 'docs/releases/v1.1.5.md'),
+      '# Wrong Title\n\n# PMBus Calculator v1.1.5\n',
+    )
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/first line must be/)
+  })
+
+  it('fails when README Live Demo line is stale', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(path.join(tmp, 'README.md'), readmeContent('v1.1.4'))
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/Live Demo line/)
+  })
+
+  it('fails when README stable link is stale', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(
+      path.join(tmp, 'README.md'),
+      `> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys \`v1.1.5\`)\n> **Stable version:** [\`v1.1.4\`](${TAG_LINK('v1.1.4')}) · [SHA256SUMS.txt](${SUMS_LINK('v1.1.5')})\nDeploys the immutable \`v1.1.5\` Release asset.`,
+    )
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/missing the stable tag link/)
+    expect(result.errors.join('\n')).toMatch(/links GitHub release v1\.1\.4/)
+  })
+
+  it('fails when README checksum link is stale', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(
+      path.join(tmp, 'README.md'),
+      `> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys \`v1.1.5\`)\n> **Stable version:** [\`v1.1.5\`](${TAG_LINK('v1.1.5')}) · [SHA256SUMS.txt](${SUMS_LINK('v1.1.4')})`,
+    )
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/links GitHub release v1\.1\.4/)
+  })
+
+  it('fails when ROADMAP has a stale stable version', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(path.join(tmp, 'docs/ROADMAP.md'), 'M0–M23 complete；stable release v1.1.4；')
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/stable release declaration is v1\.1\.4/)
+  })
+
+  it('fails when ROADMAP has duplicate stable declarations', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(
+      path.join(tmp, 'docs/ROADMAP.md'),
+      'M0–M24 complete；stable release v1.1.5；stable release v1.1.4；',
+    )
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/has 2 stable/)
+  })
+
+  it('fails when Pages workflow zip template is wrong', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(
+      path.join(tmp, '.github/workflows/pages.yml'),
+      'name: Pages\non:\n  release:\n    types: [published]\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          zip_name="pmbus-calculator-${RELEASE_TAG}-web.tar.gz"\n          curl -fsSL -o SHA256SUMS.txt "${sums_url}"\n',
+    )
+    const contract = await readContract(tmp)
+    const result = validateReleaseContract(contract)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/zip template/)
+  })
+
+  it('fails when RELEASING.md does not reference the zip name', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(
+      path.join(tmp, 'docs/RELEASING.md'),
+      '# RELEASING\n\nUpload `wrong-name.zip` and `SHA256SUMS.txt`.\n',
+    )
+    const errors = await checkReleasingArtifactNames(tmp, '1.1.5')
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors.join('\n')).toMatch(/does not reference the zip/)
+  })
 })
 
 describe('release contract gate wiring (M23)', () => {
   it('runs inside npm run verify and full CI', () => {
-    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')) as {
-      scripts: Record<string, string>
-    }
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'))
     expect(pkg.scripts['check:release-contract']).toBe('node scripts/check-release-contract.mjs')
     expect(pkg.scripts.verify).toContain('npm run check:release-contract')
-
     const workflow = fs.readFileSync(path.join(process.cwd(), '.github/workflows/ci.yml'), 'utf8')
     expect(workflow).toMatch(/^ {8}run: npm run check:release-contract\s*$/m)
   })

@@ -92,7 +92,7 @@ npm run verify                 # 完整本地门禁（已包含 specs:check 与 
 `dist`、`build`、`out`、`coverage`、`playwright-report`、`test-results`、
 `tests/e2e/output`、`tests/e2e/report`、`tests/e2e/output-release`、`tests/e2e/report-release`、
 `tests/e2e/output-deployment`、`tests/e2e/report-deployment`、`tests/e2e/output-visual`、`tests/e2e/report-visual`、
-`.cache/specifications`。
+`.cache/specifications`、`release-output`。
 
 安全边界：
 

@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-08-23
+
+### Fixed
+
+- Node 运行时下限类型合同：`@types/node` 从 26（Current）改为 22（最低支持运行时），消除类型门禁接受 Node 22/24 运行时不存在 API（如 `node:ffi`）的 false-pass；新增 `tests/runtime-type-contract.test.ts` 结构性锁定引擎下限、CI 主/次验证与 `@types/node` 主版本一致性。
+- 发布合同真实文件检查：`scripts/check-release-contract.mjs` 重构为读取真实文件表面（Pages workflow 模板、RELEASING.md），不再自生成 `artifactNames` 循环校验；新增精确 Gregorian 日期验证、release notes 第一非空行精确标题匹配、README Live Demo 行版本校验、ROADMAP 唯一 stable 声明检查、lockfile 双版本必需验证。
+- 发布合同集成级负向测试：`tests/release-contract.test.ts` 新增 13 个 fixture 集成测试（lockfile 漂移、缺失 [Unreleased]、非法日期、错误标题、陈旧 README 链接、ROADMAP 重复/陈旧声明、Pages 模板错误、RELEASING 资产名错误），每个错误使真实 read+validate 链非零。
+- scripts checkJs 类型覆盖：新增 `tsconfig.scripts.json`（strict + checkJs + Node types），根 tsconfig 扩展为 app/node/scripts/tests 四项目；`scripts/**/*.mjs` 七个文件补全 JSDoc 类型注解（含 `FetchLike` 结构类型、`manifest`/`document` JSON 边界 `any` 窄桥接），不降低 strict、不使用 `@ts-nocheck` 或全局 `any`。
+- 可复现发行资产生成：新增 `scripts/prepare-release-assets.mjs`（从 `dist/` 确定性生成 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`，版本唯一来源 `package.json`），相同 `dist/` 两次生成 zip 与 checksum 逐字节一致；自动调用 `verify_release_zip.py` 与 `shasum -a 256 -c` 反向验证；`release-output/` ignored；`RELEASING.md` 改用该唯一命令。
+- 文档同步：`CHANGELOG.md`、`docs/releases/v1.1.5.md`、双 README（stable/live/Release/SHA256SUMS 链接）、`ROADMAP.md`（M24 Done + stable v1.1.5）全部更新。
+
 ## [1.1.4] - 2026-08-23
 
 ### Fixed

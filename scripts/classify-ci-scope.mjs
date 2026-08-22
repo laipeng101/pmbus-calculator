@@ -56,6 +56,11 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/i
 const ALL_ZERO_SHA = '0'.repeat(40)
 const MAX_LOGGED_PATHS = 200
 
+/**
+ * @param {string} reason
+ * @param {string[]} paths
+ * @returns {{ tier: string, runFull: boolean, changedCount: number, lightCount: number, fullCount: number, reason: string, paths: string[] }}
+ */
 function fullResult(reason, paths) {
   return {
     tier: 'full',
@@ -68,10 +73,18 @@ function fullResult(reason, paths) {
   }
 }
 
+/**
+ * @param {string} importMetaUrl
+ * @returns {string}
+ */
 export function repoRootFromScript(importMetaUrl) {
   return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..')
 }
 
+/**
+ * @param {*} value
+ * @returns {boolean}
+ */
 export function isValidSha(value) {
   return typeof value === 'string' && SHA_PATTERN.test(value)
 }
@@ -79,6 +92,10 @@ export function isValidSha(value) {
 // A path is light only on an exact allowlist hit or a light directory prefix.
 // Control characters can never be trusted to stay on one output line, so any
 // path containing them is treated as unknown (full), never light.
+/**
+ * @param {string} changedPath
+ * @returns {boolean}
+ */
 export function isLightPath(changedPath) {
   if (typeof changedPath !== 'string' || changedPath.length === 0) return false
   if (/[\u0000-\u001f\u007f]/.test(changedPath)) return false
@@ -88,6 +105,10 @@ export function isLightPath(changedPath) {
 
 // Pure classification over a changed-path list. Reasons interpolate counts
 // (digits) only — never path text — so they stay safe for $GITHUB_OUTPUT.
+/**
+ * @param {string[]} changedPaths
+ * @returns {{ tier: string, runFull: boolean, changedCount: number, lightCount: number, fullCount: number, reason: string, paths: string[] }}
+ */
 export function classifyPaths(changedPaths) {
   if (!Array.isArray(changedPaths) || changedPaths.length === 0) {
     return fullResult('empty change set — fail closed to full', [])
@@ -127,6 +148,12 @@ export function classifyPaths(changedPaths) {
 }
 
 // Merge-base range for PRs (`base...head`), before..sha range for pushes.
+/**
+ * @param {string} event
+ * @param {string} baseSha
+ * @param {string} headSha
+ * @returns {string[]}
+ */
 export function buildDiffArgs(event, baseSha, headSha) {
   const range = event === 'pull_request' ? `${baseSha}...${headSha}` : `${baseSha}..${headSha}`
   return ['diff', '--name-only', '--no-renames', '-z', range]
@@ -138,13 +165,15 @@ export function buildDiffArgs(event, baseSha, headSha) {
 /**
  * @param {{ event: string, baseSha?: string, headSha?: string, cwd?: string, spawnSyncImpl?: (command: string, args: string[], options: { cwd: string, encoding: 'utf8' }) => { status: number | null, stdout: string, stderr?: string, error?: unknown } }} [options]
  */
-export function classifyCiScope({
-  event,
-  baseSha,
-  headSha,
-  cwd = process.cwd(),
-  spawnSyncImpl = spawnSync,
-}) {
+export function classifyCiScope(
+  {
+    event,
+    baseSha,
+    headSha,
+    cwd = process.cwd(),
+    spawnSyncImpl = spawnSync,
+  } = /** @type {any} */ ({}),
+) {
   if (event === 'workflow_dispatch') {
     return fullResult('manual workflow dispatch always runs full', [])
   }
@@ -154,14 +183,18 @@ export function classifyCiScope({
   if (!isValidSha(baseSha) || !isValidSha(headSha)) {
     return fullResult('missing or invalid base/head SHA — fail closed to full', [])
   }
-  if (event === 'push' && baseSha.toLowerCase() === ALL_ZERO_SHA) {
+  if (event === 'push' && /** @type {string} */ (baseSha).toLowerCase() === ALL_ZERO_SHA) {
     return fullResult('push event.before is the all-zero SHA — fail closed to full', [])
   }
 
-  const git = spawnSyncImpl('git', buildDiffArgs(event, baseSha, headSha), {
-    cwd,
-    encoding: 'utf8',
-  })
+  const git = spawnSyncImpl(
+    'git',
+    buildDiffArgs(event, /** @type {string} */ (baseSha), /** @type {string} */ (headSha)),
+    {
+      cwd,
+      encoding: 'utf8',
+    },
+  )
   if (!git || git.error || git.status !== 0) {
     return fullResult('git diff failed — fail closed to full', [])
   }
@@ -173,6 +206,10 @@ export function classifyCiScope({
 // Constant keys; values are controlled constants or digits. Never includes
 // changed paths, so hostile file names (newlines, '=', '%') cannot inject
 // extra GitHub outputs.
+/**
+ * @param {*} result
+ * @returns {string}
+ */
 export function formatGithubOutput(result) {
   return [
     `tier=${result.tier}`,
@@ -183,6 +220,9 @@ export function formatGithubOutput(result) {
   ].join('\n')
 }
 
+/**
+ * @param {*} result
+ */
 function writeLog(result) {
   process.stdout.write(
     `ci-scope: tier=${result.tier} run_full=${result.runFull} ` +
@@ -211,8 +251,13 @@ function usage() {
 
 const ARG_KEYS = ['event', 'base-sha', 'head-sha']
 
+/**
+ * @param {string[]} argv
+ * @returns {Record<string, string> | null}
+ */
 function parseArgs(argv) {
   if (argv.length === 0 || argv.length % 2 !== 0) return null
+  /** @type {Record<string, string>} */
   const parsed = {}
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index].replace(/^--/, '')

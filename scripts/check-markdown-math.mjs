@@ -16,15 +16,27 @@ const FORBIDDEN_STRINGS = [
 
 let failed = false
 
+/**
+ * @param {string} file
+ * @param {string} message
+ */
 function error(file, message) {
   failed = true
   console.error(`::error file=${file}::${message}`)
 }
 
+/**
+ * @param {string} line
+ * @returns {boolean}
+ */
 function isCodeFence(line) {
   return /^(```|~~~)/.test(line)
 }
 
+/**
+ * @param {string} line
+ * @returns {string}
+ */
 function fenceMarker(line) {
   const match = line.match(/^(`+|~+)/)
   return match ? match[1] : ''

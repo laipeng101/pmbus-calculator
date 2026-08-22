@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-23（M23 Done：TypeScript 验证门禁真实性、发布合同加固及 v1.1.4 维护发行）
+最后更新：2026-08-23（M24 Done：Node 运行时下限类型合同、真实发布合同与可复现发行资产，v1.1.5 PATCH）
 
 ## 当前产品基线
 
@@ -19,8 +19,46 @@
 ## 当前里程碑
 
 ```text
-M0–M23 complete；stable release v1.1.4；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M24 complete；stable release v1.1.5；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M24 done — Node 运行时下限类型合同、真实发布合同与可复现发行资产（v1.1.5 PATCH）
+
+- 修复 M23 审核发现的两项发布级门禁缺陷：`@types/node` 为 26（Current）
+  但 engines 只支持 Node 22/24，typecheck 接受受支持运行时不存在的 Node 26 API
+  （`node:ffi` 探针实证）；`check-release-contract` 的部分检查是假校验
+  （`artifactNames` 由 `expectedArtifactNames` 自己生成；README Live 版本、
+  日历日期、release notes 第一标题等也可错误通过）。
+- Node 运行时下限类型合同：`@types/node` 改为 `^22.20.1`（与 engines 最低
+  支持主版本 22 一致）；新增 `tests/runtime-type-contract.test.ts`（7 测试）
+  结构性锁定引擎下限、CI 主/次验证与 `@types/node` 主版本一致性、Node 26-only
+  API 不得存在；`tests/typecheck-contract.test.ts` 扩展检查 `@types/node` 主版本
+  与 engines 下限一致。
+- 发布合同真实文件检查：`scripts/check-release-contract.mjs` 重构——`readContract`
+  从 Pages workflow 模板和 RELEASING.md 读取实际资产命名，不再自生成；
+  `validateReleaseContract` 新增精确 Gregorian 日期验证、release notes 第一非空行
+  精确标题匹配、README Live Demo 行版本校验、ROADMAP 唯一 stable 声明检查、
+  lockfile 双版本必需验证；`checkReleasingArtifactNames` 导出供测试使用。
+- 发布合同集成级负向测试：`tests/release-contract.test.ts` 新增 13 个 fixture
+  集成测试（临时仓库 → 修改文件 → 真实 read+validate 链），覆盖 lockfile 漂移、
+  缺失版本、缺少 [Unreleased]、非法日期、错误标题、陈旧 README 链接、ROADMAP
+  重复/陈旧声明、Pages 模板错误、RELEASING 资产名错误；纯函数单元测试保留。
+- scripts checkJs 类型覆盖：新增 `tsconfig.scripts.json`（strict + checkJs +
+  Node types + buildinfo 在 ignored `node_modules/.tmp`），根 tsconfig 扩展为
+  app/node/scripts/tests 四项目；`scripts/**/*.mjs` 七个文件补全 JSDoc 类型注解
+  （含 `FetchLike` 结构类型、`manifest`/`document` JSON 边界窄 `any` 桥接、
+  `caught` 的 `unknown` 处理），不降低 strict、不使用 `@ts-nocheck` 或
+  全局 `any`；`tests/typecheck-contract.test.ts` 锁定四项目结构。
+- 可复现发行资产生成：新增 `scripts/prepare-release-assets.mjs`（从 `dist/`
+  确定性生成 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`，版本唯一
+  来源 `package.json`），相同 `dist/` 两次生成 zip 与 checksum 逐字节一致；
+  自动调用 `verify_release_zip.py` 与 `shasum -a 256 -c` 反向验证；
+  `release-output/` ignored；`clean-generated.mjs` 新增该目标；`RELEASING.md`
+  改用该唯一命令；package script `release:prepare-assets`。
+- v1.1.5 PATCH：仅含 v1.1.4 后合入 main 的兼容修复与验证/发布加固（M24 全量），
+  无新产品功能；CHANGELOG、`docs/releases/v1.1.5.md`、双 README、本文件同步更新。
+- 状态依据：本地 `npm run verify` 全绿（含 Node 22 fresh 与 Node 24 隔离验证）；
+  PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
 
 ### M23 done — TypeScript 验证门禁真实性、发布合同加固及 v1.1.4 维护发行
 

@@ -20,6 +20,7 @@ export const GENERATED_TARGETS = [
   'tests/e2e/output-visual',
   'tests/e2e/report-visual',
   '.cache/specifications',
+  'release-output',
 ]
 
 const HELP = `clean-generated.mjs — remove generated build/test/report directories
@@ -36,10 +37,19 @@ inside this repository. It refuses filesystem roots, home directories, the
 repository root itself, empty paths, non-directory targets, and symlink escapes.
 `
 
+/**
+ * @param {string} importMetaUrl
+ * @returns {string}
+ */
 export function repoRootFromScript(importMetaUrl) {
   return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..')
 }
 
+/**
+ * @param {string} repoRoot
+ * @param {string[]} targets
+ * @returns {{ target: string, absolute: string }[]}
+ */
 export function resolveCleanTargets(repoRoot, targets) {
   if (typeof repoRoot !== 'string' || repoRoot.length === 0) {
     throw new Error(`refusing empty repository root`)
@@ -54,7 +64,7 @@ export function resolveCleanTargets(repoRoot, targets) {
     throw new Error(`refusing home directory as repository root: ${repoRoot}`)
   }
 
-  return targets.map((target) => {
+  return targets.map((/** @type {string} */ target) => {
     if (typeof target !== 'string' || target.length === 0) {
       throw new Error('refusing empty clean target path')
     }
@@ -79,6 +89,11 @@ export function resolveCleanTargets(repoRoot, targets) {
   })
 }
 
+/**
+ * @param {string} repoRoot
+ * @param {string} absoluteTarget
+ * @returns {Promise<void>}
+ */
 async function rejectSymlinkEscape(repoRoot, absoluteTarget) {
   const realRepo = await fs.realpath(repoRoot)
   let realTarget = null
@@ -114,6 +129,11 @@ async function rejectSymlinkEscape(repoRoot, absoluteTarget) {
   }
 }
 
+/**
+ * @param {string} repoRoot
+ * @param {string} absoluteTarget
+ * @returns {Promise<{ exists: boolean }>}
+ */
 async function preflightCleanTarget(repoRoot, absoluteTarget) {
   await rejectSymlinkEscape(repoRoot, absoluteTarget)
 
@@ -138,12 +158,14 @@ async function preflightCleanTarget(repoRoot, absoluteTarget) {
 /**
  * @param {{ repoRoot: string, targets?: string[], dryRun?: boolean, log?: (...data: any[]) => void }} [options]
  */
-export async function cleanGenerated({
-  repoRoot,
-  targets = GENERATED_TARGETS,
-  dryRun = false,
-  log = console.log,
-} = {}) {
+export async function cleanGenerated(
+  {
+    repoRoot,
+    targets = GENERATED_TARGETS,
+    dryRun = false,
+    log = console.log,
+  } = /** @type {any} */ ({}),
+) {
   const resolved = resolveCleanTargets(repoRoot, targets)
 
   // Full preflight before any deletion: lexical checks, symlink checks, and

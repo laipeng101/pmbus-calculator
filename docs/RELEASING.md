@@ -68,10 +68,15 @@ npm run test:e2e:release
 
 然后生成并校验发行资产：
 
-1. 从最终 `dist/` 生成 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`。
-2. zip 可解压；内容只来自最终 `dist/`；`index.html` 资源路径与 CSP 正确；
+1. 运行 `npm run release:prepare-assets`（`scripts/prepare-release-assets.mjs`），
+   该命令从 `dist/` 生成 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`，
+   输出到 `release-output/`；版本唯一来源是 `package.json`。
+2. 资产生成是确定性的：相同 `dist/` 两次生成，zip 与 SHA256SUMS 逐字节一致。
+   生成过程自动调用 `verify_release_zip.py` 与 `shasum -a 256 -c` 反向验证。
+3. zip 可解压；内容只来自最终 `dist/`；`index.html` 资源路径与 CSP 正确；
    不包含源码、`node_modules`、source map 或临时文件。
-3. `SHA256SUMS.txt` 反向校验 zip（`shasum -a 256 -c`）必须通过。
+4. 再次运行 `npm run release:prepare-assets -- --force` 以验证可复现性（两次
+   zip hash 必须完全相同）。
 
 以上任一步失败：停止发布并修复，不得带病打 tag。
 

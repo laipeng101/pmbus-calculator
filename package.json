@@ -1,7 +1,7 @@
 {
   "name": "pmbus-calculator",
   "private": true,
-  "version": "1.1.4",
+  "version": "1.1.5",
   "type": "module",
   "engines": {
     "node": ">=22 <23 || >=24 <25",
@@ -25,6 +25,7 @@
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run typecheck && npm run lint && npm run test:run && npm run build",
     "check:release-contract": "node scripts/check-release-contract.mjs",
+    "release:prepare-assets": "node scripts/prepare-release-assets.mjs",
     "postinstall": "simple-git-hooks",
     "verify:ui": "npm run verify && npm run test:e2e:visual",
     "verify": "npm run format:check && npm run typecheck && npm run lint && npm run check:markdown-math && npm run specs:check && npm run check:release-contract && npm run test:coverage && npm run test:e2e && npm run build && npm run check:tailwind-scope && npm run test:e2e:release && npm run check:repo-hygiene && git diff --check && git diff --cached --check && npm audit --audit-level=high",
@@ -54,7 +55,7 @@
     "@eslint/js": "^9.25.1",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.2.4",
-    "@types/node": "^26.2.0",
+    "@types/node": "^22.20.1",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",
