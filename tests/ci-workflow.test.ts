@@ -1,14 +1,16 @@
-// Regression tests for .github/workflows/ci.yml structure (M19-A/M19-B).
+// Regression tests for .github/workflows/ci.yml structure (M19-A/M19-B/M20).
 //
 // These assertions pin the CI contract that GitHub expressions cannot check
 // for themselves: stable step ids for the Playwright steps, per-step report
 // upload gating, the shared full-tier condition, the single `check` job, no
-// workflow-level path filters, the M18 concurrency semantics, and the M19-B
+// workflow-level path filters, the M18 concurrency semantics, the M19-B
 // protected-main trigger model (PR + workflow_dispatch only, minimal token
 // permissions, credential-free checkout of the PR merge ref, and recorded
-// revision/tree evidence). Parsing is deliberately dependency-free
-// text-structure matching over step blocks — good enough to pin these
-// invariants without adding a YAML dependency.
+// revision/tree evidence), and the M20 secondary-LTS compatibility check
+// (Node 22 primary verification plus a full-tier-gated Node 24 unit run in
+// the same job). Parsing is deliberately dependency-free text-structure
+// matching over step blocks — good enough to pin these invariants without
+// adding a YAML dependency.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -75,6 +77,7 @@ const FULL_TIER_RUN_COMMANDS = [
   'npm run check:tailwind-scope',
   'npm run test:e2e:release',
   'npm audit --audit-level=high',
+  'npm ci && npm run test:run',
 ]
 
 describe('ci.yml structure', () => {
@@ -195,6 +198,43 @@ describe('ci.yml full-tier gating', () => {
       expect(normalize(block)).toContain(`if: ${FULL_TIER_CONDITION}`)
     },
   )
+})
+
+describe('ci.yml secondary LTS compatibility (M20)', () => {
+  function setupNodeSteps(): string[] {
+    return stepBlocks(workflow).filter((block) => block.includes('actions/setup-node'))
+  }
+
+  function findSetupStepByVersion(version: number): string {
+    const match = setupNodeSteps().find((block) => block.includes(`node-version: ${version}`))
+    if (!match) throw new Error(`setup-node step for Node ${version} not found`)
+    return match
+  }
+
+  it('keeps primary verification on Node 22', () => {
+    expect(normalize(findSetupStepByVersion(22))).not.toContain(`if: ${FULL_TIER_CONDITION}`)
+  })
+
+  it('adds a Node 24 compatibility setup behind the shared full-tier condition', () => {
+    const normalized = normalize(findSetupStepByVersion(24))
+    expect(normalized).toContain(`if: ${FULL_TIER_CONDITION}`)
+  })
+
+  it('pins both setup-node steps to the same reviewed SHA', () => {
+    const shas = setupNodeSteps().map(
+      (block) => block.match(/actions\/setup-node@([0-9a-f]{40})/)?.[1],
+    )
+    expect(shas).toHaveLength(2)
+    expect(new Set(shas).size).toBe(1)
+  })
+
+  it('runs the unit suite under Node 24 in the same single check job', () => {
+    // The combined command is unique: the primary "Install dependencies"
+    // step runs a bare `npm ci` and must stay available on the light tier.
+    const normalized = normalize(findStepByRun('npm ci && npm run test:run'))
+    expect(normalized).toContain(`if: ${FULL_TIER_CONDITION}`)
+    expect(normalize(findStepByName('Unit tests on secondary LTS (Node 24)'))).toBe(normalized)
+  })
 })
 
 describe('ci.yml Playwright report upload gating (M19-A)', () => {
