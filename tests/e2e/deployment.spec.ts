@@ -16,6 +16,7 @@ const requiredResourceTypes = new Set([
 test.describe('GitHub Pages production deployment', () => {
   test('HTTPS page loads with title and core controls', async ({ page }) => {
     const response = await page.goto(deploymentUrl!)
+    if (response == null) throw new Error(`page.goto returned no response for ${deploymentUrl}`)
     expect(response.status()).toBe(200)
     expect(page.url().startsWith('https://')).toBeTruthy()
 

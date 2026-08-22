@@ -27,6 +27,10 @@ export function isLegacyHtml(p) {
   return p === 'pmbus-calculator.html'
 }
 
+/**
+ * @param {string[]} files
+ * @returns {{ snapshots: string[], legacyFallbacks: string[] }}
+ */
 export function classifyPolicyAllowlist(files) {
   const snapshots = []
   const legacyFallbacks = []
@@ -184,6 +188,10 @@ const REJECT_RULES = [
   },
 ]
 
+/**
+ * @param {string} repoRoot
+ * @returns {string[]}
+ */
 export function gitLsFiles(repoRoot) {
   const output = execFileSync('git', ['-C', repoRoot, 'ls-files', '-z'], {
     encoding: 'utf8',
@@ -192,6 +200,10 @@ export function gitLsFiles(repoRoot) {
   return output.split('\0').filter(Boolean)
 }
 
+/**
+ * @param {string} repoRoot
+ * @returns {Map<string, number>}
+ */
 export function gitIndexSizes(repoRoot) {
   const staged = execFileSync('git', ['-C', repoRoot, 'ls-files', '-s', '-z'], {
     encoding: 'utf8',
@@ -237,6 +249,9 @@ export function gitIndexSizes(repoRoot) {
   return sizes
 }
 
+/**
+ * @param {{ repoRoot: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} [options]
+ */
 export function checkRepoHygiene({ repoRoot, log = console.log, error = console.error } = {}) {
   const files = gitLsFiles(repoRoot)
   const sizes = gitIndexSizes(repoRoot)

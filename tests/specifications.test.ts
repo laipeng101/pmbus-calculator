@@ -418,7 +418,7 @@ describe('specifications fetch timeout', () => {
   it('times out while waiting for response headers', async () => {
     const { repoRoot, cacheDir, absCacheDir } = await makeCacheRepo()
     const document = makeDocument()
-    const fetchImpl = vi.fn(() => new Promise(() => {}))
+    const fetchImpl = vi.fn((): Promise<never> => new Promise(() => {}))
 
     await expect(
       fetchOneDocument({ repoRoot, document, cacheDir, fetchImpl, timeoutMs: 40 }),

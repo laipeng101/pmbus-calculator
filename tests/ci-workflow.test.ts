@@ -6,11 +6,11 @@
 // workflow-level path filters, the M18 concurrency semantics, the M19-B
 // protected-main trigger model (PR + workflow_dispatch only, minimal token
 // permissions, credential-free checkout of the PR merge ref, and recorded
-// revision/tree evidence), and the M20 secondary-LTS compatibility check
-// (Node 22 primary verification plus a full-tier-gated Node 24 unit run in
-// the same job). Parsing is deliberately dependency-free text-structure
-// matching over step blocks — good enough to pin these invariants without
-// adding a YAML dependency.
+// revision/tree evidence), and the M20/M23 secondary-LTS compatibility check
+// (Node 22 primary verification plus a full-tier-gated Node 24 typecheck and
+// unit run in the same job). Parsing is deliberately dependency-free
+// text-structure matching over step blocks — good enough to pin these
+// invariants without adding a YAML dependency.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -68,6 +68,7 @@ const FULL_TIER_CONDITION = "steps.scope.outputs.run_full != 'false'"
 // Every heavy gate must stay behind the one shared full-tier condition.
 const FULL_TIER_RUN_COMMANDS = [
   'npm run specs:check',
+  'npm run check:release-contract',
   'npm run typecheck',
   'npm run lint',
   'npm run test:coverage',
@@ -77,7 +78,7 @@ const FULL_TIER_RUN_COMMANDS = [
   'npm run check:tailwind-scope',
   'npm run test:e2e:release',
   'npm audit --audit-level=high',
-  'npm ci && npm run test:run',
+  'npm ci && npm run typecheck && npm run test:run',
 ]
 
 describe('ci.yml structure', () => {
@@ -228,12 +229,16 @@ describe('ci.yml secondary LTS compatibility (M20)', () => {
     expect(new Set(shas).size).toBe(1)
   })
 
-  it('runs the unit suite under Node 24 in the same single check job', () => {
+  it('runs the real typecheck and unit suite under Node 24 in the same single check job', () => {
     // The combined command is unique: the primary "Install dependencies"
     // step runs a bare `npm ci` and must stay available on the light tier.
-    const normalized = normalize(findStepByRun('npm ci && npm run test:run'))
+    // M23 extended the secondary re-check to `typecheck && test:run` so the
+    // Node 24 line validates the tsc -b gate too.
+    const normalized = normalize(findStepByRun('npm ci && npm run typecheck && npm run test:run'))
     expect(normalized).toContain(`if: ${FULL_TIER_CONDITION}`)
-    expect(normalize(findStepByName('Unit tests on secondary LTS (Node 24)'))).toBe(normalized)
+    expect(normalize(findStepByName('Typecheck and unit tests on secondary LTS (Node 24)'))).toBe(
+      normalized,
+    )
   })
 })
 

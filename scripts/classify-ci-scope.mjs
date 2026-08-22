@@ -135,6 +135,9 @@ export function buildDiffArgs(event, baseSha, headSha) {
 // Orchestrates one classification: validate inputs, run git without a shell,
 // then classify. Every failure path degrades to full instead of throwing, so
 // a later `run_full != 'false'` condition in the workflow stays fail-closed.
+/**
+ * @param {{ event: string, baseSha?: string, headSha?: string, cwd?: string, spawnSyncImpl?: (command: string, args: string[], options: { cwd: string, encoding: 'utf8' }) => { status: number | null, stdout: string, stderr?: string, error?: unknown } }} [options]
+ */
 export function classifyCiScope({
   event,
   baseSha,

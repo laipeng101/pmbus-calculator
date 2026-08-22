@@ -66,6 +66,7 @@ npm run typecheck
 npm run lint
 npm run check:markdown-math
 npm run specs:check
+npm run check:release-contract
 npm run test:coverage
 npm run test:e2e
 npm run build

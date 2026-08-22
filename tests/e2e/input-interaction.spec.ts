@@ -44,7 +44,7 @@ async function expectFieldError(page: Page, inputId: string): Promise<Locator> {
   const input = page.locator(`#${inputId}`)
   await expect(input).toHaveAttribute('aria-invalid', 'true')
   const describedBy = await input.getAttribute('aria-describedby')
-  expect(describedBy, `${inputId} aria-describedby`).toBeTruthy()
+  if (describedBy == null) throw new Error(`${inputId} is missing aria-describedby`)
   const error = page.locator(`#${describedBy}`)
   expect(await page.locator(`#${describedBy}`).count(), `error id ${describedBy} unique`).toBe(1)
   await expect(error).toBeVisible()

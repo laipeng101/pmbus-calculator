@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-23（M22 Done：CommandPicker 完整 APG 焦点、选择与搜索生命周期）
+最后更新：2026-08-23（M23 Done：TypeScript 验证门禁真实性、发布合同加固及 v1.1.4 维护发行）
 
 ## 当前产品基线
 
@@ -19,8 +19,34 @@
 ## 当前里程碑
 
 ```text
-M0–M22 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M23 complete；stable release v1.1.4；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M23 done — TypeScript 验证门禁真实性、发布合同加固及 v1.1.4 维护发行
+
+- 修复 typecheck 空检查：原 `tsc --noEmit` 对 `files: []` 根配置实际受检文件数为 0，
+  src/tests/Playwright 配置类型错误全部漏检（负向探针实证）。改为
+  `tsc -b --pretty false --verbose`，真实检查 app/node/tests 三类项目；CI 日志可见
+  三个项目的构建记录；探针反转后 src/tests/Playwright 配置错误均使门禁非零退出。
+- `tsconfig.tests.json`（strict、Node+Vitest globals、allowJs 边界、buildinfo 位于
+  ignored `node_modules/.tmp`）由根 references 引用；`@types/node` 成为直接
+  devDependency；四个 mjs 脚本导出边界补精确 JSDoc（FetchResponseLike 等结构类型），
+  不用 `declare module '*.mjs'`、不降 strict。修复 strict 暴露的 59 处测试类型错误
+  （含 `documentPdfs` 过期断言、E2E null 处理等真实缺陷）；PMBus 算法、命令元数据、
+  UI 行为零改动。`tests/typecheck-contract.test.ts` 结构性锁定该合同。
+- 发布合同：`scripts/check-release-contract.mjs`（完全离线，版本唯一来源
+  package.json）校验 lockfile、CHANGELOG、release notes、双 README 链接、ROADMAP
+  与 Release 资产命名一致性；`tests/release-contract.test.ts` 覆盖成功/失败场景；
+  接入 `npm run verify`、full CI 与 AGENTS/CONTRIBUTING 门禁清单。
+- `docs/RELEASING.md` 重写为 M19-B 后正确流程（PR head CI → checked_tree 审计 →
+  detached worktree 全量验证 → zip/SHA256SUMS → annotated tag → Release → Pages →
+  deployment smoke），删除“等待 main push CI”；DEPLOYING.md 顺序核对一致。
+- CI：Node 24 次级验证升级为 typecheck+单测；`ci-workflow.test.ts` 同步。
+- v1.1.4 PATCH：仅含 v1.1.3 后合入 main 的兼容修复与验证/发布加固
+  （hygiene/spec 分发、Tailwind 范围、CI tier/ruleset、Vitest/Node、M21、M22、M23），
+  无新产品功能；CHANGELOG、`docs/releases/v1.1.4.md`、双 README、本文件同步更新。
+- 状态依据：本地 `npm run verify` 全绿（含 Node 22 fresh 与 Node 24 隔离验证）；
+  PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
 
 ### M22 done — CommandPicker 完整 APG 焦点、选择与搜索生命周期
 

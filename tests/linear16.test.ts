@@ -47,7 +47,7 @@ describe('L16 golden encode cases', () => {
   })
 
   it('clamps Value to 0..65535 range', () => {
-    const base = { ...INITIAL_STATE, mode: 'L16', l16: { n: -8, voutMode: 0x18 } }
+    const base = { ...INITIAL_STATE, mode: 'L16' as const, l16: { n: -8, voutMode: 0x18 } }
     expect(appReducer(base, { type: 'value/set', value: '-1' }).raw).toBe(0)
     expect(appReducer(base, { type: 'value/set', value: '999999' }).raw).toBe(0xffff)
   })
