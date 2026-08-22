@@ -8,6 +8,7 @@ import {
   describePresetSource,
   describeTransactions,
 } from '../../legacy/command-metadata'
+import { findTabNeighbor } from '../../app/focus-navigation'
 import { ChevronDownIcon } from '../icons/Icon'
 
 interface Props {
@@ -79,10 +80,24 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
         )
   }, [commands, query])
 
+  // “无命令”只在空 query 时是合法 option；非空 query 的零匹配由空 option
+  // 列表 + “无匹配命令”状态表达，Enter/Arrow 此时必须是安全 no-op。
   const options = useMemo<OptionVM[]>(
-    () => [NONE_OPTION, ...filtered.map((c) => ({ key: c.key, label: c.label }))],
-    [filtered],
+    () =>
+      query === ''
+        ? [NONE_OPTION, ...filtered.map((c) => ({ key: c.key, label: c.label }))]
+        : filtered.map((c) => ({ key: c.key, label: c.label })),
+    [filtered, query],
   )
+
+  // Render-time guard：active option 必须始终是当前列表里真实存在的选项，
+  // 这样 aria-activedescendant 与唯一的 aria-selected=true 在 query 过滤的
+  // 中间帧也不会悬空。
+  const activeKeySafe = useMemo(() => {
+    if (options.some((o) => o.key === activeKey)) return activeKey
+    const idx = options.findIndex((o) => o.key === commandKey)
+    return options[idx >= 0 ? idx : 0]?.key ?? ''
+  }, [options, activeKey, commandKey])
 
   const selected = commandKey ? (COMMAND_METADATA[commandKey] ?? null) : null
 
@@ -104,6 +119,37 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
 
   useEffect(() => {
     if (open === false) return
+    inputRef.current?.focus()
+  }, [open])
+
+  // 既有行为（M21 锁定）：option 列表变化（打开、committed command、query
+  // 过滤）后，active option 重置为 selected-or-first。
+  useEffect(() => {
+    if (open === false) return
+    const idx = options.findIndex((o) => o.key === commandKey)
+    setActiveKey(options[idx >= 0 ? idx : 0]?.key ?? '')
+  }, [open, commandKey, options])
+
+  // Keep the active option visible inside the listbox only.  Never call
+  // scrollIntoView on the option directly because that can scroll the page.
+  // Re-run on option-list changes so clearing a query scrolls the restored
+  // active option back into view.
+  useEffect(() => {
+    if (open === false) return
+    const list = listboxRef.current
+    const el = document.getElementById(optionId(activeKeySafe))
+    if (list == null || el == null) return
+    const listRect = list.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    if (elRect.top < listRect.top) {
+      list.scrollTop += elRect.top - listRect.top
+    } else if (elRect.bottom > listRect.bottom) {
+      list.scrollTop += elRect.bottom - listRect.bottom
+    }
+  }, [open, activeKeySafe, options])
+
+  useEffect(() => {
+    if (open === false) return
 
     function handleOutsidePointerDown(e: MouseEvent) {
       const target = e.target as Node
@@ -119,28 +165,25 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
     return () => document.removeEventListener('mousedown', handleOutsidePointerDown)
   }, [open, closePopover, refs.floating, refs.reference])
 
+  // Focus leaving both the popup and the trigger (script focus, keyboard
+  // shortcuts, assistive tech) closes the popup without stealing the new
+  // focus target.  Tab/Shift+Tab are handled in onInputKeyDown instead.
   useEffect(() => {
     if (open === false) return
-    inputRef.current?.focus()
-    const idx = options.findIndex((o) => o.key === commandKey)
-    setActiveKey(options[idx >= 0 ? idx : 0]?.key ?? '')
-  }, [open, commandKey, options])
 
-  // Keep the active option visible inside the listbox only.  Never call
-  // scrollIntoView on the option directly because that can scroll the page.
-  useEffect(() => {
-    if (open === false) return
-    const list = listboxRef.current
-    const el = document.getElementById(optionId(activeKey))
-    if (list == null || el == null) return
-    const listRect = list.getBoundingClientRect()
-    const elRect = el.getBoundingClientRect()
-    if (elRect.top < listRect.top) {
-      list.scrollTop += elRect.top - listRect.top
-    } else if (elRect.bottom > listRect.bottom) {
-      list.scrollTop += elRect.bottom - listRect.bottom
+    function handleFocusIn(e: FocusEvent) {
+      const target = e.target as Node | null
+      if (target == null) return
+      const trigger = triggerRef.current
+      const floating = refs.floating.current
+      if (trigger != null && (target === trigger || trigger.contains(target))) return
+      if (floating != null && floating.contains(target)) return
+      closePopover(false)
     }
-  }, [open, activeKey])
+
+    document.addEventListener('focusin', handleFocusIn)
+    return () => document.removeEventListener('focusin', handleFocusIn)
+  }, [open, closePopover, refs.floating])
 
   const onInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
@@ -148,17 +191,32 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
       closePopover(true)
       return
     }
+    if (e.key === 'Tab') {
+      // The portal sits at the end of <body>; the browser default would move
+      // focus into popup options or wrap to the far end of the page.  Close
+      // and continue focus movement in DOM order from the trigger instead.
+      e.preventDefault()
+      closePopover(false)
+      window.setTimeout(() => {
+        const trigger = triggerRef.current
+        if (trigger == null) return
+        findTabNeighbor(trigger, e.shiftKey ? -1 : 1)?.focus()
+      }, 0)
+      return
+    }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
-      const current = options.findIndex((o) => o.key === activeKey)
+      const current = options.findIndex((o) => o.key === activeKeySafe)
+      if (current === -1) return
       const delta = e.key === 'ArrowDown' ? 1 : -1
-      const next = (current + delta + options.length) % options.length
-      setActiveKey(options[next].key)
+      // Stop at the first/last option; never wrap around.
+      const next = Math.max(0, Math.min(options.length - 1, current + delta))
+      if (next !== current) setActiveKey(options[next].key)
       return
     }
     if (e.key === 'Enter') {
       e.preventDefault()
-      const current = options.findIndex((o) => o.key === activeKey)
+      const current = options.findIndex((o) => o.key === activeKeySafe)
       if (current >= 0) selectOption(options[current].key)
     }
   }
@@ -258,7 +316,7 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
                 aria-autocomplete="list"
                 aria-expanded="true"
                 aria-controls={LISTBOX_ID}
-                aria-activedescendant={optionId(activeKey)}
+                aria-activedescendant={options.length > 0 ? optionId(activeKeySafe) : undefined}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onInputKeyDown}
@@ -280,62 +338,72 @@ export default function CommandPicker({ commandKey, onChange, onApplyPreset }: P
               className="popup-list min-h-0 flex-1 overflow-y-auto py-1"
             >
               {options.map((opt) => {
-                const isSelected = opt.key === commandKey
-                const isActive = opt.key === activeKey
+                const isActive = opt.key === activeKeySafe
+                const isCurrent = opt.key !== '' && opt.key === commandKey
                 const cmd = opt.key ? COMMAND_METADATA[opt.key] : null
+                // Options are deliberately not focusable (aria-activedescendant
+                // pattern): DOM focus stays in the search input.  Suppress the
+                // mousedown focus change so pointer selection keeps focus inside
+                // the combobox until the popup closes back to the trigger.
                 return (
-                  <li key={opt.key || '__none__'}>
-                    <button
-                      type="button"
-                      id={optionId(opt.key)}
-                      role="option"
-                      aria-selected={isSelected}
-                      onClick={() => selectOption(opt.key)}
-                      className="w-full px-4 py-2 text-left text-sm transition-colors"
-                      style={{
-                        background: isActive
-                          ? 'var(--color-surface-muted)'
-                          : isSelected
-                            ? 'rgba(59,130,246,0.08)'
-                            : 'transparent',
-                        color: cmd ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                      }}
-                    >
-                      {cmd ? (
-                        <>
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">{cmd.label}</span>
-                            <span
-                              className="ml-2 text-xs"
-                              style={{ color: 'var(--color-text-muted)' }}
-                            >
-                              0x{cmd.cmd.toString(16).toUpperCase().padStart(2, '0')}
-                            </span>
-                          </div>
-                          <div
-                            className="mt-0.5 text-xs"
+                  <li
+                    key={opt.key || '__none__'}
+                    id={optionId(opt.key)}
+                    role="option"
+                    aria-selected={isActive}
+                    data-current={isCurrent ? 'true' : undefined}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => selectOption(opt.key)}
+                    className="w-full px-4 py-2 text-left text-sm transition-colors"
+                    style={{
+                      background: isActive
+                        ? 'var(--color-surface-muted)'
+                        : isCurrent
+                          ? 'rgba(59,130,246,0.08)'
+                          : 'transparent',
+                      color: cmd ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                    }}
+                  >
+                    {cmd ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{cmd.label}</span>
+                          <span
+                            className="ml-2 text-xs"
                             style={{ color: 'var(--color-text-muted)' }}
                           >
-                            {describeEncodingRule(cmd.encodingRule)} ·{' '}
-                            {describeTransactions(cmd.transactions)} · {cmd.units} · {cmd.spec}
+                            0x{cmd.cmd.toString(16).toUpperCase().padStart(2, '0')}
+                          </span>
+                        </div>
+                        <div
+                          className="mt-0.5 text-xs"
+                          style={{ color: 'var(--color-text-muted)' }}
+                        >
+                          {describeEncodingRule(cmd.encodingRule)} ·{' '}
+                          {describeTransactions(cmd.transactions)} · {cmd.units} · {cmd.spec}
+                        </div>
+                        {cmd.dataBytesConflict && (
+                          <div className="mt-0.5 text-xs" style={{ color: 'var(--color-warning)' }}>
+                            {describeDataBytesConflict(cmd.dataBytesConflict)}
                           </div>
-                          {cmd.dataBytesConflict && (
-                            <div
-                              className="mt-0.5 text-xs"
-                              style={{ color: 'var(--color-warning)' }}
-                            >
-                              {describeDataBytesConflict(cmd.dataBytesConflict)}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        opt.label
-                      )}
-                    </button>
+                        )}
+                      </>
+                    ) : (
+                      opt.label
+                    )}
                   </li>
                 )
               })}
             </ul>
+            {options.length === 0 && (
+              <div
+                role="status"
+                className="px-4 py-3 text-sm"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                无匹配命令
+              </div>
+            )}
           </div>,
           document.body,
         )}

@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-22（M21 Done：输入校验可访问性与键盘交互可靠性）
+最后更新：2026-08-23（M22 Done：CommandPicker 完整 APG 焦点、选择与搜索生命周期）
 
 ## 当前产品基线
 
@@ -19,8 +19,37 @@
 ## 当前里程碑
 
 ```text
-M0–M21 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M22 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M22 done — CommandPicker 完整 APG 焦点、选择与搜索生命周期
+
+- 选项语义对齐 W3C APG combobox pattern：`role="option"` 从可聚焦 `<button>`
+  迁移到不进入 Tab 顺序的 `<li>`（hover/active/cursor 由既有 `[role='option']`
+  CSS 规则继续命中，渲染几何不变，visual snapshot 零变化）；`aria-selected=true`
+  恒等于 `aria-activedescendant` 指向的 active option（render-time 守卫，
+  query 过滤中间帧不悬空）；committed command 视觉标记改走 `data-current`，
+  不再复用 ARIA selection（原实现方向键移动后 selected 仍停在 committed 上）。
+- 键盘生命周期：ArrowUp/ArrowDown 首尾停止不循环（原为取模循环）；Enter 应用
+  active option；Escape 取消并恢复 trigger 焦点；Tab/Shift+Tab 关闭 popup 并把
+  焦点移动到 trigger 的逻辑后继/前驱（新增 `src/app/focus-navigation.ts`：
+  DOM 顺序、排除 tabindex=-1/disabled/不可见、不因 body 末尾 portal 跳到页面
+  首/末控件，jsdom 单测）；焦点经键盘或脚本移出 popup/trigger 时关闭 popup 且
+  不抢焦点（document focusin）。Home/End/左右键不拦截、无冲突选项导航
+  （合成键盘事件的光标默认动作在无头/有头环境不稳定，E2E 以 defaultPrevented
+  与 active 不变锁定合同）。
+- 搜索与零结果：「无命令」只在空 query 时是合法 option；非空 query 零匹配显示
+  `role="status"` 的「无匹配命令」、移除 `aria-activedescendant`、Arrow/Enter
+  安全 no-op（原实现零匹配仍保留「无命令」option 且 Enter 会清空已选命令）；
+  清空 query 后恢复真实 option、active selection 与 listbox 内部滚动位置。
+- 回归矩阵 `tests/e2e/command-picker-a11y.spec.ts`：19 场景 × desktop/mobile
+  双 project——trigger 键盘打开、active 与唯一 aria-selected 一致、首尾不循环、
+  Tab/Shift+Tab/Escape/Enter/外部焦点、option 全程无 DOM focus、零匹配/清空
+  恢复/多字符收敛、Home/End 非拦截合同、pointer 选择、950×304 popup
+  containment、360px 无 body 横向 overflow。实施前 14/19 在未修改 main 上
+  失败（探针另证 6 项缺口）。
+- 依赖、PMBus 算法、命令元数据、CI 配置与版本零改动；状态依据：本地
+  `npm run verify` 全绿；PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
 
 ### M21 done — 输入校验可访问性与键盘交互可靠性
 

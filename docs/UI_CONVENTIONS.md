@@ -115,7 +115,34 @@
 - CommandPicker 搜索框必须有显式可访问名称（不依赖 placeholder 兜底）；
   `aria-activedescendant` 在 query 过滤后必须指向当前 DOM 中真实存在的 option。
 
-## 9. 视觉系统与验收
+## 9. CommandPicker 焦点、选择与搜索生命周期（M22 起长期稳定）
+
+- option 是不可聚焦的语义元素（`li[role="option"]`，无 tabindex），DOM 焦点
+  始终留在搜索 combobox；选项交互通过 `aria-activedescendant` 表达。
+- `aria-selected=true` 恒等于 `aria-activedescendant` 指向的 active option，
+  有选项时全列表恰好一个；committed command 的视觉标记走 `data-current`
+  与独立样式，不复用 ARIA selection。active option 在 query 过滤的中间帧
+  也不得悬空（render-time 守卫，不能只靠 effect 兜底）。
+- ArrowUp/ArrowDown 在首尾停止、不循环；Enter 应用 active option；Escape 取消
+  并恢复 trigger 焦点；Tab/Shift+Tab 关闭 popup 并把焦点移动到 trigger 的
+  逻辑后继/前驱（`src/app/focus-navigation.ts`：DOM 顺序、排除
+  tabindex=-1/disabled/不可见元素、不因 body 末尾 portal 跳到页面首/末控件）。
+- 焦点通过键盘或脚本移到 popup/trigger 外部时关闭 popup，但不抢走新焦点
+  （document focusin 判定，不主动 focus 任何元素）。
+- Home/End、左右键及选区快捷键保持浏览器文本编辑行为：组件不得拦截，也不得
+  实现与之冲突的 Home/End 选项导航；E2E 以「事件未被 preventDefault 且
+  active option 不变」锁定合同——合成键盘事件的光标默认动作在无头/有头
+  环境间不稳定，不得作为断言依据。搜索框本身即 typeahead，不新增第二套
+  定时字符缓冲。
+- 「无命令」只在空 query 时是合法 option；非空 query 零匹配时显示非 option
+  的「无匹配命令」状态（`role="status"`），移除 `aria-activedescendant`，
+  Arrow/Enter 安全 no-op；清空 query 后恢复真实 option、active selection 与
+  listbox 内部滚动位置。
+- 回归矩阵在 `tests/e2e/command-picker-a11y.spec.ts`：desktop + mobile 双
+  project、950×304 popup containment、360px 无 body 横向 overflow、pointer
+  选择与全键盘生命周期。
+
+## 10. 视觉系统与验收
 
 - 表面最多三层：canvas / panel / panel-elevated；控件使用 control / control-hover / control-active。
 - 阴影只用于 elevated、sticky result 和 popup；删除全局 `filter: brightness` hover。
@@ -131,7 +158,7 @@
 - reduced-motion 只关闭非必要动画，不得消除功能反馈；复制状态使用受控 timer（约 1.5–2s）。
 - KaTeX `htmlAndMathml` 已提供 MathML；外层不得用 `role="math"`/`aria-label` 覆盖；fallback 时再提供可访问名称。
 
-## 10. 视觉基线治理
+## 11. 视觉基线治理
 
 > 完整政策见 [`docs/REPOSITORY_HYGIENE.md`](REPOSITORY_HYGIENE.md) 第 3 节；本文件只保留 UI 任务必须遵守的摘要。
 
