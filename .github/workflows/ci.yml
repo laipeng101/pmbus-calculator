@@ -1,15 +1,23 @@
 name: CI
 
+# M19-B: main is protected (ruleset "protect-main": PR required, required
+# `check` from GitHub Actions, strict up-to-date, no bypass, no force push,
+# no deletion). PR CI tests the merge ref by default, so the tested tree
+# equals the post-merge main tree and a second post-merge CI run would
+# re-verify the identical tree — the push trigger is therefore removed.
+# workflow_dispatch stays as the emergency/manual full-verification entry.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 # Cost-aware CI cancellation (M18): a new push to a PR cancels that PR's
-# outdated run. Different PRs, PR vs main, and main pushes never share a
-# group; main never cancels in progress so every merge SHA keeps its
-# verification evidence.
+# outdated run. Different PRs never share a group. Manual workflow_dispatch
+# runs group by ref (never a PR number) and cancel-in-progress is PR-only,
+# so a manual run neither cancels nor is cancelled by PR runs.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -22,6 +30,33 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      # Evidence for the M19-B no-second-CI model: record the exact commit
+      # and tree that this run verified. The final report compares this tree
+      # with the post-merge main tree instead of re-running a full CI.
+      - name: Record checked revision
+        id: revision
+        run: |
+          set -euo pipefail
+          checked_sha="$(git rev-parse HEAD)"
+          checked_tree="$(git rev-parse 'HEAD^{tree}')"
+          for value in "$checked_sha" "$checked_tree"; do
+            if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "revision: not a 40-hex SHA: $value" >&2
+              exit 1
+            fi
+          done
+          {
+            echo "checked_sha=$checked_sha"
+            echo "checked_tree=$checked_tree"
+          } >> "$GITHUB_OUTPUT"
+          echo "revision: checked_sha=$checked_sha checked_tree=$checked_tree"
+          {
+            echo "### Checked revision"
+            echo "- commit \`${checked_sha}\`"
+            echo "- tree \`${checked_tree}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -99,19 +134,6 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check "$BASE_SHA" "$HEAD_SHA"
-
-      - name: Check full pushed range for whitespace errors
-        if: github.event_name == 'push'
-        env:
-          BEFORE_SHA: ${{ github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            git show --check --stat --oneline "$HEAD_SHA"
-          else
-            git diff --check "$BEFORE_SHA" "$HEAD_SHA"
-          fi
 
       - name: Audit dependencies
         if: steps.scope.outputs.run_full != 'false'

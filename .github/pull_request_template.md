@@ -38,12 +38,13 @@
 
 <!-- CI 必须核对其 head_sha 等于最终 PR head / 最终 merge SHA。 -->
 
-- CI tier: light / full（由 `scripts/classify-ci-scope.mjs` 判定，fail closed）
+- CI tier: light / full（由 `scripts/classify-ci-scope.mjs` 判定，fail closed；`workflow_dispatch` 始终 full）
 - light 时分类器结论（tier、原因、changed path 摘要）:
 - PR CI URL:
 - PR CI head SHA:
 - PR CI conclusion:
-- merge SHA 与 main CI URL/conclusion：属于合并后验证证据，记入最终任务报告；不在合并后回填本 PR 或 ROADMAP
+- PR CI `checked_sha` / `checked_tree`（`Record checked revision` 步骤输出）:
+- merge 后核对（记入最终任务报告）：merge SHA 的 `HEAD^{tree}` 必须与 PR CI `checked_tree` 完全相同；main 不再有 push CI，必要时用 `workflow_dispatch` 手工执行 full 验证；不在合并后回填本 PR 或 ROADMAP
 
 ## Fresh environment 初始化
 

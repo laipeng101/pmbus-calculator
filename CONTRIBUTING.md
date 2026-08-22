@@ -17,13 +17,16 @@
 - PR base 固定为 `main`；禁止以 `web-refactor` 或任何旧 `agent/*` 分支作为长期开发线。
 - 每个 PR 只实现一个可验证的垂直切片。
 - 当前为单人维护：同一 Agent 可以完成本地检查、创建 PR、等待 CI、自审与普通 merge commit 合并的闭环；不为每个小任务机械创建 Issue。
-- 不启用强制分支保护；不等待人工确认。
+- main 由 ruleset `protect-main` 严格保护（M19-B 起）：必须 PR、required `check`（GitHub Actions）、
+  strict up-to-date、管理员无绕过、禁止 force push 与删除、不要求人工 approval（0 approvals）。
+  不等待人工确认；所有 main 变更必须经 PR。
 
-单人无人值守闭环：
+单人无人值守闭环（M19-B 起）：
 
 ```text
-latest main → one scoped branch → local verify → PR → CI green
-→ self-review → normal merge commit → main CI green
+latest protected main → one scoped branch → complete local verification
+→ one final push → one PR CI（默认测试 merge ref）→ required check success
+→ self-review → normal merge commit → compare tested PR tree with final main tree
 → delete branch → sync main
 ```
 
@@ -32,8 +35,11 @@ latest main → one scoped branch → local verify → PR → CI green
 里程碑闭环采用单 PR（M18 起）：`docs/ROADMAP.md` 以 main 上的版本为正式事实来源；
 实现分支在最终提交中一并把对应里程碑翻为 `Done`（含完成日期），最终 PR head CI
 全绿并 merge 后，Done 才在 main 正式生效。不再创建第二个纯文档 PR 只为补写
-Review → Done、CI URL 或 SHA；merge SHA 与 main CI 结论写入最终任务报告。
-main CI 真实失败时诊断并创建实际修复 PR，不能用 bookkeeping PR 掩盖失败。
+Review → Done、CI URL 或 SHA。merge 后不执行第二次完整 CI（M19-B）：PR CI 的
+`Record checked revision` 步骤记录实际测试的 `checked_sha`/`checked_tree`，与最终
+merge SHA 的 `HEAD^{tree}` 比较必须完全相同；不一致属于真实阻塞，立即用
+`workflow_dispatch` 对最终 main 执行 full CI 并定位，不得当作正常现象或用
+bookkeeping PR 掩盖。`workflow_dispatch` 是紧急/诊断入口，不是每次 merge 的固定步骤。
 
 ## 3. Fresh environment 初始化
 
@@ -97,7 +103,7 @@ whitespace 检查口径：
 - `git diff --cached --check`：暂存区；
 - PR 本地全量检查：`git diff --check origin/main...HEAD`；
 - PR CI：完整 PR base→head；
-- push CI：完整 event.before→github.sha；
+- M19-B 起 main 不再有 push CI，不存在 before→head whitespace 检查；
 - 不得再把 `git show --check` 描述成普通 merge commit 的完整变更检查。
 
 所有命令都必须以 exit code 0 正常结束，并记录在验收记录中。
@@ -126,12 +132,16 @@ type(scope): summary
 ## 7. PR 流程
 
 1. 填写 PR 模板中的验收清单。
-2. 确保 CI 全绿。CI 由 `scripts/classify-ci-scope.mjs` 分级（fail closed）：纯 light-only
-   变更执行轻量门禁与完整 whitespace gate，跳过的门禁在 PR 中如实标 `policy-skipped`；
-   full/mixed/unknown 变更执行完整 format、typecheck、lint、coverage、E2E、build、
-   whitespace gate 与 audit。所有推送新提交都会使此前验收失效，必须等待最新 head 的 CI。
+2. 确保 CI 全绿。CI 仅由目标为 main 的 PR 与手动 `workflow_dispatch`（始终 full）触发；
+   PR checkout 默认测试 merge ref（不覆盖 `ref`）。分级由 `scripts/classify-ci-scope.mjs`
+   完成（fail closed）：纯 light-only 变更执行轻量门禁与完整 whitespace gate，跳过的门禁
+   在 PR 中如实标 `policy-skipped`；full/mixed/unknown 变更执行完整 format、typecheck、
+   lint、coverage、E2E、build、whitespace gate 与 audit。所有推送新提交都会使此前验收
+   失效，必须等待最新 head 的 CI（required `check` 由分支保护强制）。
 3. PR 描述中写明：changed files、affected modes、测试命令与结果、剩余缺口。
 4. CI 全绿后使用普通 merge commit 合入，不使用 squash。
+5. merge 后拉取最新 main，核对 PR CI 的 `checked_tree` 与 merge SHA 的 `HEAD^{tree}`
+   完全相同（见第 2 节），然后删除分支并同步本地 main。
 
 ## 8. 文档同步
 

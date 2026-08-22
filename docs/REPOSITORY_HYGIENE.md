@@ -195,5 +195,7 @@ npm run verify                 # 完整本地门禁（已包含 specs:check 与 
 3. branch 全量 whitespace 检查使用 `git diff --check origin/main...HEAD`。
 4. 最终树大小必须使用当前 HEAD，并通过 `npm run check:repo-hygiene` 与 `git ls-tree -r -l HEAD` 交叉验证。
 5. PR CI 必须核对其 `head_sha` 等于最终 PR head。
-6. merge 后 main CI 必须核对 `head_sha` 等于最终 merge SHA。
+6. merge 后必须比较 PR CI `Record checked revision` 步骤记录的 `checked_tree` 与最终
+   merge SHA 的 `HEAD^{tree}`，两者必须完全相同（M19-B：main 不再有 push CI，tree
+   一致即验证完成；不一致属于真实阻塞，用 `workflow_dispatch` 执行 full CI 并定位）。
 7. 文件数、树大小、snapshot 数量、tracked PDF 数量（当前应为 0）和 legacy HTML 是否存在，均以 `git ls-tree -r -l HEAD` 为准；manifest 记录数以 `document/specifications.json` 为准。

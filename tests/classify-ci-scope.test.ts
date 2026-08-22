@@ -136,6 +136,39 @@ describe('classifyPaths', () => {
 })
 
 describe('classifyCiScope input validation', () => {
+  it('classifies workflow_dispatch as full without any base/head SHA', () => {
+    const result = classifyCiScope({ event: 'workflow_dispatch' })
+    expect(result.tier).toBe('full')
+    expect(result.runFull).toBe(true)
+    expect(result.reason).toMatch(/manual workflow dispatch always runs full/)
+  })
+
+  it('never classifies workflow_dispatch as light even with valid SHAs', () => {
+    const result = classifyCiScope({
+      event: 'workflow_dispatch',
+      baseSha: VALID_BASE,
+      headSha: VALID_HEAD,
+    })
+    expect(result.tier).toBe('full')
+    expect(result.runFull).toBe(true)
+  })
+
+  it('does not invoke git for workflow_dispatch', () => {
+    let gitCalled = false
+    const spawnSyncImpl = () => {
+      gitCalled = true
+      return { status: 0, stdout: 'docs/a.md\0', stderr: '' }
+    }
+    const result = classifyCiScope({
+      event: 'workflow_dispatch',
+      baseSha: VALID_BASE,
+      headSha: VALID_HEAD,
+      spawnSyncImpl,
+    })
+    expect(gitCalled).toBe(false)
+    expect(result.tier).toBe('full')
+  })
+
   it('fails closed to full for unrecognized events', () => {
     const result = classifyCiScope({ event: 'schedule', baseSha: VALID_BASE, headSha: VALID_HEAD })
     expect(result.tier).toBe('full')

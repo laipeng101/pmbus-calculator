@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-22（M19-A Done：CI 失败报告上传条件硬化）
+最后更新：2026-08-22（M19-B Done：受保护 main 与合并后重复 CI 消除）
 
 ## 当前产品基线
 
@@ -19,8 +19,37 @@
 ## 当前里程碑
 
 ```text
-M0–M19-A complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M19-B complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M19-B done — 受保护 main 与合并后重复 CI 消除
+
+- main 由单一 ruleset `protect-main` 严格保护：所有 main 变更必须经 PR；required check
+  为 GitHub Actions 的 `check`（app 从真实 check-run 查询后配置，不硬编码）；strict
+  up-to-date 开启；管理员无绕过（bypass actors 为空）；force push 与删除禁止；
+  人工 approval 要求为 0；无 merge queue、无签名要求、无 linear history 要求，
+  保持普通 merge commit 策略。
+- CI 触发模型：仅目标为 main 的 `pull_request` 与手动 `workflow_dispatch`；删除
+  `push: main` 触发器。PR checkout 默认测试 merge ref（不覆盖 `ref`），配合 strict
+  保护，PR CI 实际测试的树与 merge 后 main 树一致，第二次 merge CI 只会复验同一
+  棵树，因此删除；不使用 `paths`/`paths-ignore`/`merge_group`；单一 `check` job、
+  light/full 分级与 M18 concurrency 语义（同 PR 新提交取消旧 run、不同 PR 互不取消、
+  manual run 不因 PR concurrency 被取消）全部保留。
+- 证据模型：新增 `Record checked revision` 步骤（stable id `revision`）记录实际测试的
+  commit（`checked_sha`）与 tree（`checked_tree`），写入受控 `$GITHUB_OUTPUT`、日志与
+  step summary；merge 后比较 PR `checked_tree` 与最终 merge SHA 的 `HEAD^{tree}`，
+  完全相同即验证完成，不一致属于真实阻塞（workflow_dispatch 跑 full 并定位）。
+  `workflow_dispatch` 分类无条件为 full，是紧急/诊断入口，不是每次 merge 的固定步骤。
+- Workflow 最小权限：顶层 `permissions: contents: read`；checkout `fetch-depth: 0` 且
+  `persist-credentials: false`；删除已不可达的 push whitespace step；PR 完整 base→head
+  whitespace gate 与 M19-A Playwright 报告上传条件原样保留。
+- 回归测试扩展：`tests/ci-workflow.test.ts` 与 `tests/classify-ci-scope.test.ts` 覆盖
+  触发矩阵、权限、checkout、revision 证据、manual 永不 light、未知事件 fail closed、
+  重型步骤统一 full-tier 条件与 artifact gate 不回退。
+- 产品算法、UI 与 snapshot 零改动（0/0/0）；分支保护设置属于远程治理证据，
+  记录在最终任务报告，不在本文件维护动态 API 输出。
+- 状态依据：本地 `npm run verify` 与两个回归测试文件通过；PR/CI 审计证据见对应 PR
+  与 Actions 运行，不在本文件维护。
 
 ### M19-A done — CI 失败报告上传条件硬化
 
@@ -38,6 +67,7 @@ M0–M19-A complete；stable release v1.1.3；production distribution: GitHub Pa
   deadline）复现小文件、全量单测与 coverage 三种运行，均正常自退（rc=0），未在本地复现；
   不修改 engines、Vitest 版本或 CI Node 22 配置，列为 M20 候选独立调查。
 - 产品算法、UI、测试、构建与发布 smoke 行为零改动；snapshot 0/0/0。
+- 注：本条的 main-push CI 行为已由 M19-B 的受保护 main 策略取代（main 不再有 push CI）。
 - 状态依据：本地 `npm run verify` 与 `tests/ci-workflow.test.ts` 通过；PR/CI 审计证据见
   对应 PR 与 Actions 运行，不在本文件维护。
 
@@ -67,6 +97,7 @@ M0–M19-A complete；stable release v1.1.3；production distribution: GitHub Pa
   提交中翻转，PR head CI 全绿后 merge；不再创建第二个 bookkeeping PR；CI URL 与
   SHA 属于 PR/Actions/最终报告的审计证据，不写入 ROADMAP。
 - 产品算法、UI 与 snapshot 零改动（0/0/0）。
+- 注：本条的 main-push CI 行为已由 M19-B 的受保护 main 策略取代（main 不再有 push CI）。
 - 状态依据：分类器单测（含真实 git 临时仓库集成）、历史 commit range 验证与本地
   `npm run verify`；PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
 

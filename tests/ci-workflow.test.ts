@@ -1,11 +1,14 @@
-// Regression tests for .github/workflows/ci.yml structure (M19-A).
+// Regression tests for .github/workflows/ci.yml structure (M19-A/M19-B).
 //
 // These assertions pin the CI contract that GitHub expressions cannot check
 // for themselves: stable step ids for the Playwright steps, per-step report
 // upload gating, the shared full-tier condition, the single `check` job, no
-// workflow-level path filters, and the M18 concurrency semantics. Parsing is
-// deliberately dependency-free text-structure matching over step blocks —
-// good enough to pin these invariants without adding a YAML dependency.
+// workflow-level path filters, the M18 concurrency semantics, and the M19-B
+// protected-main trigger model (PR + workflow_dispatch only, minimal token
+// permissions, credential-free checkout of the PR merge ref, and recorded
+// revision/tree evidence). Parsing is deliberately dependency-free
+// text-structure matching over step blocks — good enough to pin these
+// invariants without adding a YAML dependency.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -86,7 +89,9 @@ describe('ci.yml structure', () => {
     expect(workflow).not.toMatch(/^\s*paths-ignore:/m)
   })
 
-  it('keeps the M18 concurrency semantics: per-PR groups, main never cancels', () => {
+  it('keeps the M18 concurrency semantics: PR-only cancellation, manual runs never cancelled', () => {
+    // Per-PR groups keep different PRs independent; a workflow_dispatch run
+    // groups by ref (never a PR number) and cancel-in-progress is PR-only.
     expect(workflow).toContain(
       'group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
     )
@@ -96,6 +101,89 @@ describe('ci.yml structure', () => {
   it('keeps the Classify CI scope step as the single run_full source', () => {
     expect(workflow).toMatch(/^ {8}id: scope\s*$/m)
     expect(workflow).toMatch(/^ {8}run: node scripts\/classify-ci-scope\.mjs /m)
+  })
+})
+
+describe('ci.yml trigger and permission model (M19-B)', () => {
+  it('auto-triggers only on pull requests targeting main', () => {
+    expect(workflow).toMatch(/^on:\n {2}pull_request:\n {4}branches: \[main\]\n/m)
+  })
+
+  it('supports manual workflow_dispatch', () => {
+    expect(workflow).toMatch(/^ {2}workflow_dispatch:\s*$/m)
+  })
+
+  it('no longer triggers on main pushes', () => {
+    expect(workflow).not.toMatch(/^ {2}push:/m)
+  })
+
+  it('has no merge_group trigger', () => {
+    expect(workflow).not.toMatch(/^ {2}merge_group:/m)
+  })
+
+  it('grants the workflow token only contents: read', () => {
+    expect(workflow).toMatch(/^permissions:\n {2}contents: read\n/m)
+  })
+})
+
+describe('ci.yml checkout and revision evidence (M19-B)', () => {
+  function checkoutStep(): string {
+    const match = stepBlocks(workflow).find((block) => block.includes('actions/checkout'))
+    if (!match) throw new Error('actions/checkout step not found')
+    return match
+  }
+
+  it('checks out full history without persisting credentials', () => {
+    const checkout = checkoutStep()
+    expect(checkout).toContain('fetch-depth: 0')
+    expect(checkout).toContain('persist-credentials: false')
+  })
+
+  it('does not override the checkout ref, keeping the PR merge-ref semantics', () => {
+    expect(checkoutStep()).not.toMatch(/^\s*ref:/m)
+  })
+
+  it('records the checked commit and tree under the stable id revision', () => {
+    const normalized = normalize(findStepByName('Record checked revision'))
+    expect(stepId(findStepByName('Record checked revision'))).toBe('revision')
+    expect(normalized).toContain('checked_sha="$(git rev-parse HEAD)"')
+    expect(normalized).toContain('checked_tree="$(git rev-parse \'HEAD^{tree}\')"')
+  })
+
+  it('validates 40-hex SHAs before writing outputs and fails hard otherwise', () => {
+    const normalized = normalize(findStepByName('Record checked revision'))
+    expect(normalized).toContain('set -euo pipefail')
+    expect(normalized).toContain('^[0-9a-f]{40}$')
+    expect(normalized).toContain('exit 1')
+    // Outputs are written only after the SHA validation guard.
+    expect(normalized.indexOf('^[0-9a-f]{40}$')).toBeLessThan(
+      normalized.indexOf('>> "$GITHUB_OUTPUT"'),
+    )
+  })
+
+  it('writes only the two controlled outputs and also logs a step summary', () => {
+    const normalized = normalize(findStepByName('Record checked revision'))
+    expect(normalized).toContain('checked_sha=$checked_sha')
+    expect(normalized).toContain('checked_tree=$checked_tree')
+    expect(normalized).toContain('>> "$GITHUB_STEP_SUMMARY"')
+    expect(normalized.match(/>> "\$GITHUB_OUTPUT"/g)).toHaveLength(1)
+  })
+})
+
+describe('ci.yml whitespace gates (M19-B)', () => {
+  it('keeps the full PR base-to-head whitespace gate', () => {
+    const normalized = normalize(findStepByName('Check full PR diff for whitespace errors'))
+    expect(normalized).toContain('git diff --check "$BASE_SHA" "$HEAD_SHA"')
+    expect(normalized).toContain('github.event.pull_request.base.sha')
+    expect(normalized).toContain('github.event.pull_request.head.sha')
+  })
+
+  it('no longer contains the unreachable push whitespace step', () => {
+    const stepPresent = stepBlocks(workflow).some((block) =>
+      normalize(block).startsWith('name: Check full pushed range'),
+    )
+    expect(stepPresent).toBe(false)
+    expect(workflow).not.toContain('BEFORE_SHA')
   })
 })
 
