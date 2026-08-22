@@ -143,7 +143,9 @@ describe('checkRepoHygiene', () => {
     expect(result.rejected).toContainEqual(
       expect.objectContaining({ file: 'document/large-spec.pdf', ruleId: 'large-file' }),
     )
-    expect(result.policyAllowlisted.documentPdfs).toBeUndefined()
+    // Policy allowlist categories are exactly snapshots + legacyFallbacks
+    // (document PDFs stopped being allowlisted when tracked PDFs were banned).
+    expect(Object.keys(result.policyAllowlisted).sort()).toEqual(['legacyFallbacks', 'snapshots'])
   })
 
   it('parses paths with spaces and Unicode via NUL-delimited git output', async () => {

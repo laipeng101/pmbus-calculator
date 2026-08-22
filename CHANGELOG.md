@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-08-23
+
+### Fixed
+
+- TypeScript 验证门禁真实性：`npm run typecheck` 从对 solution 根配置执行 `tsc --noEmit`（受检文件数为 0）改为 `tsc -b` 构建模式，真实检查应用源码、Vite/Node 配置、单元测试、E2E 测试与全部 Playwright 配置；新增 `tsconfig.tests.json`（strict + Node/Vitest 类型）与结构性回归测试，负向探针证明 src/tests/Playwright 配置错误均使门禁非零退出；`@types/node` 成为直接 devDependency；四个 mjs 脚本边界补精确 JSDoc 类型，修复 strict 检查暴露的 59 处测试类型错误（含 `documentPdfs` 过期断言与两处 E2E null 处理）。
+- 发布合同自动检查：新增完全离线的 `npm run check:release-contract`，以 `package.json` 版本为唯一来源校验 lockfile、CHANGELOG、release notes、双 README 链接、ROADMAP 声明与 Release 资产命名一致性（含成功/失败单测），接入 `npm run verify` 与 full CI。
+- 发布流程文档修正：`docs/RELEASING.md` 重写为 M19-B 后的正确流程——PR head full CI → 记录 checked_sha/checked_tree → 普通 merge → tree 审计（一致不重复 CI，不一致 workflow_dispatch full CI）→ 在精确 merge SHA 的干净 detached worktree 完成发布前全量验证与 zip/SHA256SUMS 校验后才能创建 annotated tag；删除已失效的“等待 main push CI”要求。
+- CI 与 Node 矩阵：full CI 的 Type check 步骤运行真实 `tsc -b`（日志可见 app/node/tests 三个项目）；Node 24 次级验证升级为 `typecheck + 单测`。
+- 仓库卫生与规范分发加固（v1.1.3 后合入）：repo-hygiene 门禁与制品政策、按 blob 计算树大小、clean preflight 跨平台；第三方规范 PDF 移出 Git tree，provenance/哈希集中维护在 manifest，下载走白名单 host、流式写入与 deadline 提交门禁。
+- Tailwind 构建范围可复现：`source(none)` + 显式 `@source` 隔离生产扫描范围，canary 回归防止非生产工具类再次泄漏进发行 CSS。
+- CI tier 与受保护 main：fail-closed light/full 分级、Playwright report 按失败步骤门控上传、`protect-main` ruleset（PR 必须、required check、strict up-to-date、禁 force push）与 merge 后 `checked_tree` 审计替代重复 CI。
+- Vitest/Node 验证加固：Vitest 4 与 coverage provider 成对升级（glob 弃用链移除）、engines 收紧为 Node 22/24、CI 增加 Node 24 次级验证。
+- 输入校验与键盘可靠性（M21）：统一整数语法拒绝 `1e2`/`0x10` 等宽松转换；过渡态不逐键报错、非法终值字段级可见错误并保留 draft；DIRECT 系数错误按字段隔离；`Ctrl+1..4` 仅在非编辑上下文生效；CommandPicker 搜索框显式 `aria-label`。
+- CommandPicker APG 焦点与搜索生命周期（M22）：`role="option"` 迁移到不进 Tab 顺序的 `<li>`；`aria-selected` 恒等于 `aria-activedescendant` 指向；ArrowUp/Down 首尾不循环；Tab/Shift+Tab 关闭弹层并移焦到 trigger 逻辑相邻控件；Escape 恢复 trigger 焦点；外部焦点关闭不抢焦；零匹配显示状态文案且 Enter 安全 no-op；清空 query 恢复选项、active 与滚动位置。
+
 ## [1.1.3] - 2026-08-16
 
 ### Fixed

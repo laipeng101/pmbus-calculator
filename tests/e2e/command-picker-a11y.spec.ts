@@ -3,7 +3,7 @@ import { test, expect, type Page } from '@playwright/test'
 /**
  * M22 CommandPicker APG 焦点、选择与搜索生命周期回归矩阵。
  *
- * 长期合同（docs/UI_CONVENTIONS.md §8/§11）：
+ * 长期合同（docs/UI_CONVENTIONS.md §9）：
  * - option 是不进入 Tab 顺序的语义元素；`aria-selected=true` 恒等于
  *   `aria-activedescendant` 指向的 active option；committed command 的视觉
  *   标记走 `data-current`，不复用 ARIA selection。

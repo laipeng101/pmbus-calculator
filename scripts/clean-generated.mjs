@@ -135,6 +135,9 @@ async function preflightCleanTarget(repoRoot, absoluteTarget) {
   return { exists: true }
 }
 
+/**
+ * @param {{ repoRoot: string, targets?: string[], dryRun?: boolean, log?: (...data: any[]) => void }} [options]
+ */
 export async function cleanGenerated({
   repoRoot,
   targets = GENERATED_TARGETS,

@@ -16,6 +16,23 @@ export const ALLOWED_LANDING_HOSTS = ['pmbus.org', 'www.smbus.org']
 export const ALLOWED_DOWNLOAD_HOSTS = ['pmbusprod.wpenginepowered.com', 'www.smbus.org']
 export const SUPPORTED_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 
+/**
+ * Structural response contract this script consumes. The built-in `fetch`
+ * satisfies it; tests inject mocks of the same shape. Header lookups accept
+ * both `Headers`-style `get()` and plain lowercase-key objects, mirroring
+ * `getResponseHeader`.
+ * @typedef {object} FetchResponseLike
+ * @property {number} status
+ * @property {boolean} [ok]
+ * @property {string} [url]
+ * @property {{ get?: (name: string) => (string | null) } | Record<string, unknown>} [headers]
+ * @property {{ cancel?: () => Promise<void> } | null} [body]
+ */
+
+/**
+ * @typedef {(url: string, init?: { redirect?: string, signal?: AbortSignal }) => Promise<FetchResponseLike>} FetchLike
+ */
+
 const HELP = `specifications.mjs — manage third-party PMBus/SMBus specification PDF provenance and cache
 
 Usage:
@@ -217,6 +234,9 @@ export function gitTrackedPdfs(repoRoot) {
   return output.split('\0').filter(Boolean)
 }
 
+/**
+ * @param {{ repoRoot?: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} [options]
+ */
 export function checkSpecifications({ repoRoot, log = console.log, error = console.error } = {}) {
   const result = {
     manifest: null,
@@ -261,6 +281,10 @@ export function checkSpecifications({ repoRoot, log = console.log, error = conso
   return result
 }
 
+/**
+ * @param {any} manifest
+ * @param {{ log?: (...data: any[]) => void }} [options]
+ */
 export function listSpecifications(manifest, { log = console.log } = {}) {
   assertValidManifest(manifest)
   for (const document of manifest.documents) {
@@ -339,6 +363,10 @@ async function rejectSymlinkSegments(repoRoot, absoluteTarget) {
   }
 }
 
+/**
+ * @param {string} repoRoot
+ * @param {string} [cacheDir]
+ */
 export async function resolveVerifiedCacheDir(repoRoot, cacheDir) {
   const realRoot = await realpathOrThrow(repoRoot, 'repository root')
   const absolute = path.resolve(realRoot, cacheDir)
@@ -545,6 +573,11 @@ async function streamResponseToTempFile(response, targetPath, document, signal) 
   }
 }
 
+/**
+ * @param {string} url
+ * @param {{ fetchImpl?: FetchLike, signal?: AbortSignal, downloadHosts?: string[] }} [options]
+ * @returns {Promise<FetchResponseLike>}
+ */
 export async function fetchWithRedirects(
   url,
   { fetchImpl = fetch, signal, downloadHosts = ALLOWED_DOWNLOAD_HOSTS } = {},
@@ -611,6 +644,9 @@ export async function fetchWithRedirects(
   }
 }
 
+/**
+ * @param {{ repoRoot: string, document: any, cacheDir?: string, fetchImpl?: FetchLike, timeoutMs?: number, log?: (...data: any[]) => void, downloadHosts?: string[] }} [options]
+ */
 export async function fetchOneDocument({
   repoRoot,
   document,
@@ -715,6 +751,9 @@ export async function fetchOneDocument({
   }
 }
 
+/**
+ * @param {{ repoRoot: string, manifest: any, all?: boolean, ids?: string[], cacheDir?: string, fetchImpl?: FetchLike, timeoutMs?: number, log?: (...data: any[]) => void, downloadHosts?: string[] }} [options]
+ */
 export async function fetchSpecifications({
   repoRoot,
   manifest,
@@ -765,6 +804,9 @@ export async function fetchSpecifications({
   return results
 }
 
+/**
+ * @param {{ repoRoot: string, manifest: any, cacheDir?: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} [options]
+ */
 export async function verifyCache({
   repoRoot,
   manifest,

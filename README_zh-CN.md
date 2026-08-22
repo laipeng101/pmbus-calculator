@@ -6,9 +6,9 @@
 一款完全运行于浏览器端、无后端的 PMBus 数据格式计算器。<br>
 支持 PMBus 1.3 规范定义的 **LINEAR11 (L11)**、**LINEAR16 / VOUT (L16)**、**DIRECT** 和 **IEEE 754 半精度浮点 (HALF)** 四种编码格式。
 
-> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （当前部署版本 `v1.1.3`）
+> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （当前部署版本 `v1.1.4`）
 >
-> **Stable version：** [`v1.1.3`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v1.1.3) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v1.1.3/SHA256SUMS.txt)
+> **Stable version：** [`v1.1.4`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v1.1.4) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v1.1.4/SHA256SUMS.txt)
 
 ---
 
@@ -83,7 +83,7 @@ npm test         # 运行 Vitest 测试
 
 **静态构建包：** `dist/` 是静态构建产物，必须通过 HTTP 静态服务器使用（例如 `npm run preview` 或任意静态托管服务），不承诺直接双击 `dist/index.html` 以 `file://` 方式打开。
 
-**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 部署的是不可变的 `v1.1.3` Release 资产。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
+**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 部署的是不可变的 `v1.1.4` Release 资产。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
 
 **操作流程：**
 

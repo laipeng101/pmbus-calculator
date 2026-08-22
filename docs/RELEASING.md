@@ -16,21 +16,92 @@
 
 - 已发布的 tag 和 GitHub Release 永不修改、移动或覆盖。
 - `package.json` 版本必须和最新稳定 tag 一致。
-- 发布必须来自完整 CI 全绿的 main SHA。
-- tag 必须建立在包含实现、测试、文档和版本号的最终 main commit 上，并且必须在等待该 main commit CI 成功后创建；不得在 CI 成功前打 tag。
+- 禁止在验证完成前创建或推送 tag；tag 永远建立在已通过完整验证的精确 main merge SHA 上。
 - Release 和 Pages 是实时发布状态的权威来源；README 不重复维护“最新 Pages 已成功”类状态，避免发布后再产生补文档 PR。
-- 发布后除非发现真实运行缺陷，不得创建补测试/补文档 PR；若发布后发现真实缺陷，按 SemVer 规则准备下一个 PATCH（例如 `v1.1.4`），不得移动已发布 tag。
+- 发布后除非发现真实运行缺陷，不得创建补测试/补文档 PR；若发布后发现真实缺陷，按 SemVer 规则准备下一个 PATCH（例如 `v1.1.5`），不得移动已发布 tag。
 - GitHub Release 是当前正式发行渠道，不发布 npm 包（`private: true`，不得执行 `npm publish`）。
+- Pages 只部署不可变 GitHub Release 资产，不部署 main 的临时构建。
+- 版本跨文件一致性由 `npm run check:release-contract` 离线门禁保证（已接入 `npm run verify` 与 full CI）。
 
 ## 发布流程
 
-1. 在最新 `origin/main` 上完成版本号、CHANGELOG、release notes 与文档更新。
-2. 运行完整验证：`npm ci`、`npm run test:e2e:install`、`npm run verify`、`npm run build`、`npm run test:e2e:release`。
-3. 创建 PR 并等待最新 head CI 全绿。
-4. 普通 merge commit 合入 main，等待 main push CI 全绿。
-5. 在 main CI 全绿的精确 SHA 上创建 annotated tag（版本变量记为 `vX.Y.Z`）：`git tag -a vX.Y.Z <sha> -m "PMBus Calculator vX.Y.Z"`。
-6. 推送 tag，从 tag 的干净工作区执行 `npm ci && npm run verify && npm run build`。
-7. 创建 GitHub Release（非 draft、非 prerelease），上传源码构建产物与 `SHA256SUMS.txt`。
+### 1. 版本准备（实现 PR 内完成）
+
+1. 在目标 `origin/main` 之上创建实现分支，完成代码、测试与文档变更。
+2. 用无 tag 的版本更新方式（例如 `npm version 1.1.4 --no-git-tag-version`）同步
+   `package.json` 与 `package-lock.json`。
+3. 更新 `CHANGELOG.md`（保留新的空 `[Unreleased]`，新增 `[X.Y.Z] - 实际发布日期`）、
+   `docs/releases/vX.Y.Z.md`、两份 README 的 stable/live/Release/SHA256SUMS 链接、
+   `docs/ROADMAP.md` 的 stable release 声明。
+4. `npm run check:release-contract` 必须在提交前通过。
+
+### 2. 合入 main（M19-B 模型）
+
+1. 本地完整验证（`npm run verify`，UI 变更另加 `npm run test:e2e:visual`）通过后，
+   一次 push 源分支并创建 PR。
+2. 等待 PR 最新 head SHA 的 required check（full CI）成功，记录 run URL、`head_sha`
+   与 `Record checked revision` 步骤输出的 `checked_sha`/`checked_tree`。
+3. 普通 merge commit 合入 main（不 squash）。
+4. `git fetch origin` 后比较 main merge SHA 的 `HEAD^{tree}` 与 PR CI 记录的
+   `checked_tree`：
+   - 完全相同：验证完成，不重复执行第二次 CI；
+   - 不一致：属于真实阻塞，立即用 `workflow_dispatch` 对精确 merge SHA 执行
+     full CI 并定位原因，未解决前不得继续发布。
+5. main 不再有 push CI（M19-B）；不存在“等待 main push CI 全绿”这一步。
+
+### 3. 发布前验证（tag 之前，强制）
+
+tree 审计成功后才允许进入本阶段。在精确 merge SHA 上创建干净 detached worktree，
+在其中 fresh 执行全部步骤，不得复用 PR 工作区旧产物：
+
+```bash
+git worktree add --detach <path> <exact-merge-sha>
+cd <path>
+npm ci
+npx playwright install chromium        # 或核对既有安装
+npm run typecheck
+npm run verify
+npm run test:e2e:visual
+npm run build
+npm run test:e2e:release
+```
+
+然后生成并校验发行资产：
+
+1. 从最终 `dist/` 生成 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`。
+2. zip 可解压；内容只来自最终 `dist/`；`index.html` 资源路径与 CSP 正确；
+   不包含源码、`node_modules`、source map 或临时文件。
+3. `SHA256SUMS.txt` 反向校验 zip（`shasum -a 256 -c`）必须通过。
+
+以上任一步失败：停止发布并修复，不得带病打 tag。
+
+### 4. tag 与 GitHub Release
+
+1. 全部验证成功后创建 annotated tag：
+
+   ```bash
+   git tag -a vX.Y.Z <exact-merge-sha> -m "PMBus Calculator vX.Y.Z"
+   ```
+
+2. 推送 tag 前再次确认 `git rev-parse vX.Y.Z^{commit}` 等于已验证 merge SHA、
+   `vX.Y.Z^{tree}` 等于已验证 tree，然后推送 tag。
+   tag push 是 PR 合并后的独立发布动作，不是源代码分支的第二次 push。
+3. 创建 GitHub Release：
+   - tag `vX.Y.Z`；非 draft、非 prerelease；
+   - Release notes 使用 `docs/releases/vX.Y.Z.md`；
+   - 上传 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`。
+4. 下载刚发布的两个资产，重新校验 checksum 与预期名称。
+5. 若 tag 已存在或远端版本冲突：停止，不得移动或覆盖。
+
+### 5. Pages 部署与线上 smoke
+
+1. `release published` 事件自动触发 Pages workflow（或手动 dispatch 传入 tag）；
+   等待其成功。部署顺序与校验细节见 `docs/DEPLOYING.md`（Release → Pages →
+   deployment smoke）。
+2. 对正式 Pages URL 执行 `DEPLOYMENT_URL=<url> npm run test:e2e:deployment`；
+   全部 deployment tests 必须真实运行并通过，不得记为 skip。
+3. 确认线上页面来自对应 Release 资产，而非 main 临时构建。
+4. 清理任务分支、detached worktree 与临时产物。
 
 ## 稳定公共契约
 
