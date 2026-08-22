@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-22（M18 Done：成本感知 CI 分级与单 PR 闭环）
+最后更新：2026-08-22（M19-A Done：CI 失败报告上传条件硬化）
 
 ## 当前产品基线
 
@@ -19,8 +19,27 @@
 ## 当前里程碑
 
 ```text
-M0–M18 complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M19-A complete；stable release v1.1.3；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M19-A done — CI 失败报告上传条件硬化
+
+- Playwright E2E 与 production release smoke 步骤获得稳定 step id（`e2e`、`release_smoke`）；
+  M18 的 concurrency、单一 `check` job、light/full 分类器与 required-check 名称全部保持不变。
+- 两个报告上传条件分别收紧为
+  `failure() && steps.scope.outputs.run_full != 'false' && steps.e2e.outcome == 'failure'` 与
+  `... && steps.release_smoke.outcome == 'failure'`：只有对应测试步骤确实执行并失败才上传；
+  light tier 不上传任何 Playwright 报告；full tier 在 typecheck/lint/coverage/build 等
+  非 Playwright 步骤失败时也不上传尚未生成的报告；artifact 名称与报告目录不变。
+- 新增 `tests/ci-workflow.test.ts` workflow 回归测试（零新依赖的结构化文本断言）：步骤 id、
+  逐报告上传条件、共享 full-tier 条件覆盖所有重型步骤、无 `paths`/`paths-ignore`、
+  单一 `check` job、concurrency PR/main 语义与分类器步骤不变。
+- 本地 Node 24.19.0 观察到的 Vitest 完成后进程不退出问题：本次以有限超时（120/120/150 秒
+  deadline）复现小文件、全量单测与 coverage 三种运行，均正常自退（rc=0），未在本地复现；
+  不修改 engines、Vitest 版本或 CI Node 22 配置，列为 M20 候选独立调查。
+- 产品算法、UI、测试、构建与发布 smoke 行为零改动；snapshot 0/0/0。
+- 状态依据：本地 `npm run verify` 与 `tests/ci-workflow.test.ts` 通过；PR/CI 审计证据见
+  对应 PR 与 Actions 运行，不在本文件维护。
 
 ### M18 done — 成本感知 CI 分级与单 PR 闭环
 
