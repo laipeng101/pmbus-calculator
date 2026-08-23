@@ -23,6 +23,25 @@
 - Pages 只部署不可变 GitHub Release 资产，不部署 main 的临时构建。
 - 版本跨文件一致性由 `npm run check:release-contract` 离线门禁保证（已接入 `npm run verify` 与 full CI）。
 
+## 中断恢复
+
+若 `npm run release:prepare-assets` 被中断（Ctrl+C、进程崩溃、断电等），
+可能遗留锁文件或备份目录。以下命令用于显式恢复：
+
+- **锁文件恢复**：`node scripts/prepare-release-assets.mjs --recover-lock`
+  仅当锁的 PID 确已不存在、repo 路径匹配且锁元数据完整时删除锁文件。
+  PID 仍在运行、EPERM 或元数据不完整时拒绝恢复，需人工审计。
+
+- **事务恢复**：`node scripts/prepare-release-assets.mjs --recover`
+  仅当 output 目录缺失、恰好一个备份目录存在且备份内容验证通过时，
+  将备份恢复为 output。output 与 backup 同时存在时拒绝，需人工审计。
+
+- **不得自动删除**：无效 JSON、权限不明的锁不会被自动删除；
+  中断后的备份也不被自动移除。始终使用显式恢复命令或人工审计后清理。
+
+- **`npm run clean`** 同时清理 `.release-staging.lock` 与
+  `.release-staging/` 目录（M26 起包含锁文件）。
+
 ## 发布流程
 
 ### 1. 版本准备（实现 PR 内完成）

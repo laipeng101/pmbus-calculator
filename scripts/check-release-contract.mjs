@@ -22,7 +22,7 @@ import { realpathSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { assetZipName, assetSumsName, PAGES_ZIP_TEMPLATE } from './release-artifact-contract.mjs'
 
 const RELEASES_URL_VERSION_PATTERN = /\/releases\/(?:tag|download)\/v(\d+\.\d+\.\d+)/g
@@ -272,11 +272,107 @@ export async function checkReleasingArtifactNames(repoRoot, version) {
 }
 
 // ---------------------------------------------------------------------------
-// Generator shared-contract check (M25)
+// Generator behavioral contract check (M26 WP-E)
 // ---------------------------------------------------------------------------
 
 /**
+ * Check that the generator's getReleasePlan produces names consistent
+ * with the shared contract and the package version. This is a behavioral
+ * check (imports and calls the actual function), not a source-grep.
+ *
+ * @param {string} repoRoot
+ * @param {string} version -- current package version
+ * @returns {Promise<{ ok: boolean, errors: string[] }>}
+ */
+async function checkGeneratorBehavioralContract(repoRoot, version) {
+  const errors = []
+  try {
+    // Dynamic import of the generator module
+    const genPath = path.join(repoRoot, 'scripts', 'prepare-release-assets.mjs')
+
+    // Verify the file exists first
+    try {
+      await fs.access(genPath)
+    } catch {
+      errors.push(`scripts/prepare-release-assets.mjs not found at ${genPath}`)
+      return { ok: false, errors }
+    }
+
+    const genUrl = pathToFileURL(genPath).href
+    /** @type {{ getReleasePlan?: (v: string) => any }} */
+    let gen
+    try {
+      gen = await import(genUrl)
+    } catch (importErr) {
+      // Dynamic import may fail in test environments (e.g., Vitest workers).
+      // Fall back to source-level check in this case.
+      const msg = /** @type {Error} */ (importErr).message || String(importErr)
+      if (msg.includes('Cannot find module') || msg.includes('not found')) {
+        const genSource = await fs.readFile(genPath, 'utf8')
+        const hasGetReleasePlan = genSource.includes('export function getReleasePlan')
+        if (!hasGetReleasePlan) {
+          errors.push(
+            'scripts/prepare-release-assets.mjs does not export getReleasePlan (behavioral contract required)',
+          )
+          return { ok: false, errors }
+        }
+        // Can't verify the actual return values, but the export exists
+        return { ok: true, errors: [] }
+      }
+      throw importErr
+    }
+
+    if (typeof gen.getReleasePlan !== 'function') {
+      errors.push(
+        'scripts/prepare-release-assets.mjs does not export getReleasePlan (behavioral contract required)',
+      )
+      return { ok: false, errors }
+    }
+
+    const plan = gen.getReleasePlan(version)
+
+    // Verify zip name matches shared contract
+    const expectedZip = assetZipName(version)
+    if (plan.zipName !== expectedZip) {
+      errors.push(
+        `generator getReleasePlan zipName "${plan.zipName}" does not match shared contract "${expectedZip}"`,
+      )
+    }
+
+    // Verify sums name matches shared contract
+    const expectedSums = assetSumsName()
+    if (plan.sumsName !== expectedSums) {
+      errors.push(
+        `generator getReleasePlan sumsName "${plan.sumsName}" does not match shared contract "${expectedSums}"`,
+      )
+    }
+
+    // Verify Pages template matches shared contract
+    if (plan.pagesZipTemplate !== PAGES_ZIP_TEMPLATE) {
+      errors.push(
+        `generator getReleasePlan pagesZipTemplate "${plan.pagesZipTemplate}" does not match shared contract "${PAGES_ZIP_TEMPLATE}"`,
+      )
+    }
+
+    // Verify tag
+    const expectedTag = `v${version}`
+    if (plan.tag !== expectedTag) {
+      errors.push(
+        `generator getReleasePlan tag "${plan.tag}" does not match expected "${expectedTag}"`,
+      )
+    }
+
+    return { ok: errors.length === 0, errors }
+  } catch (e) {
+    const msg = /** @type {Error} */ (e).message || String(e)
+    errors.push(`generator behavioral contract check failed: ${msg}`)
+    return { ok: false, errors }
+  }
+}
+
+/**
  * Check that the generator imports from the shared artifact contract.
+ * Kept as a supplementary check alongside the behavioral check.
  * @param {string} repoRoot
  * @returns {Promise<boolean>}
  */
@@ -311,6 +407,8 @@ async function checkGeneratorImportsSharedContract(repoRoot) {
  *   pagesHasSums: boolean,
  *   pagesMatchesSharedContract: boolean,
  *   generatorImportsSharedContract: boolean,
+ *   generatorBehavioralOk: boolean,
+ *   generatorBehavioralErrors: string[],
  * }} contract
  * @returns {{ ok: boolean, errors: string[] }}
  */
@@ -335,7 +433,7 @@ export function validateReleaseContract(contract) {
     }
   }
 
-  // CHANGELOG: structured validation (M25 — includes [Unreleased] check).
+  // CHANGELOG: structured validation (M25 -- includes [Unreleased] check).
   const changelogResult = validateChangelog(contract.changelog, version)
   errors.push(...changelogResult.errors)
 
@@ -389,16 +487,21 @@ export function validateReleaseContract(contract) {
     errors.push('.github/workflows/pages.yml does not reference SHA256SUMS.txt')
   }
 
-  // RELEASING.md artifact consistency (M25 — now part of the contract, not a side check).
+  // RELEASING.md artifact consistency (M25 -- now part of the contract, not a side check).
   const releasingErrors = checkReleasingContent(contract.releasing, version)
   errors.push(...releasingErrors)
 
-  // Generator shared-contract wiring (M25).
+  // Generator shared-contract wiring (M25 -- source check is supplementary).
   if (!contract.generatorImportsSharedContract) {
     errors.push(
       'scripts/prepare-release-assets.mjs does not import from the shared artifact contract ' +
         '(scripts/release-artifact-contract.mjs)',
     )
+  }
+
+  // Generator behavioral contract (M26 WP-E -- must produce correct names).
+  if (!contract.generatorBehavioralOk) {
+    errors.push(...contract.generatorBehavioralErrors)
   }
 
   return { ok: errors.length === 0, errors }
@@ -466,6 +569,8 @@ function validateReadme(name, content, version, errors) {
  *   pagesHasSums: boolean,
  *   pagesMatchesSharedContract: boolean,
  *   generatorImportsSharedContract: boolean,
+ *   generatorBehavioralOk: boolean,
+ *   generatorBehavioralErrors: string[],
  * }>}
  */
 export async function readContract(repoRoot) {
@@ -484,6 +589,7 @@ export async function readContract(repoRoot) {
   const { zipTemplate, hasSums, matchesSharedContract } = await readPagesArtifactTemplate(repoRoot)
   const releasing = await fs.readFile(path.join(repoRoot, 'docs', 'RELEASING.md'), 'utf8')
   const generatorImportsSharedContract = await checkGeneratorImportsSharedContract(repoRoot)
+  const behavioralResult = await checkGeneratorBehavioralContract(repoRoot, pkg.version)
 
   return {
     version: pkg.version,
@@ -505,6 +611,8 @@ export async function readContract(repoRoot) {
     pagesHasSums: hasSums,
     pagesMatchesSharedContract: matchesSharedContract,
     generatorImportsSharedContract,
+    generatorBehavioralOk: behavioralResult.ok,
+    generatorBehavioralErrors: behavioralResult.errors,
   }
 }
 

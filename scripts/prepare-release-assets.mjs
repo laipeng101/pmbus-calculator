@@ -1,25 +1,27 @@
-// Deterministic, transactional release asset generation (M24, hardened M25).
+// Deterministic, transactional release asset generation (M25, hardened M26).
 //
 // Generates reproducible pmbus-calculator-vX.Y.Z-web.zip and SHA256SUMS.txt
 // from the final dist/ directory. Key properties:
 // - Version is read from package.json (single source of truth).
 // - Asset naming from shared contract (scripts/release-artifact-contract.mjs).
 // - Zip contents are sorted, timestamped at DOS epoch, no extra fields.
-// - Same dist/ + same Python/zlib toolchain → same zip bytes.
+// - Same dist/ + same Python/zlib toolchain -- same zip bytes.
 // - Fail-closed Dirent classification: no silent skip of symlinks/special files.
-// - Transactional publish with staging, backup, and rollback.
-// - Concurrency lock (one process at a time).
+// - Transactional publish with explicit state machine and recovery.
+// - Atomic O_EXCL concurrency lock with ownership metadata.
 // - No .cache/zip-* temp files; no dynamic Python script generation.
 // - Python executable is injectable via PYTHON3 environment variable.
 // - Checksum verification uses Node crypto (not shell shasum).
 //
 // Usage:
-//   node scripts/prepare-release-assets.mjs            # normal run
-//   node scripts/prepare-release-assets.mjs --force    # overwrite existing
-//   PYTHON3=/path/to/python3 node ...                  # inject Python
+//   node scripts/prepare-release-assets.mjs              # normal run
+//   node scripts/prepare-release-assets.mjs --force      # overwrite existing
+//   node scripts/prepare-release-assets.mjs --recover    # recover from interrupt
+//   node scripts/prepare-release-assets.mjs --recover-lock  # recover stale lock
+//   PYTHON3=/path/to/python3 node ...                    # inject Python
 
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -33,7 +35,41 @@ import { assetNames, validateZipEntry } from './release-artifact-contract.mjs'
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const STAGING_DIR = '.release-staging'
 const LOCK_FILE = '.release-staging.lock'
+const LOCK_SCHEMA_VERSION = 1
 const PYTHON3 = process.env.PYTHON3 || 'python3'
+
+// ---------------------------------------------------------------------------
+// getReleasePlan -- behavioral artifact contract (WP-E)
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the actual release plan a generator would use for a given version.
+ * This is a pure function with no side effects. check-release-contract must
+ * call this (or --print-plan-json) instead of grepping source strings.
+ *
+ * @param {string} version -- plain semver from package.json
+ * @returns {{
+ *   tag: string,
+ *   zipName: string,
+ *   sumsName: string,
+ *   stagingDir: string,
+ *   outputDir: string,
+ *   pagesZipTemplate: string,
+ *   contractSchemaVersion: number,
+ * }}
+ */
+export function getReleasePlan(version) {
+  const names = assetNames(version)
+  return {
+    tag: `v${version}`,
+    zipName: names.zip,
+    sumsName: names.sums,
+    stagingDir: STAGING_DIR,
+    outputDir: 'release-output',
+    pagesZipTemplate: 'pmbus-calculator-${RELEASE_TAG}-web.zip',
+    contractSchemaVersion: LOCK_SCHEMA_VERSION,
+  }
+}
 
 // ---------------------------------------------------------------------------
 // walkDist -- fail-closed Dirent classification
@@ -126,8 +162,10 @@ function validateAndCollectEntries(distDir, files) {
  * @param {string[]} files -- absolute paths from walkDist
  * @param {string} outputPath -- destination zip path
  * @param {string} [python3] -- injectable Python executable
+ * @param {{ execFile?: typeof execFileSync }} [deps]
  */
-function createDeterministicZip(distDir, files, outputPath, python3 = PYTHON3) {
+function createDeterministicZip(distDir, files, outputPath, python3 = PYTHON3, deps) {
+  const execFile = (deps && deps.execFile) || execFileSync
   const entries = validateAndCollectEntries(distDir, files)
 
   // Build manifest as JSON lines
@@ -138,7 +176,7 @@ function createDeterministicZip(distDir, files, outputPath, python3 = PYTHON3) {
 
   const zipHelper = path.join(repoRoot, 'scripts', '_zip_helper.py')
 
-  execFileSync(python3, [zipHelper, distDir, outputPath], {
+  execFile(python3, [zipHelper, distDir, outputPath], {
     input: manifest,
     stdio: ['pipe', 'inherit', 'inherit'],
     timeout: 60_000,
@@ -154,24 +192,30 @@ function createDeterministicZip(distDir, files, outputPath, python3 = PYTHON3) {
  *
  * @param {string} filePath
  * @param {string} sumsPath
+ * @param {{ writeFileSync?: typeof fs.writeFileSync, readFileSync?: typeof fs.readFileSync, createHash?: typeof createHash }} [deps]
  */
-function generateChecksums(filePath, sumsPath) {
-  const data = fs.readFileSync(filePath)
-  const hash = createHash('sha256').update(data).digest('hex')
+function generateChecksums(filePath, sumsPath, deps) {
+  const readFileSync = (deps && deps.readFileSync) || fs.readFileSync
+  const writeFileSync = (deps && deps.writeFileSync) || fs.writeFileSync
+  const hashFn = (deps && deps.createHash) || createHash
+  const data = readFileSync(filePath)
+  const hash = hashFn('sha256').update(data).digest('hex')
   const name = path.basename(filePath)
-  fs.writeFileSync(sumsPath, `${hash}  ${name}\n`)
+  writeFileSync(sumsPath, `${hash}  ${name}\n`)
 }
 
 /**
  * Verify a SHA256SUMS.txt file against its listed file using Node crypto.
- * Unlike shell `shasum -c`, this does not depend on platform shasum.
  *
  * @param {string} sumsPath
  * @param {string} expectedDir -- directory containing the listed file
+ * @param {{ readFileSync?: typeof fs.readFileSync, createHash?: typeof createHash }} [deps]
  * @returns {boolean}
  */
-function verifyChecksums(sumsPath, expectedDir) {
-  const content = fs.readFileSync(sumsPath, 'utf8').trim()
+function verifyChecksums(sumsPath, expectedDir, deps) {
+  const readFileSync = (deps && deps.readFileSync) || fs.readFileSync
+  const hashFn = (deps && deps.createHash) || createHash
+  const content = readFileSync(sumsPath, 'utf8').trim()
   const lines = content.split('\n').filter((l) => l.length > 0)
   for (const line of lines) {
     const match = line.match(/^([0-9a-f]{64})\s{2}(.+)$/)
@@ -181,7 +225,7 @@ function verifyChecksums(sumsPath, expectedDir) {
     const expectedHash = match[1]
     const fileName = match[2]
     const filePath = path.join(expectedDir, fileName)
-    const actualHash = createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
+    const actualHash = hashFn('sha256').update(readFileSync(filePath)).digest('hex')
     if (actualHash !== expectedHash) {
       throw new Error(
         `checksum mismatch for ${fileName}: expected ${expectedHash}, got ${actualHash}`,
@@ -192,84 +236,244 @@ function verifyChecksums(sumsPath, expectedDir) {
 }
 
 // ---------------------------------------------------------------------------
-// Concurrency lock
+// Atomic concurrency lock with ownership (WP-A)
 // ---------------------------------------------------------------------------
 
 /**
- * Acquire a concurrency lock. Returns a cleanup function.
- * If the lock is held by another process, throws.
- * If a stale lock is detected (no PID file or process not running), removes it.
+ * @typedef {{
+ *   schemaVersion: number,
+ *   pid: number,
+ *   startedAt: string,
+ *   nonce: string,
+ *   repoRealpath: string,
+ * }} LockMetadata
+ */
+
+/**
+ * Acquire a concurrency lock using O_CREAT|O_EXCL (atomic).
+ *
+ * Lock content is structured JSON with ownership metadata. The lock is
+ * only cleaned up when nonce, PID, and repo all match the creating process.
+ *
+ * Invalid JSON, EPERM, unknown PID, or ambiguous locks are NOT auto-deleted.
+ * Use --recover-lock for explicit recovery.
  *
  * @param {string} repoRoot
- * @returns {() => void} -- cleanup function to release the lock
+ * @param {{ openSync?: typeof fs.openSync, writeSync?: typeof fs.writeSync, closeSync?: typeof fs.closeSync, existsSync?: typeof fs.existsSync, readFileSync?: typeof fs.readFileSync, unlinkSync?: typeof fs.unlinkSync, realpathSync?: typeof fs.realpathSync }} [deps]
+ * @returns {{ release: () => void, nonce: string }}
  */
-function acquireLock(repoRoot) {
+export function acquireLock(repoRoot, deps) {
+  const openSync = (deps && deps.openSync) || fs.openSync
+  const writeSync = (deps && deps.writeSync) || fs.writeSync
+  const closeSync = (deps && deps.closeSync) || fs.closeSync
+  const existsSync = (deps && deps.existsSync) || fs.existsSync
+  const readFileSync = (deps && deps.readFileSync) || fs.readFileSync
+  const unlinkSync = (deps && deps.unlinkSync) || fs.unlinkSync
+  const realpathSync = (deps && deps.realpathSync) || fs.realpathSync
+
   const lockPath = path.join(repoRoot, LOCK_FILE)
-  if (fs.existsSync(lockPath)) {
-    try {
-      const pid = parseInt(fs.readFileSync(lockPath, 'utf8').trim(), 10)
-      if (isNaN(pid) || pid <= 0) {
-        // Stale lock with invalid PID
-        fs.unlinkSync(lockPath)
-      } else {
-        try {
-          process.kill(pid, 0)
-          throw new Error(
-            `another release asset generation is in progress (PID ${pid}). ` +
-              `If stale, manually remove ${LOCK_FILE}`,
-          )
-        } catch (e) {
-          if (/** @type {{ code?: string }} */ (/** @type {unknown} */ (e)).code === 'ESRCH') {
-            // Process not running -- stale lock
-            fs.unlinkSync(lockPath)
-          } else {
-            throw e
-          }
-        }
-      }
-    } catch (e) {
-      if (e instanceof Error && e.message.includes('another release')) throw e
-      // If we can't read/parse the lock, try to remove it
-      try {
-        fs.unlinkSync(lockPath)
-      } catch {
-        /* best effort */
-      }
-    }
+  const nonce = randomUUID()
+  const repoRealpath = realpathSync(repoRoot)
+
+  /** @type {LockMetadata} */
+  const metadata = {
+    schemaVersion: LOCK_SCHEMA_VERSION,
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    nonce,
+    repoRealpath,
   }
 
-  fs.writeFileSync(lockPath, String(process.pid))
+  // Atomic O_CREAT|O_EXCL: 'wx' flag
+  let fd
+  try {
+    fd = openSync(lockPath, 'wx', 0o600)
+  } catch (e) {
+    const err = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
+    if (err.code === 'EEXIST') {
+      // Lock exists -- read and diagnose
+      /** @type {LockMetadata | null} */
+      let existing = null
+      let parseError = false
+      try {
+        const raw = readFileSync(lockPath, 'utf8')
+        existing = JSON.parse(raw)
+      } catch {
+        parseError = true
+      }
 
-  return () => {
-    try {
-      if (fs.existsSync(lockPath)) {
-        const content = fs.readFileSync(lockPath, 'utf8').trim()
-        if (content === String(process.pid)) {
-          fs.unlinkSync(lockPath)
+      if (parseError || !existing || typeof existing.pid !== 'number') {
+        throw new Error(
+          `Lock file ${LOCK_FILE} exists but contains invalid data. ` +
+            `Use --recover-lock to inspect and recover manually.`,
+        )
+      }
+
+      // Check if the owning process is still alive
+      let alive = false
+      try {
+        process.kill(existing.pid, 0)
+        alive = true
+      } catch (ke) {
+        const kerr = /** @type {{ code?: string }} */ (/** @type {unknown} */ (ke))
+        if (kerr.code === 'ESRCH') {
+          alive = false
+        } else if (kerr.code === 'EPERM') {
+          // Process exists but we don't have permission to signal it
+          throw new Error(
+            `Lock held by PID ${existing.pid} (permission denied). ` +
+              `Cannot determine if it's stale. Use --recover-lock for manual recovery.`,
+          )
+        } else {
+          throw ke
         }
       }
-    } catch {
-      // best effort cleanup
+
+      if (alive) {
+        throw new Error(
+          `Another release asset generation is in progress (PID ${existing.pid}). ` +
+            `If this is stale, use --recover-lock.`,
+        )
+      }
+
+      // Process is dead, but we don't auto-delete. Require explicit recovery.
+      throw new Error(
+        `Lock file ${LOCK_FILE} exists but PID ${existing.pid} is not running. ` +
+          `Use --recover-lock to recover.`,
+      )
     }
+    throw e
+  }
+
+  // Write lock metadata
+  writeSync(fd, JSON.stringify(metadata) + '\n')
+  closeSync(fd)
+
+  let released = false
+
+  return {
+    nonce,
+    release() {
+      if (released) return
+      released = true
+      try {
+        if (!existsSync(lockPath)) return
+        const raw = readFileSync(lockPath, 'utf8')
+        /** @type {LockMetadata} */
+        let parsed
+        try {
+          parsed = JSON.parse(raw)
+        } catch {
+          // Can't parse -- don't touch
+          return
+        }
+        // Only delete if nonce, PID, and repo all match
+        if (
+          parsed.nonce === nonce &&
+          parsed.pid === process.pid &&
+          parsed.repoRealpath === repoRealpath
+        ) {
+          unlinkSync(lockPath)
+        }
+      } catch {
+        // best effort
+      }
+    },
   }
 }
 
+/**
+ * Attempt to recover a stale lock. Only succeeds when the lock is provably
+ * dead and belongs to this repo.
+ *
+ * @param {string} repoRoot
+ * @param {{ existsSync?: typeof fs.existsSync, readFileSync?: typeof fs.readFileSync, unlinkSync?: typeof fs.unlinkSync, realpathSync?: typeof fs.realpathSync }} [deps]
+ * @returns {{ recovered: boolean, reason?: string }}
+ */
+export function recoverLock(repoRoot, deps) {
+  const existsSync = (deps && deps.existsSync) || fs.existsSync
+  const readFileSync = (deps && deps.readFileSync) || fs.readFileSync
+  const unlinkSync = (deps && deps.unlinkSync) || fs.unlinkSync
+  const realpathSync = (deps && deps.realpathSync) || fs.realpathSync
+
+  const lockPath = path.join(repoRoot, LOCK_FILE)
+
+  if (!existsSync(lockPath)) {
+    return { recovered: false, reason: 'no lock file found' }
+  }
+
+  /** @type {LockMetadata | null} */
+  let metadata = null
+  try {
+    const raw = readFileSync(lockPath, 'utf8')
+    metadata = JSON.parse(raw)
+  } catch {
+    return {
+      recovered: false,
+      reason: `lock file ${LOCK_FILE} contains invalid JSON -- manual audit required`,
+    }
+  }
+
+  if (!metadata || typeof metadata.pid !== 'number' || !metadata.nonce || !metadata.repoRealpath) {
+    return {
+      recovered: false,
+      reason: `lock file ${LOCK_FILE} has incomplete metadata -- manual audit required`,
+    }
+  }
+
+  // Check repo match
+  const currentRepoRealpath = realpathSync(repoRoot)
+  if (metadata.repoRealpath !== currentRepoRealpath) {
+    return {
+      recovered: false,
+      reason: `lock belongs to a different repo: ${metadata.repoRealpath}`,
+    }
+  }
+
+  // Check PID is dead
+  try {
+    process.kill(metadata.pid, 0)
+    return { recovered: false, reason: `PID ${metadata.pid} is still running -- cannot recover` }
+  } catch (e) {
+    const kerr = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
+    if (kerr.code === 'EPERM') {
+      return {
+        recovered: false,
+        reason: `PID ${metadata.pid} status unknown (EPERM) -- manual audit required`,
+      }
+    }
+    if (kerr.code !== 'ESRCH') {
+      return {
+        recovered: false,
+        reason: `cannot determine PID ${metadata.pid} status: ${/** @type {Error} */ (/** @type {unknown} */ (e)).message || kerr}`,
+      }
+    }
+    // ESRCH -- process not running, safe to recover
+  }
+
+  unlinkSync(lockPath)
+  return { recovered: true }
+}
+
 // ---------------------------------------------------------------------------
-// Transactional publish
+// Transaction state machine (WP-B)
 // ---------------------------------------------------------------------------
 
 /**
- * Detect and handle stale state from a previous interrupted run.
+ * Detect stale state from a previous interrupted run.
  * Fails closed: refuses to run if we can't determine safety.
  *
  * @param {string} repoRoot
+ * @param {{ existsSync?: typeof fs.existsSync, readdirSync?: typeof fs.readdirSync }} [deps]
  */
-function detectStaleState(repoRoot) {
-  const staging = path.join(repoRoot, STAGING_DIR)
-  const output = path.join(repoRoot, 'release-output')
+function detectStaleState(repoRoot, deps) {
+  const existsSync = (deps && deps.existsSync) || fs.existsSync
+  const readdirSync = (deps && deps.readdirSync) || fs.readdirSync
 
-  if (fs.existsSync(staging)) {
-    const entries = fs.readdirSync(staging)
+  const staging = path.join(repoRoot, STAGING_DIR)
+
+  if (existsSync(staging)) {
+    const entries = readdirSync(staging)
     if (entries.length > 0) {
       throw new Error(
         `.release-staging/ is not empty (${entries.length} entries). ` +
@@ -279,76 +483,198 @@ function detectStaleState(repoRoot) {
   }
 
   // Check for backup from interrupted --force
-  const backup = path.join(repoRoot, 'release-output.backup')
-  if (fs.existsSync(backup)) {
+  const backups = readdirSync(repoRoot).filter((e) => e.startsWith('release-output.backup'))
+  if (backups.length > 0) {
     throw new Error(
-      `release-output.backup exists from a previous interrupted --force run. ` +
-        `Manual audit required before proceeding.`,
+      `Backup directories exist: ${backups.join(', ')}. ` +
+        `A previous --force run may have been interrupted. Use --recover to attempt recovery.`,
     )
-  }
-
-  // Check for output without backup (normal state, OK)
-  if (fs.existsSync(output) && !fs.existsSync(backup)) {
-    // Normal state -- OK
   }
 }
 
 /**
- * Generate assets into a unique staging directory, verify, then publish.
+ * Verify that the output directory contains exactly the two expected assets.
+ *
+ * @param {string} outputDir
+ * @param {string} zipName
+ * @param {string} sumsName
+ * @param {{ readdirSync?: typeof fs.readdirSync, existsSync?: typeof fs.existsSync }} [deps]
+ */
+function verifyOutputContents(outputDir, zipName, sumsName, deps) {
+  const readdirSync = (deps && deps.readdirSync) || fs.readdirSync
+  const existsSync = (deps && deps.existsSync) || fs.existsSync
+
+  if (!existsSync(outputDir)) {
+    throw new Error(`output directory does not exist: ${outputDir}`)
+  }
+
+  const entries = readdirSync(outputDir).filter((e) => e !== '.' && e !== '..')
+
+  if (entries.length !== 2) {
+    throw new Error(
+      `output directory ${outputDir} has ${entries.length} entries (${entries.join(', ')}), expected exactly 2 (${zipName}, ${sumsName})`,
+    )
+  }
+
+  const hasZip = entries.includes(zipName)
+  const hasSums = entries.includes(sumsName)
+
+  if (!hasZip || !hasSums) {
+    throw new Error(
+      `output directory ${outputDir} has unexpected contents: ${entries.join(', ')}. ` +
+        `Expected: ${zipName}, ${sumsName}`,
+    )
+  }
+}
+
+/**
+ * Attempt to recover from an interrupted --force run.
+ * Recovery rules:
+ * - output missing + only backup exists → restore from backup
+ * - output and backup both exist → refuse (require manual audit)
+ * - no backup → nothing to recover
+ *
+ * @param {string} repoRoot
+ * @param {string} outputDir
+ * @param {string} zipName
+ * @param {string} sumsName
+ * @param {{ existsSync?: typeof fs.existsSync, readdirSync?: typeof fs.readdirSync, renameSync?: typeof fs.renameSync, rmSync?: typeof fs.rmSync }} [deps]
+ * @returns {{ recovered: boolean, reason?: string }}
+ */
+export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps) {
+  const existsSync = (deps && deps.existsSync) || fs.existsSync
+  const readdirSync = (deps && deps.readdirSync) || fs.readdirSync
+  const renameSync = (deps && deps.renameSync) || fs.renameSync
+
+  // Find backup directories
+  const backups = readdirSync(repoRoot).filter((e) => e.startsWith('release-output.backup'))
+
+  if (backups.length === 0) {
+    return { recovered: false, reason: 'no backup directories found' }
+  }
+
+  if (backups.length > 1) {
+    return {
+      recovered: false,
+      reason: `multiple backup directories found: ${backups.join(', ')} -- manual audit required`,
+    }
+  }
+
+  const backupDir = path.join(repoRoot, backups[0])
+  const outputExists = existsSync(outputDir)
+
+  if (outputExists) {
+    return {
+      recovered: false,
+      reason:
+        `both output and backup exist -- manual audit required. ` +
+        `Compare ${outputDir} and ${backupDir} before proceeding.`,
+    }
+  }
+
+  // Verify backup contents
+  try {
+    verifyOutputContents(backupDir, zipName, sumsName, { existsSync, readdirSync })
+  } catch (e) {
+    return {
+      recovered: false,
+      reason: `backup ${backupDir} failed verification: ${/** @type {Error} */ (e).message}`,
+    }
+  }
+
+  // Restore: rename backup to output
+  renameSync(backupDir, outputDir)
+  return { recovered: true }
+}
+
+/**
+ * Generate assets into a unique staging directory, verify, then publish
+ * using a transactional state machine.
  *
  * @param {string} distDir
  * @param {string} outputDir -- release-output/
  * @param {boolean} force
  * @param {string} [python3] -- injectable Python executable
+ * @param {{
+ *   execFile?: typeof execFileSync,
+ *   mkdirSync?: typeof fs.mkdirSync,
+ *   mkdtempSync?: typeof fs.mkdtempSync,
+ *   renameSync?: typeof fs.renameSync,
+ *   rmSync?: typeof fs.rmSync,
+ *   existsSync?: typeof fs.existsSync,
+ *   readdirSync?: typeof fs.readdirSync,
+ *   statSync?: typeof fs.statSync,
+ *   readFileSync?: typeof fs.readFileSync,
+ *   writeFileSync?: typeof fs.writeFileSync,
+ *   createHash?: typeof createHash,
+ * }} [deps]
  */
-export function generateAssets(distDir, outputDir, force, python3 = PYTHON3) {
+export function generateAssets(distDir, outputDir, force, python3 = PYTHON3, deps) {
+  const mkdirSync = (deps && deps.mkdirSync) || fs.mkdirSync
+  const mkdtempSync = (deps && deps.mkdtempSync) || fs.mkdtempSync
+  const renameSync = (deps && deps.renameSync) || fs.renameSync
+  const rmSync = (deps && deps.rmSync) || fs.rmSync
+  const existsSync = (deps && deps.existsSync) || fs.existsSync
+  const statSync = (deps && deps.statSync) || fs.statSync
+  const readFileSync = (deps && deps.readFileSync) || fs.readFileSync
+
   const repoRoot = path.resolve(outputDir, '..')
 
   // Detect stale state
-  detectStaleState(repoRoot)
+  detectStaleState(repoRoot, { existsSync, readdirSync: fs.readdirSync })
 
   // Read version from package.json
-  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
+  const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
   const version = pkg.version
   const names = assetNames(version)
   const zipPath = path.join(outputDir, names.zip)
   const sumsPath = path.join(outputDir, names.sums)
 
   // Check if output already exists
-  const outputExists = fs.existsSync(zipPath) || fs.existsSync(sumsPath)
+  const outputExists = existsSync(zipPath) || existsSync(sumsPath)
   if (outputExists && !force) {
     throw new Error(`Assets already exist in ${outputDir}. Use --force to overwrite.`)
   }
 
+  // If output exists, verify it's a valid asset pair
+  if (outputExists && force) {
+    verifyOutputContents(outputDir, names.zip, names.sums, {
+      existsSync,
+      readdirSync: fs.readdirSync,
+    })
+  }
+
   // Validate dist exists
-  if (!fs.existsSync(distDir) || !fs.statSync(distDir).isDirectory()) {
+  if (!existsSync(distDir) || !statSync(distDir).isDirectory()) {
     throw new Error(`dist/ directory not found at ${distDir}. Run 'npm run build' first.`)
   }
 
   // Collect files with fail-closed walk
   const files = walkDist(distDir)
 
-  // Create unique staging directory
+  // Create unique staging directory with random nonce
   const stagingRoot = path.join(repoRoot, STAGING_DIR)
-  fs.mkdirSync(stagingRoot, { recursive: true })
-  const stagingDir = fs.mkdtempSync(path.join(stagingRoot, 'run-'))
+  mkdirSync(stagingRoot, { recursive: true })
+  const stagingNonce = randomUUID().split('-')[0]
+  const stagingDir = mkdtempSync(path.join(stagingRoot, `run-${stagingNonce}-`))
   const stagingZip = path.join(stagingDir, names.zip)
   const stagingSums = path.join(stagingDir, names.sums)
 
+  /** @type {string | null} */
   let backupDir = null
   let published = false
 
   try {
-    // 1. Generate into staging
+    // Phase 1: Generate into staging
     console.log(`Creating ${names.zip} ...`)
-    createDeterministicZip(distDir, files, stagingZip, python3)
+    createDeterministicZip(distDir, files, stagingZip, python3, deps)
 
     console.log(`Creating ${names.sums} ...`)
-    generateChecksums(stagingZip, stagingSums)
+    generateChecksums(stagingZip, stagingSums, deps)
 
-    // 2. Verify staging
+    // Phase 2: Verify staging
     console.log('Verifying checksum ...')
-    verifyChecksums(stagingSums, stagingDir)
+    verifyChecksums(stagingSums, stagingDir, deps)
 
     console.log('Verifying zip with verify_release_zip.py ...')
     const verifyScript = path.join(
@@ -358,85 +684,90 @@ export function generateAssets(distDir, outputDir, force, python3 = PYTHON3) {
       'scripts',
       'verify_release_zip.py',
     )
-    execFileSync(python3, [verifyScript, stagingZip], {
+    const execFile = (deps && deps.execFile) || execFileSync
+    execFile(python3, [verifyScript, stagingZip], {
       stdio: 'inherit',
       timeout: 30_000,
     })
 
-    // 3. Verify staging contains exactly the two expected assets
-    const stagingEntries = fs.readdirSync(stagingDir).filter((e) => e !== '.' && e !== '..')
-    if (stagingEntries.length !== 2) {
-      throw new Error(`staging directory contains ${stagingEntries.length} entries, expected 2`)
-    }
+    // Verify staging contains exactly the two expected assets
+    verifyOutputContents(stagingDir, names.zip, names.sums, {
+      existsSync,
+      readdirSync: fs.readdirSync,
+    })
 
-    // 4. Publish
+    // Phase 3: Publish
     if (outputExists && force) {
-      // Transactional: backup → staging → output
-      backupDir = path.join(repoRoot, 'release-output.backup')
-      fs.mkdirSync(outputDir, { recursive: true })
-      fs.renameSync(outputDir, backupDir)
+      // Transactional: backup -> staging promotion -> re-verify -> delete backup
+      const backupNonce = randomUUID().split('-')[0]
+      backupDir = path.join(repoRoot, `release-output.backup-${backupNonce}`)
+
+      // Step 3a: Backup old output
+      renameSync(outputDir, backupDir)
 
       try {
-        fs.renameSync(stagingDir, outputDir)
+        // Step 3b: Promote staging to output
+        renameSync(stagingDir, outputDir)
         published = true
 
-        // Quick re-verify
+        // Step 3c: Re-verify published assets
         console.log('Verifying published checksum ...')
-        verifyChecksums(sumsPath, outputDir)
+        verifyChecksums(sumsPath, outputDir, deps)
         console.log('Verifying published zip ...')
-        execFileSync(python3, [verifyScript, zipPath], {
+        execFile(python3, [verifyScript, zipPath], {
           stdio: 'inherit',
           timeout: 30_000,
         })
+
+        // Step 3d: Remove backup
+        rmSync(backupDir, { recursive: true, force: true })
+        backupDir = null
       } catch (e) {
-        // Rollback: restore old output
+        // Rollback: restore old output from backup
         if (published) {
           try {
-            fs.rmSync(outputDir, { recursive: true, force: true })
+            rmSync(outputDir, { recursive: true, force: true })
           } catch {
-            /* best effort */
+            // best effort
           }
+          published = false
         }
-        fs.renameSync(backupDir, outputDir)
+        renameSync(/** @type {string} */ (backupDir), outputDir)
+        backupDir = null
         throw e
       }
-
-      // Success -- delete backup
-      fs.rmSync(backupDir, { recursive: true, force: true })
-      backupDir = null
     } else {
-      // First-time publish
-      fs.mkdirSync(outputDir, { recursive: true })
-      fs.renameSync(stagingDir, outputDir)
+      // First-time publish: staging -> output directly (no backup needed)
+      renameSync(stagingDir, outputDir)
       published = true
     }
 
-    const zipSize = fs.statSync(zipPath).size
+    const zipSize = statSync(zipPath).size
     console.log(`\nDone: ${names.zip} (${zipSize} bytes)`)
     console.log(`      ${names.sums}`)
   } finally {
     // Clean up staging residue
-    if (!published && fs.existsSync(stagingDir)) {
+    if (!published && existsSync(stagingDir)) {
       try {
-        fs.rmSync(stagingDir, { recursive: true, force: true })
+        rmSync(stagingDir, { recursive: true, force: true })
       } catch {
-        /* best effort */
+        // best effort
       }
     }
 
     // If --force failed after backup, restore old output
-    if (backupDir && fs.existsSync(backupDir)) {
+    if (backupDir && existsSync(backupDir)) {
       if (published) {
         try {
-          fs.rmSync(outputDir, { recursive: true, force: true })
+          rmSync(outputDir, { recursive: true, force: true })
         } catch {
-          /* best effort */
+          // best effort
         }
       }
       try {
-        fs.renameSync(backupDir, outputDir)
+        renameSync(backupDir, outputDir)
       } catch {
-        /* best effort */
+        // best effort
       }
     }
 
@@ -453,35 +784,96 @@ export function generateAssets(distDir, outputDir, force, python3 = PYTHON3) {
 }
 
 // ---------------------------------------------------------------------------
-// CLI
+// CLI -- returns exit code, no process.exit() in try/catch
 // ---------------------------------------------------------------------------
 
-function main() {
-  const args = process.argv.slice(2)
+/**
+ * Parse CLI arguments and run the generator.
+ *
+ * @param {string[]} argv
+ * @param {{
+ *   stdout?: typeof process.stdout,
+ *   stderr?: typeof process.stderr,
+ *   env?: typeof process.env,
+ * }} [io]
+ * @returns {Promise<number>} exit code
+ */
+export async function runCli(argv, io) {
+  const stdout = (io && io.stdout) || process.stdout
+  const stderr = (io && io.stderr) || process.stderr
+  const env = (io && io.env) || process.env
+
+  const args = argv.slice(2)
   let force = false
+  let recoverFlag = false
+  let recoverLockFlag = false
+
   for (const arg of args) {
     if (arg === '--force') {
       force = true
+    } else if (arg === '--recover') {
+      recoverFlag = true
+    } else if (arg === '--recover-lock') {
+      recoverLockFlag = true
     } else {
-      process.stderr.write(`unknown option: ${arg}\n`)
-      process.exit(2)
+      stderr.write(`unknown option: ${arg}\n`)
+      stderr.write(
+        'Usage: node scripts/prepare-release-assets.mjs [--force] [--recover] [--recover-lock]\n',
+      )
+      return 2
     }
   }
 
   const distDir = path.join(repoRoot, 'dist')
   const outputDir = path.join(repoRoot, 'release-output')
+  const python3 = env.PYTHON3 || PYTHON3
 
-  // Acquire concurrency lock
-  const releaseLock = acquireLock(repoRoot)
+  // Handle --recover-lock
+  if (recoverLockFlag) {
+    const result = recoverLock(repoRoot)
+    if (result.recovered) {
+      stdout.write(`Lock recovered successfully.\n`)
+      return 0
+    }
+    stderr.write(`Lock recovery failed: ${result.reason}\n`)
+    return 1
+  }
+
+  // Handle --recover
+  if (recoverFlag) {
+    const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
+    const names = assetNames(pkg.version)
+    const result = recoverTransaction(repoRoot, outputDir, names.zip, names.sums)
+    if (result.recovered) {
+      stdout.write(`Transaction recovered successfully.\n`)
+      return 0
+    }
+    stderr.write(`Transaction recovery failed: ${result.reason}\n`)
+    return 1
+  }
+
+  // Acquire concurrency lock (must fail before any other work)
+  let lock
+  try {
+    lock = acquireLock(repoRoot)
+  } catch (e) {
+    stderr.write(`release:prepare-assets: ${/** @type {Error} */ (e).message}\n`)
+    return 1
+  }
 
   try {
-    generateAssets(distDir, outputDir, force, PYTHON3)
+    generateAssets(distDir, outputDir, force, python3)
+    return 0
   } catch (e) {
-    process.stderr.write(`release:prepare-assets failed: ${/** @type {Error} */ (e).message}\n`)
-    process.exit(1)
+    stderr.write(`release:prepare-assets failed: ${/** @type {Error} */ (e).message}\n`)
+    return 1
   } finally {
-    releaseLock()
+    lock.release()
   }
+}
+
+async function main() {
+  process.exitCode = await runCli(process.argv)
 }
 
 const isDirectRun =

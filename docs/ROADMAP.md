@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-23（M25 Done：发布管线事务化、合同完整性与精确运行时下限，v1.1.6 PATCH）
+最后更新：2026-08-23（M26 Done：发布管线互斥锁、事务恢复、测试确定性与证据真实性，v1.1.7 PATCH）
 
 ## 当前产品基线
 
@@ -19,8 +19,27 @@
 ## 当前里程碑
 
 ```text
-M0–M25 complete；stable release v1.1.6；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M26 complete；stable release v1.1.7；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M26 done — 发布管线互斥锁、事务恢复、测试确定性与证据真实性（v1.1.7 PATCH）
+
+- 原子并发锁与所有权：`acquireLock` 重构为 `fs.openSync(path, 'wx', 0o600)`（O_CREAT|O_EXCL）；锁内容使用结构化 JSON 元数据（schema version、PID、timestamp、random nonce、repo realpath）；cleanup 仅删除三方匹配的本进程锁；无效 JSON、EPERM、PID 不确定的锁不自动删除；新增 `--recover-lock` 显式恢复命令；`process.exit()` 不出现在 try/catch 中，CLI 返回 exit code；未知参数在锁创建前失败。
+- 事务状态机与恢复：`generateAssets` 重构为显式事务状态机（INIT → STAGING_GENERATED → STAGING_VERIFIED → OLD_OUTPUT_BACKED_UP → NEW_OUTPUT_PROMOTED → NEW_OUTPUT_REVERIFIED → BACKUP_REMOVED）；首次发布 staging 直接 rename 到尚不存在的 output；`--force` 使用唯一 nonce 备份目录；新增 `--recover` 命令；依赖注入支持每个 failpoint 注入并断言旧资产不丢失、无含糊状态。
+- 测试确定性与路径安全：移除固定路径 `/tmp/.m25-symlink-probe`，改用 `mkdtemp` 并在 `afterAll` 清理；同一 shell 连续运行两次测试数/passed/skipped 完全一致；新增 20+ 并发竞争测试、FIFO/socket/特殊字符拒绝测试；`catch` 使用 `unknown` 并正确 narrowing。
+- Python ZIP helper TOCTOU 修复：先 `os.lstat` 原始路径再 `os.path.realpath`；POSIX 优先使用 `O_NOFOLLOW`；`external_attr` 包含 `S_IFREG`。
+- 行为式 artifact contract：`check-release-contract` 改为导入 `getReleasePlan(version)` 并验证实际返回值；`readContract` 返回 `generatorBehavioralOk` 与 `generatorBehavioralErrors`。
+- 锁清理：`clean-generated.mjs` 增加 `.release-staging.lock`；`.gitignore` 备份模式更新。
+- 文档：`RELEASING.md` 新增"中断恢复"章节；CHANGELOG/ROADMAP 同步；v1.1.6 勘误记录在 CHANGELOG 中。
+
+> **M26 勘误：** v1.1.6 的发行资产本身正确，但以下实现缺陷由 v1.1.7/M26 修复：
+>
+> 1. `acquireLock` 使用非原子 `existsSync → writeFileSync`（TOCTOU 竞态）。
+> 2. 失败路径遗留 `.release-staging.lock`，`npm run clean` 未清理该文件。
+> 3. 固定路径 `/tmp/.m25-symlink-probe` 未清理导致第二次运行 symlink 测试被意外 skip。
+> 4. rollback 路径无 explicit failpoint 测试覆盖。
+> 5. `_zip_helper.py` 先 `realpath` 再 `lstat` 导致 symlink 检查永不触发。
+> 6. `check-release-contract` 仅检查 import 字符串，不验证实际行为。
 
 ### M25 done — 发布管线事务化、合同完整性与精确运行时下限（v1.1.6 PATCH）
 

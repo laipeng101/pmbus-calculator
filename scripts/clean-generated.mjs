@@ -22,6 +22,7 @@ export const GENERATED_TARGETS = [
   '.cache/specifications',
   'release-output',
   '.release-staging',
+  '.release-staging.lock',
 ]
 
 const HELP = `clean-generated.mjs — remove generated build/test/report directories
