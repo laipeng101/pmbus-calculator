@@ -74,7 +74,22 @@ if (summary) {
     process.exit(1)
   }
   if (failed > 0) {
-    process.stderr.write('run-release-security-tests: failing tests present\n')
+    // Dump failing test names so CI logs identify them without re-runs.
+    const failureNames = []
+    for (const suite of summary.testResults ?? []) {
+      for (const assertion of suite.assertionResults ?? []) {
+        if (assertion.status !== 'passed') {
+          failureNames.push(
+            assertion.fullName +
+              ' :: ' +
+              (assertion.failureMessages ?? []).join(' | ').slice(0, 2000),
+          )
+        }
+      }
+    }
+    process.stderr.write(
+      'run-release-security-tests: failing tests:\n' + failureNames.join('\n') + '\n',
+    )
     process.exit(1)
   }
   if (skipped !== 0) {

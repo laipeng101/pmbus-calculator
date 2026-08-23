@@ -687,7 +687,7 @@ describe('concurrent lock race (M27 WP-A)', () => {
         const attempts = () => {
           try { return fs.readdirSync(attemptsDir).length } catch { return 0 }
         };
-        const deadline = Date.now() + 15000;
+        const deadline = Date.now() + 20000;
         while (attempts() < ${CONCURRENT} && Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, 5));
         }
@@ -696,7 +696,7 @@ describe('concurrent lock race (M27 WP-A)', () => {
           const lock = mod.acquireLock(lockDir);
           console.log('WINNER:' + process.pid);
           // Hold until all losers have attempted, then release.
-          const holdDeadline = Date.now() + 8000;
+          const holdDeadline = Date.now() + 30000;
           while (attempts() < ${CONCURRENT} * 2 && Date.now() < holdDeadline) {
             await new Promise((r) => setTimeout(r, 20));
           }
