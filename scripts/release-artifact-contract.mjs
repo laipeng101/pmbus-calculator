@@ -74,6 +74,66 @@ export function assetNames(version) {
 export const PAGES_ZIP_TEMPLATE = 'pmbus-calculator-${RELEASE_TAG}-web.zip'
 
 // ---------------------------------------------------------------------------
+// Release plan (M27 WP-E) -- the single implementation
+// ---------------------------------------------------------------------------
+
+/** Transaction layout: staging root, relative to the repository root. */
+export const STAGING_DIR = '.release-staging'
+
+/** Transaction layout: published output directory, relative to repo root. */
+export const OUTPUT_DIR = 'release-output'
+
+/** Directory-name prefix of --force backup directories. */
+export const BACKUP_PREFIX = 'release-output.backup-'
+
+/** Versioned transaction journal file (WP-C), relative to repo root. */
+export const JOURNAL_FILE = '.release-staging.transaction.json'
+
+/** Schema version recorded in transaction journals and release plans. */
+export const RELEASE_PLAN_SCHEMA_VERSION = 2
+
+/**
+ * Build the complete release plan for a version.
+ *
+ * This is the ONLY implementation of the release layout/naming plan.
+ * prepare-release-assets.mjs consumes this function's result exclusively —
+ * it must not derive artifact names, staging/output paths, tag strings or
+ * Pages templates by any other means. check-release-contract.mjs imports
+ * the same function as its behavioral expectation.
+ *
+ * @param {string} version -- plain semver from package.json
+ * @returns {{
+ *   tag: string,
+ *   zipName: string,
+ *   sumsName: string,
+ *   stagingDir: string,
+ *   outputDir: string,
+ *   backupPrefix: string,
+ *   lockFile: string,
+ *   journalFile: string,
+ *   pagesZipTemplate: string,
+ *   contractSchemaVersion: number,
+ * }}
+ */
+export function buildReleasePlan(version) {
+  if (!isPlainSemver(version)) {
+    throw new Error(`buildReleasePlan requires plain semver without a v prefix, got: ${version}`)
+  }
+  return {
+    tag: stableTag(version),
+    zipName: assetZipName(version),
+    sumsName: assetSumsName(),
+    stagingDir: STAGING_DIR,
+    outputDir: OUTPUT_DIR,
+    backupPrefix: BACKUP_PREFIX,
+    lockFile: '.release-staging.lock',
+    journalFile: JOURNAL_FILE,
+    pagesZipTemplate: PAGES_ZIP_TEMPLATE,
+    contractSchemaVersion: RELEASE_PLAN_SCHEMA_VERSION,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // ZIP entry path policy
 // ---------------------------------------------------------------------------
 

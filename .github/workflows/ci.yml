@@ -108,6 +108,14 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm run test:coverage
 
+      # M27 WP-G: Linux generator/security specialisation. Runs the real
+      # transaction/lock/recovery/symlink/FIFO/concurrency suites on Linux
+      # without Playwright and fails if ANY test is skipped, so a canonical
+      # environment can never silently drop security coverage again.
+      - name: Release generator and security tests (zero-skip)
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run test:release-security
+
       - name: Install Playwright browsers
         if: steps.scope.outputs.run_full != 'false'
         run: npx playwright install --with-deps chromium

@@ -29,18 +29,33 @@
 可能遗留锁文件或备份目录。以下命令用于显式恢复：
 
 - **锁文件恢复**：`node scripts/prepare-release-assets.mjs --recover-lock`
-  仅当锁的 PID 确已不存在、repo 路径匹配且锁元数据完整时删除锁文件。
-  PID 仍在运行、EPERM 或元数据不完整时拒绝恢复，需人工审计。
+  仅当锁的 PID 确已不存在、repo 路径匹配、元数据完整且 schema 已知时删除锁文件。
+  PID 仍在运行、EPERM 或未知 schema 时拒绝恢复，需人工审计。这是唯一可以在
+  未持有互斥锁的情况下操作锁文件的命令。
 
 - **事务恢复**：`node scripts/prepare-release-assets.mjs --recover`
-  仅当 output 目录缺失、恰好一个备份目录存在且备份内容验证通过时，
-  将备份恢复为 output。output 与 backup 同时存在时拒绝，需人工审计。
+  与普通生成一样**必须先获取互斥锁**；活跃锁存在时拒绝执行。
+  恢复前对 backup 做深度验证（恰好两个普通文件、SHA256SUMS 单行匹配实际 hash、
+  verify_release_zip.py 通过）；output 与 backup 同时存在时按 versioned transaction
+  journal 裁决：PRE_COMMIT 恢复已验证旧 backup，COMMITTED 保留已验证新 output
+  仅清理残余 backup；journal 缺失/损坏/未知 schema 一律拒绝并要求人工审计。
+  多个 backup 一律拒绝。恢复完成后重新验证正式 output。损坏的 backup 绝不会
+  被 rename 为正式 output。
 
-- **不得自动删除**：无效 JSON、权限不明的锁不会被自动删除；
+- **不得自动删除**：无效 JSON、权限不明、未知 schema 的锁不会被自动删除；
   中断后的备份也不被自动移除。始终使用显式恢复命令或人工审计后清理。
 
-- **`npm run clean`** 同时清理 `.release-staging.lock` 与
-  `.release-staging/` 目录（M26 起包含锁文件）。
+- **`npm run clean` 不清理锁文件**（M27 起修正）：`.release-staging.lock` 永远
+  不是 clean 目标——只有 `--recover-lock` 在证明 owner PID 已死后才可删除它。
+  锁存在时 cleaner fail closed，在删除任何 release 目标（`release-output/`、
+  `.release-staging/`、transaction journal、backup 目录）之前停止并退出非零。
+
+- **锁状态处理**：
+  - 活跃锁（owner PID 存活）：普通生成/--force/--recover 全部拒绝，等待或人工介入；
+  - 无效/不完整元数据锁：acquire 与 recover 均拒绝，需人工审计后手工处理；
+  - EPERM/PID 状态不明：拒绝自动恢复，需人工确认进程状态；
+  - SIGINT/SIGTERM：持有锁时尽可能释放 owned lock；无法释放时保留完整可恢复
+    元数据（--recover-lock 可清理），绝不删除非 owned 的锁。
 
 ## 发布流程
 

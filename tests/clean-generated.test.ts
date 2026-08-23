@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   cleanGenerated,
   GENERATED_TARGETS,
+  RELEASE_LOCK_FILE,
   resolveCleanTargets,
 } from '../scripts/clean-generated.mjs'
 
@@ -141,30 +142,41 @@ describe('cleanGenerated', () => {
     await expect(fs.readFile(path.join(root, 'dist', 'app.js'), 'utf8')).resolves.toBe('generated')
   })
 
-  it('fails on a regular file target and does not partially delete other targets', async () => {
+  it('removes regular file targets such as the transaction journal (M27)', async () => {
     const root = await makeTempRoot()
     await fs.mkdir(path.join(root, 'coverage'), { recursive: true })
     await fs.writeFile(path.join(root, 'coverage', 'lcov.info'), 'coverage')
-    await fs.writeFile(path.join(root, 'dist'), 'file content')
+    // The M27 transaction journal is a regular FILE clean target.
+    await fs.writeFile(path.join(root, '.release-staging.transaction.json'), '{"schema":1}')
 
-    await expect(cleanGenerated({ repoRoot: root, targets: ['dist', 'coverage'] })).rejects.toThrow(
-      /non-directory clean target/,
-    )
-
-    await expect(fs.readFile(path.join(root, 'dist'), 'utf8')).resolves.toBe('file content')
+    const cleaned = await cleanGenerated({
+      repoRoot: root,
+      targets: ['.release-staging.transaction.json'],
+    })
+    expect(cleaned).toEqual(['.release-staging.transaction.json'])
+    await expect(fs.stat(path.join(root, '.release-staging.transaction.json'))).rejects.toThrow()
+    // Untouched target list still cleans normally.
     await expect(fs.readFile(path.join(root, 'coverage', 'lcov.info'), 'utf8')).resolves.toBe(
       'coverage',
     )
   })
 
-  it('--dry-run also performs full preflight and fails on a regular file target', async () => {
+  it('--dry-run performs full preflight and reports file targets', async () => {
     const root = await makeTempRoot()
-    await fs.writeFile(path.join(root, 'dist'), 'file content')
+    await fs.writeFile(path.join(root, '.release-staging.transaction.json'), '{"schema":1}')
 
+    const logs: string[] = []
+    const cleaned = await cleanGenerated({
+      repoRoot: root,
+      targets: ['.release-staging.transaction.json'],
+      dryRun: true,
+      log: (message) => logs.push(message),
+    })
+    expect(cleaned).toEqual(['.release-staging.transaction.json'])
+    expect(logs.some((message) => message.includes('[dry-run] would remove'))).toBe(true)
     await expect(
-      cleanGenerated({ repoRoot: root, targets: ['dist'], dryRun: true }),
-    ).rejects.toThrow(/non-directory clean target/)
-    await expect(fs.readFile(path.join(root, 'dist'), 'utf8')).resolves.toBe('file content')
+      fs.stat(path.join(root, '.release-staging.transaction.json')),
+    ).resolves.toBeTruthy()
   })
 
   symlinkTest('rejects a target symlink and leaves the external target untouched', async () => {
@@ -200,5 +212,49 @@ describe('cleanGenerated', () => {
 
   it('exposes the current generated-target allowlist size', () => {
     expect(GENERATED_TARGETS.length).toBe(18)
+    // The lock file is NEVER a clean target (M27 WP-A): only --recover-lock
+    // may remove it.
+    expect(GENERATED_TARGETS).not.toContain(RELEASE_LOCK_FILE)
+    // Release transaction targets are covered by the lock guard instead.
+    expect(GENERATED_TARGETS).toContain('.release-staging.transaction.json')
+  })
+
+  it('refuses to run while the release lock exists and deletes nothing (M27 WP-A)', async () => {
+    const root = await makeTempRoot()
+    await fs.mkdir(path.join(root, 'dist'), { recursive: true })
+    await fs.writeFile(path.join(root, 'dist', 'app.js'), 'generated')
+    await fs.writeFile(path.join(root, RELEASE_LOCK_FILE), '{"schemaVersion":1}')
+    await fs.mkdir(path.join(root, '.release-staging'), { recursive: true })
+    await fs.writeFile(path.join(root, '.release-staging.transaction.json'), '{}')
+
+    await expect(cleanGenerated({ repoRoot: root })).rejects.toThrow(RegExp(RELEASE_LOCK_FILE))
+
+    // Nothing was deleted -- the cleaner stopped BEFORE any release target.
+    await expect(fs.readFile(path.join(root, 'dist', 'app.js'), 'utf8')).resolves.toBe('generated')
+    await expect(fs.readFile(path.join(root, RELEASE_LOCK_FILE), 'utf8')).resolves.toBe(
+      '{"schemaVersion":1}',
+    )
+    await expect(fs.stat(path.join(root, '.release-staging'))).resolves.toBeTruthy()
+    await expect(
+      fs.readFile(path.join(root, '.release-staging.transaction.json'), 'utf8'),
+    ).resolves.toBe('{}')
+  })
+
+  it('never removes the lock file even when other targets are cleaned (M27 WP-A)', async () => {
+    const root = await makeTempRoot()
+    await fs.mkdir(path.join(root, 'release-output'), { recursive: true })
+    await fs.writeFile(path.join(root, 'release-output', 'x.zip'), 'zip')
+    // No lock present: cleaning proceeds, but the lock is not a target.
+    const cleaned = await cleanGenerated({ repoRoot: root })
+    expect(cleaned).toContain('release-output')
+    expect(cleaned).not.toContain(RELEASE_LOCK_FILE)
+  })
+
+  it('cleans discovered backup directories when no lock blocks the run (M27 WP-A)', async () => {
+    const root = await makeTempRoot()
+    await fs.mkdir(path.join(root, 'release-output.backup-ab12'), { recursive: true })
+    await fs.writeFile(path.join(root, 'release-output.backup-ab12', 'y.zip'), 'z')
+    const cleaned = await cleanGenerated({ repoRoot: root })
+    expect(cleaned).toContain('release-output.backup-ab12')
   })
 })

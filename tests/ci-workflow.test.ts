@@ -72,6 +72,7 @@ const FULL_TIER_RUN_COMMANDS = [
   'npm run typecheck',
   'npm run lint',
   'npm run test:coverage',
+  'npm run test:release-security',
   'npx playwright install --with-deps chromium',
   'npm run test:e2e',
   'npm run build',
@@ -199,6 +200,28 @@ describe('ci.yml full-tier gating', () => {
       expect(normalize(block)).toContain(`if: ${FULL_TIER_CONDITION}`)
     },
   )
+})
+
+describe('ci.yml release generator/security specialisation (M27)', () => {
+  it('runs the zero-skip generator/security suite on the full tier without Playwright', () => {
+    const block = normalize(findStepByName('Release generator and security tests (zero-skip)'))
+    expect(block).toContain(`if: ${FULL_TIER_CONDITION}`)
+    expect(block).toContain('run: npm run test:release-security')
+    // The specialisation must not depend on Playwright browsers.
+    expect(block).not.toContain('playwright')
+  })
+
+  it('places the security step after unit coverage and before Playwright installation', () => {
+    const order = stepBlocks(workflow).map((block) => normalize(block))
+    const coverageIdx = order.findIndex((b) => b.includes('run: npm run test:coverage'))
+    const securityIdx = order.findIndex((b) => b.includes('run: npm run test:release-security'))
+    const playwrightInstallIdx = order.findIndex((b) =>
+      b.includes('npx playwright install --with-deps chromium'),
+    )
+    expect(coverageIdx).toBeGreaterThan(-1)
+    expect(securityIdx).toBeGreaterThan(coverageIdx)
+    expect(playwrightInstallIdx).toBeGreaterThan(securityIdx)
+  })
 })
 
 describe('ci.yml secondary LTS compatibility (M20)', () => {

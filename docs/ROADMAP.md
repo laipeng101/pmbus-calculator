@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-23（M26 Done：发布管线互斥锁、事务恢复、测试确定性与证据真实性，v1.1.7 PATCH）
+最后更新：2026-08-23（M27 Done：Release transaction commit semantics、recovery integrity、真实并发/故障注入与零 skip 验收，v1.1.8 PATCH）
 
 ## 当前产品基线
 
@@ -19,8 +19,44 @@
 ## 当前里程碑
 
 ```text
-M0–M26 complete；stable release v1.1.7；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M27 complete；stable release v1.1.8；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M27 done — Release transaction commit semantics、recovery integrity、真实并发/故障注入与零 skip 验收（v1.1.8 PATCH）
+
+- 统一锁域：普通/`--force`/`--recover` 共用同一原子互斥锁；`--recover-lock` 是唯一不持锁操作锁文件的命令；
+  `--recover` 持锁执行且 release 失败使 CLI 非零；cleaner 锁存在时 fail closed、删除任何 release 目标前停止，
+  锁文件移出清理目标（journal 加入）；RELEASING.md 修正 clean 矛盾描述；25 子进程真实 `acquireLock` 并发验收。
+- 锁错误完整性：open 后 write/short-write/close 失败关闭 fd 且仅清理本次创建的 inode（dev+ino 校验）；
+  `release()` 抛出 `LockReleaseError` 不吞错；生成成功但释放失败 → 非零 + 部分成功提示；SIGINT/SIGTERM
+  行为测试（owned lock 尽量释放、否则保留可恢复元数据、绝不删除非 owned）；元数据 schema/时间戳/nonce 校验。
+- 事务 commit point：STAGING_VERIFIED → OLD_OUTPUT_BACKED_UP → NEW_OUTPUT_PROMOTED → NEW_OUTPUT_VERIFIED →
+  COMMITTED → BACKUP_CLEANED；versioned journal（temp+fsync+rename 原子更新，记录 schema/nonce/version/state/
+  output/backup/old-new SHA-256）；COMMITTED 后 backup 清理失败保留新 output 与残余 backup/journal 要求显式恢复；
+  rollback restore 失败不吞错；12 个具名 failpoint 各有阶段命中与 hash 断言测试。
+- Recovery 完整性：backup 恢复前深度验证（两普通文件、SHA256SUMS 单行、checksum 一致、verify_release_zip.py
+  通过、内部版本合同）；symlink/目录/多余文件/多 backup/损坏内容全部拒绝；output+backup 并存按 journal 裁决
+  （PRE_COMMIT 恢复旧 backup、COMMITTED 保留新 output 仅清 backup、journal 缺失/损坏/未知 schema 拒绝人工审计）；
+  恢复后重新验证正式 output；损坏 backup 绝不被 rename 为 output。
+- artifact contract 真实路径：动态 import fallback 移除（加载失败 fail closed）；`buildReleasePlan` 单一实现入共享合同，
+  generator 只消费 plan、禁止本地命名模板与 assetNames 直调；`runCli` 注入 repoRoot，真实 CLI 正负向 fixture。
+- symlink/并发/helper：能力探针在注册前同步执行（canonical 环境零 skip，连续两次运行结果一致）；Python helper
+  O_NOFOLLOW 打开原始路径 + fstat dev+ino 身份比对 + 循环读取处理 short read + 长度/身份变化失败 + 失败清除半成品 zip；
+  helper 直接测试覆盖 symlink final component/parent、lstat-open 替换、FIFO/directory、path escape、duplicate、
+  short-read、deterministic bytes。
+- 测试真实性：expect(true) 占位断言删除；catch unknown narrowing；failpoint 测试断言触发名+阶段 trace；full CI 新增
+  Linux generator/security 专项步骤（`npm run test:release-security`，零 Playwright 依赖，任一 skip 即失败）。
+- 版本：v1.1.8 PATCH；CHANGELOG、docs/releases/v1.1.8.md、双 README、本文件同步更新。v1.1.7 tag/Release/Pages
+  资产未做任何修改。
+
+> **M26 勘误：** v1.1.7 的发行资产本身正确，但以下实现缺陷由 v1.1.8/M27 加固修复：
+>
+> 1. `--recover` 未持锁且仅按文件名校验 backup，损坏 backup 可被提升为正式 output（exit 0）。
+> 2. 部分备份删除可导致新旧 ZIP 同时丢失（rollback 删除新 output 后恢复残缺 backup）。
+> 3. symlink 测试因注册时序实际始终 skip（46 passed + 2 skipped）。
+> 4. rollback 测试基于 createHash 调用次数注入，失败发生在 staging 校验阶段，publish 阶段回滚零覆盖。
+> 5. behavioral contract 动态 import 失败时回退字符串检查，两类假通过 fixture 实证 ok:true。
+> 6. `npm run clean` 文档声称清理锁文件，实际 exit 1 且零删除。
 
 ### M26 done — 发布管线互斥锁、事务恢复、测试确定性与证据真实性（v1.1.7 PATCH）
 

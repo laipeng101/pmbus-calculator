@@ -4,6 +4,64 @@
 
 ## [Unreleased]
 
+## [1.1.8] - 2026-08-23
+
+### Fixed
+
+> **v1.1.7 勘误（如实披露）：** v1.1.7 的线上 Release/Pages 资产本身正确且已重新验证，
+> 未做任何回滚、tag 移动或资产覆盖；但发布管线存在以下缺陷，全部由 v1.1.8/M27 修复：
+>
+> 1. `--recover` 不获取互斥锁即可运行，且仅按文件名/数量校验 backup——损坏的 backup
+>    （非 ZIP 内容、非法 checksum）会被直接提升为正式 output 并返回 exit 0。
+> 2. 部分备份删除导致数据丢失：`--force` 在 backup 清理阶段失败时，rollback 会删除
+>    已验证的新 output、把残缺 backup 恢复为 output——新旧 ZIP 同时丢失。
+> 3. symlink 测试实际始终 skip：`symlinkTest` 在模块加载时求值，而能力标志在
+>    `beforeEach` 中才置位，注册时恒为 `it.skip`。
+> 4. rollback 测试未达到 publish 阶段：基于 createHash 调用次数的注入在 staging 校验阶段
+>    即失败，backup rename 与 promotion 从未执行，publish 阶段回滚零覆盖。
+> 5. behavioral contract 仍可 fallback 假通过：动态 import 失败时回退到源码字符串检查，
+>    "缺模块 + 错误本地命名"与"plan 正确但 generateAssets 不消费 plan"均判 ok。
+> 6. `npm run clean` 声称清理锁文件但实际 exit 1 且什么都不删（锁不是目录），文档与行为矛盾。
+
+- 统一锁域（WP-A）：普通生成、`--force`、`--recover` 全部使用同一原子互斥锁；
+  `--recover-lock` 是唯一可在不持锁时操作锁文件的命令；`--recover` 先 `acquireLock`、
+  在 try/finally 中执行恢复、release 失败使 CLI 非零；cleaner 发现锁时 fail closed，
+  在删除任何 release 目标前停止，且永不删除锁文件；`GENERATED_TARGETS` 移除锁文件、
+  新增事务 journal；RELEASING.md 同步更新。并发测试由 25 个真实子进程调用真实导出函数。
+- 锁创建与释放错误完整性（WP-B）：`open('wx')` 成功后的 write 失败、short write、close 失败均关闭 fd
+  并只清理由本次创建的 lock inode（fstat/lstat dev+ino 所有权校验，替换后的锁绝不误删）；
+  `release()` 不再吞错——unlink/read/parse 失败抛出 `LockReleaseError` 并保留可恢复元数据；
+  资产已生成但锁未释放时 CLI 非零并明确提示部分成功；新增 SIGINT/SIGTERM 行为测试
+  （尽可能释放 owned lock、无法释放时保留可恢复元数据、绝不删除非 owned lock）；
+  锁元数据 schemaVersion/startedAt/nonce 类型与格式校验，未知 schema 禁止自动恢复。
+- 事务 commit point 与故障恢复（WP-C）：显式状态机 STAGING_VERIFIED → OLD_OUTPUT_BACKED_UP →
+  NEW_OUTPUT_PROMOTED → NEW_OUTPUT_VERIFIED → COMMITTED → BACKUP_CLEANED；COMMITTED 之后 backup
+  删除失败不删除已验证新 output、不用残缺 backup 覆盖、保留残余 backup/journal 并要求显式清理；
+  versioned transaction journal（schema/nonce/version/state/output/backup/old/new SHA-256），
+  更新走临时文件 + fsync + 原子 rename；12 个具名 failpoint（staging checksum、staging zip verifier、
+  backup rename 前/后、promotion 前/后、published checksum、published zip verifier、commit journal、
+  backup 删除开始前、部分删除后、journal 删除），测试断言 failpoint 名与阶段 trace，
+  禁止 createHash 调用次数冒充注入；rollback restore 自身失败保留 backup/journal 且不吞错。
+- Recovery 完整性（WP-D）：`recoverTransaction` 深度验证 backup（恰好两个普通文件、SHA256SUMS 仅一行、
+  checksum 与实际 hash 一致、verify_release_zip.py 通过）；symlink/目录/多余文件/错误 ZIP/checksum 全部拒绝；
+  output 与 backup 并存时读取 journal——PRE_COMMIT 恢复已验证旧 backup、COMMITTED 保留已验证新 output 仅清理
+  backup、journal 缺失/损坏/未知 schema 一律拒绝并要求人工审计；多 backup 一律拒绝；recovery 必须持锁；
+  恢复完成后重新验证正式 output；损坏 backup 绝不被 rename 为 output。
+- artifact contract 真实执行路径（WP-E）：移除动态 import fallback，任何 import/解析失败一律 fail closed；
+  `buildReleasePlan(version)` 成为唯一实现并放入共享合同模块，generator 与 contract checker 均直接导入；
+  `generateAssets` 只消费 plan（zipName/sumsName/layout/tag/template），禁止直接调用 assetNames 或本地命名模板；
+  `runCli` 支持注入 repoRoot，fixture 运行真实 CLI；新增正/负向 CLI fixture（缺失 module、plan 正确但
+  generator 不消费 plan、wrong ZIP/sums/tag/template）。
+- symlink、并发与 Python helper（WP-F）：symlink 能力在测试注册前同步探测（mkdtemp → symlink → finally 清理）
+  再选择 it/it.skip，canonical 环境 symlink file/dir/helper 测试零 skip；同一 shell 连续两次运行结果完全一致；
+  25 子进程真实 `acquireLock` 竞争严格一个 winner；Python helper 对原始路径使用 O_NOFOLLOW 打开、fstat 比较
+  初始 lstat 的 dev+ino、循环 os.read 直到 EOF 并处理 short read、长度/identity 变化即失败；新增 helper 直接
+  测试（symlink final component/parent、lstat 与 open 之间替换、FIFO/directory、path escape、duplicate entry、
+  short-read、deterministic bytes）。
+- 测试真实性（WP-G)：删除以 expect(true) 充当合同的测试；catch 使用 unknown narrowing、无理由 @ts-expect-error
+  移除；每个 failpoint 测试断言 failpoint 名确实触发并记录事务阶段 trace；full CI 新增 Linux generator/security
+  专项（不依赖 Playwright，零 skip 门禁 `npm run test:release-security`，任一 skip 即失败）。
+
 ## [1.1.7] - 2026-08-23
 
 ### Fixed

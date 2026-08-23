@@ -9,6 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   checkReleasingArtifactNames,
@@ -307,19 +308,29 @@ describe('release contract integration (M24)', () => {
       path.join(tmp, 'docs/RELEASING.md'),
       '# RELEASING\n\nUpload `pmbus-calculator-vX.Y.Z-web.zip` and `SHA256SUMS.txt`.\n',
     )
-    // M25: generator must import from shared contract
+    // M25/M27: generator must import from the shared contract and consume
+    // buildReleasePlan -- the single plan implementation. The fixture ships
+    // a faithful copy of the real contract module plus a compliant generator.
     fs.mkdirSync(path.join(tmp, 'scripts'), { recursive: true })
-    fs.writeFileSync(
-      path.join(tmp, 'scripts/release-artifact-contract.mjs'),
-      'export const PAGES_ZIP_TEMPLATE = "pmbus-calculator-${RELEASE_TAG}-web.zip"\n' +
-        'export function assetZipName(v) { return `pmbus-calculator-v${v}-web.zip` }\n' +
-        'export function assetSumsName() { return "SHA256SUMS.txt" }\n',
+    fs.copyFileSync(
+      path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '..',
+        'scripts',
+        'release-artifact-contract.mjs',
+      ),
+      path.join(tmp, 'scripts', 'release-artifact-contract.mjs'),
     )
     fs.writeFileSync(
       path.join(tmp, 'scripts/prepare-release-assets.mjs'),
-      "import { assetZipName, assetSumsName } from './release-artifact-contract.mjs'\n" +
-        'export function assetNames(v) { return { zip: assetZipName(v), sums: assetSumsName() } }\n' +
-        'export function getReleasePlan(v) { return { tag: `v${v}`, zipName: assetZipName(v), sumsName: assetSumsName(), stagingDir: ".release-staging", outputDir: "release-output", pagesZipTemplate: "pmbus-calculator-${RELEASE_TAG}-web.zip", contractSchemaVersion: 1 } }\n',
+      "import { buildReleasePlan } from './release-artifact-contract.mjs'\n" +
+        'export function getReleasePlan(v) { return buildReleasePlan(v) }\n' +
+        'function writeAssets(deps, plan) { deps.console(plan.zipName, plan.sumsName) }\n' +
+        'export function generateAssets(distDir, outputDir, force, python3, deps) {\n' +
+        '  const pkg = JSON.parse(deps.readFileSync("package.json"))\n' +
+        '  const plan = buildReleasePlan(pkg.version)\n' +
+        '  deps.console(plan.zipName, plan.sumsName)\n' +
+        '}\n',
     )
     return tmp
   }
