@@ -4,15 +4,27 @@
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-08-23
+
+### Fixed
+
+- 发布资产生成器 fail-closed 与事务式发布：`walkDist` 显式分类所有 Dirent 类型（symlink/FIFO/socket/device 均报错，禁止静默跳过）；路径校验使用分量级判断（拒绝 `..`、`node_modules`、`src`、`.map`、控制字符）；使用固定 `scripts/_zip_helper.py` 替代动态生成临时脚本；Python executable 可注入（`PYTHON3` 环境变量）；checksum 反向验证使用 Node `crypto`（不依赖 shell `shasum`）；新增事务式发布（`.release-staging/` 唯一 staging → 验证 → 发布，`--force` 使用 backup/rollback 保护旧资产）；并发锁（`.release-staging.lock`）；零遗留 `.cache/zip-*` 临时文件。新增 `tests/prepare-release-assets.test.ts`（19 测试）。
+- 发布合同完整性：`check-release-contract` 新增结构化 CHANGELOG 解析——恰好一个 `## [Unreleased]`、必须是第一个 release-level heading、当前版本是其后的第一个 dated section、fenced code block 内伪标题忽略、重复/缺失/乱序全部失败；`readContract` 现在读取 RELEASING.md 和 generator 共享合同导入检查；删除 `main()` 中 RELEASING 旁路追加逻辑（纯函数、fixture 和 CLI 走同一 read→validate 路径）。新增 10 个 CHANGELOG 结构测试和 9 个 integration fixture 测试。
+- 共享发行资产合同：新增 `scripts/release-artifact-contract.mjs`（`assetZipName`、`assetSumsName`、`PAGES_ZIP_TEMPLATE`、`validateZipEntry` 等），`prepare-release-assets` 和 `check-release-contract` 均从该模块导入，消除多处重复命名模板。
+- Node 精确运行时下限：engines 从 `>=22 <23` 收紧为 `>=22.20.0 <23`（Node 24 保持 `>=24.0.0 <25`）；`@types/node` 从 `^22.20.1` 改为精确 `22.20.1`（防止自动漂移到更高 minor）；CI `setup-node` 从滚动 `22`/`24` 改为精确 `'22.20.0'`/`'24.0.0'`（带引号）；runtime contract 测试解析完整 major.minor.patch 并锁定精确下限；新增 `tests/node-ffi-type-probe.ts`（`@ts-expect-error` 负向 fixture，由主 typecheck 覆盖）。
+- 类型边界清理：删除 `specifications.mjs` 中注释掉的 `pushIf` 死代码。
+- 文档勘误：CHANGELOG v1.1.5 和 ROADMAP M24 节注明 M24 未实际验证 missing `[Unreleased]`、generator 未实现 fail-closed 遍历和事务式发布、运行时下限只比较主版本；明确这些由 v1.1.6/M25 修复。
+- 文档同步：`CHANGELOG.md`、`docs/releases/v1.1.6.md`、双 README（stable/live/Release/SHA256SUMS 链接）、`ROADMAP.md`（M25 Done + stable v1.1.6）、`RELEASING.md` 全部更新。
+
 ## [1.1.5] - 2026-08-23
 
 ### Fixed
 
-- Node 运行时下限类型合同：`@types/node` 从 26（Current）改为 22（最低支持运行时），消除类型门禁接受 Node 22/24 运行时不存在 API（如 `node:ffi`）的 false-pass；新增 `tests/runtime-type-contract.test.ts` 结构性锁定引擎下限、CI 主/次验证与 `@types/node` 主版本一致性。
-- 发布合同真实文件检查：`scripts/check-release-contract.mjs` 重构为读取真实文件表面（Pages workflow 模板、RELEASING.md），不再自生成 `artifactNames` 循环校验；新增精确 Gregorian 日期验证、release notes 第一非空行精确标题匹配、README Live Demo 行版本校验、ROADMAP 唯一 stable 声明检查、lockfile 双版本必需验证。
+- Node 运行时下限类型合同：`@types/node` 从 26（Current）改为 22（最低支持运行时），消除类型门禁接受 Node 22/24 运行时不存在 API（如 `node:ffi`）的 false-pass；新增 `tests/runtime-type-contract.test.ts` 结构性锁定引擎下限、CI 主/次验证与 `@types/node` 主版本一致性。注：M24 只比较主版本（major），未锁定精确 minor/patch 下限（engines 接受 Node 22.0，但 jsdom 实际要求 ≥22.13.0），CI 使用滚动 `22`/`24` 而非精确版本；这些在 v1.1.6/M25 修复。
+- 发布合同真实文件检查：`scripts/check-release-contract.mjs` 重构为读取真实文件表面（Pages workflow 模板、RELEASING.md），不再自生成 `artifactNames` 循环校验；新增精确 Gregorian 日期验证、release notes 第一非空行精确标题匹配、README Live Demo 行版本校验、ROADMAP 唯一 stable 声明检查、lockfile 双版本必需验证。注：M24 未实际校验 `## [Unreleased]` 缺失（删除后仍 exit 0），也未校验 generator 是否导入共享合同；这两项在 v1.1.6/M25 修复。
 - 发布合同集成级负向测试：`tests/release-contract.test.ts` 新增 13 个 fixture 集成测试（lockfile 漂移、缺失 [Unreleased]、非法日期、错误标题、陈旧 README 链接、ROADMAP 重复/陈旧声明、Pages 模板错误、RELEASING 资产名错误），每个错误使真实 read+validate 链非零。
 - scripts checkJs 类型覆盖：新增 `tsconfig.scripts.json`（strict + checkJs + Node types），根 tsconfig 扩展为 app/node/scripts/tests 四项目；`scripts/**/*.mjs` 七个文件补全 JSDoc 类型注解（含 `FetchLike` 结构类型、`manifest`/`document` JSON 边界 `any` 窄桥接），不降低 strict、不使用 `@ts-nocheck` 或全局 `any`。
-- 可复现发行资产生成：新增 `scripts/prepare-release-assets.mjs`（从 `dist/` 确定性生成 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`，版本唯一来源 `package.json`），相同 `dist/` 两次生成 zip 与 checksum 逐字节一致；自动调用 `verify_release_zip.py` 与 `shasum -a 256 -c` 反向验证；`release-output/` ignored；`RELEASING.md` 改用该唯一命令。
+- 可复现发行资产生成：新增 `scripts/prepare-release-assets.mjs`（从 `dist/` 确定性生成 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`，版本唯一来源 `package.json`），相同 `dist/` 两次生成 zip 与 checksum 逐字节一致；自动调用 `verify_release_zip.py` 与 `shasum -a 256 -c` 反向验证；`release-output/` ignored；`RELEASING.md` 改用该唯一命令。注：M24 生成器未实现 fail-closed 遍历（symlink 静默跳过）、事务式发布（失败遗留 `.cache/zip-*` 临时文件）、并发锁和 Python 可注入性；这些在 v1.1.6/M25 修复。
 - 文档同步：`CHANGELOG.md`、`docs/releases/v1.1.5.md`、双 README（stable/live/Release/SHA256SUMS 链接）、`ROADMAP.md`（M24 Done + stable v1.1.5）全部更新。
 
 ## [1.1.4] - 2026-08-23

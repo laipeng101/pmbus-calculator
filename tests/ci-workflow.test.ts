@@ -207,7 +207,7 @@ describe('ci.yml secondary LTS compatibility (M20)', () => {
   }
 
   function findSetupStepByVersion(version: number): string {
-    const match = setupNodeSteps().find((block) => block.includes(`node-version: ${version}`))
+    const match = setupNodeSteps().find((block) => block.includes(`node-version: '${version}`))
     if (!match) throw new Error(`setup-node step for Node ${version} not found`)
     return match
   }
