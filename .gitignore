@@ -165,3 +165,8 @@ release-output/
 .release-staging/
 release-output.backup*/
 .release-staging.lock
+# M27 versioned transaction journal
+.release-staging.transaction.json
+
+# Python bytecode
+__pycache__/

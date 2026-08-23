@@ -19,11 +19,17 @@
 // expectation is derived from the package.json version passed in.
 
 import { realpathSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { assetZipName, assetSumsName, PAGES_ZIP_TEMPLATE } from './release-artifact-contract.mjs'
+import {
+  assetZipName,
+  assetSumsName,
+  buildReleasePlan,
+  PAGES_ZIP_TEMPLATE,
+} from './release-artifact-contract.mjs'
 
 const RELEASES_URL_VERSION_PATTERN = /\/releases\/(?:tag|download)\/v(\d+\.\d+\.\d+)/g
 const CHANGELOG_RELEASE_HEADING = /^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})$/
@@ -276,9 +282,28 @@ export async function checkReleasingArtifactNames(repoRoot, version) {
 // ---------------------------------------------------------------------------
 
 /**
- * Check that the generator's getReleasePlan produces names consistent
- * with the shared contract and the package version. This is a behavioral
- * check (imports and calls the actual function), not a source-grep.
+ * Structural anti-patterns that indicate a generator deriving artifact
+ * names locally instead of consuming buildReleasePlan (M27 WP-E #4/#8).
+ * The real generator imports buildReleasePlan and consumes plan.* only.
+ */
+const GENERATOR_LOCAL_NAMING_PATTERNS = [
+  // direct assetNames() calls bypass the plan
+  /assetNames\s*\(/,
+  // literal template/concatenation building pmbus names inside the generator
+  /`pmbus-calculator-/,
+  /['"]pmbus-calculator-[^'"]*['"]\s*\+/,
+  /\+\s*['"]-web\.zip['"]/,
+  /['"]\.zip['"]/,
+]
+
+/**
+ * Check generator wiring for the release artifact contract (M27 WP-E):
+ * 1. The module must LOAD. Any import/parse failure fails closed — there is
+ *    no "module not found" fallback anymore.
+ * 2. The shared buildReleasePlan(version) result must equal the full
+ *    expected plan shape derived here from package.json + Pages workflow.
+ * 3. The generator source must consume the plan and must not contain local
+ *    naming templates or assetNames() calls.
  *
  * @param {string} repoRoot
  * @param {string} version -- current package version
@@ -286,88 +311,93 @@ export async function checkReleasingArtifactNames(repoRoot, version) {
  */
 async function checkGeneratorBehavioralContract(repoRoot, version) {
   const errors = []
+  const genPath = path.join(repoRoot, 'scripts', 'prepare-release-assets.mjs')
+  const relGenPath = 'scripts/prepare-release-assets.mjs'
+
   try {
-    // Dynamic import of the generator module
-    const genPath = path.join(repoRoot, 'scripts', 'prepare-release-assets.mjs')
-
-    // Verify the file exists first
-    try {
-      await fs.access(genPath)
-    } catch {
-      errors.push(`scripts/prepare-release-assets.mjs not found at ${genPath}`)
-      return { ok: false, errors }
-    }
-
-    const genUrl = pathToFileURL(genPath).href
-    /** @type {{ getReleasePlan?: (v: string) => any }} */
-    let gen
-    try {
-      gen = await import(genUrl)
-    } catch (importErr) {
-      // Dynamic import may fail in test environments (e.g., Vitest workers).
-      // Fall back to source-level check in this case.
-      const msg = /** @type {Error} */ (importErr).message || String(importErr)
-      if (msg.includes('Cannot find module') || msg.includes('not found')) {
-        const genSource = await fs.readFile(genPath, 'utf8')
-        const hasGetReleasePlan = genSource.includes('export function getReleasePlan')
-        if (!hasGetReleasePlan) {
-          errors.push(
-            'scripts/prepare-release-assets.mjs does not export getReleasePlan (behavioral contract required)',
-          )
-          return { ok: false, errors }
-        }
-        // Can't verify the actual return values, but the export exists
-        return { ok: true, errors: [] }
-      }
-      throw importErr
-    }
-
-    if (typeof gen.getReleasePlan !== 'function') {
-      errors.push(
-        'scripts/prepare-release-assets.mjs does not export getReleasePlan (behavioral contract required)',
-      )
-      return { ok: false, errors }
-    }
-
-    const plan = gen.getReleasePlan(version)
-
-    // Verify zip name matches shared contract
-    const expectedZip = assetZipName(version)
-    if (plan.zipName !== expectedZip) {
-      errors.push(
-        `generator getReleasePlan zipName "${plan.zipName}" does not match shared contract "${expectedZip}"`,
-      )
-    }
-
-    // Verify sums name matches shared contract
-    const expectedSums = assetSumsName()
-    if (plan.sumsName !== expectedSums) {
-      errors.push(
-        `generator getReleasePlan sumsName "${plan.sumsName}" does not match shared contract "${expectedSums}"`,
-      )
-    }
-
-    // Verify Pages template matches shared contract
-    if (plan.pagesZipTemplate !== PAGES_ZIP_TEMPLATE) {
-      errors.push(
-        `generator getReleasePlan pagesZipTemplate "${plan.pagesZipTemplate}" does not match shared contract "${PAGES_ZIP_TEMPLATE}"`,
-      )
-    }
-
-    // Verify tag
-    const expectedTag = `v${version}`
-    if (plan.tag !== expectedTag) {
-      errors.push(
-        `generator getReleasePlan tag "${plan.tag}" does not match expected "${expectedTag}"`,
-      )
-    }
-
-    return { ok: errors.length === 0, errors }
-  } catch (e) {
-    const msg = /** @type {Error} */ (e).message || String(e)
-    errors.push(`generator behavioral contract check failed: ${msg}`)
+    await fs.access(genPath)
+  } catch {
+    errors.push(`${relGenPath} not found at ${genPath}`)
     return { ok: false, errors }
   }
+
+  // 1. The module must load cleanly; ANY failure is fatal (fail closed).
+  // The load check runs in a fresh child process so the result does not
+  // depend on the caller's module loader (e.g. Vitest transforms dynamic
+  // imports of freshly created fixture files and would report spurious
+  // ERR_MODULE_NOT_FOUND for modules that exist on disk.
+  const loadCheck = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      'import "' + pathToFileURL(genPath).href + '"; process.stdout.write("LOAD-OK")',
+    ],
+    { encoding: 'utf8', timeout: 30_000 },
+  )
+  if (loadCheck.error || loadCheck.status !== 0 || !(loadCheck.stdout ?? '').includes('LOAD-OK')) {
+    const stderrTail =
+      loadCheck.stderr && loadCheck.stderr.trim().length > 0
+        ? loadCheck.stderr.trim().split('\n').pop()
+        : null
+    const msg = stderrTail || (loadCheck.error && loadCheck.error.message) || 'unknown load failure'
+    errors.push(
+      `${relGenPath} failed to load (behavioral contract requires a loadable module): ${msg}`,
+    )
+    return { ok: false, errors }
+  }
+
+  // 2. The single implementation must produce the exact expected plan.
+  let plan
+  try {
+    plan = buildReleasePlan(version)
+  } catch (e) {
+    errors.push(
+      `buildReleasePlan rejected version v${version}: ${/** @type {Error} */ (e).message}`,
+    )
+    return { ok: false, errors }
+  }
+  const expectedZip = assetZipName(version)
+  const expectedSums = assetSumsName()
+  const expectedTag = `v${version}`
+  if (plan.zipName !== expectedZip) {
+    errors.push(`shared contract zipName "${plan.zipName}" != "${expectedZip}"`)
+  }
+  if (plan.sumsName !== expectedSums) {
+    errors.push(`shared contract sumsName "${plan.sumsName}" != "${expectedSums}"`)
+  }
+  if (plan.tag !== expectedTag) {
+    errors.push(`shared contract tag "${plan.tag}" != "${expectedTag}"`)
+  }
+  if (plan.pagesZipTemplate !== PAGES_ZIP_TEMPLATE) {
+    errors.push(
+      `shared contract pagesZipTemplate "${plan.pagesZipTemplate}" != "${PAGES_ZIP_TEMPLATE}"`,
+    )
+  }
+
+  // 3. Structural checks on the generator source.
+  const genSource = await fs.readFile(genPath, 'utf8')
+  if (!genSource.includes("from './release-artifact-contract.mjs'")) {
+    errors.push(`${relGenPath} does not import from the shared artifact contract `)
+  }
+  if (!genSource.includes('buildReleasePlan')) {
+    errors.push(`${relGenPath} does not consume buildReleasePlan (the single plan implementation) `)
+  }
+  if (!/plan\.(zipName|sumsName)/.test(genSource)) {
+    errors.push(
+      `${relGenPath} never reads plan.zipName/plan.sumsName (generator must consume the plan) `,
+    )
+  }
+  for (const pattern of GENERATOR_LOCAL_NAMING_PATTERNS) {
+    if (pattern.test(genSource)) {
+      errors.push(
+        `${relGenPath} contains a local artifact-naming pattern (${pattern}) instead of consuming buildReleasePlan`,
+      )
+      break
+    }
+  }
+
+  return { ok: errors.length === 0, errors }
 }
 
 /**

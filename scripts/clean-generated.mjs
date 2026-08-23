@@ -4,6 +4,21 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+/**
+ * M27 WP-A: the release transaction lock is NEVER a clean target. Only
+ * `prepare-release-assets.mjs --recover-lock` may remove it (after proving
+ * the owner PID is dead). Its presence makes the cleaner fail closed
+ * BEFORE deleting any release target.
+ */
+export const RELEASE_LOCK_FILE = '.release-staging.lock'
+
+/** Release targets the cleaner must refuse to touch while the lock exists. */
+export const RELEASE_TRANSACTION_TARGETS = [
+  'release-output',
+  '.release-staging',
+  '.release-staging.transaction.json',
+]
+
 export const GENERATED_TARGETS = [
   'dist',
   'build',
@@ -20,9 +35,7 @@ export const GENERATED_TARGETS = [
   'tests/e2e/output-visual',
   'tests/e2e/report-visual',
   '.cache/specifications',
-  'release-output',
-  '.release-staging',
-  '.release-staging.lock',
+  ...RELEASE_TRANSACTION_TARGETS,
 ]
 
 const HELP = `clean-generated.mjs — remove generated build/test/report directories
@@ -150,6 +163,12 @@ async function preflightCleanTarget(repoRoot, absoluteTarget) {
     return { exists: false }
   }
 
+  if (stat.isFile()) {
+    // Regular files are allowed as clean targets (e.g. the transaction
+    // journal); rm() below handles both files and directories.
+    return { exists: true }
+  }
+
   if (!stat.isDirectory()) {
     throw new Error(`refusing non-directory clean target: ${absoluteTarget}`)
   }
@@ -158,17 +177,71 @@ async function preflightCleanTarget(repoRoot, absoluteTarget) {
 }
 
 /**
- * @param {{ repoRoot: string, targets?: string[], dryRun?: boolean, log?: (...data: any[]) => void }} [options]
+ * Fail closed when the release transaction lock exists (M27 WP-A #4/#5):
+ * the cleaner must stop BEFORE deleting any release target. The lock file
+ * itself is never removed here -- use
+ * `node scripts/prepare-release-assets.mjs --recover-lock`.
+ *
+ * @param {string} repoRoot
+ * @param {typeof fs.stat} [statFn]
+ * @returns {Promise<boolean>} true when the lock is present
+ */
+async function rejectWhileReleaseLockHeld(repoRoot, statFn = fs.stat.bind(fs)) {
+  const lockPath = path.join(repoRoot, RELEASE_LOCK_FILE)
+  let lockStat = null
+  try {
+    lockStat = await statFn(lockPath)
+  } catch {
+    lockStat = null
+  }
+  if (lockStat !== null) {
+    throw new Error(
+      `refusing to clean while ${RELEASE_LOCK_FILE} exists (a release transaction may be active or interrupted). `,
+    )
+  }
+  return false
+}
+
+/**
+ * Discover existing --force backup directories so they are cleaned like
+ * other generated output when no lock blocks the run.
+ *
+ * @param {string} repoRoot
+ * @param {string} backupPrefix
+ * @param {typeof fs.readdir} [readdirFn]
+ * @returns {Promise<string[]>}
+ */
+async function discoverBackupTargets(repoRoot, backupPrefix, readdirFn = fs.readdir) {
+  const entries = await readdirFn(repoRoot, { withFileTypes: true })
+  return entries
+    .filter((d) => d.isDirectory() && d.name.startsWith(backupPrefix))
+    .map((d) => d.name)
+    .sort()
+}
+
+/**
+ * @param {{ repoRoot: string, targets?: string[], dryRun?: boolean, log?: (...data: any[]) => void, includeBackups?: boolean }} [options]
  */
 export async function cleanGenerated(
   {
     repoRoot,
-    targets = GENERATED_TARGETS,
+    targets,
     dryRun = false,
     log = console.log,
+    includeBackups = true,
   } = /** @type {any} */ ({}),
 ) {
-  const resolved = resolveCleanTargets(repoRoot, targets)
+  const resolvedBase = resolveCleanTargets(repoRoot, targets ?? GENERATED_TARGETS)
+
+  // Lock guard runs FIRST and covers both the default target list and any
+  // custom list that includes release transaction targets.
+  await rejectWhileReleaseLockHeld(repoRoot)
+
+  const resolved = [...resolvedBase]
+  if (includeBackups && !targets) {
+    const backups = await discoverBackupTargets(repoRoot, 'release-output.backup-')
+    resolved.push(...resolveCleanTargets(repoRoot, backups))
+  }
 
   // Full preflight before any deletion: lexical checks, symlink checks, and
   // target type checks all happen first so a failing target cannot leave a

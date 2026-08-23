@@ -51,14 +51,42 @@ def fail(message: str) -> None:
     sys.exit(1)
 
 
+def _remove_partial_output(output_path: str) -> None:
+    """Delete a partially written zip so failures leave no artifact."""
+    try:
+        os.unlink(output_path)
+    except OSError:
+        pass
+
+
+def read_all_from_fd(fd: int) -> bytes:
+    """Read an opened fd until EOF, tolerating short reads (M27 WP-F).
+
+    Regular files can legitimately return fewer bytes than requested
+    (signals, resource limits); pipes always do. Loop until os.read
+    returns b"" and concatenate.
+    """
+    chunks: list[bytes] = []
+    while True:
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def validate_and_open(file_path: str, dist_dir: str) -> tuple[int, str]:
     """Validate a file path and open it safely.
 
-    On POSIX, uses O_NOFOLLOW to atomically check-and-open without
-    following symlinks. On platforms without O_NOFOLLOW, falls back
-    to explicit lstat-before-open with a conservative check.
+    M27 WP-F hardening:
+    - On POSIX the ORIGINAL path is opened with O_NOFOLLOW, so the opened
+      inode is exactly the non-symlink final component at that path.
+    - fstat(dev+ino) of the opened fd must equal the initial lstat
+      (identity check): a swap between lstat and open fails closed.
+    - Containment is verified on the resolved path before opening.
 
-    Returns (fd, real_path).
+    Returns (fd, real_path). Callers must re-check identity/size via
+    verify_read_identity() after reading.
     """
     # Step 1: lstat the ORIGINAL path first (before realpath)
     # This catches symlinks at the original path level (M26 TOCTOU fix).
@@ -80,15 +108,16 @@ def validate_and_open(file_path: str, dist_dir: str) -> tuple[int, str]:
     if not real_path.startswith(dist_dir + os.sep) and real_path != dist_dir:
         fail(f"path escapes dist_dir: {file_path} -> {real_path}")
 
-    # Step 4: Open atomically (O_NOFOLLOW on POSIX, fallback on others)
+    # Step 4: Open atomically. On POSIX open the ORIGINAL path with
+    # O_NOFOLLOW: combined with step 1's lstat this pins the final path
+    # component to a regular file. Platforms without O_NOFOLLOW fall back
+    # to lstat(real_path)+open (conservative, non-atomic).
     if _HAS_O_NOFOLLOW:
         try:
-            fd = os.open(real_path, os.O_RDONLY | os.O_NOFOLLOW)
+            fd = os.open(file_path, os.O_RDONLY | os.O_NOFOLLOW)
         except OSError as e:
-            fail(f"cannot open {real_path}: {e}")
+            fail(f"cannot open {file_path}: {e}")
     else:
-        # Conservative fallback: re-lstat after realpath, then open.
-        # Not fully atomic, but better than nothing on platforms without O_NOFOLLOW.
         try:
             st_final = os.lstat(real_path)
         except OSError as e:
@@ -104,18 +133,46 @@ def validate_and_open(file_path: str, dist_dir: str) -> tuple[int, str]:
         except OSError as e:
             fail(f"cannot open {real_path}: {e}")
 
-    # Step 5: fstat the opened fd to verify it's still a regular file
+    # Step 5: identity + type verification of the OPENED fd (M27).
     try:
         st_fd = os.fstat(fd)
     except OSError as e:
         os.close(fd)
-        fail(f"cannot fstat opened fd for {real_path}: {e}")
+        fail(f"cannot fstat opened fd for {file_path}: {e}")
 
     if not stat.S_ISREG(st_fd.st_mode):
         os.close(fd)
-        fail(f"opened file descriptor is not a regular file: {real_path}")
+        fail(f"opened file descriptor is not a regular file: {file_path}")
+
+    if (st_fd.st_dev, st_fd.st_ino) != (st_original.st_dev, st_original.st_ino):
+        os.close(fd)
+        fail(
+            f"file replaced between lstat and open: {file_path} "
+            f"(lstat dev={st_original.st_dev}/ino={st_original.st_ino}, "
+            f"fd dev={st_fd.st_dev}/ino={st_fd.st_ino})"
+        )
 
     return fd, real_path
+
+
+def verify_read_identity(fd: int, st_initial: os.stat_result, total_read: int) -> None:
+    """Post-read integrity gate (M27 WP-F).
+
+    Fails when the file changed length or identity while being read --
+    the produced bytes would otherwise silently mismatch the directory
+    state the transaction believes it archived.
+    """
+    if total_read != st_initial.st_size:
+        fail(
+            f"file changed size during read: expected {st_initial.st_size} bytes, "
+            f"read {total_read}"
+        )
+    st_after = os.fstat(fd)
+    if (st_after.st_dev, st_after.st_ino) != (
+        st_initial.st_dev,
+        st_initial.st_ino,
+    ):
+        fail("file identity changed during read")
 
 
 def main() -> None:
@@ -143,36 +200,47 @@ def main() -> None:
     if not manifest:
         fail("manifest is empty")
 
-    # Validate and build
+    # Validate and build. Any failure must leave NO output artifact behind --
+    # a partial/empty zip must never look like a finished product.
     seen = set()
-    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for item in manifest:
-            entry = item.get("entry", "")
-            file_path = item.get("path", "")
+    try:
+        with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for item in manifest:
+                entry = item.get("entry", "")
+                file_path = item.get("path", "")
 
-            if not entry:
-                fail(f"manifest item missing 'entry': {item}")
-            if not file_path:
-                fail(f"manifest item missing 'path': {item}")
+                if not entry:
+                    fail(f"manifest item missing 'entry': {item}")
+                if not file_path:
+                    fail(f"manifest item missing 'path': {item}")
 
-            if entry in seen:
-                fail(f"duplicate zip entry: {entry}")
-            seen.add(entry)
+                if entry in seen:
+                    fail(f"duplicate zip entry: {entry}")
+                seen.add(entry)
 
-            # Validate and open safely
-            fd, real_path = validate_and_open(file_path, dist_dir)
+                # Validate and open safely (identity pinned to lstat'd inode)
+                fd, real_path = validate_and_open(file_path, dist_dir)
+                st_initial = os.lstat(file_path)
 
-            try:
-                info = zipfile.ZipInfo(entry, date_time=DOS_EPOCH)
-                info.compress_type = zipfile.ZIP_DEFLATED
-                info.create_system = CREATE_SYSTEM
-                info.external_attr = EXTERNAL_ATTR
+                try:
+                    info = zipfile.ZipInfo(entry, date_time=DOS_EPOCH)
+                    info.compress_type = zipfile.ZIP_DEFLATED
+                    info.create_system = CREATE_SYSTEM
+                    info.external_attr = EXTERNAL_ATTR
 
-                # Read from the already-opened fd
-                data = os.read(fd, os.fstat(fd).st_size)
-                zf.writestr(info, data)
-            finally:
-                os.close(fd)
+                    # Read until EOF (short-read safe), then verify the bytes
+                    # still describe exactly the file we checked in.
+                    data = read_all_from_fd(fd)
+                    verify_read_identity(fd, st_initial, len(data))
+                    zf.writestr(info, data)
+                finally:
+                    os.close(fd)
+    except SystemExit:
+        _remove_partial_output(output_path)
+        raise
+    except BaseException:
+        _remove_partial_output(output_path)
+        raise
 
     print(f"zip_helper: wrote {len(manifest)} entries to {output_path}")
 
