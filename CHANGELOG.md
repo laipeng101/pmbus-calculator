@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [1.1.7] - 2026-08-23
+
+### Fixed
+
+- 原子并发锁与所有权：`acquireLock` 从 `existsSync → writeFileSync`（TOCTOU 竞态）重构为 `fs.openSync(path, 'wx', 0o600)`（O_CREAT|O_EXCL 原子创建）；锁内容改为结构化 JSON 元数据（schema version、PID、timestamp、random nonce、repo realpath）；cleanup 仅删除 nonce/PID/repo 三方匹配的本进程锁；无效 JSON、EPERM、PID 状态不明、stale lock 均不得自动删除；新增 `--recover-lock` 显式恢复命令；`process.exit()` 不再出现在 try/catch 中，CLI 返回 exit code；未知参数在锁创建前失败且无残留。
+- 事务状态机与恢复：`generateAssets` 重构为显式事务状态机（INIT → STAGING_GENERATED → STAGING_VERIFIED → OLD_OUTPUT_BACKED_UP → NEW_OUTPUT_PROMOTED → NEW_OUTPUT_REVERIFIED → BACKUP_REMOVED）；首次发布时 staging 直接 rename 到尚不存在的 output（不再预 mkdir）；已有 output 先验证恰好是合法资产对；`--force` 使用唯一 nonce 备份目录；新增 `--recover` 命令（output 缺失 + 已验证 backup 可恢复，output 与 backup 同时存在拒绝）；每个 failpoint 可注入依赖（fs rename/remove/verifier/checksum）并断言旧资产不丢失、无含糊状态、owned lock/staging 零残留。
+- 测试确定性与路径安全：移除固定路径 `/tmp/.m25-symlink-probe`，改用 `fs.mkdtempSync` 创建唯一能力探针并在 `afterAll` 中无条件清理；同一 shell 连续运行 generator test 两次测试数、passed、skipped 完全一致，临时目录零残留；新增 20+ 并发竞争测试（严格一个 winner）；新增 FIFO/socket/device/文件名含特殊字符/control char 拒绝测试；`catch` 使用 `unknown` 并做正确 narrowing。
+- Python ZIP helper TOCTOU 修复：`_zip_helper.py` 改为先 `os.lstat` 原始路径（检测 symlink），再 `os.path.realpath`（containment 校验）；POSIX 上优先使用 `os.open(..., O_RDONLY | O_NOFOLLOW)` 防 check-vs-read 替换；`external_attr` 包含 `stat.S_IFREG | 0o644`；新增 symlink swap/TOCTOU fixture 测试。
+- 行为式 artifact contract：`check-release-contract` 不再仅检查 `includes("from './release-artifact-contract.mjs'")` 字符串，改为导入 `getReleasePlan(version)` 并验证其返回的 zipName/sumsName/pagesZipTemplate/tag 与共享合同一致；动态 import 失败时回退到源码级检查并记录；`readContract` 返回 `generatorBehavioralOk` 与 `generatorBehavioralErrors` 字段。
+- 锁清理：`clean-generated.mjs` 增加 `.release-staging.lock` 到清理目标（17→18 项）；`.gitignore` 备份模式更新为 `release-output.backup*/`。
+- 文档：`RELEASING.md` 新增"中断恢复"章节，记录 `--recover-lock`、`--recover` 命令与人工审计规则。
+
+> **v1.1.6 勘误：** v1.1.6 的发行资产本身正确，但以下实现缺陷由 v1.1.7/M26 修复：
+>
+> 1. `acquireLock` 使用非原子 `existsSync → writeFileSync`（TOCTOU 竞态）；锁文件无结构化所有权元数据，清理仅比对 PID 字符串。
+> 2. Release 资产生成器失败路径（如 dist 缺失）会遗留 `.release-staging.lock`，`npm run clean` 未清理该文件。
+> 3. `tests/prepare-release-assets.test.ts` 使用固定路径 `os.tmpdir()/.m25-symlink-probe` 作为 symlink 能力探针且未清理，导致同一 shell 第二次运行 symlink 测试被意外 skip。
+> 4. `generateAssets` 的 rollback 路径（`--force` 失败后恢复旧 output）仅在 `finally` 块中作为 best-effort 实现，无 explicit failpoint 测试覆盖，也未验证 backup rename 后、staging promotion 前、re-verify 中等各阶段的故障恢复。
+> 5. `_zip_helper.py` 先 `os.path.realpath` 再 `os.lstat`，symlink 被 `realpath` 解析后 `S_ISLNK` 检查永不会触发（TOCTOU）。
+> 6. `check-release-contract` 仅检查 generator 源码中是否包含 shared-contract import 字符串，不验证实际行为；generator 可使用硬编码错误 ZIP 名仍通过门禁。
+
 ## [1.1.6] - 2026-08-23
 
 ### Fixed

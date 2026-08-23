@@ -51,6 +51,8 @@ function makeContract(overrides = {}) {
     pagesHasSums: true,
     pagesMatchesSharedContract: true,
     generatorImportsSharedContract: true,
+    generatorBehavioralOk: true,
+    generatorBehavioralErrors: [],
     ...overrides,
   }
 }
@@ -316,7 +318,8 @@ describe('release contract integration (M24)', () => {
     fs.writeFileSync(
       path.join(tmp, 'scripts/prepare-release-assets.mjs'),
       "import { assetZipName, assetSumsName } from './release-artifact-contract.mjs'\n" +
-        'export function assetNames(v) { return { zip: assetZipName(v), sums: assetSumsName() } }\n',
+        'export function assetNames(v) { return { zip: assetZipName(v), sums: assetSumsName() } }\n' +
+        'export function getReleasePlan(v) { return { tag: `v${v}`, zipName: assetZipName(v), sumsName: assetSumsName(), stagingDir: ".release-staging", outputDir: "release-output", pagesZipTemplate: "pmbus-calculator-${RELEASE_TAG}-web.zip", contractSchemaVersion: 1 } }\n',
     )
     return tmp
   }
@@ -547,6 +550,12 @@ describe('readContract completeness (M25)', () => {
     const contract = await readContract(process.cwd())
     expect(contract.generatorImportsSharedContract).toBe(true)
   })
+
+  it('readContract includes behavioral contract check (M26)', async () => {
+    const contract = await readContract(process.cwd())
+    expect(contract.generatorBehavioralOk).toBe(true)
+    expect(contract.generatorBehavioralErrors).toEqual([])
+  })
 })
 
 describe('release contract integration (M25)', () => {
@@ -614,7 +623,8 @@ describe('release contract integration (M25)', () => {
     fs.writeFileSync(
       path.join(tmp, 'scripts/prepare-release-assets.mjs'),
       "import { assetZipName, assetSumsName } from './release-artifact-contract.mjs'\n" +
-        'export function assetNames(v) { return { zip: assetZipName(v), sums: assetSumsName() } }\n',
+        'export function assetNames(v) { return { zip: assetZipName(v), sums: assetSumsName() } }\n' +
+        'export function getReleasePlan(v) { return { tag: `v${v}`, zipName: assetZipName(v), sumsName: assetSumsName(), stagingDir: ".release-staging", outputDir: "release-output", pagesZipTemplate: "pmbus-calculator-${RELEASE_TAG}-web.zip", contractSchemaVersion: 1 } }\n',
     )
     return tmp
   }
