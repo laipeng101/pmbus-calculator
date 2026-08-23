@@ -199,6 +199,6 @@ describe('cleanGenerated', () => {
   })
 
   it('exposes the current generated-target allowlist size', () => {
-    expect(GENERATED_TARGETS.length).toBe(16)
+    expect(GENERATED_TARGETS.length).toBe(17)
   })
 })

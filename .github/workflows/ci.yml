@@ -61,7 +61,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: '22.20.0'
           cache: 'npm'
 
       # Single source of truth for the light/full split: scripts/classify-ci-scope.mjs
@@ -154,7 +154,7 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version: '24.0.0'
           cache: 'npm'
 
       - name: Typecheck and unit tests on secondary LTS (Node 24)

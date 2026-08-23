@@ -101,16 +101,6 @@ export function isValidBytes(value) {
   return Number.isInteger(value) && value > 0
 }
 
-// pushIf is intentionally unused; kept for symmetry with validation patterns.
-// /**
-//  * @param {boolean} condition
-//  * @param {string[]} errors
-//  * @param {string} message
-//  */
-// function pushIf(condition, errors, message) {
-//   if (condition) errors.push(message)
-// }
-
 /**
  * @param {*} manifest
  * @param {{ expectedDocumentCount?: number, landingHosts?: string[], downloadHosts?: string[] }} [options]

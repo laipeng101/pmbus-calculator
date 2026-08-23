@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-23（M24 Done：Node 运行时下限类型合同、真实发布合同与可复现发行资产，v1.1.5 PATCH）
+最后更新：2026-08-23（M25 Done：发布管线事务化、合同完整性与精确运行时下限，v1.1.6 PATCH）
 
 ## 当前产品基线
 
@@ -19,10 +19,24 @@
 ## 当前里程碑
 
 ```text
-M0–M24 complete；stable release v1.1.5；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M25 complete；stable release v1.1.6；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
-### M24 done — Node 运行时下限类型合同、真实发布合同与可复现发行资产（v1.1.5 PATCH）
+### M25 done — 发布管线事务化、合同完整性与精确运行时下限（v1.1.6 PATCH）
+
+- 发行资产生成器 fail-closed 与事务式发布：`walkDist` 显式分类所有 Dirent 类型；固定 `scripts/_zip_helper.py`（Python 可注入，不再动态生成临时脚本）；checksum 验证使用 Node `crypto`；事务式发布（`.release-staging/` 唯一 staging → backup/rollback → release-output）；并发锁；零遗留 `.cache/zip-*` 临时文件。新增 `tests/prepare-release-assets.test.ts`（19 测试）。
+- 共享发行资产合同：`scripts/release-artifact-contract.mjs` 集中定义 ZIP 命名、Pages 模板和路径校验规则，`prepare-release-assets` 和 `check-release-contract` 均从该模块导入。
+- 发布合同完整性：CHANGELOG 结构化解析（fenced code block 忽略、恰好一个 `[Unreleased]` 且为第一个 heading、当前版本为第一个 dated section）；`readContract` 读取 RELEASING.md 和 generator 共享合同导入；删除 `main()` 中 RELEASING 旁路追加逻辑。新增 10 个 CHANGELOG 结构测试和 9 个 integration fixture 测试。
+- Node 精确运行时下限：engines 收紧为 `>=22.20.0 <23`；`@types/node` 精确 `22.20.1`（无 `^`）；CI `setup-node` 精确 `'22.20.0'`/`'24.0.0'`（带引号，非滚动）；runtime contract 解析完整 semver 并锁定精确下限；新增 `node:ffi` `@ts-expect-error` 负向类型 fixture。
+- 类型清理：删除 `specifications.mjs` 中注释掉的 `pushIf` 死代码。
+- 文档勘误：CHANGELOG v1.1.5 和 ROADMAP M24 节注明 M24 已知缺口由 M25 修复。
+- 状态依据：本地 `npm run verify` 全绿（含 Node 22.20.0 与 24.0.0 隔离验证）；PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
+
+> **M25 勘误：** M24 的以下三项在 v1.1.5 中未完全生效，由 v1.1.6/M25 修复：
+>
+> 1. `check-release-contract` 未实际校验 `## [Unreleased]` 缺失（删除后仍 exit 0），也未校验 generator 是否导入共享合同。
+> 2. 发行资产生成器未实现 fail-closed Dirent 遍历（symlink 静默跳过）、事务式发布（失败遗留 `.cache/zip-*` 临时文件）、并发锁和 Python 可注入性。
+> 3. 运行时下限只比较主版本，未锁定精确 minor/patch 下限（engines 接受 Node 22.0，但 jsdom 要求 ≥22.13.0）；CI 使用滚动版本而非精确版本。
 
 - 修复 M23 审核发现的两项发布级门禁缺陷：`@types/node` 为 26（Current）
   但 engines 只支持 Node 22/24，typecheck 接受受支持运行时不存在的 Node 26 API
