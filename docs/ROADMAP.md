@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-23（M28 Done：Release recovery integrity、zero-skip fail-closed、signal/lock lifecycle 与 journal durability，v1.1.9 PATCH）
+最后更新：2026-08-24（M29 Done：Release durability、signal determinism、recovery state consistency 与 security gate completeness，v1.1.10 PATCH）
 
 ## 当前产品基线
 
@@ -19,8 +19,49 @@
 ## 当前里程碑
 
 ```text
-M0–M28 complete；stable release v1.1.9；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M29 complete；stable release v1.1.10；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M29 done — Release durability、signal determinism、recovery state consistency 与 security gate completeness（v1.1.10 PATCH）
+
+- zero-skip security gate 完整覆盖（WP-A）：新建 `scripts/release-security-test-contract.mjs` 共享清单
+  `SECURITY_TEST_FILES`（prepare-release-assets、zip-helper-security、m28-recovery、
+  run-release-security-tests 四个文件），runner 与合同测试引用同一清单、不得分别硬编码；清单文件
+  缺失/重命名/未执行时 fail closed；报告必须精确包含四个预期 suite（多余 suite 也失败）；
+  skipped/todo/pending 任一大于 0 即非零；CI 日志列出实际覆盖的四个文件与 zero-skip 结果；
+  runner 自身测试加入门禁时用 fake vitest fixture，不产生无限递归。
+- 确定性 signal/lock 协议（WP-B）：删除 bounded 10×setImmediate flush loop；Python helper/verifier
+  子进程改 async spawn，`generateAssets`/`recoverTransaction` 在每个事务 stage 边界检查注入的终止
+  状态（SignalStoppedError），signal 被观察后不进入新 transaction stage、不打印 Done/完整成功声明；
+  INIT journal 在任何长时子进程前持久化；SIGINT 精确 130、SIGTERM 精确 143；lock 在所有写/rename/
+  子进程停止前不释放；第二 generator 在第一进程完全停止前无法获得锁；Node 22.20.0 与 24.0.0 各
+  100 轮 stress 0 flaky、0 skip。
+- 目录 durability fail-closed（WP-C）：新增 `fsyncParentDirectorySync`，错误分类——EINVAL/ENOTSUP/
+  EOPNOTSUPP（平台不支持目录 fsync）降级为 note；EIO/ENOSPC/EROFS/EBADF/未知/close 失败抛
+  DurabilityError，保留 journal/backup/lock、返回非零、不得报告完整成功；覆盖全部六个 mutation
+  boundary（journal temp write/fsync/close、journal rename、output→backup rename、staging→output
+  promotion、backup 删除、journal unlink）。
+- 恢复前验证与 crash-consistent journal（WP-D）：PRE_COMMIT + backup 恢复在删除/rename 任何路径前
+  将 backup 的 zip+sums hash 与 journal.oldSha256 比较，不匹配时零磁盘 mutation、journal/backup/output
+  原样保留；新增 `OLD_OUTPUT_BACKUP_INTENT` 状态（rename 前持久化，oldSha256 从未触碰的 output
+  计算）；hash 先填充再持久化 STAGING_VERIFIED；STAGING_GENERATED 允许空 hash；14 个 crash matrix
+  failpoint（13 force + 首次发布）逐一验证磁盘 journal 可解析、--recover 可重复、第二次幂等、无
+  journal 指向不存在 backup。
+- 统一 ZIP entry contract（WP-E）：共享 fixture `tests/fixtures/zip-entry-contract.json`；JS
+  validateZipEntry、\_zip_helper.py、verify_release_zip.py 三层一致；Windows drive absolute/
+  drive-relative（C:/、C:\、C:）与 UNC（//、\\）三层全部拒绝；'.' 段、空段、backslash、control、
+  node_modules/src、.map 三层一致拒绝；helper 直接调用 fail closed 且不留 partial ZIP。
+- runner 私有临时目录与清理失败（WP-F）：报告位于 mkdtempSync 随机私有目录（0o700）；删除失败必须
+  使最终门禁非零并在 stderr 报告，原始 test failure 与 cleanup failure 同时发生时两者都报告；
+  不调用中途 process.exit；新增 symlink/path replacement race、rmSync EACCES/EIO、report 替换为
+  symlink/directory、temp dir 创建失败、test child timeout/signal、零残留 fixture。
+- 文档与审计合同（WP-G）：ROADMAP/CHANGELOG 将 M28 四项超出实现的表述标记为 M29
+  strengthening/superseded（不修改已发布 v1.1.9 tag 或 Release notes 资产）；PR 模板新增 base
+  SHA/tree、final head SHA、push 次数、每次 CI URL/head/conclusion、checked_sha/checked_tree、
+  merge SHA/tree、tree equality、security runner 覆盖文件、passed/failed/skipped/todo、temp residue、
+  signal stress 次数/平台、crash matrix 数量、hygiene 两个 size 指标语义。
+- 状态依据：本地 `npm run verify` 全绿；Node 22.20.0 与 24.0.0 fresh worktree 全套验证 + signal
+  stress 各 100 轮 0 flaky；PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
 
 ### M28 done — Release recovery integrity、zero-skip fail-closed、signal/lock lifecycle 与 journal durability（v1.1.9 PATCH）
 

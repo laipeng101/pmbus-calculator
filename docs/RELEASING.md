@@ -36,11 +36,15 @@
 - **事务恢复**：`node scripts/prepare-release-assets.mjs --recover`
   与普通生成一样**必须先获取互斥锁**；活跃锁存在时拒绝执行。
   恢复前对 backup 做深度验证（恰好两个普通文件、SHA256SUMS 单行匹配实际 hash、
-  verify_release_zip.py 通过）；output 与 backup 同时存在时按 versioned transaction
-  journal 裁决：PRE_COMMIT 恢复已验证旧 backup，COMMITTED 保留已验证新 output
-  仅清理残余 backup；journal 缺失/损坏/未知 schema 一律拒绝并要求人工审计。
-  多个 backup 一律拒绝。恢复完成后重新验证正式 output。损坏的 backup 绝不会
-  被 rename 为正式 output。
+  verify_release_zip.py 通过）；PRE_COMMIT + backup 时，在删除或 rename 任何路径
+  **之前**先将 backup 的 zip+sums 实际 hash 与 journal.oldSha256 比较，不匹配则
+  零磁盘 mutation（journal/backup/output 全部原样保留）并要求人工审计；output 与
+  backup 同时存在时按 versioned transaction journal 裁决：PRE_COMMIT 恢复已验证
+  旧 backup，COMMITTED 保留已验证新 output 仅清理残余 backup；journal
+  缺失/损坏/未知 schema 一律拒绝并要求人工审计。多个 backup 一律拒绝。恢复完成后
+  重新验证正式 output。损坏的 backup 绝不会被 rename 为正式 output。
+  事务在信号/中断下的最终磁盘状态只能是：已验证 committed output，或 journal 可
+  自动恢复的明确 PRE_COMMIT 状态；不允许不确定 topology。
 
 - **不得自动删除**：无效 JSON、权限不明、未知 schema 的锁不会被自动删除；
   中断后的备份也不被自动移除。始终使用显式恢复命令或人工审计后清理。
