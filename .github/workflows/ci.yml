@@ -85,6 +85,14 @@ jobs:
       - name: Format check
         run: npm run format:check
 
+      - name: Type check
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run typecheck
+
+      - name: Lint
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run lint
+
       - name: Markdown math gate
         run: npm run check:markdown-math
 
@@ -100,14 +108,6 @@ jobs:
       - name: Canonical toolchain check
         if: steps.scope.outputs.run_full != 'false'
         run: npm run check:toolchain
-
-      - name: Type check
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run typecheck
-
-      - name: Lint
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run lint
 
       - name: Unit tests with coverage
         if: steps.scope.outputs.run_full != 'false'

@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-24（M31 done：release lifecycle 证据加固、跨平台 fail-closed 与验证去重，v1.1.11 工程基线，未发布新版本）
+最后更新：2026-08-24（M32 done：release process-group 真正闭环、post-spawn error 修复、验证合同单一来源与证据流程加固，v1.1.11 工程基线，未发布新版本）
 
 ## 当前产品基线
 
@@ -19,7 +19,7 @@
 ## 当前里程碑
 
 ```text
-M0–M31 complete；stable release v1.1.11；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M32 complete；stable release v1.1.11；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ### M31 done — release lifecycle 证据加固、跨平台 fail-closed 与验证去重（v1.1.11 工程基线，未发布新版本）
@@ -88,6 +88,82 @@ verify` 不清空有效缓存、只保留 lockfile 对应 Playwright browser rev
 > 4. “子进程清理以 <2048 字节增长为证据”：宽松断言在慢速残留 writer 下仍通过
 >    （探针 P3：settle 后孙进程存活、1200ms 只写 4 字节）；M31 以严格 quiescence
 >    （size+sha256 稳定期后不变）与 `kill(pid,0)` ESRCH 替代。
+
+> **M32 strengthening（v1.1.11 工程基线）——以下 M31 表述在 M32 修复完成前超出实际实现：**
+>
+> 1. “成功 spawn 的 child 必须等 `close` 后 settle / 孙进程无法在 Promise settle 后
+>    继续存活写 release 路径”：direct child 的 `close` 不等于进程组消失（探针 P1：
+>    孙进程**单独**忽略 SIGTERM、direct child 不忽略时，M31 实现在 close 后立即
+>    settle，孙进程继续存活写 sentinel、`activeChildren` 已清空）；M32 改为 close
+>    后必须 `kill(-pgid, 0)` 证明进程组消失（ESRCH）才 settle，否则向剩余组升级
+>    SIGKILL 并有界轮询（50ms/10s deadline）到 ESRCH，该表述仅在 M32 之后成立。
+> 2. “成功 spawn 后只等 close、error 仅代表 spawn 失败”：成功 spawn 后的
+>    ChildProcess `error`（kill 失败/IPC 失败/abort）被 M31 当成 spawn 失败——reject
+>    伪称 `failed to start`、误删仍存活进程的 registry 条目、遗留 escalation timer
+>    （探针 P2）；M32 以 `spawn` 事件区分“从未成功 spawn”（ENOENT 等，立即受控
+>    reject）与“post-spawn error”（记录 runtime error、不 settle、不清 registry、
+>    继续受控终止、最终消息不伪称 `failed to start`），deadline 内无法证明组消失时
+>    fail closed（registry 保留、runCli 拒绝释放锁），该表述仅在 M32 之后成立。
+>
+> ### M32 done — release process-group 真正闭环、post-spawn error 修复、验证合同单一来源与证据流程加固（v1.1.11 工程基线，未发布新版本）
+>
+> - 进程组生命周期状态机（WP-A）：`execFileAsync` 重构——`spawn` 事件确认成功创建
+>   进程并在 spawn 时保存 PGID（close 后不再从可复用 PID 推断所有权）；只有“从未
+>   成功 spawn”的 error（如 ENOENT）才立即 reject 并清空 registry（无进程可泄漏）；
+>   成功 spawn 后的 error 记录为 runtime error：不 settle、不清 registry、继续受控
+>   终止，最终消息绝不伪称 `failed to start`；timeout 后 direct child 的 `close`
+>   不再是 settle 条件——必须 `kill(-pgid, 0)` 证明进程组消失（ESRCH），否则向剩余
+>   组升级 SIGKILL 并有界轮询（导出可测的 `GROUP_SETTLE_POLL_MS=50` 与
+>   `GROUP_SETTLE_DEADLINE_MS=10000`，无无限等待/随机重试）到 ESRCH；main/
+>   escalation/termination-deadline/group-poll 四个 owned timer 全部在 settle 时
+>   清除；有界 deadline 内仍无法证明进程组消失（EPERM/未知/kill 失败）→ fail
+>   closed：reject 明确审计消息、registry 条目**保留**、runCli 拒绝释放 release 锁
+>   （状态可恢复/可审计）；Windows POSIX-only gate 保持（不回退 direct-child-only
+>   kill）。
+> - 探针（修改前，未复用旧证据）：P1——direct 不忽略、grandchild 单独忽略 SIGTERM：
+>   Promise 已因 timeout reject、wrapper 已退出，但 grandchild `kill(pid,0)` 仍成功、
+>   `activeChildren.size===0`、settle 后 sentinel 117→369 字节持续增长（hash 变化）；
+>   P2——成功 spawn 后经可控 kill 注入触发 ChildProcess `error`（EPERM，非 ENOENT）：
+>   reject 伪称 `failed to start`、PID 仍存活、registry 被误删、timer created=2/
+>   cleared=1（escalation 遗留）；P3——M31 的 `grandchildWrapper(..., true)` 把同一个
+>   boolean 同时传给 wrapper 与 grandchild，B5/B6 未覆盖“仅孙进程忽略”的不对称组合；
+>   P4——AGENTS.md/CONTRIBUTING.md 的 verify 展开缺失 `check:toolchain`、
+>   `test:release-security`、`check:tailwind-scope`（package.json 与 CI 均有）；
+>   P5——M31 commit `d82b13b` 首行为 `[agent/m31-… a9c310a]` 且含 `files changed`/
+>   `create mode`（Git stdout 污染；已合并历史不重写，仅修正后续流程）。
+> - 测试矩阵（WP-B）：新增 `tests/m32-child-group-lifecycle.test.ts`（第十个
+>   release-security suite，加入共享 `SECURITY_TEST_FILES`，coverage 自动排除、
+>   重复执行数仍为 0）：四种 SIGTERM 组合（direct/grandchild 各自忽略或不忽略——含
+>   M31 缺失的“仅孙进程忽略”不对称组合，M3 为本轮核心红测）、post-spawn
+>   SIGTERM/SIGKILL kill-error fail-closed（子进程隔离验证 registry 保留 + 锁不
+>   释放）、ENOENT 受控早期 rejection、success/nonzero/timeout/kill-false/spawn
+>   failure 全路径 registry 合同、timeout 路径双 PID ESRCH + 严格 quiescence（size+
+>   sha256 稳定期后 ≥1.5s 不变）+ 四 timer 全 cleared；红测失败时 finally 强制清理
+>   进程组，文件级 afterAll 兜底扫描（0 orphan）。
+> - 验证合同单一来源（WP-C）：`package.json#scripts.verify`（17 步）为唯一事实来源
+>   ——AGENTS.md/CONTRIBUTING.md 的 verify 展开与它逐项完全一致（结构测试 V2/V3
+>   检测缺失/重复/顺序，不只断言 substring）；ci.yml full-tier 核心步骤与 verify
+>   相对顺序一致（typecheck/lint 移回 `check:markdown-math` 之前；`check:repo-hygiene`
+>   在 CI 无条件前置、whitespace 为一次 base..head 检查，均为设计差异并豁免）；
+>   coverage 范围/阈值/排除抽取到共享 `scripts/vitest-shared-config.mjs`，
+>   `vite.config.ts` 与 `vitest.coverage.config.ts` 消费同一来源（不再手工复制、
+>   不再靠事后比对维持一致）；security 排除仍来自 `SECURITY_TEST_FILES` spread
+>   （V7 断言源码无字面量文件列表）；PR 模板 M31 一次性字段改为条件化
+>   release-security 字段（非 release 任务明确填 N/A）。
+> - 证据流程加固（WP-D）：commit message 独立文件创建、push 前 `git show -s
+--format=%B` 核对（subject 格式 + 无 Git 输出污染 + `--stat` 与 PR 描述一致）；
+>   长任务日志统一 `command >log 2>&1; rc=$?; tail -80 "$log"; exit "$rc"`；
+>   同一失败命令不原样重试（先定位根因再改变策略）；最终完整 verify 只在最后一次
+>   源码/配置/文档修改之后运行。
+> - 状态依据：本地 Node 24.19.0/npm 11.17.0 fresh `npm ci` + `npm run verify` 全绿
+>   （单测/security/coverage/e2e 实测数字见最终任务报告；release-security 十文件
+>   零 skip；coverage 634/34 文件 92.92/89.18/95.18/94.83 与 v1.1.11 一致）；四种
+>   SIGTERM 组合 × 25 轮 stress bad=0、0 orphan、0 residual writer、0 stale lock、
+>   0 registry false-empty、0 live timer、0 skip/todo；Node 22.20.0/npm 11.17.0
+>   fresh worktree 四种组合 × 10 轮 + 全套验证通过；资产回归：两次
+>   `release:prepare-assets`（含 `--force`）zip/SHA256SUMS 逐字节一致且与 v1.1.11
+>   已发布资产 hash 完全相同（ZIP `777c871b…`、SHA256SUMS `743b43c3…`）；PR/CI
+>   审计证据见对应 PR 与 Actions 运行，不在本文件维护。
 
 ### M30 done — release child-process lifecycle、repeated-signal safety、zero-skip completeness 与 canonical Node/npm toolchain（v1.1.11 PATCH）
 

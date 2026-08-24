@@ -58,12 +58,12 @@
 - journal crash matrix failpoint 数量（每个 mutation boundary 的 crash 注入覆盖）:
 - hygiene 两个 size 指标语义：tracked file count = Git index/HEAD 中 tracked path 的 entry 计数；tree size = 每个 tracked path 对应 blob size 求和（同一 blob 被多路径共享时每路径都计入），两者均以 `git ls-tree -r -l HEAD` 为准
 
-## M31 证据字段（release lifecycle 证据加固 / 跨平台 fail-closed / 验证去重）
+## Release-security 证据字段（release/进程树相关任务必填；非 release 任务一律明确填 N/A，减少无关证据填写成本）
 
-- 验证去重：`test:coverage` 测试文件数/测试数（不含 security）、`test:release-security` 文件数/测试数、九 security suite 在 coverage 中的重复执行数（必须为 0）、coverage 墙钟 / security 墙钟（修改前后对比）:
-- coverage 配置排除集与 SECURITY_TEST_FILES 一致性（结构测试）:
+- 验证去重：`test:coverage` 测试文件数/测试数（不含 security）、`test:release-security` 文件数/测试数、security suite 在 coverage 中的重复执行数（必须为 0）、coverage 墙钟 / security 墙钟:
+- coverage 配置排除集与 SECURITY_TEST_FILES 一致性（结构测试）与共享常量来源（`scripts/vitest-shared-config.mjs`）:
 - 平台 gate：POSIX-only（linux/darwin）声明、win32 拒绝退出码、副作用前退出验证（零锁/staging/journal/output）:
-- 严格进程树证据：quiescence 断言（size+sha256 稳定期后不变）、孙进程 kill(pid,0) ESRCH 轮数、双 SIGTERM-ignore 升级 SIGKILL 轮数、escalation/main timer 清理断言:
+- 进程树证据：quiescence 断言（size+sha256 稳定期后不变）、进程组 ESRCH（`kill(-pgid, 0)` 或 `kill(pid, 0)`）轮数、SIGTERM 组合矩阵（direct/grandchild 各自忽略/不忽略）、post-spawn error 不伪称 `failed to start`、escalation/deadline/group-poll/main timer 清理断言、fail-closed 时 registry 保留与锁不释放:
 - spawn 失败合同：ENOENT error-event reject + registry 为空（结构/行为测试）:
 - 本地磁盘策略执行情况（canonical 保留、compat 临时、worktree/node_modules 清理、npm cache verify、Playwright revision）:
 

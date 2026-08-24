@@ -67,9 +67,12 @@ npm run lint
 npm run check:markdown-math
 npm run specs:check
 npm run check:release-contract
+npm run check:toolchain
 npm run test:coverage
+npm run test:release-security
 npm run test:e2e
 npm run build
+npm run check:tailwind-scope
 npm run test:e2e:release
 npm run check:repo-hygiene
 git diff --check

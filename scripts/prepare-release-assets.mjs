@@ -238,35 +238,59 @@ export function isSupportedPlatform(platform) {
 }
 
 /**
- * M30 WP-B: promisified execFile with inherited stdio and a fully controlled
- * child/process-tree lifecycle. The child runs ASYNCHRONOUSLY so the Node
- * event loop can deliver pending signals while the helper/verifier executes.
+ * M32 WP-A: bounded poll interval and overall termination deadline for
+ * proving that the controlled process group is gone. Both are finite,
+ * positive integers -- never an unbounded wait, never a random retry.
+ * Exported so tests can pin the contract.
+ */
+export const GROUP_SETTLE_POLL_MS = 50
+export const GROUP_SETTLE_DEADLINE_MS = 10_000
+
+/**
+ * M30 WP-B / M31 WP-B / M32 WP-A: promisified execFile with inherited stdio
+ * and a fully controlled child/process-tree lifecycle. The child runs
+ * ASYNCHRONOUSLY so the Node event loop can deliver pending signals while
+ * the helper/verifier executes.
  *
- * Lifecycle contract (WP-B, M31 WP-B strengthening):
- * 1. A SUCCESSFULLY spawned child settles ONLY after it emits 'close'. A
- *    child that was never created (spawn 'error', e.g. ENOENT) is the
- *    documented exception: the promise rejects from the 'error' event with a
- *    clean registry -- there is no process and no 'close' to wait for.
- * 2. On timeout: record a TimeoutError, request stop (SIGTERM to the whole
- *    controlled process group), WAIT for close, escalate to SIGKILL if close
- *    does not arrive, wait again, clean the tree, and only then reject.
- * 3. child.kill() returning false is never a crash -- the promise still
- *    settles when 'close' arrives.
- * 4. stdin EPIPE/error is captured (error listener) -- never an unhandled
- *    stream error; the outcome still comes from 'close'.
- * 5. Every child is tracked in the exported activeChildren registry and
- *    removed only on 'close' (or on the 'error' path for a never-created
- *    child -- nothing is alive to leak).
- * 6. Both the main timeout timer AND the escalation timer are cleared when
- *    the promise settles, so no timer outlives the call (M31 WP-B).
- * 7. POSIX uses a dedicated process group (detached: true) so SIGTERM/SIGKILL
- *    can address the whole tree (-pid); descendants cannot outlive the
- *    promise and keep writing to the release path. Windows has no process
- *    groups and child.kill() only reaches the DIRECT child -- it cannot
- *    guarantee descendants are stopped. The CLI therefore refuses to run on
- *    Windows entirely (M31 WP-C platform gate) instead of claiming a
- *    fail-closed boundary; this function keeps a defensive direct-kill fallback
- *    for direct callers.
+ * Lifecycle state machine (M32 WP-A -- the M31 implementation conflated
+ * "never spawned" with "spawned then errored" and treated the DIRECT child's
+ * 'close' as proof that the process group was gone):
+ * 1. State is tracked explicitly: `spawned` is set by the ChildProcess
+ *    'spawn' event (the ONLY reliable signal that a process was created);
+ *    `pgid` is captured at spawn time and never re-derived from a recycled
+ *    PID after close.
+ * 2. A child that was never created (spawn 'error', e.g. ENOENT) rejects
+ *    immediately from the 'error' event with a clean registry -- there is no
+ *    process, no group and no 'close' to wait for (M31 contract kept).
+ * 3. An 'error' AFTER a successful spawn (kill failure / IPC failure /
+ *    abort -- NOT a spawn failure) is recorded as a runtime error: the
+ *    promise does NOT settle, the registry is NOT emptied, and controlled
+ *    termination continues; the final message never claims `failed to start`.
+ * 4. On timeout: record a TimeoutError, request stop (SIGTERM to the whole
+ *    controlled process group), WAIT for the direct child's close, and
+ *    escalate to SIGKILL if close does not arrive.
+ * 5. The direct child's 'close' is NOT proof the tree is gone: after close,
+ *    if `process.kill(-pgid, 0)` still finds the group (e.g. a grandchild
+ *    that alone ignores SIGTERM), SIGKILL is escalated to the group and the
+ *    implementation polls up to GROUP_SETTLE_DEADLINE_MS for ESRCH.
+ * 6. A successfully spawned call settles ONLY when: the direct child closed,
+ *    the controlled process group is proven absent (POSIX), every owned
+ *    timer (main timeout, escalation, termination deadline, group poll) is
+ *    cleared, and the activeChildren registry is updated.
+ * 7. If the group cannot be proven gone within the bounded deadline (EPERM,
+ *    unknown errors, kill failures): FAIL CLOSED -- the promise rejects with
+ *    an audit message, the registry entry is PRESERVED, and runCli refuses
+ *    to release the release lock while the registry is non-empty.
+ * 8. No infinite waits, no random retries, no sleep-based race masking.
+ * 9. child.kill() returning false is never a crash -- the outcome still
+ *    comes from the state machine above.
+ * 10. stdin EPIPE/error is captured (error listener) -- never an unhandled
+ *     stream error.
+ * 11. POSIX uses a dedicated process group (detached: true) so SIGTERM/
+ *     SIGKILL can address the whole tree (-pgid). Windows has no process
+ *     groups; the CLI refuses to run there entirely (M31 WP-C platform
+ *     gate); this function keeps a defensive direct-kill fallback for direct
+ *     callers only.
  *
  * @param {string} cmd
  * @param {string[]} args
@@ -294,17 +318,64 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
     activeChildren.add(child)
     let stderrBuf = ''
     let settled = false
+    /** Whether the 'spawn' event was observed -- a process was created. */
+    let spawned = false
+    /** PGID captured at spawn time (POSIX); never re-derived after close. */
+    /** @type {number | null} */
+    let pgid = null
+    /** @type {number | null} */
+    let exitCode = null
+    /** @type {NodeJS.Signals | null} */
+    let exitSignal = null
     /** @type {Error | null} */
     let timeoutError = null
+    /** @type {Error | null} */
+    let runtimeError = null
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let timer = null
     /** @type {ReturnType<typeof setTimeout> | null} */
     let escalationTimer = null
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let deadlineTimer = null
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let groupPollTimer = null
 
-    /** Clear every timer owned by this call (main + escalation). */
+    /** Clear every timer owned by this call (main + escalation + deadline + poll). */
     const clearOwnedTimers = () => {
-      if (timer) clearTimeout(timer)
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
       if (escalationTimer) {
         clearTimeout(escalationTimer)
         escalationTimer = null
+      }
+      if (deadlineTimer) {
+        clearTimeout(deadlineTimer)
+        deadlineTimer = null
+      }
+      if (groupPollTimer) {
+        clearTimeout(groupPollTimer)
+        groupPollTimer = null
+      }
+    }
+
+    /**
+     * POSIX: does the controlled process group still exist? ESRCH means gone;
+     * EPERM or any unknown error means we CANNOT prove it is gone -- treat it
+     * as alive (fail closed).
+     *
+     * @returns {boolean}
+     */
+    const groupExists = () => {
+      if (process.platform === 'win32' || pgid === null) return false
+      try {
+        process.kill(-pgid, 0)
+        return true
+      } catch (e) {
+        const err = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
+        if (err.code === 'ESRCH') return false
+        return true
       }
     }
 
@@ -326,10 +397,10 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
       }
       if (process.platform !== 'win32') {
         try {
-          if (child.pid === undefined) {
+          if (pgid === null) {
             return child.kill(signal)
           }
-          process.kill(-child.pid, signal)
+          process.kill(-pgid, signal)
           return true
         } catch (e) {
           const err = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
@@ -348,36 +419,143 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
       }
     }
 
-    const timer =
-      opts.timeout !== undefined && opts.timeout > 0
-        ? setTimeout(() => {
-            if (settled) return
-            timeoutError = new Error(`child ${cmd} timed out after ${opts.timeout}ms`)
-            // 1) request stop; 2) wait for close (the close listener below
-            // rejects with timeoutError); 3) escalate if close never arrives.
-            stopTree('SIGTERM')
-            // M31 WP-B: keep a handle to the escalation timer so it is
-            // cleared when the promise settles (probe: leftover timers).
-            escalationTimer = setTimeout(() => {
-              if (!settled) {
-                stopTree('SIGKILL')
-              }
-            }, 1000)
-            escalationTimer.unref()
-          }, opts.timeout)
-        : null
+    /**
+     * Normal completion: direct child closed AND the controlled group is
+     * proven absent; timers cleared; registry updated.
+     *
+     * @returns {void}
+     */
+    const finishSettle = () => {
+      if (settled) return
+      settled = true
+      activeChildren.delete(child)
+      clearOwnedTimers()
+      if (runtimeError) {
+        reject(runtimeError)
+        return
+      }
+      if (timeoutError) {
+        reject(timeoutError)
+        return
+      }
+      if (exitSignal) {
+        reject(new Error(`${cmd} was terminated by signal ${exitSignal}: ${stderrBuf.trim()}`))
+        return
+      }
+      if (exitCode !== 0) {
+        reject(new Error(`${cmd} exited with status ${String(exitCode)}: ${stderrBuf.trim()}`))
+        return
+      }
+      resolve()
+    }
+
+    /**
+     * Fail closed: the group could not be proven gone within the bounded
+     * deadline. The registry entry is PRESERVED on purpose -- runCli refuses
+     * to release the release lock while activeChildren is non-empty, so the
+     * on-disk state stays recoverable/auditable.
+     *
+     * @param {string} why
+     * @returns {void}
+     */
+    const failClosedSettle = (why) => {
+      if (settled) return
+      settled = true
+      clearOwnedTimers()
+      const runtimeDetail = runtimeError ? `; runtime error: ${runtimeError.message}` : ''
+      reject(
+        new Error(
+          `${cmd}: FAILED CLOSED -- ${why}${runtimeDetail}; child registry entry preserved and release lock must not be released`,
+        ),
+      )
+    }
+
+    /**
+     * Bounded poll for process-group disappearance (ESRCH).
+     *
+     * @param {number} deadlineAt
+     * @returns {void}
+     */
+    const pollGroupGone = (deadlineAt) => {
+      if (settled) return
+      if (!groupExists()) {
+        finishSettle()
+        return
+      }
+      if (Date.now() >= deadlineAt) {
+        failClosedSettle(
+          'could not prove the process group disappeared within the bounded deadline',
+        )
+        return
+      }
+      groupPollTimer = setTimeout(() => pollGroupGone(deadlineAt), GROUP_SETTLE_POLL_MS)
+      // NOTE: intentionally NOT unref'd. After the direct child's close the
+      // poll timer can be the ONLY active handle in the event loop; unref'd
+      // timers do not keep the loop alive and the promise would never settle
+      // (observed as an unsettled top-level await in the standalone stress
+      // process). The timer is always cleared by clearOwnedTimers on settle.
+    }
+
+    /**
+     * The direct child closed but the controlled group is STILL alive (e.g. a
+     * grandchild that alone ignores SIGTERM): escalate to SIGKILL and poll
+     * until ESRCH or the bounded deadline.
+     *
+     * @returns {void}
+     */
+    const escalateAndWaitGroup = () => {
+      if (settled) return
+      stopTree('SIGKILL')
+      pollGroupGone(Date.now() + GROUP_SETTLE_DEADLINE_MS)
+    }
+
+    /**
+     * Bounded overall termination deadline: after a timeout or a post-spawn
+     * runtime error, if neither close nor a proven-gone group arrives in
+     * time, fail closed instead of waiting forever.
+     *
+     * @returns {void}
+     */
+    const startTerminationDeadline = () => {
+      if (deadlineTimer) return
+      deadlineTimer = setTimeout(() => {
+        if (!settled) {
+          failClosedSettle(
+            'termination deadline exceeded: neither the direct child close nor a proven-gone process group arrived in time',
+          )
+        }
+      }, GROUP_SETTLE_DEADLINE_MS)
+    }
+
+    child.on('spawn', () => {
+      spawned = true
+      // POSIX: the detached child is the process-group leader, so the PGID
+      // equals child.pid -- captured at spawn time (never re-derived from a
+      // recycled PID after close, M32 WP-A #9).
+      if (process.platform !== 'win32' && child.pid !== undefined) {
+        pgid = child.pid
+      }
+    })
 
     child.on('error', (e) => {
-      if (!settled) {
+      if (settled) return
+      if (!spawned) {
+        // A child that was never created (spawn error, e.g. ENOENT) rejects
+        // here -- there is no process, no group and no 'close' to wait for;
+        // the registry entry is removed because nothing is alive to leak.
         settled = true
-        // M31 WP-B contract: a child that was never created (spawn error)
-        // rejects here -- there is no process to wait for and no 'close' will
-        // arrive before this handler. The registry entry is removed because
-        // nothing is alive to leak.
         activeChildren.delete(child)
         clearOwnedTimers()
         reject(new Error(`failed to start ${cmd}: ${e.message}`))
+        return
       }
+      // Post-spawn runtime error (kill failure / IPC failure / abort): record
+      // it, do NOT settle, do NOT touch the registry -- controlled
+      // termination and group cleanup continue (M32 WP-A #3).
+      runtimeError = new Error(
+        `${cmd} failed after spawn (${/** @type {{ code?: string }} */ (/** @type {unknown} */ (e)).code || 'runtime error'}): ${e.message}`,
+      )
+      startTerminationDeadline()
     })
 
     const stderrStream = child.stderr
@@ -393,7 +571,7 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
     if (opts.input !== undefined && child.stdin) {
       // stdin errors (e.g. EPIPE when the helper exits before reading the
       // manifest) must never surface as unhandled stream errors -- record
-      // them; the outcome is decided by 'close' (M30 WP-B #4 / probe D).
+      // them; the outcome is decided by the state machine above.
       child.stdin.on('error', (e) => {
         const err = /** @type {{ code?: string, message: string }} */ (/** @type {unknown} */ (e))
         stderrBuf += `(stdin: ${err.code || err.message})\n`
@@ -408,23 +586,36 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
 
     child.on('close', (code, signal) => {
       if (settled) return
-      settled = true
-      activeChildren.delete(child)
-      clearOwnedTimers()
-      // M30 WP-B #1 / M31 WP-B: settle only here, after the child actually
-      // closed (spawn-failure rejections are the documented 'error' exception).
-      if (timeoutError) {
-        reject(timeoutError)
+      exitCode = code
+      exitSignal = signal
+      // M32 WP-A #5: the direct child's close is NOT proof the process group
+      // is gone. While the group still exists, keep terminating (SIGKILL
+      // escalation) and poll for ESRCH -- only then settle.
+      if (process.platform !== 'win32' && pgid !== null && groupExists()) {
+        escalateAndWaitGroup()
         return
       }
-      if (signal) {
-        reject(new Error(`${cmd} was terminated by signal ${signal}: ${stderrBuf.trim()}`))
-      } else if (code !== 0) {
-        reject(new Error(`${cmd} exited with status ${String(code)}: ${stderrBuf.trim()}`))
-      } else {
-        resolve()
-      }
+      finishSettle()
     })
+
+    const mainTimeoutTimer =
+      opts.timeout !== undefined && opts.timeout > 0
+        ? setTimeout(() => {
+            if (settled) return
+            timeoutError = new Error(`child ${cmd} timed out after ${opts.timeout}ms`)
+            // 1) bounded overall deadline; 2) request stop; 3) the close
+            // handler settles (or escalates + polls); 4) escalate if close
+            // never arrives.
+            startTerminationDeadline()
+            stopTree('SIGTERM')
+            escalationTimer = setTimeout(() => {
+              if (!settled) {
+                stopTree('SIGKILL')
+              }
+            }, 1000)
+          }, opts.timeout)
+        : null
+    timer = mainTimeoutTimer
   })
 }
 

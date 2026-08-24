@@ -113,8 +113,9 @@ tests/e2e/        Playwright 真实用户流程
    ```
 
    `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`check:markdown-math`、`specs:check`、
-   `check:release-contract`、`test:coverage`、`test:e2e`、`build`、`test:e2e:release`、`check:repo-hygiene`、
-   `git diff --check`（未暂存工作区）、`git diff --cached --check`（暂存区）、`npm audit --audit-level=high`。
+   `check:release-contract`、`check:toolchain`、`test:coverage`、`test:release-security`、`test:e2e`、`build`、
+   `check:tailwind-scope`、`test:e2e:release`、`check:repo-hygiene`、`git diff --check`（未暂存工作区）、
+   `git diff --cached --check`（暂存区）、`npm audit --audit-level=high`。
    CI 的 whitespace gate 检查完整 PR base→head 范围（M19-B 起 main 不再有 push CI）。
    CI 仅由目标为 main 的 PR 与手动 `workflow_dispatch` 触发，manual run 始终 full；
    按 `scripts/classify-ci-scope.mjs` 分级（fail closed）：纯 light-only 变更在 CI 中跳过
