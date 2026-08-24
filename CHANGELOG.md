@@ -4,6 +4,43 @@
 
 ## [Unreleased]
 
+## [1.1.11] - 2026-08-24
+
+### Fixed
+
+- release child-process lifecycle（WP-A/WP-B）：`process.once` 重复信号 raw death 修复为显式
+  listener 生命周期管理——第一个 SIGINT/SIGTERM 决定最终退出码（130/143），后续同/异信号只记录
+  `termination already in progress`，listeners 在 `lock.release` 完成之后才移除，重复信号绝不触发
+  默认 raw death；`execFileAsync` 只在 child `close` 后 settle，timeout 先请求停止（POSIX 进程组
+  SIGTERM）→ 等 close → 升级 SIGKILL → 再等 close → 清理后代 → 才 reject，active-child registry
+  在锁释放前强制为空，stdin EPIPE 捕获为受控 rejection（原实现为 unhandled stream error 崩溃）。
+- 成功声明只在最终协议完成后输出（WP-C）：`generateAssets` 不再打印 `Done:`，由 runCli 在
+  runLocked 完成、child registry 归零、lock release 成功、listeners 移除、无已观察 signal 后才输出
+  单一成功声明；signal-observed run 零 `Done:`/零 `Transaction recovered successfully`（原实现存在
+  checkStop 与 Done 之间的 TOCTOU 窗口，探针实证 handler 观察后 Done 仍打印且现有测试允许）。
+- 完整 zero-skip release-security manifest（WP-D）：`SECURITY_TEST_FILES` 扩展至九个文件
+  （新增 m29-crash-matrix、m29-release-gates、m29-signal-protocol、m30-signal-lifecycle、
+  m30-child-lifecycle；探针实证原门禁不含三个 m29 文件，其 it.skip 完全不可见），
+  total=188 passed=188 skipped/todo=0，CI 日志打印实际九文件清单。
+- canonical Node/npm toolchain（WP-E）：官方 release index 核对 v24 LTS latest=24.19.0/npm
+  11.17.0；`.node-version`/`.nvmrc`/engines/packageManager/devEngines 全部对齐 24.19.0 与
+  npm@11.17.0；CI 主验证改读 `.node-version`（24.19.0）、compatibility 精确 22.20.0、双运行时
+  精确 npm 11.17.0；Pages 改读 `.node-version`；无 rolling/latest/lts/\*；`@types/node` 保持精确
+  22.20.1；新增 `npm run doctor`/`check:toolchain` 门禁并接入 verify 链与 CI。
+- worktree/CI hooks（WP-F）：postinstall 改为 worktree-aware wrapper，linked/detached worktree、
+  CI 与非 Git 目录跳过 hook 安装并输出清晰信息，不再输出被吞的 ENOTDIR（探针实证原行为），
+  主 checkout 正常安装。
+
+### 探针与验证
+
+- 修改前探针 A–H（未修改 main 的临时 worktree）：重复信号 raw death + lock 遗留、listener 移除→
+  release 窗口信号 raw death、timeout 在 child close 前 reject 且孙进程继续写、stdin EPIPE unhandled
+  崩溃、三个 m29 文件不在门禁、handler 观察后 Done 仍打印、工具链漂移、worktree npm ci ENOTDIR。
+- Node 24.19.0 / npm 11.17.0：verify exit 0、单测 813（41 文件）、release-security 188 零 skip、
+  coverage 92.92/89.18/95.18/94.83、visual 23 passed（+0/~0/-0）、signal stress 225 轮 bad=0。
+- Node 22.20.0 / npm 11.17.0 compatibility（临时 worktree）：typecheck、test:run（813）、
+  release-security（188）、coverage（同数字）、build 全过；signal stress 225 轮 bad=0。
+
 ## [1.1.10] - 2026-08-24
 
 ### Fixed

@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-24（M29 Done：Release durability、signal determinism、recovery state consistency 与 security gate completeness，v1.1.10 PATCH）
+最后更新：2026-08-24（M30 Done：release child-process lifecycle、repeated-signal safety、zero-skip completeness 与 canonical Node/npm toolchain，v1.1.11 PATCH）
 
 ## 当前产品基线
 
@@ -19,10 +19,74 @@
 ## 当前里程碑
 
 ```text
-M0–M29 complete；stable release v1.1.10；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M30 complete；stable release v1.1.11；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
+### M30 done — release child-process lifecycle、repeated-signal safety、zero-skip completeness 与 canonical Node/npm toolchain（v1.1.11 PATCH）
+
+- 重复信号与完整 listener 生命周期（WP-A）：`process.once` 改为显式管理的 `process.on`——首个
+  SIGINT/SIGTERM 决定最终退出码（130/143），后续相同或不同信号只记录 `termination already in
+progress` 且绝不触发默认 raw death（修改前探针实证 TERM+TERM/INT+INT/三连信号均为 code=null
+  raw death + lock 遗留）；listeners 从锁获取前注册、到 `lock.release` 完成**之后**才移除；
+  新增真实子进程测试：INT+INT、TERM+TERM、INT+TERM、TERM+INT、三连信号、
+  finalization/lock-release barrier 信号，全部非 raw death、first-signal exact code、零孤儿进程。
+- 受控 child/process-tree 生命周期（WP-B）：`execFileAsync` 重构——Promise 只在 child `close`
+  后 settle；timeout 记录 TimeoutError → 请求停止（POSIX 整组 SIGTERM）→ 等 close → 升级
+  SIGKILL → 再等 close → 清理后代 → 才 reject（探针实证原实现在 child close 前 3ms reject、
+  孙进程在 settle 后继续写 SENTINEL）；`child.kill` 返回 false 不崩溃；stdin EPIPE 捕获为受控
+  rejection（探针实证原实现为 unhandled `write EPIPE` 崩溃 + lock 遗留）；active-child registry
+  在锁释放前强制为空；POSIX 独立进程组、Windows 文档化 fail-closed 边界。
+- 成功声明只在最终协议完成后输出（WP-C）：`generateAssets` 不再打印 `Done:`，只返回
+  plan/zipSize/sumsName/committed；runCli 在 runLocked 完成 → registry 归零 → lock release 成功 →
+  listeners 移除 → 无已观察 signal 后才打印单一成功声明；signal-observed run 零 `Done:`/零
+  `Transaction recovered successfully`（探针实证原实现 checkStop 与 Done 之间存在 TOCTOU 窗口，
+  handler 观察后 Done 仍打印且现有测试允许）。
+- 完整 zero-skip release-security manifest（WP-D）：`SECURITY_TEST_FILES` 扩展至九个文件
+  （新增 m29-crash-matrix、m29-release-gates、m29-signal-protocol、m30-signal-lifecycle、
+  m30-child-lifecycle）；修改前探针实证三个 m29 文件不在门禁（m29-crash-matrix 中一个测试改
+  it.skip 后门禁仍 exit 0）；门禁实际执行九文件 total=188 passed=188 skipped/todo=0，
+  CI 日志打印实际九文件清单；runner 自测仍用 fake vitest fixture 不递归。
+- canonical Node/npm toolchain（WP-E）：官方 release index（任务执行日核对）v24 LTS latest=
+  24.19.0 / npm 11.17.0；`.node-version`/`.nvmrc`/engines.node（`>=22.20.0 <23 || >=24.19.0
+<25`）/engines.npm（`>=11.17.0 <12`）/packageManager（npm@11.17.0）/devEngines.packageManager
+  fail-closed 合同全部对齐；CI 主 full verify 改读 `.node-version`（24.19.0）、compatibility 精确
+  22.20.0、双运行时精确 npm 11.17.0；Pages 改读 `.node-version`；无 rolling 22/24/latest/current/
+  lts/\*/check-latest；`@types/node` 保持精确 22.20.1；新增 `npm run doctor`/`check:toolchain`
+  门禁（输出实际 Node/npm、校验 canonical 文件/package/CI/Pages 一致、不一致非零）并接入
+  verify 链与 CI；runtime-type-contract/ci-workflow/toolchain-contract 测试同步更新；
+  `npm outdated --json` 摘要（19 项）仅保存为 M31 输入，不升级依赖。
+- worktree/CI hooks（WP-F）：postinstall 改为 `scripts/install-git-hooks.mjs` worktree-aware
+  wrapper——主 checkout 正常安装 simple-git-hooks；linked/detached worktree（.git 为文件）、CI
+  环境与非 Git 目录跳过并输出清晰信息；跳过不输出 ERROR、npm ci exit 0 且无 ENOTDIR（探针实证
+  原行为输出被吞的 ENOTDIR）；不修改其他 worktree 或用户全局 hooks；fixture 覆盖 .git 目录、
+  .git 文件、CI env、非 Git 目录四种形态。
+- 状态依据：本地 Node 24.19.0/npm 11.17.0 完整 verify 全绿（单测 813/41 文件、release-security
+  188 零 skip、coverage 92.92/89.18/95.18/94.83、visual 23 passed +0/~0/-0）；Node 22.20.0/
+  npm 11.17.0 临时 worktree 全套兼容验证 + 双运行时 signal stress 各 225 轮（50×SIGINT +
+  50×SIGTERM + 25×4 双信号 + 25×timeout/process-tree）bad=0、0 Done、0 raw death、0 stale lock、
+  0 孤儿进程；PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
+
 ### M29 done — Release durability、signal determinism、recovery state consistency 与 security gate completeness（v1.1.10 PATCH）
+
+> **M30 strengthening（v1.1.11）——以下 M29 表述在 M30 修复完成前超出实际实现，已被 M30 强化/取代：**
+>
+> 1. “signal 被观察后不打印 Done/完整成功声明”：M29 的最终 `checkStop` 与 `Done:` 打印之间存在
+>    TOCTOU 窗口（修改前探针 F：SIGTERM 在最终 checkStop 之后被 handler 观察到，`Done:` 仍在
+>    901ms 后打印，且现有 m29-signal-protocol 测试只禁止 “Done 早于 handler”、允许该行为）。
+>    M30 将成功声明移出 generateAssets，由 runCli 在 child registry 归零 → lock release →
+>    listeners 移除 → 无已观察 signal 检查全部完成后统一打印，该表述仅在 M30 之后成立。
+> 2. “zero-skip security gate 完整覆盖”：M29 门禁只执行四个文件；`tests/m29-crash-matrix.test.ts`、
+>    `tests/m29-release-gates.test.ts`、`tests/m29-signal-protocol.test.ts` 不在门禁内（探针 E：
+>    m29-crash-matrix 中一个测试改为 it.skip 后门禁仍 exit 0）。M30 将清单扩展至九个文件，
+>    zero-skip 表述对全部 release-security suite 仅在 M30 之后成立。
+> 3. “重复信号/完整 listener 生命周期”：M29 使用 `process.once`，首个信号触发后该信号 listener 被
+>    移除，同信号第二次到达走默认 raw death 并遗留 lock（探针 A：TERM+TERM/INT+INT/三连信号均为
+>    code=null + lock 遗留；探针 B：listeners 在 lock.release 之前移除的窗口内信号 raw death）。
+>    M30 改为显式管理的 `process.on` + listeners 在 release 后移除，该表述仅在 M30 之后成立。
+> 4. “子进程/进程树生命周期”：M29 的 execFileAsync 在 timeout 时 SIGKILL 后立即 reject（早于 child
+>    close），孙进程在 Promise settle 后继续存活写输出（探针 C）；stdin EPIPE 为 unhandled stream
+>    error 崩溃（探针 D）。M30 重构为 close 后 settle + POSIX 进程组清理 + active-child registry，
+>    该表述仅在 M30 之后成立。
 
 - zero-skip security gate 完整覆盖（WP-A）：新建 `scripts/release-security-test-contract.mjs` 共享清单
   `SECURITY_TEST_FILES`（prepare-release-assets、zip-helper-security、m28-recovery、

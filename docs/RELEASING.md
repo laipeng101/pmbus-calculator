@@ -61,6 +61,22 @@
   - SIGINT/SIGTERM：持有锁时尽可能释放 owned lock；无法释放时保留完整可恢复
     元数据（--recover-lock 可清理），绝不删除非 owned 的锁。
 
+- **重复信号（M30 WP-A）**：SIGINT/SIGTERM 的 listeners 从锁获取前注册、到
+  `lock.release` 完成**之后**才移除；第一个信号决定最终退出码（SIGINT=130、
+  SIGTERM=143），后续相同或不同信号只记录 `termination already in progress`，
+  任何重复信号都不会触发默认 raw death（进程总是受控退出、锁总是被释放）。
+  signal 被观察后，本次运行不得输出 `Done:` 或 `Transaction recovered
+successfully` 等完整成功声明。
+
+- **子进程/进程树（M30 WP-B）**：helper/verifier 通过受控 `execFileAsync`
+  执行——Promise 只在子进程 `close` 后 settle；timeout 先请求停止（POSIX 向
+  整个进程组发 SIGTERM）、等待 close、必要时升级 SIGKILL、清理后代后才
+  reject；stdin EPIPE 等流错误被捕获为受控 rejection，绝不作为 unhandled
+  stream error 崩溃；active-child registry 在锁释放前必须为空（否则拒绝
+  释放并保留恢复元数据）。POSIX 使用独立进程组，helper 的孙进程无法在
+  Promise settle 后继续存活写 release 路径；Windows 无进程组，仅杀直接
+  子进程（文档化 fail-closed 边界）。
+
 ## 发布流程
 
 ### 1. 版本准备（实现 PR 内完成）
