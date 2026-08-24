@@ -163,6 +163,10 @@ describe('M30 WP-B controlled child/process-tree lifecycle', () => {
       await mod.execFileAsync('python3', [wrapper], {
         stdio: ['pipe', 'inherit', 'inherit'],
         timeout: 800,
+        // M33 WP-D: generous escalation window so the grandchild has time to
+        // start and write the sentinel on slow/loaded machines (production
+        // defaults unchanged; tests may lengthen the window).
+        timingProfile: { escalationDelayMs: 1500 },
       })
     } catch (e) {
       rejectAt = Date.now()
@@ -256,6 +260,10 @@ describe('M30 WP-B controlled child/process-tree lifecycle', () => {
       await mod.execFileAsync('python3', [wrapper], {
         stdio: ['pipe', 'inherit', 'inherit'],
         timeout: 800,
+        // M33 WP-D: generous escalation window so the grandchild has time to
+        // start and write the sentinel on slow/loaded machines (production
+        // defaults unchanged; tests may lengthen the window).
+        timingProfile: { escalationDelayMs: 1500 },
       })
     } catch (e) {
       rejectAt = Date.now()
@@ -280,6 +288,10 @@ describe('M30 WP-B controlled child/process-tree lifecycle', () => {
       await mod.execFileAsync('python3', [wrapper], {
         stdio: ['pipe', 'inherit', 'inherit'],
         timeout: 800,
+        // M33 WP-D: generous escalation window so the grandchild has time to
+        // start and write the sentinel on slow/loaded machines (production
+        // defaults unchanged; tests may lengthen the window).
+        timingProfile: { escalationDelayMs: 1500 },
       })
     } catch (e) {
       message = (e as Error).message

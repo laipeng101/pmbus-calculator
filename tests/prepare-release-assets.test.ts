@@ -71,6 +71,56 @@ function makeTempDir(): string {
   return d
 }
 
+/**
+ * M33 WP-A: write a schema-v2 lock fixture (+ optional child-state sidecar).
+ * The child-state (inline and sidecar) is derived from the FINAL metadata
+ * (after overrides), so nonce/repo mismatches are expressed consistently.
+ */
+function writeLockFixture(
+  tmp: string,
+  overrides: Record<string, unknown> = {},
+  sidecarState: string | null = 'EMPTY',
+): string {
+  const base = {
+    schemaVersion: 2,
+    pid: 999999999,
+    startedAt: new Date().toISOString(),
+    nonce: randomUUID(),
+    repoRealpath: fs.realpathSync(tmp),
+    childStateFile: '.release-staging.child-state.json',
+  }
+  const metadata = {
+    ...base,
+    ...overrides,
+    childState: {
+      schemaVersion: 1,
+      nonce: ((overrides.nonce as string | undefined) ?? base.nonce) as string,
+      repoRealpath: ((overrides.repoRealpath as string | undefined) ?? base.repoRealpath) as string,
+      state: sidecarState ?? 'EMPTY',
+      pgid: null,
+      helperPid: null,
+      updatedAt: new Date().toISOString(),
+    },
+  }
+  const lockPath = path.join(tmp, '.release-staging.lock')
+  fs.writeFileSync(lockPath, JSON.stringify(metadata) + '\n')
+  if (sidecarState !== null) {
+    fs.writeFileSync(
+      path.join(tmp, '.release-staging.child-state.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        nonce: metadata.childState.nonce,
+        repoRealpath: metadata.childState.repoRealpath,
+        state: sidecarState,
+        pgid: null,
+        helperPid: null,
+        updatedAt: new Date().toISOString(),
+      }) + '\n',
+    )
+  }
+  return lockPath
+}
+
 afterEach(() => {
   const dirs = tempDirs.splice(0)
   for (const d of dirs) {
@@ -294,16 +344,7 @@ describe('atomic lock (M27 WP-A/B)', async () => {
 
   it('does not auto-delete stale PID lock (requires --recover-lock)', async () => {
     const tmp = makeTempDir()
-    const lockPath = path.join(tmp, '.release-staging.lock')
-
-    const bogusMetadata = {
-      schemaVersion: 1,
-      pid: 999999999,
-      startedAt: new Date().toISOString(),
-      nonce: randomUUID(),
-      repoRealpath: fs.realpathSync(tmp),
-    }
-    fs.writeFileSync(lockPath, JSON.stringify(bogusMetadata) + '\n')
+    const lockPath = writeLockFixture(tmp)
 
     let thrown: unknown = null
     try {
@@ -321,16 +362,7 @@ describe('atomic lock (M27 WP-A/B)', async () => {
 
   it('--recover-lock refuses when PID is alive', async () => {
     const tmp = makeTempDir()
-    const lockPath = path.join(tmp, '.release-staging.lock')
-
-    const metadata = {
-      schemaVersion: 1,
-      pid: process.pid,
-      startedAt: new Date().toISOString(),
-      nonce: randomUUID(),
-      repoRealpath: fs.realpathSync(tmp),
-    }
-    fs.writeFileSync(lockPath, JSON.stringify(metadata) + '\n')
+    const lockPath = writeLockFixture(tmp, { pid: process.pid })
 
     const result = recoverLock(tmp)
     expect(result.recovered).toBe(false)
@@ -342,16 +374,7 @@ describe('atomic lock (M27 WP-A/B)', async () => {
 
   it('--recover-lock refuses when repo does not match', async () => {
     const tmp = makeTempDir()
-    const lockPath = path.join(tmp, '.release-staging.lock')
-
-    const metadata = {
-      schemaVersion: 1,
-      pid: 999999999,
-      startedAt: new Date().toISOString(),
-      nonce: randomUUID(),
-      repoRealpath: '/some/other/repo',
-    }
-    fs.writeFileSync(lockPath, JSON.stringify(metadata) + '\n')
+    const lockPath = writeLockFixture(tmp, { repoRealpath: '/some/other/repo' })
 
     const result = recoverLock(tmp)
     expect(result.recovered).toBe(false)
@@ -403,7 +426,7 @@ describe('atomic lock (M27 WP-A/B)', async () => {
     const validated = validateLockMetadata(fs.readFileSync(lockPath, 'utf8'))
     expect(validated.ok).toBe(true)
     if (validated.ok) {
-      expect(validated.metadata.schemaVersion).toBe(1)
+      expect(validated.metadata.schemaVersion).toBe(2)
       expect(validated.metadata.pid).toBe(process.pid)
       expect(Number.isNaN(Date.parse(validated.metadata.startedAt))).toBe(false)
       expect(validated.metadata.nonce).toBe(lock.nonce)

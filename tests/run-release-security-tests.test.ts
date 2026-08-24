@@ -66,6 +66,7 @@ function makeFixture(
   fs.writeFileSync(path.join(tmp, 'tests', 'm30-signal-lifecycle.test.ts'), '')
   fs.writeFileSync(path.join(tmp, 'tests', 'm30-child-lifecycle.test.ts'), '')
   fs.writeFileSync(path.join(tmp, 'tests', 'm32-child-group-lifecycle.test.ts'), '')
+  fs.writeFileSync(path.join(tmp, 'tests', 'm33-child-ownership-recovery.test.ts'), '')
 
   const fakeVitest = [
     "import fs from 'node:fs'",
@@ -91,7 +92,7 @@ function makeFixture(
     `const skipped = Number(process.env.FAKE_SKIPPED || ${JSON.stringify(opts.skipped ?? 0)});`,
     'const report = { numTotalTests: total, numPassedTests: passed, numFailedTests: failed, numSkippedTests: skipped, numPendingTests: 0, numTodoTests: 0 };',
     // M30 WP-D / M32: the report must carry all ten expected suites.
-    "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts'];",
+    "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts', 'tests/m33-child-ownership-recovery.test.ts'];",
     "report.testResults = suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] }));",
     'if (mode === "inconsistent") {',
     '  report.numPassedTests = passed + 1; // passed+failed+skipped != total',
@@ -469,6 +470,7 @@ describe('M29 WP-F runner private temp dir and cleanup contract', () => {
     fs.writeFileSync(path.join(tmp, 'tests', 'm30-signal-lifecycle.test.ts'), '')
     fs.writeFileSync(path.join(tmp, 'tests', 'm30-child-lifecycle.test.ts'), '')
     fs.writeFileSync(path.join(tmp, 'tests', 'm32-child-group-lifecycle.test.ts'), '')
+    fs.writeFileSync(path.join(tmp, 'tests', 'm33-child-ownership-recovery.test.ts'), '')
     const marker = path.join(tmp, 'tmp', 'marker.txt')
     const fakeVitest = [
       "import fs from 'node:fs'",
@@ -476,8 +478,8 @@ describe('M29 WP-F runner private temp dir and cleanup contract', () => {
       "const outIdx = args.findIndex((a) => a.startsWith('--outputFile='));",
       "const out = outIdx >= 0 ? args[outIdx].slice('--outputFile='.length) : 'report.json';",
       `fs.writeFileSync(${JSON.stringify(marker)}, out);`,
-      "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts'];",
-      'const report = { numTotalTests: 10, numPassedTests: 10, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + "::t", status: "passed" }] })) };',
+      "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts', 'tests/m33-child-ownership-recovery.test.ts'];",
+      'const report = { numTotalTests: 11, numPassedTests: 11, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + "::t", status: "passed" }] })) };',
       'fs.writeFileSync(out, JSON.stringify(report));',
       extra,
       'process.exit(0);',
@@ -547,7 +549,7 @@ describe('M29 WP-F runner private temp dir and cleanup contract', () => {
 
   it('F4: report path replaced by a symlink is handled without crashes (read-through allowed)', () => {
     const { tmp } = makeRecordedFixture(
-      "fs.rmSync(out, { force: true }); fs.symlinkSync(out + '.real', out); fs.writeFileSync(out + '.real', JSON.stringify({ numTotalTests: 10, numPassedTests: 10, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts'].map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] })) }));",
+      "fs.rmSync(out, { force: true }); fs.symlinkSync(out + '.real', out); fs.writeFileSync(out + '.real', JSON.stringify({ numTotalTests: 11, numPassedTests: 11, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts', 'tests/m33-child-ownership-recovery.test.ts'].map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] })) }));",
     )
     const r = spawnRunner(tmp)
     expect(r.status).toBe(0)

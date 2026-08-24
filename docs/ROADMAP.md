@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-24（M32 done：release process-group 真正闭环、post-spawn error 修复、验证合同单一来源与证据流程加固，v1.1.11 工程基线，未发布新版本）
+最后更新：2026-08-25（M33 done：release child ownership crash-consistency、bounded fail-closed exit、lock recovery safety、signal gate determinism 与证据流程降本，v1.1.11 工程基线，未发布新版本）
 
 ## 当前产品基线
 
@@ -19,7 +19,7 @@
 ## 当前里程碑
 
 ```text
-M0–M32 complete；stable release v1.1.11；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M33 complete；stable release v1.1.11；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ### M31 done — release lifecycle 证据加固、跨平台 fail-closed 与验证去重（v1.1.11 工程基线，未发布新版本）
@@ -157,13 +157,107 @@ verify` 不清空有效缓存、只保留 lockfile 对应 Playwright browser rev
 >   源码/配置/文档修改之后运行。
 > - 状态依据：本地 Node 24.19.0/npm 11.17.0 fresh `npm ci` + `npm run verify` 全绿
 >   （单测/security/coverage/e2e 实测数字见最终任务报告；release-security 十文件
->   零 skip；coverage 634/34 文件 92.92/89.18/95.18/94.83 与 v1.1.11 一致）；四种
+>   零 skip；coverage **35 文件/641 测试** 92.92/89.18/95.18/94.83 与 v1.1.11 一致；
+>   修正：M33 勘误 M32 报告曾写 34/634，实际 M32 状态依据为 35/641）；四种
 >   SIGTERM 组合 × 25 轮 stress bad=0、0 orphan、0 residual writer、0 stale lock、
 >   0 registry false-empty、0 live timer、0 skip/todo；Node 22.20.0/npm 11.17.0
 >   fresh worktree 四种组合 × 10 轮 + 全套验证通过；资产回归：两次
 >   `release:prepare-assets`（含 `--force`）zip/SHA256SUMS 逐字节一致且与 v1.1.11
 >   已发布资产 hash 完全相同（ZIP `777c871b…`、SHA256SUMS `743b43c3…`）；PR/CI
 >   审计证据见对应 PR 与 Actions 运行，不在本文件维护。
+
+> **M33 strengthening（v1.1.11 工程基线）——以下 M32 表述在 M33 修复完成前超出实际实现：**
+>
+> 1. “fail-closed 时 registry 保留、runCli 拒绝释放 release 锁（状态可恢复/可审计）”：
+>    该表述只在 runCli 进程仍存活时成立；owner 进程被 SIGKILL 后，
+>    `recoverLock` 只检查 owner PID（ESRCH）就删除锁，无法证明 detached
+>    helper 组已消失（探针 P1-A：recover 返回成功、replacement lock 可获取、
+>    旧 helper 仍存活持续写 sentinel，54→1926→2007 字节）；M33 建立崩溃一致
+>    的 child-state sidecar（EMPTY/SPAWN_INTENT/ACTIVE/QUIESCENCE_PROVEN/
+>    MANUAL_AUDIT_REQUIRED），recoverLock 必须证明 ACTIVE 组 ESRCH 且
+>    nonce/repo/schema 合同全成立才显式恢复，该表述仅在 M33 之后成立。
+> 2. “有界 deadline 内仍无法证明进程组消失 → fail closed：reject …”：
+>    M32 的 Promise reject 有界（10s deadline），但 reject 后 CLI 进程不
+>    自然退出（探针 P1-B：top-level await 结束 1s 后父进程仍存活、子进程
+>    仍存活——存活 child 的 stdio handle 保持事件循环）；M33 在 fail-closed
+>    settle 时 unref child 并销毁 stdio pipes，CLI 有界自然退出非零、锁保留。
+> 3. “signal handler 只记录 terminating”（M30/M31/M32 沿用）：信号到达时
+>    仅记录终止请求，不请求当前 active helper 停止，signal-observed run
+>    依赖 helper 自然完成或自身 timeout；M33 在记录后立即对每个受控进程组
+>    发送 SIGTERM（与 transaction stage 一致的受控 child termination）。
+> 4. “四种 SIGTERM 组合”测试覆盖：M31 的 `grandchildWrapper(..., true)` 把
+>    同一个 boolean 同时传给 wrapper 与 grandchild（M32 探针 P3 修正）；
+>    M33 补充真实 crash-window（SPAWN_INTENT → manual audit）、recovery
+>    正负向矩阵与 fail-closed natural exit 行为测试。
+>
+> ### M33 done — release child ownership crash-consistency、bounded fail-closed exit、lock recovery safety、signal gate determinism 与证据流程降本（v1.1.11 工程基线，未发布新版本）
+>
+> - 崩溃一致的 child ownership（WP-A）：lock schema 升 v2 并绑定
+>   `.release-staging.child-state.json` sidecar（同 nonce、同 repoRealpath），
+>   状态机 EMPTY → SPAWN_INTENT → ACTIVE → QUIESCENCE_PROVEN（失败路径
+>   MANUAL_AUDIT_REQUIRED）。SPAWN_INTENT 在**任何** helper spawn 之前以
+>   temp+fsync+rename durable（启动 barrier）；“child 已 spawn 但 ACTIVE 未
+>   持久化时父进程 SIGKILL”的 crash window 由 SPAWN_INTENT → manual audit
+>   fail-closed 覆盖；child-state 持久化/清理失败不得释放主锁；正常组被证明
+>   ESRCH 后才持久化 QUIESCENCE_PROVEN；v1 锁（无 child-state 证明）一律
+>   manual audit；recoverLock 新合同——owner 活拒绝、ACTIVE 组存在/EPERM/
+>   pgid 未知拒绝、SPAWN_INTENT 拒绝、仅 ACTIVE 组 `kill(-pgid,0)` ESRCH 且
+>   全部合同成立才显式恢复，绝不向可能 reuse 的旧组发信号。
+> - 有界 fail-closed 退出（WP-B）：fail-closed settle 时对存活 child 执行
+>   unref() 并销毁 stdio pipes（不 process.exit、不清 registry、不先杀
+>   child），CLI 进程有界自然退出非零、锁保留、sidecar 置
+>   MANUAL_AUDIT_REQUIRED；post-spawn error 即使无 opts.timeout 也启动受控
+>   终止（SIGTERM → deadline → SIGKILL 升级）；ENOENT 早期 reject 合同保持。
+> - signal gate 确定性（WP-C）：真实 subprocess 测试改为确定性握手（锁出现
+>   - helper ready pidfile 才发首个信号）；signal handler 记录 terminating
+>     后立即向每个受控进程组发 SIGTERM（不再等待 helper timeout）；watchdog
+>     触发/测试失败/断言失败三路径都清理完整进程组（组 SIGKILL + ESRCH）；
+>     保持 first-signal 决定 130/143、后续信号不 raw death、signal-observed
+>     零 Done。
+> - 测试降耗与 stress（WP-D）：escalation/poll/deadline 改为显式
+>   `timingProfile` 注入（生产默认 50ms/10s/1s 不变，测试用短确定性值，无
+>   全局可变常量，不用 fake timer）；m30 signal suite 从约 83s 降到约 40s；
+>   新增 `scripts/stress-release-security.mjs` 结构化 stress runner（固定
+>   seed、每例独立 deadline、JSON summary、失败打印 seed/round/PID/PGID/
+>   stage、所有退出路径 cleanup）；保留至少一个 production-default smoke。
+> - 证据流程降本（WP-E）：ROADMAP 修正 M32 实际 coverage（35 文件/641 测试/
+>   92.92/89.18/95.18/94.83，不再写 34/634）；PR 模板不再写死“N 个文件”
+>   （文件数与列表来自 `SECURITY_TEST_FILES`，由 evidence 脚本输出），
+>   core/release-security/UI/toolchain/release-publish 分段条件化，post-merge
+>   evidence（merge SHA/tree/tree equality）走**唯一一次 PR comment** 不再
+>   反复编辑 PR body；新增 `scripts/collect-verification-evidence.mjs`（只收集
+>   事实：head/base/tree、changed 统计、tracked/tree bytes、snapshot 计数、
+>   SECURITY_TEST_FILES 实际列表、toolchain、whitespace 状态，测试结果由
+>   显式传入的机器可读 summary 合并）；temp residue 如实报告、最终报告前清理。
+> - 探针（修改前，未复用旧证据）：P1-A——owner 持锁并 spawn detached
+>   helper（写 sentinel）后被 SIGKILL，recoverLock 返回成功、replacement
+>   锁可获取、旧 helper 仍存活写（54→1926→2007 字节、hash 变化）；P1-B——
+>   成功 spawn 后注入 kill EPERM，fail-closed Promise 10.4s 有界 reject、
+>   registry 保留、top-level 结束，但 1s 后 CLI 进程仍存活、helper 仍存活
+>   （stdio handle 保持事件循环）；P1-C——m30-signal-lifecycle 可审计矩阵
+>   （M31 与 main 各 2 轮 vitest + 18 轮 detail 探针，全部通过；一次 run2
+>   失败被证明为编辑污染而非真实 flake），结论“current-main 无 flake 复现，
+>   根因未证，本轮按 WP-C 加固”，不伪称已证明回归。
+> - 测试矩阵（WP-B 正式）：新增 `tests/m33-child-ownership-recovery.test.ts`
+>   （第十一个 release-security suite）：owner SIGKILL+ACTIVE 拒绝恢复、
+>   sentinel 增长时 replacement 拒绝、SPAWN_INTENT crash window manual
+>   audit、child-state 缺失/损坏/未知 schema/nonce/repo 不匹配拒绝、ACTIVE
+>   组存在/EPERM/pgid 未知拒绝、ACTIVE ESRCH+metadata 匹配显式恢复成功、
+>   fail-closed reject 后 CLI 自然有界退出非零+锁保留+MANUAL_AUDIT_REQUIRED、
+>   清理组后显式恢复成功、no-timeout post-spawn error 受控终止、timer
+>   created/cleared 零 live handle、watchdog 完整组清理、连续两次运行一致
+>   且零 /tmp 残留；M32 四 SIGTERM 组合与 registry 合同保持通过。
+> - 状态依据：本地 Node 24.19.0/npm 11.17.0 `npm run verify` 全绿（release-security
+>   十一文件 213/213 零 skip；coverage 35 文件/641 测试 92.92/89.18/95.18/94.83
+>   与 v1.1.11 一致；e2e 236 passed/8 基线 skip；audit 0）；Node 24 stress——
+>   recovery 25 轮、fail-closed natural-exit 25 轮、四 SIGTERM 组合 100 轮、
+>   repeated/cross signal 150 轮全部 bad=0、0 orphan、0 stale lock、
+>   0 unsafe-recovery、0 residual-writer、0 live timer、0 raw-signal-death、
+>   0 skipped/todo（合计 300 轮）；Node 22.20.0/npm 11.17.0 fresh worktree
+>   全套验证 + 每类 ≥10 轮 stress 通过；资产回归：两次
+>   `release:prepare-assets`（含 `--force`）zip/SHA256SUMS 逐字节一致且与
+>   v1.1.11 已发布资产 hash 完全相同（ZIP `777c871b…`、SHA256SUMS
+>   `743b43c3…`）；PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
 
 ### M30 done — release child-process lifecycle、repeated-signal safety、zero-skip completeness 与 canonical Node/npm toolchain（v1.1.11 PATCH）
 

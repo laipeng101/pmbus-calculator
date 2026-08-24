@@ -29,9 +29,17 @@
 可能遗留锁文件或备份目录。以下命令用于显式恢复：
 
 - **锁文件恢复**：`node scripts/prepare-release-assets.mjs --recover-lock`
-  仅当锁的 PID 确已不存在、repo 路径匹配、元数据完整且 schema 已知时删除锁文件。
-  PID 仍在运行、EPERM 或未知 schema 时拒绝恢复，需人工审计。这是唯一可以在
-  未持有互斥锁的情况下操作锁文件的命令。
+  M33 起锁元数据为 schema v2 并绑定 child-state sidecar
+  （`.release-staging.child-state.json`，同 nonce）。恢复规则：
+  - v1 锁（仅有 owner PID、无 child-state 证明）一律拒绝并 manual audit；
+  - owner PID 仍在运行、repo 路径不匹配、元数据不完整或 schema 未知时拒绝；
+  - child-state 为 `SPAWN_INTENT`（helper 可能已 spawn 但 ACTIVE 未持久化，
+    M33 crash window）时拒绝并 manual audit；
+  - child-state 为 `ACTIVE` 时必须 `kill(-pgid, 0)` 得到 ESRCH（组消失）
+    且 nonce/repo/schema 合同全部成立才允许显式恢复；EPERM 或状态不可证明
+    时拒绝；绝不向可能已 PID/PGID reuse 的旧组发送任何信号；
+  - `EMPTY` 与 `QUIESCENCE_PROVEN` 且 owner 已死时允许恢复。
+    这是唯一可以在未持有互斥锁的情况下操作锁文件的命令。
 
 - **事务恢复**：`node scripts/prepare-release-assets.mjs --recover`
   与普通生成一样**必须先获取互斥锁**；活跃锁存在时拒绝执行。
@@ -94,6 +102,28 @@ successfully` 等完整成功声明。
     测试证据 = 严格 quiescence（size + sha256 在稳定期后不再变化）+ 双 PID
     ESRCH + 四种 SIGTERM 组合（direct/grandchild 各自忽略或不忽略）+ post-spawn
     error 不伪称 `failed to start`，不再使用宽松的字节增长上限。
+  - M33 WP-A 起，helper 的 ownership 是崩溃一致的（crash-consistent）：
+    - lock 绑定已知 schema/repo realpath/lock nonce 的 child-state sidecar，
+      状态机 `EMPTY → SPAWN_INTENT → ACTIVE → QUIESCENCE_PROVEN`（失败路径
+      `MANUAL_AUDIT_REQUIRED`）；SPAWN_INTENT 在**任何** helper spawn 之前
+      durable（temp+fsync+rename），因此“child 已 spawn 但 ACTIVE 未持久化
+      时父进程 SIGKILL”的 crash window 由 SPAWN_INTENT → manual audit
+      fail-closed 覆盖，绝不在 spawn 事件后普通写一次就宣称安全；
+    - child-state 持久化或清理失败时不得释放主锁（runCli unified finally
+      在 registry 为空且 QUIESCENCE_PROVEN 持久化成功后才释放锁）；
+    - 正常 child/group 被证明 ESRCH 后才持久化 QUIESCENCE_PROVEN；
+    - fail-closed（deadline/EPERM/未知）时 sidecar 置 MANUAL_AUDIT_REQUIRED、
+      registry 保留、release 锁不释放，`--recover-lock` 拒绝，人工审计后可
+      显式恢复。
+  - M33 WP-B 起，fail-closed 的 Promise reject 后 CLI 进程必须**有界自然退出**
+    （非零）：`execFileAsync` 对存活 child 执行 `unref()` 并销毁其 stdio
+    pipes（不 `process.exit()`、不清 registry、不先杀 child），事件循环无
+    残留 handle 后进程自然退出；post-spawn error 即使没有设置 `opts.timeout`
+    也启动一次受控终止（SIGTERM → 有界 deadline → SIGKILL 升级）。
+  - M33 WP-C 起，CLI 观察到致命信号后除记录 terminating 外，还会立即向
+    activeChildren 的每个受控进程组发送 SIGTERM（与 transaction stage 一致
+    的受控 child termination），不再等待 helper 自身 timeout；watchdog 清理
+    测试覆盖完整进程组。
 
 - **平台支持（M31 WP-C）**：release asset generation 仅支持 Linux/macOS
   （POSIX）。Windows 无进程组、`child.kill()` 只能终止直接子进程，无法保证
