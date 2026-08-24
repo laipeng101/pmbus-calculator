@@ -266,9 +266,12 @@ describe('ci.yml canonical/compatibility runtimes (M20/M30)', () => {
   })
 
   it('activates the exact canonical npm 11.17.0 for the compatibility runtime (M30 WP-E)', () => {
-    const activate = findStepByRun('npm install -g npm@11.17.0')
-    expect(activate).toBeDefined()
+    const activate = findStepByName('Activate canonical npm 11.17.0 on compatibility runtime')
     expect(normalize(activate)).toContain(`if: ${FULL_TIER_CONDITION}`)
+    expect(normalize(activate)).toMatch(/npm install -g npm@11\.17\.0/)
+    // The upgrade must run OUTSIDE the repo so the bundled npm 10.9.3 never
+    // trips the repo's devEngines fail-closed check while upgrading itself.
+    expect(normalize(activate)).toMatch(/cd \/tmp/)
   })
 })
 
