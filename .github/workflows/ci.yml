@@ -169,10 +169,12 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22.20.0'
-          # No `cache: npm` here: setup-node's cache probing runs the bundled
-          # npm 10.9.3, whose devEngines fail-closed check rejects the
-          # required npm 11.17.0 (EBADDEVENGINES). The canonical npm is
+          # setup-node v7 auto-enables npm caching from the packageManager
+          # field and probes it with the bundled npm 10.9.3, whose
+          # devEngines fail-closed check rejects the required npm 11.17.0
+          # (EBADDEVENGINES). Disable the auto cache; the canonical npm is
           # activated in the next step, outside the repo (M30 WP-E #10).
+          package-manager-cache: false
 
       # M30 WP-E #10: both CI runtimes use the exact canonical npm 11.17.0
       # (Node 24.19.0 ships it; the 22.20.0 runtime needs the explicit pin).
