@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import sys
 import zipfile
@@ -182,18 +183,20 @@ def verify_read_identity(fd: int, st_initial: os.stat_result, total_read: int) -
 
 
 def validate_entry_name(entry: str) -> None:
-    """Validate a manifest ZIP entry name (M28 WP-E).
+    """Validate a manifest ZIP entry name (M28 WP-E, hardened M29 WP-E).
 
     Mirror scripts/release-artifact-contract.mjs validateZipEntry so the
     helper itself is fail-closed even when invoked directly: non-empty
-    POSIX-relative path, no absolute path, no ".." segment, no backslash,
-    no empty or "." segment, no forbidden segment, no .map suffix, no
-    control characters.
+    POSIX-relative path, no absolute path, no Windows drive prefix (absolute
+    or drive-relative), no ".." or "." segment, no backslash, no empty
+    segment, no forbidden segment, no .map suffix, no control characters.
     """
     if not isinstance(entry, str) or not entry:
         fail(f"invalid or empty zip entry: {entry!r}")
     if entry.startswith("/"):
         fail(f"absolute zip entry: {entry}")
+    if re.match(r"^[A-Za-z]:", entry):
+        fail(f"windows drive path in zip entry: {entry}")
     if "\\" in entry:
         fail(f"backslash in zip entry: {entry}")
     for ch in entry:

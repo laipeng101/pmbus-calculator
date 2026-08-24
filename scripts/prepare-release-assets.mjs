@@ -27,7 +27,7 @@
 //   node scripts/prepare-release-assets.mjs --recover-lock  # recover stale lock (no lock held)
 //   PYTHON3=/path/to/python3 node ...                    // inject Python
 
-import { execFileSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -88,6 +88,190 @@ class TransactionError extends Error {
     super(message)
     this.name = 'TransactionError'
   }
+}
+
+/**
+ * M29 WP-B: thrown at a transaction stage boundary when a fatal signal was
+ * observed by the runCli handler. The current atomic stage has already
+ * completed; no NEW stage may start. runCli classifies this separately from
+ * ordinary failures so the exit code stays 130/143 and no success claim is
+ * printed.
+ */
+class SignalStoppedError extends Error {
+  /**
+   * @param {string} signal
+   */
+  constructor(signal) {
+    super(
+      'termination requested (' + signal + '); stopped at the current transaction stage boundary',
+    )
+    this.name = 'SignalStoppedError'
+    this.signal = signal
+  }
+}
+
+/**
+ * M29 WP-B: cooperative stop check. Reads the injected termination state at
+ * a stage boundary; when a signal has been observed, throws so the caller
+ * stops before entering the next transaction stage.
+ *
+ * @param {(() => string | null) | undefined} shouldStop
+ * @returns {Promise<void>}
+ */
+async function checkStop(shouldStop) {
+  if (shouldStop) {
+    const signal = shouldStop()
+    if (signal) {
+      throw new SignalStoppedError(signal)
+    }
+  }
+}
+
+/**
+ * M29 WP-C: thrown when directory durability cannot be proven (a real I/O
+ * failure on parent-directory fsync). The transaction must fail closed and
+ * keep journal/backup/lock recovery information -- never roll back and
+ * delete the journal while durability is uncertain.
+ */
+class DurabilityError extends Error {
+  /**
+   * @param {string} message
+   * @param {{ code?: string }} [details]
+   */
+  constructor(message, details) {
+    super(message)
+    this.name = 'DurabilityError'
+    this.code = details && details.code ? details.code : undefined
+  }
+}
+
+/**
+ * M29 WP-C: fsync a parent directory after a rename/unlink/delete so the
+ * directory entry change is durable. Error classification:
+ *
+ * Tolerated (platform does not support directory fsync -- documented note):
+ *   EINVAL, ENOTSUP, EOPNOTSUPP, and any other code explicitly proven by a
+ *   supported platform as "directory fsync unsupported".
+ *
+ * Fatal (real I/O failure -- durability cannot be proven, transaction state
+ * must be preserved for recovery):
+ *   EIO, ENOSPC, EROFS, EBADF, unknown errors, and close() failures.
+ *
+ * @param {string} dirPath
+ * @param {Record<string, any>} [deps]
+ * @returns {void}
+ */
+export function fsyncParentDirectorySync(dirPath, deps = {}) {
+  const openSync = deps.openSync || fs.openSync
+  const fsyncSync = deps.fsyncSync || fs.fsyncSync
+  const closeSync = deps.closeSync || fs.closeSync
+  const tolerate = deps.tolerateCodes || new Set(['EINVAL', 'ENOTSUP', 'EOPNOTSUPP'])
+
+  let fd
+  try {
+    fd = openSync(dirPath, 'r')
+  } catch (e) {
+    throw new DurabilityError(
+      `cannot open parent directory ${dirPath} for fsync: ${/** @type {Error} */ (e).message}`,
+      /** @type {{ code?: string }} */ (/** @type {unknown} */ (e)),
+    )
+  }
+
+  try {
+    fsyncSync(fd)
+  } catch (e) {
+    const err = /** @type {{ code?: string, message: string }} */ (/** @type {unknown} */ (e))
+    if (err.code && tolerate.has(err.code)) {
+      process.stderr.write(
+        `note: parent-directory fsync unsupported on this platform (${err.code}); durability boundary documented in docs/RELEASING.md\n`,
+      )
+      return
+    }
+    throw new DurabilityError(
+      `parent-directory fsync failed (${err.code || err.message}) -- durability cannot be proven; journal/backup/lock preserved for recovery`,
+      { code: err.code },
+    )
+  } finally {
+    try {
+      closeSync(fd)
+    } catch (e) {
+      throw new DurabilityError(
+        `failed to close directory fd after fsync: ${/** @type {Error} */ (e).message}`,
+        /** @type {{ code?: string }} */ (/** @type {unknown} */ (e)),
+      )
+    }
+  }
+}
+
+/**
+ * M29 WP-B: promisified execFile with inherited stdio. The child process
+ * runs ASYNCHRONOUSLY so the Node event loop can deliver pending signals
+ * (the signal handler runs) while the helper/verifier executes. Rejects on
+ * non-zero exit, signal death, spawn failure, or timeout.
+ *
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {{ input?: string, stdio?: Array<'pipe' | 'inherit' | 'ignore'> | 'pipe' | 'inherit' | 'ignore', timeout?: number }} [opts]
+ * @returns {Promise<void>}
+ */
+function execFileAsync(cmd, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const stdio = /** @type {Array<'pipe' | 'inherit' | 'ignore'>} */ (
+      Array.isArray(opts.stdio)
+        ? opts.stdio
+        : opts.stdio
+          ? [opts.stdio]
+          : ['pipe', 'inherit', 'inherit']
+    )
+    const spawnOpts = /** @type {import('node:child_process').SpawnOptions} */ ({ stdio })
+    const child = spawn(cmd, args, spawnOpts)
+    let stderrBuf = ''
+    let settled = false
+
+    const timer =
+      opts.timeout !== undefined && opts.timeout > 0
+        ? setTimeout(() => {
+            if (!settled) {
+              child.kill('SIGKILL')
+              settled = true
+              reject(new Error(`child ${cmd} timed out after ${opts.timeout}ms`))
+            }
+          }, opts.timeout)
+        : null
+
+    child.on('error', (e) => {
+      if (!settled) {
+        settled = true
+        if (timer) clearTimeout(timer)
+        reject(new Error(`failed to start ${cmd}: ${e.message}`))
+      }
+    })
+
+    const stderrStream = child.stderr
+    if (stderrStream) {
+      stderrStream.on('data', (d) => {
+        stderrBuf += String(d)
+      })
+    }
+
+    if (opts.input !== undefined && child.stdin) {
+      child.stdin.write(opts.input)
+      child.stdin.end()
+    }
+
+    child.on('close', (code, signal) => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      if (signal) {
+        reject(new Error(`${cmd} was terminated by signal ${signal}: ${stderrBuf.trim()}`))
+      } else if (code !== 0) {
+        reject(new Error(`${cmd} exited with status ${String(code)}: ${stderrBuf.trim()}`))
+      } else {
+        resolve()
+      }
+    })
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -184,10 +368,11 @@ function validateAndCollectEntries(distDir, files) {
  * @param {string[]} files -- absolute paths from walkDist
  * @param {string} outputPath -- destination zip path
  * @param {string} [python3] -- injectable Python executable
- * @param {{ execFile?: typeof execFileSync }} [deps]
+ * @param {Record<string, any>} [deps]
+ * @returns {Promise<void>}
  */
-function createDeterministicZip(distDir, files, outputPath, python3 = PYTHON3, deps) {
-  const execFile = (deps && deps.execFile) || execFileSync
+async function createDeterministicZip(distDir, files, outputPath, python3 = PYTHON3, deps) {
+  const execFile = (deps && deps.execFile) || execFileAsync
   const entries = validateAndCollectEntries(distDir, files)
 
   // Build manifest as JSON lines
@@ -198,7 +383,7 @@ function createDeterministicZip(distDir, files, outputPath, python3 = PYTHON3, d
 
   const zipHelper = path.join(scriptRepoRoot, 'scripts', '_zip_helper.py')
 
-  execFile(python3, [zipHelper, distDir, outputPath], {
+  await execFile(python3, [zipHelper, distDir, outputPath], {
     input: manifest,
     stdio: ['pipe', 'inherit', 'inherit'],
     timeout: 60_000,
@@ -740,14 +925,22 @@ export function recoverLock(repoRoot, deps) {
 
 /**
  * States strictly ordered: PRE_COMMIT states precede COMMITTED.
- * INIT -> STAGING_GENERATED -> STAGING_VERIFIED -> OLD_OUTPUT_BACKED_UP
- *      -> NEW_OUTPUT_PROMOTED -> NEW_OUTPUT_VERIFIED -> COMMITTED
- *      -> BACKUP_CLEANED
+ * INIT -> STAGING_GENERATED -> STAGING_VERIFIED -> OLD_OUTPUT_BACKUP_INTENT
+ *      -> OLD_OUTPUT_BACKED_UP -> NEW_OUTPUT_PROMOTED -> NEW_OUTPUT_VERIFIED
+ *      -> COMMITTED -> BACKUP_CLEANED
+ *
+ * M29 WP-D crash consistency: every state persisted to disk after its fsync
+ * must be accepted by validateJournal and correspond to the on-disk topology
+ * it describes. OLD_OUTPUT_BACKUP_INTENT is written BEFORE the output->backup
+ * rename (with oldSha256 already computed from the untouched output), so a
+ * crash between the intent write and the rename leaves a journal that still
+ * describes the untouched output.
  */
 const STATE_ORDER = [
   'INIT',
   'STAGING_GENERATED',
   'STAGING_VERIFIED',
+  'OLD_OUTPUT_BACKUP_INTENT',
   'OLD_OUTPUT_BACKED_UP',
   'NEW_OUTPUT_PROMOTED',
   'NEW_OUTPUT_VERIFIED',
@@ -839,7 +1032,24 @@ export function validateJournal(raw, expectedVersion) {
     typeof v.sums === 'string' &&
     SHA256_HEX.test(v.sums)
 
-  if (!validSha(parsed.newSha256)) {
+  // M29 WP-D state-dependent hash requirement: only the earliest states may
+  // carry empty (not-yet-computed) new hashes. Every state persisted after
+  // the hashes are filled must carry complete lowercase 64-hex hashes so a
+  // crash leaves a journal that can actually drive recovery.
+  const emptySha = (/** @type {any} */ v) =>
+    v !== null && typeof v === 'object' && v.zip === '' && v.sums === ''
+  const preHashStates = new Set(['INIT', 'STAGING_GENERATED'])
+  if (preHashStates.has(parsed.state)) {
+    if (!validSha(parsed.newSha256) && !emptySha(parsed.newSha256)) {
+      return {
+        ok: false,
+        reason:
+          'journal newSha256 invalid for state ' +
+          parsed.state +
+          ' (must be lowercase 64-hex zip+sums, or empty only in INIT/STAGING_GENERATED)',
+      }
+    }
+  } else if (!validSha(parsed.newSha256)) {
     return {
       ok: false,
       reason: 'journal newSha256 invalid (must be lowercase 64-hex zip+sums)',
@@ -852,8 +1062,10 @@ export function validateJournal(raw, expectedVersion) {
     }
   }
 
-  // Field-combination consistency (M28 WP-B): a journal must not claim a
-  // backup without hashes, nor carry pre-backup state with backup fields.
+  // Field-combination consistency (M28 WP-B / M29 WP-D): a journal must not
+  // claim a backup without hashes, nor carry pre-backup state with backup
+  // fields. States at or after OLD_OUTPUT_BACKUP_INTENT may carry a backup
+  // path; pre-backup states must not.
   const preBackupStates = new Set(['INIT', 'STAGING_GENERATED', 'STAGING_VERIFIED'])
   if (preBackupStates.has(parsed.state)) {
     if (parsed.backupPath !== null) {
@@ -992,21 +1204,11 @@ function writeJournal(repoRoot, journal, deps) {
     throw new Error(`failed to promote journal: ${/** @type {Error} */ (e).message}`)
   }
 
-  // Post-rename durability: fsync the parent directory where the platform
-  // supports it. When unsupported we document the boundary instead of
-  // silently claiming more durability than the filesystem offers (M28 WP-B).
-  try {
-    const dirFd = openSync(path.dirname(journalPath), 'r')
-    try {
-      fsyncSync(dirFd)
-    } finally {
-      closeSync(dirFd)
-    }
-  } catch (e) {
-    process.stderr.write(
-      `note: journal renamed but parent-directory fsync unavailable (${/** @type {Error} */ (e).message}); durability boundary documented in docs/RELEASING.md\n`,
-    )
-  }
+  // Post-rename durability (M29 WP-C): fsync the parent directory. Real I/O
+  // failures (EIO/ENOSPC/EROFS/EBADF/unknown/close) throw DurabilityError and
+  // fail the transaction closed; only proven "directory fsync unsupported"
+  // codes (EINVAL/ENOTSUP/EOPNOTSUPP) degrade to a documented note.
+  fsyncParentDirectorySync(path.dirname(journalPath), deps)
 }
 
 /**
@@ -1020,11 +1222,15 @@ function deleteJournal(
   repoRoot,
   unlinkSync = (p) => fs.unlinkSync(p),
   existsSync = (p) => fs.existsSync(p),
+  deps = {},
 ) {
   const journalPath = path.join(repoRoot, JOURNAL_FILE)
   if (existsSync(journalPath)) {
     unlinkSync(journalPath)
   }
+  // M29 WP-C: make the journal deletion itself durable (6th mutation
+  // boundary). Real fsync failures throw DurabilityError and fail closed.
+  fsyncParentDirectorySync(repoRoot, deps)
 }
 
 // ---------------------------------------------------------------------------
@@ -1102,17 +1308,18 @@ export const verifyOutputContents = verifyAssetPair
  *   lstatSync?: typeof fs.lstatSync,
  *   readFileSync?: typeof fs.readFileSync,
  *   createHash?: typeof createHash,
- *   execFile?: typeof execFileSync,
+ *   execFile?: (cmd: string, args: string[], opts?: any) => Promise<void>,
  *   python3?: string,
  *   skipPythonVerifier?: boolean,
  * }} [opts]
+ * @returns {Promise<void>}
  */
-export function validateBackupDir(backupDir, plan, version, opts = {}) {
+export async function validateBackupDir(backupDir, plan, version, opts = {}) {
   const readdirSync = opts.readdirSync || fs.readdirSync
   const readFileSync = opts.readFileSync || fs.readFileSync
   const hashFn = opts.createHash || createHash
   const python3 = opts.python3 || PYTHON3
-  const execFile = opts.execFile || execFileSync
+  const execFile = opts.execFile || execFileAsync
 
   let dirents
   try {
@@ -1181,7 +1388,7 @@ export function validateBackupDir(backupDir, plan, version, opts = {}) {
       'verify_release_zip.py',
     )
     try {
-      execFile(python3, [verifyScript, zipPath], { stdio: 'pipe', timeout: 30_000 })
+      await execFile(python3, [verifyScript, zipPath], { stdio: 'pipe', timeout: 30_000 })
     } catch (e) {
       const err = /** @type {{ message?: string, stderr?: Buffer | string }} */ (
         /** @type {unknown} */ (e)
@@ -1261,20 +1468,28 @@ function detectStaleState(repoRoot, deps) {
  *   rmSync?: typeof fs.rmSync,
  *   readFileSync?: typeof fs.readFileSync,
  *   createHash?: typeof createHash,
- *   execFile?: typeof execFileSync,
+ *   execFile?: (cmd: string, args: string[], opts?: any) => Promise<void>,
  *   lstatSync?: typeof fs.lstatSync,
  *   unlinkSync?: typeof fs.unlinkSync,
+ *   openSync?: typeof fs.openSync,
+ *   fsyncSync?: typeof fs.fsyncSync,
+ *   closeSync?: typeof fs.closeSync,
  *   python3?: string,
  *   skipPythonVerifier?: boolean,
+ *   shouldStop?: () => string | null,
  * }} [deps]
- * @returns {{ recovered: boolean, action?: string, reason?: string }}
+ * @returns {Promise<{ recovered: boolean, action?: string, reason?: string }>}
  */
-export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps = {}) {
+export async function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps = {}) {
   const existsSync = deps.existsSync || fs.existsSync
   const readdirSync = deps.readdirSync || fs.readdirSync
   const renameSync = deps.renameSync || fs.renameSync
   const rmSync = deps.rmSync || fs.rmSync
   const readFileSync = deps.readFileSync || fs.readFileSync
+  const shouldStop = deps.shouldStop
+  const stopAtBoundary = async () => {
+    await checkStop(shouldStop)
+  }
 
   // Derive the plan from package.json -- recovery validates against the
   // same naming contract the generator used.
@@ -1318,9 +1533,19 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
   const journal = journalState.validated.journal
 
   // Bind journal.backupPath to the single actual backup directory (M28 WP-B).
+  // M29 WP-D: OLD_OUTPUT_BACKUP_INTENT is persisted BEFORE the output->backup
+  // rename, so at that state the disk legitimately has NO backup (and the
+  // untouched old output must still exist).
   const actualBackup = backups.length === 1 ? backups[0] : null
   if (journal.backupPath !== null) {
-    if (actualBackup !== journal.backupPath) {
+    if (journal.state === 'OLD_OUTPUT_BACKUP_INTENT') {
+      if (actualBackup !== null) {
+        return {
+          recovered: false,
+          reason: `journal OLD_OUTPUT_BACKUP_INTENT references backup "${journal.backupPath}" but disk already has "${actualBackup}" -- manual audit required`,
+        }
+      }
+    } else if (actualBackup !== journal.backupPath) {
       return {
         recovered: false,
         reason: `journal references backup "${journal.backupPath}" but disk has ${actualBackup === null ? 'no backup' : '"' + actualBackup + '"'} -- manual audit required`,
@@ -1337,8 +1562,71 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
   const backupDir = journal.backupPath !== null ? path.join(repoRoot, journal.backupPath) : null
 
   /** Full verification plus hash equality against the journal. */
-  const verifyOutput = (/** @type {{ zip: string, sums: string } | undefined} */ expectSha) => {
-    verifyOutputAgainstSha(outputDir, plan, deps, expectSha)
+  const verifyOutput = async (
+    /** @type {{ zip: string, sums: string } | undefined} */ expectSha,
+  ) => {
+    await verifyOutputAgainstSha(outputDir, plan, deps, expectSha)
+  }
+
+  /** Remove transaction staging residue (safe: it never contains output). */
+  const removeStaging = () => {
+    const staging = path.join(repoRoot, STAGING_DIR)
+    if (existsSync(staging)) {
+      rmSync(staging, { recursive: true, force: true })
+    }
+  }
+
+  // M29 WP-D: pre-backup states mean the transaction never touched the
+  // published output (no backup rename happened). Recovery is: remove the
+  // staging residue and the journal, keep the untouched output -- idempotent.
+  const preBackupStates = new Set(['INIT', 'STAGING_GENERATED', 'STAGING_VERIFIED'])
+  if (preBackupStates.has(journal.state)) {
+    try {
+      removeStaging()
+    } catch (e) {
+      return {
+        recovered: false,
+        reason: `journal ${journal.state} but staging residue could not be removed (${/** @type {Error} */ (e).message}) -- manual audit required`,
+      }
+    }
+    try {
+      deleteJournal(repoRoot, deps.unlinkSync, existsSync, deps)
+    } catch (e) {
+      return {
+        recovered: false,
+        reason: `journal ${journal.state} but journal could not be removed (${/** @type {Error} */ (e).message})`,
+      }
+    }
+    return { recovered: true, action: 'pre-backup-abort' }
+  }
+
+  // M29 WP-D: OLD_OUTPUT_BACKUP_INTENT -- the output->backup rename never
+  // happened, so the (old) output is still the authoritative copy. Remove
+  // staging + journal; the output stays untouched.
+  if (journal.state === 'OLD_OUTPUT_BACKUP_INTENT') {
+    if (!outputExists) {
+      return {
+        recovered: false,
+        reason: `journal OLD_OUTPUT_BACKUP_INTENT but ${OUTPUT_DIR} is missing -- manual audit required`,
+      }
+    }
+    try {
+      removeStaging()
+    } catch (e) {
+      return {
+        recovered: false,
+        reason: `journal OLD_OUTPUT_BACKUP_INTENT but staging residue could not be removed (${/** @type {Error} */ (e).message}) -- manual audit required`,
+      }
+    }
+    try {
+      deleteJournal(repoRoot, deps.unlinkSync, existsSync, deps)
+    } catch (e) {
+      return {
+        recovered: false,
+        reason: `journal OLD_OUTPUT_BACKUP_INTENT but journal could not be removed (${/** @type {Error} */ (e).message})`,
+      }
+    }
+    return { recovered: true, action: 'backup-intent-abort' }
   }
 
   if (isCommittedState(journal.state)) {
@@ -1352,7 +1640,7 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
       }
     }
     try {
-      verifyOutput(journal.newSha256)
+      await verifyOutput(journal.newSha256)
     } catch (e) {
       return {
         recovered: false,
@@ -1362,6 +1650,8 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
     if (backupDir) {
       try {
         rmSync(backupDir, { recursive: true, force: true })
+        // M29 WP-C: residual backup deletion must be durable.
+        fsyncParentDirectorySync(repoRoot, deps)
       } catch (e) {
         return {
           recovered: false,
@@ -1370,7 +1660,7 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
       }
     }
     try {
-      deleteJournal(repoRoot, deps.unlinkSync, existsSync)
+      deleteJournal(repoRoot, deps.unlinkSync, existsSync, deps)
     } catch (e) {
       return {
         recovered: false,
@@ -1383,11 +1673,11 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
     }
   }
 
-  // PRE_COMMIT states.
+  // PRE_COMMIT states with a backup (OLD_OUTPUT_BACKED_UP / NEW_OUTPUT_*).
   if (backupDir) {
     // Validate the backup deeply BEFORE deleting or moving anything (M28 WP-A #4).
     try {
-      validateBackupDir(backupDir, plan, pkg.version, {
+      await validateBackupDir(backupDir, plan, pkg.version, {
         readdirSync,
         lstatSync: deps.lstatSync,
         readFileSync,
@@ -1402,9 +1692,25 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
         reason: `PRE_COMMIT recovery refused: ${/** @type {Error} */ (e).message} -- backup, output and journal preserved`,
       }
     }
+    // M29 WP-D: prove the backup matches journal.oldSha256 BEFORE any rm or
+    // rename. A mismatch must leave every path untouched (zero mutation).
+    if (journal.oldSha256 !== null) {
+      const zipHash = sha256File(path.join(backupDir, plan.zipName), deps.createHash)
+      const sumsHash = sha256File(path.join(backupDir, plan.sumsName), deps.createHash)
+      if (zipHash !== journal.oldSha256.zip || sumsHash !== journal.oldSha256.sums) {
+        return {
+          recovered: false,
+          reason: `PRE_COMMIT recovery refused: backup hashes do not match journal.oldSha256 (zip ${zipHash} vs ${journal.oldSha256.zip}; sums ${sumsHash} vs ${journal.oldSha256.sums}) -- NO files were modified; backup, output and journal preserved`,
+        }
+      }
+    }
+    // M29 WP-B: no new recovery stage after a signal was observed.
+    await stopAtBoundary()
     if (outputExists) {
       try {
         rmSync(outputDir, { recursive: true, force: true })
+        // M29 WP-C: deletion of the unverified output must be durable.
+        fsyncParentDirectorySync(repoRoot, deps)
       } catch (e) {
         return {
           recovered: false,
@@ -1414,6 +1720,10 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
     }
     try {
       renameSync(backupDir, outputDir)
+      // M29 WP-C: the restore rename must be durable.
+      fsyncParentDirectorySync(repoRoot, deps)
+      // M29 WP-B: no new recovery stage after a signal was observed.
+      await stopAtBoundary()
     } catch (e) {
       return {
         recovered: false,
@@ -1422,7 +1732,7 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
     }
     // Re-verify the restored old output AND bind it to journal.oldSha256.
     try {
-      verifyOutput(journal.oldSha256 ?? undefined)
+      await verifyOutput(journal.oldSha256 ?? undefined)
     } catch (e) {
       return {
         recovered: false,
@@ -1430,7 +1740,7 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
       }
     }
     try {
-      deleteJournal(repoRoot, deps.unlinkSync, existsSync)
+      deleteJournal(repoRoot, deps.unlinkSync, existsSync, deps)
     } catch {
       // Keep the residue rather than failing a completed restore.
     }
@@ -1446,7 +1756,7 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
     }
   }
   try {
-    verifyOutput(journal.newSha256)
+    await verifyOutput(journal.newSha256)
   } catch (e) {
     return {
       recovered: false,
@@ -1454,7 +1764,7 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
     }
   }
   try {
-    deleteJournal(repoRoot, deps.unlinkSync, existsSync)
+    deleteJournal(repoRoot, deps.unlinkSync, existsSync, deps)
   } catch (e) {
     return {
       recovered: false,
@@ -1473,9 +1783,9 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
  * @param {ReturnType<typeof buildReleasePlan>} plan
  * @param {Record<string, any>} deps
  * @param {{ zip: string, sums: string } | undefined} expectSha
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function verifyOutputAgainstSha(outputDir, plan, deps, expectSha) {
+async function verifyOutputAgainstSha(outputDir, plan, deps, expectSha) {
   verifyAssetPair(outputDir, plan.zipName, plan.sumsName, {
     existsSync: deps.existsSync,
     readdirSync: deps.readdirSync,
@@ -1493,9 +1803,9 @@ function verifyOutputAgainstSha(outputDir, plan, deps, expectSha) {
       'scripts',
       'verify_release_zip.py',
     )
-    const execFile = deps.execFile || execFileSync
+    const execFile = deps.execFile || execFileAsync
     const python3 = deps.python3 || PYTHON3
-    execFile(python3, [verifyScript, path.join(outputDir, plan.zipName)], {
+    await execFile(python3, [verifyScript, path.join(outputDir, plan.zipName)], {
       stdio: 'pipe',
       timeout: 30_000,
     })
@@ -1539,6 +1849,7 @@ function verifyOutputAgainstSha(outputDir, plan, deps, expectSha) {
 export const FAILPOINTS = [
   'staging.checksum',
   'staging.zipverifier',
+  'backup.intent.before',
   'backup.rename.before',
   'backup.rename.after',
   'promotion.before',
@@ -1566,7 +1877,7 @@ export const FAILPOINTS = [
  * @param {boolean} force
  * @param {string} [python3] -- injectable Python executable
  * @param {{
- *   execFile?: typeof execFileSync,
+ *   execFile?: (cmd: string, args: string[], opts?: any) => Promise<void>,
  *   mkdirSync?: typeof fs.mkdirSync,
  *   mkdtempSync?: typeof fs.mkdtempSync,
  *   renameSync?: typeof fs.renameSync,
@@ -1579,12 +1890,16 @@ export const FAILPOINTS = [
  *   createHash?: typeof createHash,
  *   lstatSync?: typeof fs.lstatSync,
  *   unlinkSync?: typeof fs.unlinkSync,
+ *   openSync?: typeof fs.openSync,
+ *   fsyncSync?: typeof fs.fsyncSync,
+ *   closeSync?: typeof fs.closeSync,
  *   failpoint?: (name: string) => void,
+ *   shouldStop?: () => string | null,
  *   trace?: string[],
  * }} [deps]
- * @returns {{ trace: string[], plan: ReturnType<typeof buildReleasePlan> }}
+ * @returns {Promise<{ trace: string[], plan: ReturnType<typeof buildReleasePlan> }>}
  */
-export function generateAssets(distDir, outputDir, force, python3 = PYTHON3, deps = {}) {
+export async function generateAssets(distDir, outputDir, force, python3 = PYTHON3, deps = {}) {
   const mkdirSync = deps.mkdirSync || fs.mkdirSync
   const mkdtempSync = deps.mkdtempSync || fs.mkdtempSync
   const renameSync = deps.renameSync || fs.renameSync
@@ -1593,6 +1908,8 @@ export function generateAssets(distDir, outputDir, force, python3 = PYTHON3, dep
   const statSync = deps.statSync || fs.statSync
   const readFileSync = deps.readFileSync || fs.readFileSync
   const trace = deps.trace || []
+  const execFile = deps.execFile || execFileAsync
+  const shouldStop = deps.shouldStop
 
   /** Record and invoke a named failpoint (tests assert these names). */
   const fp = (/** @type {string} */ name) => {
@@ -1666,11 +1983,15 @@ export function generateAssets(distDir, outputDir, force, python3 = PYTHON3, dep
     updatedAt: new Date().toISOString(),
   }
 
-  const advance = (/** @type {string} */ state) => {
+  // M29 WP-B: every journal write is a transaction stage boundary. After the
+  // atomic journal write completes we check whether a fatal signal was
+  // observed; if so we stop BEFORE entering the next stage (SignalStoppedError).
+  const advance = async (/** @type {string} */ state) => {
     journal.state = state
     journal.backupPath = backupRel
     journal.updatedAt = new Date().toISOString()
     writeJournal(repoRoot, journal, deps)
+    await checkStop(shouldStop)
   }
 
   /** Already-rolled-back guard: rollback must be idempotent (inner catch
@@ -1743,13 +2064,23 @@ export function generateAssets(distDir, outputDir, force, python3 = PYTHON3, dep
   }
 
   try {
+    // ---- Phase 0: open the transaction (INIT journal) ------------------
+    // M29 WP-B/WP-D: persist the INIT journal BEFORE any long-running child
+    // process, so a signal (or crash) at any later point always leaves an
+    // on-disk journal that --recover can resolve (never a bare staging
+    // residue with no journal and no committed output).
+    await advance('INIT')
+
     // ---- Phase 1: Generate into staging -------------------------------
     console.log(`Creating ${plan.zipName} ...`)
-    createDeterministicZip(distDir, files, stagingZip, python3, deps)
-    advance('STAGING_GENERATED')
-
+    await createDeterministicZip(distDir, files, stagingZip, python3, deps)
+    await checkStop(shouldStop)
     console.log(`Creating ${plan.sumsName} ...`)
     generateChecksums(stagingZip, stagingSums, deps)
+    // M29 WP-D: persist STAGING_GENERATED (empty hashes are valid in this
+    // state) so a crash between generation and hash computation leaves a
+    // journal the validator accepts and --recover can resolve.
+    await advance('STAGING_GENERATED')
 
     // ---- Phase 2: Verify staging --------------------------------------
     fp('staging.checksum')
@@ -1765,47 +2096,60 @@ export function generateAssets(distDir, outputDir, force, python3 = PYTHON3, dep
       'scripts',
       'verify_release_zip.py',
     )
-    const execFile = deps.execFile || execFileSync
-    execFile(python3, [verifyScript, stagingZip], {
+    await execFile(python3, [verifyScript, stagingZip], {
       stdio: 'inherit',
       timeout: 30_000,
     })
+    await checkStop(shouldStop)
 
     // Verify staging contains exactly the two expected regular assets
     verifyAssetPair(stagingDir, plan.zipName, plan.sumsName, {
       existsSync,
       readdirSync: fs.readdirSync,
     })
-    advance('STAGING_VERIFIED')
+
+    // M29 WP-D: fill the new hashes BEFORE persisting STAGING_VERIFIED so the
+    // on-disk journal never carries the state without its required hashes.
     journal.newSha256 = {
       zip: sha256File(stagingZip, deps.createHash),
       sums: sha256File(stagingSums, deps.createHash),
     }
-    writeJournal(repoRoot, journal, deps)
+    await advance('STAGING_VERIFIED')
 
     // ---- Phase 3: Publish ---------------------------------------------
     if (outputExists && force) {
-      // Transactional: backup -> promotion -> re-verify -> COMMITTED -> cleanup
+      // Transactional: intent -> backup -> promotion -> re-verify ->
+      // COMMITTED -> cleanup
       const backupNonce = nonce.split('-')[1] ?? randomUUID().split('-')[0]
       backupRel = `${BACKUP_PREFIX}${backupNonce}`
       backupDir = path.join(repoRoot, backupRel)
 
+      // M29 WP-D: compute oldSha256 from the STILL-UNTOUCHED output and
+      // persist OLD_OUTPUT_BACKUP_INTENT BEFORE the destructive rename. A
+      // crash between this write and the rename leaves output untouched and
+      // a journal that is fully valid and self-describing.
+      fp('backup.intent.before')
+      journal.oldSha256 = {
+        zip: sha256File(path.join(outputDir, plan.zipName), deps.createHash),
+        sums: sha256File(path.join(outputDir, plan.sumsName), deps.createHash),
+      }
+      await advance('OLD_OUTPUT_BACKUP_INTENT')
+
       fp('backup.rename.before')
       renameSync(outputDir, backupDir)
-      advance('OLD_OUTPUT_BACKED_UP')
-      journal.oldSha256 = {
-        zip: sha256File(path.join(backupDir, plan.zipName), deps.createHash),
-        sums: sha256File(path.join(backupDir, plan.sumsName), deps.createHash),
-      }
-      writeJournal(repoRoot, journal, deps)
+      // M29 WP-C: output->backup rename must be durable before we proceed.
+      fsyncParentDirectorySync(repoRoot, deps)
+      await advance('OLD_OUTPUT_BACKED_UP')
       fp('backup.rename.after')
 
       try {
         fp('promotion.before')
         renameSync(stagingDir, outputDir)
+        // M29 WP-C: staging->output promotion must be durable.
+        fsyncParentDirectorySync(repoRoot, deps)
         promoted = true
         fp('promotion.after')
-        advance('NEW_OUTPUT_PROMOTED')
+        await advance('NEW_OUTPUT_PROMOTED')
 
         fp('publish.checksum')
         console.log('Verifying published checksum ...')
@@ -1813,17 +2157,24 @@ export function generateAssets(distDir, outputDir, force, python3 = PYTHON3, dep
 
         fp('publish.zipverifier')
         console.log('Verifying published zip ...')
-        execFile(python3, [verifyScript, zipPath], {
+        await execFile(python3, [verifyScript, zipPath], {
           stdio: 'inherit',
           timeout: 30_000,
         })
-        advance('NEW_OUTPUT_VERIFIED')
+        await checkStop(shouldStop)
+        await advance('NEW_OUTPUT_VERIFIED')
 
         // ---- COMMIT POINT (WP-C #1) ----------------------------------
         fp('commit.journal')
-        advance('COMMITTED')
+        await advance('COMMITTED')
         committed = true
       } catch (e) {
+        // M29 WP-C/WP-B: durability uncertainty or an observed signal must
+        // never trigger rollback -- keep the on-disk state and journal for
+        // explicit --recover (no new stage may be entered).
+        if (e instanceof DurabilityError || e instanceof SignalStoppedError) {
+          throw e
+        }
         // Pre-commit failure: rollback to the byte-identical old output.
         rollbackToOldOutput(e)
         throw e
@@ -1832,19 +2183,23 @@ export function generateAssets(distDir, outputDir, force, python3 = PYTHON3, dep
       // Post-commit: backup cleanup failure must NOT endanger the new output.
       fp('backup.remove.before')
       removeBackupEntries(backupDir, plan, fp, rmSync, existsSync)
+      // M29 WP-C: backup deletion must be durable.
+      fsyncParentDirectorySync(repoRoot, deps)
       backupDir = null
       backupRel = null
-      advance('BACKUP_CLEANED')
+      await advance('BACKUP_CLEANED')
 
       fp('journal.delete')
-      deleteJournal(repoRoot, deps.unlinkSync, existsSync)
+      deleteJournal(repoRoot, deps.unlinkSync, existsSync, deps)
     } else {
       // First-time publish: staging -> output directly (no backup needed).
       fp('promotion.before')
       renameSync(stagingDir, outputDir)
+      // M29 WP-C: staging->output promotion must be durable.
+      fsyncParentDirectorySync(repoRoot, deps)
       promoted = true
       fp('promotion.after')
-      advance('NEW_OUTPUT_PROMOTED')
+      await advance('NEW_OUTPUT_PROMOTED')
 
       fp('publish.checksum')
       console.log('Verifying published checksum ...')
@@ -1852,26 +2207,36 @@ export function generateAssets(distDir, outputDir, force, python3 = PYTHON3, dep
 
       fp('publish.zipverifier')
       console.log('Verifying published zip ...')
-      execFile(python3, [verifyScript, zipPath], {
+      await execFile(python3, [verifyScript, zipPath], {
         stdio: 'inherit',
         timeout: 30_000,
       })
-      advance('NEW_OUTPUT_VERIFIED')
+      await checkStop(shouldStop)
+      await advance('NEW_OUTPUT_VERIFIED')
 
       fp('commit.journal')
-      advance('COMMITTED')
+      await advance('COMMITTED')
       committed = true
 
       // Nothing to clean up: no backup ever existed. Close out the journal.
-      advance('BACKUP_CLEANED')
+      await advance('BACKUP_CLEANED')
       fp('journal.delete')
-      deleteJournal(repoRoot, deps.unlinkSync, existsSync)
+      deleteJournal(repoRoot, deps.unlinkSync, existsSync, deps)
     }
 
+    // M29 WP-B: never print a full success claim after a signal was observed.
+    await checkStop(shouldStop)
     const zipSize = statSync(zipPath).size
     console.log(`\nDone: ${plan.zipName} (${zipSize} bytes)`)
     console.log(`      ${plan.sumsName}`)
   } catch (e) {
+    // M29 WP-C/WP-B: durability cannot be proven, or a signal was observed --
+    // keep the journal/backup/lock recovery information and NEVER roll back
+    // or delete the journal while the on-disk state may not be durable or a
+    // new stage must not be entered. Fail closed for --recover.
+    if (e instanceof DurabilityError || e instanceof SignalStoppedError) {
+      throw e
+    }
     // Any pre-commit failure that escaped local handling gets a rollback
     // attempt here; post-commit failures must leave everything untouched.
     if (!committed && rollbackFailed && rollbackError) {
@@ -1888,7 +2253,7 @@ export function generateAssets(distDir, outputDir, force, python3 = PYTHON3, dep
       // Rollback completed: the transaction is fully aborted, so the journal
       // must not linger and block future runs.
       try {
-        deleteJournal(repoRoot, deps.unlinkSync, existsSync)
+        deleteJournal(repoRoot, deps.unlinkSync, existsSync, deps)
       } catch {
         console.log('note: transaction journal could not be removed after rollback')
       }
@@ -2059,20 +2424,15 @@ export async function runCli(argv, io = {}) {
     return 1
   }
 
-  // EVERYTHING below runs under the atomic mutex (WP-A #1).
-  /** @type {ReturnType<typeof acquireLock> | null} */
-  let lock = null
-  try {
-    lock = acquireLock(repoRoot)
-  } catch (e) {
-    stderr.write(`release:prepare-assets: ${/** @type {Error} */ (e).message}\n`)
-    return 1
-  }
-
-  // M28 WP-D: record termination requests only. The lock stays held until
-  // the unified release below runs AFTER runLocked has fully returned.
+  // M29 WP-B: register the signal handlers BEFORE acquiring the lock so a
+  // signal arriving during lock acquisition or the transaction is observed by
+  // the protocol (never the default raw death). The handler only records the
+  // termination request; the lock stays held until the unified release below
+  // runs AFTER runLocked has fully returned.
   /** @type {'SIGINT' | 'SIGTERM' | null} */
   let terminating = null
+  /** @type {ReturnType<typeof acquireLock> | null} */
+  let lock = null
   const signalHandler = (/** @type {string} */ signal) => {
     if (terminating === null) {
       terminating = /** @type {'SIGINT' | 'SIGTERM'} */ (signal)
@@ -2086,45 +2446,69 @@ export async function runCli(argv, io = {}) {
   }
   process.once('SIGINT', signalHandler)
   process.once('SIGTERM', signalHandler)
+  // Cooperative stop getter read at every transaction stage boundary.
+  const shouldStop = () => terminating
 
-  /**
-   * Run the locked work and classify the outcome.
-   * @returns {Promise<'ok' | 'failed'>}
-   */
-  const runLocked = async () => {
+  /** @type {'ok' | 'failed' | 'stopped'} */
+  let outcome = 'failed'
+  try {
+    // EVERYTHING below runs under the atomic mutex (WP-A #1).
     try {
-      if (recoverFlag) {
-        const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
-        const plan = buildReleasePlan(pkg.version)
-        const result = recoverTransaction(repoRoot, outputDir, plan.zipName, plan.sumsName)
-        if (result.recovered) {
-          stdout.write(`Transaction recovered successfully (${result.action ?? 'restore'}).\n`)
-          return 'ok'
+      lock = acquireLock(repoRoot)
+    } catch (e) {
+      stderr.write(`release:prepare-assets: ${/** @type {Error} */ (e).message}\n`)
+      return 1
+    }
+
+    /**
+     * Run the locked work and classify the outcome.
+     * @returns {Promise<'ok' | 'failed' | 'stopped'>}
+     */
+    const runLocked = async () => {
+      try {
+        if (recoverFlag) {
+          const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
+          const plan = buildReleasePlan(pkg.version)
+          const result = await recoverTransaction(
+            repoRoot,
+            outputDir,
+            plan.zipName,
+            plan.sumsName,
+            {
+              shouldStop,
+            },
+          )
+          if (result.recovered) {
+            stdout.write(`Transaction recovered successfully (${result.action ?? 'restore'}).\n`)
+            return 'ok'
+          }
+          stderr.write(`Transaction recovery failed: ${result.reason}\n`)
+          return 'failed'
         }
-        stderr.write(`Transaction recovery failed: ${result.reason}\n`)
+        await generateAssets(distDir, outputDir, force, python3, { shouldStop })
+        return 'ok'
+      } catch (e) {
+        if (e instanceof SignalStoppedError) {
+          // M29 WP-B: the signal was observed at a stage boundary; no new
+          // transaction stage was entered. Exit code comes from terminating.
+          stderr.write(
+            `release:${/** @type {SignalStoppedError} */ (e).signal}: stopped at the transaction stage boundary; lock stays held until all writes stop\n`,
+          )
+          return 'stopped'
+        }
+        stderr.write(`release:prepare-assets failed: ${/** @type {Error} */ (e).message}\n`)
         return 'failed'
       }
-      generateAssets(distDir, outputDir, force, python3)
-      return 'ok'
-    } catch (e) {
-      stderr.write(`release:prepare-assets failed: ${/** @type {Error} */ (e).message}\n`)
-      return 'failed'
     }
+
+    outcome = await runLocked()
+  } finally {
+    // M29 WP-B: no bounded setImmediate flush loop. Signals are delivered
+    // while runLocked awaits child processes at every stage boundary; the
+    // exit-code decision below reads the authoritative `terminating` state.
+    process.removeListener('SIGINT', signalHandler)
+    process.removeListener('SIGTERM', signalHandler)
   }
-
-  const outcome = await runLocked()
-
-  // Yield to the event loop so a signal that arrived during the synchronous
-  // generator work is delivered to the handler BEFORE the exit-code decision
-  // (M28 WP-D). Writes have already stopped; the lock is still held. A single
-  // setImmediate can race the pending signal handler on some Node versions, so
-  // yield in a bounded loop until the termination request is observed.
-  for (let flushed = 0; flushed < 10 && terminating === null; flushed++) {
-    await new Promise((resolve) => setImmediate(resolve))
-  }
-
-  process.removeListener('SIGINT', signalHandler)
-  process.removeListener('SIGTERM', signalHandler)
 
   // Unified release: the lock is released ONLY after every write/rename/
   // execFile inside runLocked has stopped (M28 WP-D). A release failure must
@@ -2143,12 +2527,18 @@ export async function runCli(argv, io = {}) {
   }
 
   // A termination request wins over any generation result; never claim a
-  // full success after a signal (M28 WP-D).
+  // full success after a signal (M28 WP-D / M29 WP-B).
   if (terminating !== null) {
     stderr.write(
       `release:${terminating}: run stopped; lock released in unified finally; final state preserved for audit\n`,
     )
     return terminating === 'SIGINT' ? 130 : 143
+  }
+
+  if (outcome === 'stopped') {
+    // SignalStoppedError requires terminating != null; defensive fallback.
+    stderr.write('release: run stopped at a stage boundary; final state preserved for audit\n')
+    return 1
   }
 
   if (outcome === 'ok') {

@@ -1,0 +1,26 @@
+{
+  "description": "M29 WP-E: shared ZIP entry contract fixture. Every entry must produce an IDENTICAL verdict across the three layers: JS validateZipEntry (scripts/release-artifact-contract.mjs), scripts/_zip_helper.py, and .github/workflows/scripts/verify_release_zip.py. Windows drive absolute / drive-relative and UNC paths must be rejected by all three layers.",
+  "legal": ["index.html", "assets/app.js", "assets/file with spaces.js", "资产/页面.js"],
+  "illegal": [
+    {
+      "entry": "",
+      "note": "empty entry cannot be represented inside a zip; constructing one must fail"
+    },
+    { "entry": "/absolute" },
+    { "entry": "../escape" },
+    { "entry": "a/../escape" },
+    { "entry": "./file" },
+    { "entry": "a//b" },
+    { "entry": "a\\b" },
+    { "entry": "a\u0000b" },
+    { "entry": "a\u001fb" },
+    { "entry": "node_modules/x" },
+    { "entry": "src/main.tsx" },
+    { "entry": "out.map" },
+    { "entry": "C:/escape.txt", "note": "Windows drive absolute (forward slash)" },
+    { "entry": "C:\\escape.txt", "note": "Windows drive absolute (backslash)" },
+    { "entry": "C:escape.txt", "note": "Windows drive-relative" },
+    { "entry": "//server/share/file.txt", "note": "UNC (forward slashes)" },
+    { "entry": "\\\\server\\share\\file.txt", "note": "UNC (backslashes)" }
+  ]
+}

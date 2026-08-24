@@ -149,12 +149,21 @@ const FORBIDDEN_SEGMENTS = new Set(['node_modules', 'src'])
 const FORBIDDEN_ENTRY_CHARS = /[\x00-\x1f\x7f\\]/
 
 /**
+ * Windows drive prefix (absolute `C:/`, `C:\` and drive-relative `C:`) --
+ * M29 WP-E: rejected by ALL three validation layers.
+ */
+const WINDOWS_DRIVE = /^[A-Za-z]:/
+
+/**
  * Validate a single ZIP entry path from the dist/ directory.
  *
- * Rules:
+ * Rules (M29 WP-E: identical verdict across JS validateZipEntry,
+ * scripts/_zip_helper.py and verify_release_zip.py):
  * - Non-empty.
- * - POSIX relative (no leading `/`, no `..` components).
+ * - POSIX relative (no leading `/`, no `..` components, no `.` component).
+ * - No Windows drive prefix (absolute or drive-relative).
  * - No backslash, NUL, or control characters.
+ * - No empty segment (`a//b`).
  * - No component named `node_modules` or `src`.
  * - No `.map` suffix.
  *
@@ -168,10 +177,16 @@ export function validateZipEntry(entry) {
   if (entry.startsWith('/')) {
     return { ok: false, reason: `absolute zip entry: ${entry}` }
   }
+  if (WINDOWS_DRIVE.test(entry)) {
+    return { ok: false, reason: `windows drive path in zip entry: ${entry}` }
+  }
   const segments = entry.split('/')
   for (const segment of segments) {
     if (segment === '..') {
       return { ok: false, reason: `path traversal in zip entry: ${entry}` }
+    }
+    if (segment === '.') {
+      return { ok: false, reason: `dot segment in zip entry: ${entry}` }
     }
     if (segment.length === 0) {
       return { ok: false, reason: `empty segment in zip entry: ${entry}` }

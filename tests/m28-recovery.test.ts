@@ -96,8 +96,8 @@ function makeJournal(
 // WP-A: recovery state machine
 // ---------------------------------------------------------------------------
 
-describe('M28 WP-A recovery state machine', () => {
-  it('A1: COMMITTED + output + backup: fake ZIP with matching checksum is REJECTED and backup+journal preserved', () => {
+describe('M28 WP-A recovery state machine', async () => {
+  it('A1: COMMITTED + output + backup: fake ZIP with matching checksum is REJECTED and backup+journal preserved', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
@@ -114,7 +114,7 @@ describe('M28 WP-A recovery state machine', () => {
     const dist = path.join(tmp, 'dist')
     makeDist(dist)
     const real = path.join(tmp, 'real-output')
-    generateAssets(dist, real, false)
+    await generateAssets(dist, real, false)
     const backup = path.join(tmp, 'release-output.backup-old')
     fs.renameSync(real, backup)
 
@@ -131,7 +131,7 @@ describe('M28 WP-A recovery state machine', () => {
       ),
     )
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(result.reason).toMatch(/manual audit|failed/i)
     // Backup, journal and (bad) output all preserved.
@@ -140,14 +140,14 @@ describe('M28 WP-A recovery state machine', () => {
     expect(fs.readFileSync(path.join(output, plan.zipName), 'utf8')).toBe('THIS IS NOT A ZIP')
   })
 
-  it('A1b: COMMITTED + output + backup: valid output passes full reverify incl. journal hash, then cleanup', () => {
+  it('A1b: COMMITTED + output + backup: valid output passes full reverify incl. journal hash, then cleanup', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
     const dist = path.join(tmp, 'dist')
     makeDist(dist)
     const output = path.join(tmp, plan.outputDir)
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const oldZip = sha256File(path.join(output, plan.zipName))
 
     // Simulate interrupted --force: throw AFTER the commit point so the
@@ -162,7 +162,7 @@ describe('M28 WP-A recovery state machine', () => {
     }
     let thrown: unknown = null
     try {
-      generateAssets(dist, output, true, undefined, deps)
+      await generateAssets(dist, output, true, undefined, deps)
     } catch (e) {
       thrown = e
     }
@@ -172,7 +172,7 @@ describe('M28 WP-A recovery state machine', () => {
     const backups = fs.readdirSync(tmp).filter((e) => e.startsWith('release-output.backup'))
     expect(backups.length).toBe(1)
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(true)
     expect(result.action).toBe('committed-cleanup')
     expect(fs.existsSync(path.join(output, plan.zipName))).toBe(true)
@@ -181,14 +181,14 @@ describe('M28 WP-A recovery state machine', () => {
     expect(fs.existsSync(journalPath(tmp))).toBe(false)
   })
 
-  it('A1c: COMMITTED journal with new-hash mismatch refuses and preserves everything', () => {
+  it('A1c: COMMITTED journal with new-hash mismatch refuses and preserves everything', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
     const dist = path.join(tmp, 'dist')
     makeDist(dist)
     const output = path.join(tmp, plan.outputDir)
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
 
     const backup = path.join(tmp, 'release-output.backup-x')
     fs.renameSync(output, backup)
@@ -208,14 +208,14 @@ describe('M28 WP-A recovery state machine', () => {
     )
     expect(realHash).not.toBe('f'.repeat(64))
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(result.reason).toMatch(/manual audit|newSha256|hash/i)
     expect(fs.existsSync(backup)).toBe(true)
     expect(fs.existsSync(journalPath(tmp))).toBe(true)
   })
 
-  it('A2: COMMITTED/BACKUP_CLEANED + output + no backup (first-publish journal.delete failure) recovers', () => {
+  it('A2: COMMITTED/BACKUP_CLEANED + output + no backup (first-publish journal.delete failure) recovers', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
@@ -226,7 +226,7 @@ describe('M28 WP-A recovery state machine', () => {
     // First publish interrupted at journal.delete -> BACKUP_CLEANED journal, no backup.
     let thrown: unknown = null
     try {
-      generateAssets(dist, output, false, undefined, {
+      await generateAssets(dist, output, false, undefined, {
         failpoint(name) {
           if (name === 'journal.delete') throw new Error('INJECTED-JOURNAL-DELETE')
         },
@@ -239,7 +239,7 @@ describe('M28 WP-A recovery state machine', () => {
     expect(fs.existsSync(journalPath(tmp))).toBe(true)
     expect(fs.readdirSync(tmp).filter((e) => e.startsWith('release-output.backup'))).toEqual([])
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(true)
     expect(result.action).toBe('committed-no-backup-cleanup')
     expect(fs.existsSync(path.join(output, plan.zipName))).toBe(true)
@@ -247,14 +247,14 @@ describe('M28 WP-A recovery state machine', () => {
     expect(fs.existsSync(journalPath(tmp))).toBe(false)
   })
 
-  it('A2b: committed, no backup, INVALID output refuses and keeps journal', () => {
+  it('A2b: committed, no backup, INVALID output refuses and keeps journal', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
     const dist = path.join(tmp, 'dist')
     makeDist(dist)
     const output = path.join(tmp, plan.outputDir)
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
 
     const newHash = {
       zip: sha256File(path.join(output, plan.zipName)),
@@ -267,21 +267,21 @@ describe('M28 WP-A recovery state machine', () => {
     // Tamper the committed output AFTER the journal was written.
     fs.writeFileSync(path.join(output, plan.zipName), 'TAMPERED')
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(result.reason).toMatch(/manual audit|failed/i)
     expect(fs.existsSync(journalPath(tmp))).toBe(true)
     expect(fs.readFileSync(path.join(output, plan.zipName), 'utf8')).toBe('TAMPERED')
   })
 
-  it('A3: PRE_COMMIT + no backup: hash-proven first-publish output is finalized', () => {
+  it('A3: PRE_COMMIT + no backup: hash-proven first-publish output is finalized', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
     const dist = path.join(tmp, 'dist')
     makeDist(dist)
     const output = path.join(tmp, plan.outputDir)
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
 
     const newHash = {
       zip: sha256File(path.join(output, plan.zipName)),
@@ -292,21 +292,21 @@ describe('M28 WP-A recovery state machine', () => {
       JSON.stringify(makeJournal({ state: 'NEW_OUTPUT_VERIFIED', newSha256: newHash })),
     )
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(true)
     expect(result.action).toBe('pre-commit-first-publish-finalize')
     expect(fs.existsSync(journalPath(tmp))).toBe(false)
     expect(fs.existsSync(path.join(output, plan.zipName))).toBe(true)
   })
 
-  it('A3b: PRE_COMMIT + no backup with unproven output refuses (manual audit)', () => {
+  it('A3b: PRE_COMMIT + no backup with unproven output refuses (manual audit)', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
     const dist = path.join(tmp, 'dist')
     makeDist(dist)
     const output = path.join(tmp, plan.outputDir)
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     // Journal claims hashes that do NOT match the on-disk output.
     fs.writeFileSync(
       journalPath(tmp),
@@ -317,21 +317,21 @@ describe('M28 WP-A recovery state machine', () => {
         }),
       ),
     )
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(result.reason).toMatch(/manual audit|failed/i)
     expect(fs.existsSync(journalPath(tmp))).toBe(true)
     expect(fs.existsSync(path.join(output, plan.zipName))).toBe(true)
   })
 
-  it('A4: PRE_COMMIT + backup: deep-validates backup, restores, re-verifies against oldSha256', () => {
+  it('A4: PRE_COMMIT + backup: deep-validates backup, restores, re-verifies against oldSha256', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
     const dist = path.join(tmp, 'dist')
     makeDist(dist)
     const output = path.join(tmp, plan.outputDir)
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const oldZipHash = sha256File(path.join(output, plan.zipName))
     const oldSumsHash = sha256File(path.join(output, plan.sumsName))
 
@@ -352,7 +352,7 @@ describe('M28 WP-A recovery state machine', () => {
       ),
     )
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(true)
     expect(result.action).toBe('pre-commit-restore')
     expect(sha256File(path.join(output, plan.zipName))).toBe(oldZipHash)
@@ -360,7 +360,7 @@ describe('M28 WP-A recovery state machine', () => {
     expect(fs.existsSync(journalPath(tmp))).toBe(false)
   })
 
-  it('A4b: PRE_COMMIT + corrupt backup refuses and keeps the last valid copy', () => {
+  it('A4b: PRE_COMMIT + corrupt backup refuses and keeps the last valid copy', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
@@ -384,14 +384,14 @@ describe('M28 WP-A recovery state machine', () => {
       ),
     )
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(fs.existsSync(backup)).toBe(true)
     expect(fs.existsSync(journalPath(tmp))).toBe(true)
     expect(fs.readFileSync(path.join(output, plan.zipName), 'utf8')).toBe('UNVERIFIED-JUNK')
   })
 
-  it('journal backupPath must match the single actual backup on disk', () => {
+  it('journal backupPath must match the single actual backup on disk', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
@@ -408,13 +408,13 @@ describe('M28 WP-A recovery state machine', () => {
         }),
       ),
     )
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(result.reason).toMatch(/manual audit|backup/i)
     expect(fs.existsSync(path.join(tmp, 'release-output.backup-aaa'))).toBe(true)
   })
 
-  it('journal absent with only a backup -> manual audit (no ownership proof)', () => {
+  it('journal absent with only a backup -> manual audit (no ownership proof)', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const plan = buildReleasePlan('1.1.5')
@@ -422,7 +422,7 @@ describe('M28 WP-A recovery state machine', () => {
     fs.mkdirSync(backup)
     fs.writeFileSync(path.join(backup, plan.zipName), 'data')
     fs.writeFileSync(path.join(backup, plan.sumsName), 'data')
-    const result = recoverTransaction(
+    const result = await recoverTransaction(
       tmp,
       path.join(tmp, plan.outputDir),
       plan.zipName,
@@ -437,14 +437,14 @@ describe('M28 WP-A recovery state machine', () => {
 // WP-B: journal binding + durability
 // ---------------------------------------------------------------------------
 
-describe('M28 WP-B journal binding', () => {
-  it('version must equal package.json version', () => {
+describe('M28 WP-B journal binding', async () => {
+  it('version must equal package.json version', async () => {
     const raw = JSON.stringify(makeJournal())
     expect(validateJournal(raw, '1.1.5').ok).toBe(true)
     expect(validateJournal(raw, '1.1.9').ok).toBe(false)
   })
 
-  it('outputPath must be exactly the normalized release-output', () => {
+  it('outputPath must be exactly the normalized release-output', async () => {
     for (const bad of ['./release-output', '/abs/release-output', 'release-output/', 'foo']) {
       expect(validateJournal(JSON.stringify(makeJournal({ outputPath: bad })), '1.1.5').ok).toBe(
         false,
@@ -455,7 +455,7 @@ describe('M28 WP-B journal binding', () => {
     ).toBe(true)
   })
 
-  it('backupPath must be null or a safe single-segment name', () => {
+  it('backupPath must be null or a safe single-segment name', async () => {
     for (const bad of [
       '../escape',
       'a/b',
@@ -484,7 +484,7 @@ describe('M28 WP-B journal binding', () => {
     ).toBe(true)
   })
 
-  it('oldSha256/newSha256 must be lowercase 64-hex', () => {
+  it('oldSha256/newSha256 must be lowercase 64-hex', async () => {
     for (const bad of ['A'.repeat(64), 'a'.repeat(63), 'a'.repeat(65), 'nothex', '', 42, null]) {
       expect(
         validateJournal(
@@ -512,7 +512,7 @@ describe('M28 WP-B journal binding', () => {
     ).toBe(true)
   })
 
-  it('state/backupPath/oldSha256 field combos are consistent', () => {
+  it('state/backupPath/oldSha256 field combos are consistent', async () => {
     // INIT with a backupPath is impossible.
     expect(
       validateJournal(
@@ -548,7 +548,7 @@ describe('M28 WP-B journal binding', () => {
     ).toBe(false)
   })
 
-  it('updatedAt must be strict ISO (toISOString shape)', () => {
+  it('updatedAt must be strict ISO (toISOString shape)', async () => {
     for (const bad of ['yesterday', '2026-08-24', '2026-08-24T02:00:00Z', 123, '']) {
       expect(validateJournal(JSON.stringify(makeJournal({ updatedAt: bad })), '1.1.5').ok).toBe(
         false,
@@ -557,7 +557,7 @@ describe('M28 WP-B journal binding', () => {
     expect(validateJournal(JSON.stringify(makeJournal()), '1.1.5').ok).toBe(true)
   })
 
-  it('writeAllSync fails fast on zero/negative/NaN/non-integer/oversized returns', () => {
+  it('writeAllSync fails fast on zero/negative/NaN/non-integer/oversized returns', async () => {
     const fd = fs.openSync(path.join(makeTempDir(), 'w.bin'), 'w')
     for (const bad of [0, -1, NaN, 1.5, 1e9]) {
       expect(() =>
@@ -569,7 +569,7 @@ describe('M28 WP-B journal binding', () => {
     fs.closeSync(fd)
   })
 
-  it('writeAllSync completes a valid payload with short writes', () => {
+  it('writeAllSync completes a valid payload with short writes', async () => {
     const tmp = makeTempDir()
     const fd = fs.openSync(path.join(tmp, 'w.bin'), 'w')
     const payload = Buffer.from('abcdefghij')
@@ -586,7 +586,7 @@ describe('M28 WP-B journal binding', () => {
     expect(fs.readFileSync(path.join(tmp, 'w.bin'), 'utf8')).toBe('abcdefghij')
   })
 
-  it('journal write failure fails fast, never promotes a partial journal, leaves no tmp residue', () => {
+  it('journal write failure fails fast, never promotes a partial journal, leaves no tmp residue', async () => {
     const tmp = makeTempDir()
     writePkg(tmp)
     const dist = path.join(tmp, 'dist')
@@ -627,8 +627,8 @@ describe('M28 WP-B journal binding', () => {
 // WP-D: SIGINT/SIGTERM lock lifecycle
 // ---------------------------------------------------------------------------
 
-describe('M28 WP-D signal/lock lifecycle', () => {
-  it('handleFatalSignal records termination but does NOT release the lock', () => {
+describe('M28 WP-D signal/lock lifecycle', async () => {
+  it('handleFatalSignal records termination but does NOT release the lock', async () => {
     const tmp = makeTempDir()
     const lock = acquireLock(tmp)
     const lines: string[] = []
@@ -645,7 +645,7 @@ describe('M28 WP-D signal/lock lifecycle', () => {
     expect(fs.existsSync(path.join(tmp, '.release-staging.lock'))).toBe(false)
   })
 
-  it('SIGTERM returns 143', () => {
+  it('SIGTERM returns 143', async () => {
     const tmp = makeTempDir()
     const lock = acquireLock(tmp)
     const code = handleFatalSignal('SIGTERM', lock, {
@@ -729,10 +729,25 @@ describe('M28 WP-D signal/lock lifecycle', () => {
       // No success claim from runCli for the signaled run.
       expect(err).toMatch(/termination requested/i)
       expect(out).not.toMatch(/Transaction recovered successfully/i)
-      // Final state must be a valid committed+verified output (allowed).
+      // M29 WP-B: after a signal the final disk state must be EITHER a
+      // verified committed output OR an explicitly recoverable PRE_COMMIT
+      // state (journal-driven) -- never an indeterminate topology.
       const plan = buildReleasePlan('1.1.5')
-      expect(fs.existsSync(path.join(tmp, plan.outputDir, plan.zipName))).toBe(true)
-      expect(fs.existsSync(path.join(tmp, plan.outputDir, plan.sumsName))).toBe(true)
+      const committedOutput =
+        fs.existsSync(path.join(tmp, plan.outputDir, plan.zipName)) &&
+        fs.existsSync(path.join(tmp, plan.outputDir, plan.sumsName))
+      const journalPresent = fs.existsSync(path.join(tmp, plan.journalFile))
+      expect(committedOutput || journalPresent).toBe(true)
+      if (journalPresent) {
+        // The leftover journal must actually be recoverable (idempotent).
+        const rec = await recoverTransaction(
+          tmp,
+          path.join(tmp, plan.outputDir),
+          plan.zipName,
+          plan.sumsName,
+        )
+        expect(rec.recovered).toBe(true)
+      }
       // The lock is immediately acquirable after the first process stops.
       const retry = acquireLock(tmp)
       retry.release()
@@ -745,7 +760,7 @@ describe('M28 WP-D signal/lock lifecycle', () => {
 // WP-F: CLI conflict rejection
 // ---------------------------------------------------------------------------
 
-describe('M28 WP-F CLI conflicts', () => {
+describe('M28 WP-F CLI conflicts', async () => {
   function makeIo(repoRoot: string) {
     const out: string[] = []
     const err: string[] = []
