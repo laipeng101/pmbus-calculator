@@ -2116,8 +2116,12 @@ export async function runCli(argv, io = {}) {
 
   // Yield to the event loop so a signal that arrived during the synchronous
   // generator work is delivered to the handler BEFORE the exit-code decision
-  // (M28 WP-D). Writes have already stopped; the lock is still held.
-  await new Promise((resolve) => setImmediate(resolve))
+  // (M28 WP-D). Writes have already stopped; the lock is still held. A single
+  // setImmediate can race the pending signal handler on some Node versions, so
+  // yield in a bounded loop until the termination request is observed.
+  for (let flushed = 0; flushed < 10 && terminating === null; flushed++) {
+    await new Promise((resolve) => setImmediate(resolve))
+  }
 
   process.removeListener('SIGINT', signalHandler)
   process.removeListener('SIGTERM', signalHandler)
