@@ -68,17 +68,32 @@
   signal 被观察后，本次运行不得输出 `Done:` 或 `Transaction recovered
 successfully` 等完整成功声明。
 
-- **子进程/进程树（M30 WP-B / M31 WP-B）**：helper/verifier 通过受控
-  `execFileAsync` 执行——成功 spawn 的子进程 Promise 只在 `close` 后 settle；
-  未成功创建进程（spawn `error`，如 ENOENT）在 `error` 事件上受控 reject，
-  registry 保持干净（M31 明确合同）；timeout 先请求停止（POSIX 向整个进程组
-  发 SIGTERM）、等待 close、必要时升级 SIGKILL、清理后代后才 reject；主
-  timeout timer 与升级 timer 在 settle 时全部清除；stdin EPIPE 等流错误被
-  捕获为受控 rejection，绝不作为 unhandled stream error 崩溃；active-child
-  registry 在锁释放前必须为空（否则拒绝释放并保留恢复元数据）。POSIX 使用
-  独立进程组，helper 的孙进程无法在 Promise settle 后继续存活写 release 路径；
-  测试以严格 quiescence（size + sha256 在稳定期后不再变化）与孙进程
-  `kill(pid, 0)` 返回 ESRCH 为证据，不再使用宽松的字节增长上限。
+- **子进程/进程树（M30 WP-B / M31 WP-B / M32 WP-A）**：helper/verifier 通过受控
+  `execFileAsync` 执行。M31 曾声明"成功 spawn 的子进程只在 `close` 后 settle、
+  孙进程无法在 Promise settle 后继续存活"，但 M32 探针证明该表述过度：direct
+  child 的 `close` 不等于进程组消失（P1：孙进程**单独**忽略 SIGTERM 时，M31
+  实现在 close 后立即 settle，孙进程继续存活写 sentinel）；成功 spawn 后的
+  ChildProcess `error`（kill 失败/IPC 失败/abort）也被当成 spawn 失败，reject
+  消息伪称 `failed to start`、误删仍存活进程的 registry 条目并遗留 timer（P2）。
+  M32 状态机合同：
+  - `spawn` 事件确认成功创建进程并在 spawn 时保存 PGID；只有"从未成功 spawn"
+    的 `error`（如 ENOENT）才立即 reject 并清空 registry——没有进程可泄漏；
+  - 成功 spawn 后的 `error` 记录为 runtime error：不 settle、不清 registry，
+    继续受控终止，最终消息绝不伪称 `failed to start`；
+  - timeout 先向整个进程组发 SIGTERM；direct child `close` 后必须用
+    `kill(-pgid, 0)` 证明进程组已消失（ESRCH）才能 settle，否则向剩余组升级
+    SIGKILL 并有界轮询（50ms 间隔、10s deadline）直到 ESRCH；
+  - main timeout / escalation / termination-deadline / group-poll 四个 timer
+    全部在 settle 时清除；
+  - 有界 deadline 内仍无法证明进程组消失（EPERM、未知错误、kill 失败）→
+    fail closed：reject 明确审计消息、registry 条目**保留**、runCli 拒绝释放
+    release 锁（状态可恢复/可审计）；
+  - stdin EPIPE 等流错误捕获为受控 rejection，绝不作为 unhandled stream error
+    崩溃；active-child registry 在锁释放前必须为空（否则拒绝释放并保留恢复
+    元数据）。
+    测试证据 = 严格 quiescence（size + sha256 在稳定期后不再变化）+ 双 PID
+    ESRCH + 四种 SIGTERM 组合（direct/grandchild 各自忽略或不忽略）+ post-spawn
+    error 不伪称 `failed to start`，不再使用宽松的字节增长上限。
 
 - **平台支持（M31 WP-C）**：release asset generation 仅支持 Linux/macOS
   （POSIX）。Windows 无进程组、`child.kill()` 只能终止直接子进程，无法保证
