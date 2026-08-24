@@ -169,10 +169,12 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22.20.0'
-          # setup-node v7 auto-enables npm caching from the packageManager
-          # field and probes it with the bundled npm 10.9.3, whose
-          # devEngines fail-closed check rejects the required npm 11.17.0
-          # (EBADDEVENGINES). Disable the auto cache; the canonical npm is
+          # M31 WP-D: the primary runtime already restored the npm download
+          # cache, so the compatibility runtime must NOT establish a second
+          # cache; node_modules is never cached. package-manager-cache: false
+          # also disables setup-node v7's auto-detected npm cache, which
+          # probes with the bundled npm 10.9.3 and fails its devEngines
+          # fail-closed check (EBADDEVENGINES) -- the canonical npm 11.17.0 is
           # activated in the next step, outside the repo (M30 WP-E #10).
           package-manager-cache: false
 

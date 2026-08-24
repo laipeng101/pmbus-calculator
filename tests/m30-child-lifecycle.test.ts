@@ -1,4 +1,5 @@
-// M30 WP-B: controlled child / process-tree lifecycle (test-first).
+// M30 WP-B / M31 WP-B: controlled child / process-tree lifecycle
+// (test-first).
 //
 // The M29 execFileAsync is a private module function; the timeout branch
 // kills the direct child with SIGKILL and REJECTS IMMEDIATELY -- before the
@@ -9,19 +10,32 @@
 // error (probe D).
 //
 // The M30 contract:
-//   1. the promise settles only after the child emits 'close'
+//   1. the promise settles only after the child emits 'close' (spawn
+//      failures that never created a process are the documented exception:
+//      they reject from the 'error' event, M31)
 //   2. timeout records TimeoutError, requests stop, waits for close,
 //      escalates to SIGKILL if needed, cleans the controlled process
 //      group/descendants, and only then rejects
 //   3. child.kill() returning false never crashes
 //   4. stdin EPIPE/error is captured into a controlled rejection
-//   5. an active-child registry is maintained and empty before lock release
+//   5. an active-child registry is maintained and empty on EVERY settle path
 //   6. descendants must not keep writing to the release path after settle
 //
-// execFileAsync and the registry must be exported by
-// scripts/prepare-release-assets.mjs for these tests (they are not in M29).
+// M31 WP-B strengthening (probe P3: the old "<2048 bytes written after
+// reject" assertion PASSED while a slow grandchild was still alive):
+//   - strict quiescence: after settle, wait a short stable window, snapshot
+//     sentinel size AND sha256, wait >=1.5s, require both unchanged
+//   - POSIX tests record the grandchild PID and require kill(pid, 0) -> ESRCH
+//   - a scenario where BOTH the direct child and the grandchild ignore
+//     SIGTERM: SIGKILL escalation must remove the whole tree
+//   - both the main timeout timer and the escalation timer must be cleared
+//     when the promise settles (no leftover timers)
+//   - spawn failure contract: an ENOENT/never-created child rejects from the
+//     'error' event with a clean registry; a successfully spawned child still
+//     settles only on 'close'
 
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -47,26 +61,48 @@ afterEach(() => {
   }
 })
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
 /** Python one-liner-ish code that appends SENTINEL lines to a file forever. */
-function fileWriterCode(sentinelFile: string): string {
-  return [
-    'import time',
+function fileWriterCode(sentinelFile: string, ignoreTerm = false): string {
+  const lines = ['import time']
+  if (ignoreTerm) {
+    lines.push('import signal', 'signal.signal(signal.SIGTERM, signal.SIG_IGN)')
+  }
+  lines.push(
     `f = open(${JSON.stringify(sentinelFile)}, 'a')`,
     'while True:',
     "  f.write('SENTINEL\\n')",
     '  f.flush()',
     '  time.sleep(0.05)',
-  ].join('\n')
+  )
+  return lines.join('\n')
 }
 
-/** Wrapper that spawns a file-writing grandchild and then sleeps. */
-function grandchildWrapper(tmp: string, sentinelFile: string, ignoreTerm = false): string {
-  const lines = ['import subprocess, sys, time']
-  if (ignoreTerm) lines.push('import signal', 'signal.signal(signal.SIGTERM, signal.SIG_IGN)')
+/**
+ * Wrapper that spawns a file-writing grandchild and then sleeps. When
+ * `ignoreTerm` is set BOTH the wrapper and the grandchild ignore SIGTERM.
+ * Grandchild (and optionally wrapper) PIDs are recorded for ESRCH checks.
+ */
+function grandchildWrapper(
+  tmp: string,
+  sentinelFile: string,
+  ignoreTerm = false,
+  pidfile?: string,
+  wrapperPidfile?: string,
+): string {
+  const lines = ['import subprocess, sys, time, os']
+  if (ignoreTerm) {
+    lines.push('import signal', 'signal.signal(signal.SIGTERM, signal.SIG_IGN)')
+  }
   lines.push(
-    `subprocess.Popen(['python3', '-u', '-c', ${JSON.stringify(fileWriterCode(sentinelFile))}])`,
-    'time.sleep(30)',
+    `p = subprocess.Popen(['python3', '-u', '-c', ${JSON.stringify(fileWriterCode(sentinelFile, ignoreTerm))}])`,
   )
+  if (pidfile) lines.push(`with open(${JSON.stringify(pidfile)}, 'w') as f: f.write(str(p.pid))`)
+  if (wrapperPidfile) {
+    lines.push(`with open(${JSON.stringify(wrapperPidfile)}, 'w') as f: f.write(str(os.getpid()))`)
+  }
+  lines.push('time.sleep(30)')
   return writeWrapper(tmp, lines.join('\n'))
 }
 
@@ -77,6 +113,36 @@ function writeWrapper(tmp: string, body: string): string {
   return p
 }
 
+/** Strict quiescence snapshot: byte size + sha256 of the sentinel file. */
+function sentinelSnapshot(p: string): { size: number; hash: string } {
+  if (!fs.existsSync(p)) return { size: 0, hash: '' }
+  const buf = fs.readFileSync(p)
+  return { size: buf.length, hash: createHash('sha256').update(buf).digest('hex') }
+}
+
+/** Assert strict quiescence: stable window, then >=1.5s with zero change. */
+async function expectQuiescent(sentinelFile: string, stableMs = 500, waitMs = 1500): Promise<void> {
+  await sleep(stableMs)
+  const snap1 = sentinelSnapshot(sentinelFile)
+  await sleep(waitMs)
+  const snap2 = sentinelSnapshot(sentinelFile)
+  expect(snap2.size, 'sentinel size changed after settle -- process tree still writing').toBe(
+    snap1.size,
+  )
+  expect(snap2.hash, 'sentinel content changed after settle -- process tree still writing').toBe(
+    snap1.hash,
+  )
+  // The writer must have produced output before being stopped (not vacuous).
+  expect(snap1.size).toBeGreaterThan(0)
+}
+
+function expectDead(pid: number, label: string): void {
+  expect(pid, `${label} PID missing`).toBeGreaterThan(0)
+  expect(() => process.kill(pid, 0), `${label} (pid ${pid}) still alive after settle`).toThrow(
+    /ESRCH/,
+  )
+}
+
 describe('M30 WP-B controlled child/process-tree lifecycle', () => {
   it('B1: execFileAsync and the active-child registry are exported', async () => {
     const mod = await import(MODULE_PATH)
@@ -85,11 +151,12 @@ describe('M30 WP-B controlled child/process-tree lifecycle', () => {
     expect(typeof (mod.activeChildren as Set<unknown>).size).toBe('number')
   })
 
-  it('B2: timeout rejects only after the child closes AND the process tree is zeroed (grandchild stops writing)', async () => {
+  it('B2: timeout rejects only after the child closes AND the tree is strictly quiescent (grandchild ESRCH)', async () => {
     const mod = await import(MODULE_PATH)
     const tmp = makeTempDir()
     const sentinelFile = path.join(tmp, 'sentinel.log')
-    const wrapper = grandchildWrapper(tmp, sentinelFile)
+    const pidfile = path.join(tmp, 'grandchild.pid')
+    const wrapper = grandchildWrapper(tmp, sentinelFile, false, pidfile)
     let rejectAt: number | null = null
     let message = ''
     try {
@@ -101,18 +168,14 @@ describe('M30 WP-B controlled child/process-tree lifecycle', () => {
       rejectAt = Date.now()
       message = (e as Error).message
     }
-    const sizeAtReject = fs.existsSync(sentinelFile) ? fs.statSync(sentinelFile).size : 0
-    // Wait for the tree cleanup to settle.
-    await new Promise((r) => setTimeout(r, 1200))
-    const sizeAfter = fs.existsSync(sentinelFile) ? fs.statSync(sentinelFile).size : 0
-
     expect(rejectAt, `expected a timeout rejection, got: ${message}`).not.toBeNull()
     expect(message).toMatch(/timed out|timeout/i)
     // The registry must be empty again after settlement.
     expect((mod.activeChildren as Set<unknown>).size).toBe(0)
-    // The grandchild must stop writing shortly after the rejection -- the
-    // whole controlled process group was cleaned, not just the direct child.
-    expect(sizeAfter - sizeAtReject).toBeLessThan(2048)
+    // M31: strict quiescence -- a slow residual writer must NOT pass.
+    await expectQuiescent(sentinelFile)
+    // The grandchild PID must be gone.
+    expectDead(Number(fs.readFileSync(pidfile, 'utf8').trim()), 'grandchild')
   }, 30_000)
 
   it('B3: stdin EPIPE (helper exits before reading the manifest) becomes a controlled rejection, not an unhandled stream error', () => {
@@ -181,11 +244,12 @@ describe('M30 WP-B controlled child/process-tree lifecycle', () => {
     expect((mod.activeChildren as Set<unknown>).size).toBe(0)
   }, 20_000)
 
-  it('B5: escalation -- a child that ignores SIGTERM is SIGKILLed and the tree is still cleaned', async () => {
+  it('B5: escalation -- a grandchild that ignores SIGTERM is still removed; strict quiescence + ESRCH', async () => {
     const mod = await import(MODULE_PATH)
     const tmp = makeTempDir()
     const sentinelFile = path.join(tmp, 'sentinel5.log')
-    const wrapper = grandchildWrapper(tmp, sentinelFile, true)
+    const pidfile = path.join(tmp, 'grandchild5.pid')
+    const wrapper = grandchildWrapper(tmp, sentinelFile, true, pidfile)
     let rejectAt: number | null = null
     let message = ''
     try {
@@ -197,12 +261,132 @@ describe('M30 WP-B controlled child/process-tree lifecycle', () => {
       rejectAt = Date.now()
       message = (e as Error).message
     }
-    const sizeAtReject = fs.existsSync(sentinelFile) ? fs.statSync(sentinelFile).size : 0
-    await new Promise((r) => setTimeout(r, 1500))
-    const sizeAfter = fs.existsSync(sentinelFile) ? fs.statSync(sentinelFile).size : 0
     expect(rejectAt).not.toBeNull()
     expect(message).toMatch(/timed out|timeout/i)
     expect((mod.activeChildren as Set<unknown>).size).toBe(0)
-    expect(sizeAfter - sizeAtReject).toBeLessThan(2048)
+    await expectQuiescent(sentinelFile)
+    expectDead(Number(fs.readFileSync(pidfile, 'utf8').trim()), 'grandchild')
   }, 30_000)
+
+  it('B6: BOTH the direct child and the grandchild ignore SIGTERM -- SIGKILL escalation removes the whole tree', async () => {
+    const mod = await import(MODULE_PATH)
+    const tmp = makeTempDir()
+    const sentinelFile = path.join(tmp, 'sentinel6.log')
+    const gpidfile = path.join(tmp, 'gpid6.txt')
+    const wpidfile = path.join(tmp, 'wpid6.txt')
+    const wrapper = grandchildWrapper(tmp, sentinelFile, true, gpidfile, wpidfile)
+    let message = ''
+    try {
+      await mod.execFileAsync('python3', [wrapper], {
+        stdio: ['pipe', 'inherit', 'inherit'],
+        timeout: 800,
+      })
+    } catch (e) {
+      message = (e as Error).message
+    }
+    expect(message).toMatch(/timed out|timeout/i)
+    expect((mod.activeChildren as Set<unknown>).size).toBe(0)
+    await expectQuiescent(sentinelFile)
+    // The wrapper ignored SIGTERM, so only the SIGKILL escalation could have
+    // killed it; the grandchild ignored SIGTERM too and must also be gone.
+    expectDead(Number(fs.readFileSync(wpidfile, 'utf8').trim()), 'direct child (wrapper)')
+    expectDead(Number(fs.readFileSync(gpidfile, 'utf8').trim()), 'grandchild')
+  }, 30_000)
+
+  it('B7: both the main timeout timer and the escalation timer are cleared on settle (no leftover timers)', async () => {
+    const origSetTimeout = globalThis.setTimeout
+    const origClearTimeout = globalThis.clearTimeout
+    let created = 0
+    let cleared = 0
+    const live = new Set<unknown>()
+    // Timer accounting patch: note the jsdom/DOM type of setTimeout returns
+    // number, but the runtime (Node) returns a Timeout object -- the set is
+    // untyped on purpose.
+    const patchedSetTimeout = (fn: TimerHandler, ms?: number, ...args: unknown[]) => {
+      created++
+      const t = origSetTimeout(fn, ms, ...args)
+      live.add(t)
+      return t
+    }
+    const patchedClearTimeout = (t?: ReturnType<typeof setTimeout>) => {
+      if (t !== undefined && live.has(t)) {
+        cleared++
+        live.delete(t)
+      }
+      return origClearTimeout(t)
+    }
+    globalThis.setTimeout = patchedSetTimeout as typeof globalThis.setTimeout
+    globalThis.clearTimeout = patchedClearTimeout as typeof globalThis.clearTimeout
+    try {
+      const mod = await import(MODULE_PATH)
+      const tmp = makeTempDir()
+      const wrapper = writeWrapper(
+        tmp,
+        ['import time', 'time.sleep(2)', 'print("done")'].join('\n'),
+      )
+      try {
+        await mod.execFileAsync('python3', [wrapper], {
+          stdio: ['pipe', 'inherit', 'inherit'],
+          timeout: 300,
+        })
+      } catch {
+        // timeout expected
+      }
+      // Give any late clear a beat WITHOUT creating a counted setTimeout
+      // (the patch would count our own sleep timer and break the equality).
+      await new Promise((r) => setImmediate(() => setImmediate(r)))
+      expect(created, 'expected at least the main timer + escalation timer').toBeGreaterThanOrEqual(
+        2,
+      )
+      expect(cleared).toBe(created)
+    } finally {
+      globalThis.setTimeout = origSetTimeout
+      globalThis.clearTimeout = origClearTimeout
+    }
+  }, 20_000)
+
+  it('B8: spawn failure (ENOENT) rejects from the error event with a clean registry', async () => {
+    const mod = await import(MODULE_PATH)
+    let settled: 'resolve' | 'reject' | null = null
+    let msg = ''
+    try {
+      await mod.execFileAsync('/nonexistent/m31-no-such-binary-xyz', [])
+      settled = 'resolve'
+    } catch (e) {
+      settled = 'reject'
+      msg = (e as Error).message
+    }
+    expect(settled).toBe('reject')
+    expect(msg).toMatch(/failed to start/)
+    expect((mod.activeChildren as Set<unknown>).size).toBe(0)
+  })
+
+  it('B9: activeChildren is empty on EVERY settle path (success, nonzero exit, timeout, kill-false, spawn error)', async () => {
+    const mod = await import(MODULE_PATH)
+    const tmp = makeTempDir()
+    // success
+    const ok = writeWrapper(tmp, 'print("ok")\n')
+    await mod.execFileAsync('python3', [ok], { stdio: ['pipe', 'inherit', 'inherit'] })
+    expect((mod.activeChildren as Set<unknown>).size).toBe(0)
+    // nonzero exit
+    const bad = writeWrapper(tmp, 'import sys\nsys.exit(3)\n')
+    await expect(
+      mod.execFileAsync('python3', [bad], { stdio: ['pipe', 'inherit', 'inherit'] }),
+    ).rejects.toThrow()
+    expect((mod.activeChildren as Set<unknown>).size).toBe(0)
+    // kill-false timeout (child exits by itself later)
+    const sleeper = writeWrapper(tmp, 'import time\ntime.sleep(1.5)\n')
+    await expect(
+      mod.execFileAsync(
+        'python3',
+        [sleeper],
+        { stdio: ['pipe', 'inherit', 'inherit'], timeout: 200 },
+        { kill: () => false },
+      ),
+    ).rejects.toThrow(/timed out|timeout/i)
+    expect((mod.activeChildren as Set<unknown>).size).toBe(0)
+    // spawn error (never-created child)
+    await expect(mod.execFileAsync('/nonexistent/m31-xyz', [])).rejects.toThrow()
+    expect((mod.activeChildren as Set<unknown>).size).toBe(0)
+  }, 20_000)
 })

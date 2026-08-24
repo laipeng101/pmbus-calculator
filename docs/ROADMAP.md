@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-24（M30 Done：release child-process lifecycle、repeated-signal safety、zero-skip completeness 与 canonical Node/npm toolchain，v1.1.11 PATCH）
+最后更新：2026-08-24（M31 done：release lifecycle 证据加固、跨平台 fail-closed 与验证去重，v1.1.11 工程基线，未发布新版本）
 
 ## 当前产品基线
 
@@ -19,8 +19,75 @@
 ## 当前里程碑
 
 ```text
-M0–M30 complete；stable release v1.1.11；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M31 complete；stable release v1.1.11；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M31 done — release lifecycle 证据加固、跨平台 fail-closed 与验证去重（v1.1.11 工程基线，未发布新版本）
+
+- 本地与 CI 门禁一致并去重（WP-A）：`npm run verify` 接入 `npm run test:release-security`
+  （zero-skip runner），本地完整门禁与 CI full tier 对齐；新增独立 coverage 配置
+  `vitest.coverage.config.ts`，从共享 `SECURITY_TEST_FILES` **精确排除**九个 security
+  suite（单一来源、禁止复制文件名列表，新增 security suite 自动排除）；coverage 范围
+  （`src/app`、`src/legacy`）与阈值（80/80/70/80）与 `vite.config.ts` 保持一致；full CI
+  保留独立零跳过 security step，每个 security suite 在 primary CI 中恰好执行一次；
+  结构测试锁定：coverage 排除集与 `SECURITY_TEST_FILES` 完全一致、verify 必须包含
+  zero-skip runner、CI 阶段顺序 coverage → security → Playwright（既有 ci-workflow
+  断言保持）。实测：修改前 `test:coverage` 82.8s（813 测试，其中九文件 188 个重复）
+  - security 83.4s（重复 188）；修改后 coverage 6.8s（34 文件/634 测试，九文件零执行）
+  - security 83.5s（192 测试）——重复 188 → 0，验证总耗时约 166s → 约 90s。
+- 严格 child/process-tree 生命周期证据（WP-B）：`<2048` 字节宽松断言替换为严格
+  quiescence——settle 后等待稳定窗口、快照 sentinel size + sha256、再等待 ≥1.5s、
+  两者必须完全不变（探针 P3 实证 `<2048` 在孙进程仍存活且慢速写时通过）；POSIX 测试
+  记录孙进程 PID，settle 后 `kill(pid, 0)` 必须 ESRCH；新增直接子进程与孙进程**都忽略
+  SIGTERM** 的场景，确认升级 SIGKILL 后全部消失（wrapper PID 与孙 PID 均 ESRCH）；
+  escalation timer 保存引用并在 close/error settle 时清除（探针 B7 实证原实现遗留
+  timer）；spawn 失败采用明确合同——未成功创建进程（如 ENOENT）在 `error` 事件上受控
+  reject，成功 spawn 的 child 必须等 `close` 后 settle（探针 P5 实证原实现 error 分支
+  抢先 settle，与“只在 close 后 settle”的绝对表述不符），JSDoc/RELEASING/测试同步；
+  activeChildren 在所有 resolve/reject 路径最终为空（success/nonzero/timeout/kill-false/
+  spawn error 全路径测试）；POSIX 严格进程树 stress 25 轮（normal/gc-ignore/both-ignore
+  三场景）bad=0、0 残留进程。
+- Windows 真正 fail-closed（WP-C）：release asset generation 暂定为 POSIX-only——新增
+  可测试 platform capability gate（`SUPPORTED_GENERATION_PLATFORMS=['linux','darwin']`、
+  `isSupportedPlatform`）；`runCli` 支持 platform 注入，Windows 上在 `--recover-lock`、
+  创建锁、staging、journal、backup 或 output 等任何事务副作用之前直接 exit 2 并输出
+  “仅支持 Linux/macOS”，测试断言零副作用（repo 根目录无任何条目）；`docs/RELEASING.md`
+  删除“Windows 仅杀直接子进程是 fail-closed 边界”的错误说法（探针 P3/P4 实证
+  direct-child-only kill 下孙进程存活并继续写 release 路径）；不新增第三方 process-kill
+  依赖。
+- 工具链与资源策略（WP-D）：canonical Node 24.19.0/npm 11.17.0 与 compatibility Node
+  22.20.0/npm 11.17.0 全部保持（`.node-version`/`.nvmrc`/engines/packageManager/
+  devEngines/CI/Pages 零改动）；compatibility setup-node 锁定 `package-manager-cache:
+false`，npm 11.17.0 激活在 repo 外（`cd /tmp`）；ci-workflow 结构测试新增断言：
+  compatibility setup 无 `cache: 'npm'`/`cache-dependency-path`；CI 注释与 RELEASING
+  说明同一 job 中 primary 已恢复 npm 下载缓存、compatibility 不建立第二套缓存、
+  node_modules 一律不缓存；RELEASING 新增“本地验证环境与磁盘策略”——长期只保留
+  canonical Node、compat runtime 临时安装、worktree/node_modules 用完即删、`npm cache
+verify` 不清空有效缓存、只保留 lockfile 对应 Playwright browser revision、不自动删除
+  用户全局 Node/npm cache/Playwright 浏览器。
+- 状态依据：本地 Node 24.19.0/npm 11.17.0 fresh `npm ci` + `npm run doctor` 0 +
+  `npm run verify` 全绿（单测 826/43 文件、release-security 192 零 skip、coverage
+  634/34 文件 92.92/89.18/95.18/94.83、e2e 236 passed/8 基线 skip、e2e:release 1、
+  audit 0 high/critical、visual snapshot 零变化 +0/~0/-0）；Node 22.20.0/npm 11.17.0
+  fresh worktree（精确 5fd6cf9）npm ci（postinstall worktree-skip 无 ENOTDIR）/
+  typecheck/test:run 826/security 192/build 全过；POSIX 严格进程树 stress 25 轮 bad=0；
+  PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
+
+> **M31 strengthening（v1.1.11 工程基线）——以下 M30 表述在 M31 修复完成前超出实际实现：**
+>
+> 1. “coverage 与 security 门禁各自完整执行”：M30 的 `test:coverage` 会执行全部九个
+>    security suite（探针 P2：coverage 813 测试中含九文件 188 个，随后 CI 的 zero-skip
+>    step 又把同一 188 个跑一遍）；“每个 security suite 恰好执行一次”仅在 M31 独立
+>    coverage 配置排除后成立。
+> 2. “Promise 只在 child close 后 settle”：spawn 失败（如 ENOENT）时原实现在 `error`
+>    事件上抢先 settle（探针 P5），绝对“只在 close 后 settle”表述超出实现；M31 明确
+>    合同——未成功创建进程在 error 受控 reject、成功 spawn 的 child 等 close。
+> 3. “Windows 无进程组，仅杀直接子进程（文档化 fail-closed 边界）”：该表述不成立
+>    （探针 P3/P4：direct-child-only kill 下孙进程存活并继续写，activeChildren 只跟踪
+>    直接子进程）；M31 改为 POSIX-only platform gate，Windows 在副作用前拒绝。
+> 4. “子进程清理以 <2048 字节增长为证据”：宽松断言在慢速残留 writer 下仍通过
+>    （探针 P3：settle 后孙进程存活、1200ms 只写 4 字节）；M31 以严格 quiescence
+>    （size+sha256 稳定期后不变）与 `kill(pid,0)` ESRCH 替代。
 
 ### M30 done — release child-process lifecycle、repeated-signal safety、zero-skip completeness 与 canonical Node/npm toolchain（v1.1.11 PATCH）
 
