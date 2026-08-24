@@ -63,7 +63,9 @@ describe('M30 WP-F worktree-aware git hooks', () => {
         'simple-git-hooks': { 'pre-commit': 'echo hi' },
       }),
     )
-    const r = runWrapper(tmp, { HOOKS_BIN: REAL_CLI })
+    // Clear CI markers: GitHub Actions sets CI=true in the test process env,
+    // which must NOT turn this primary-checkout test into a CI-skip test.
+    const r = runWrapper(tmp, { CI: 'false', GITHUB_ACTIONS: 'false', HOOKS_BIN: REAL_CLI })
     expect(r.status).toBe(0)
     expect(r.stderr).not.toMatch(/ENOTDIR/i)
     expect(fs.existsSync(path.join(tmp, '.git', 'hooks', 'pre-commit'))).toBe(true)
@@ -72,7 +74,9 @@ describe('M30 WP-F worktree-aware git hooks', () => {
   it('F2: linked/detached worktree (.git is a FILE) skips with a clear message, exit 0, NO ENOTDIR, no .git/hooks', () => {
     const tmp = makeTempDir()
     fs.writeFileSync(path.join(tmp, '.git'), 'gitdir: /some/other/repo/.git\n')
-    const r = runWrapper(tmp, { HOOKS_BIN: REAL_CLI })
+    // Clear CI markers so this test exercises the worktree branch, not the
+    // CI-skip branch, on CI runners too.
+    const r = runWrapper(tmp, { CI: 'false', GITHUB_ACTIONS: 'false', HOOKS_BIN: REAL_CLI })
     expect(r.status).toBe(0)
     expect(r.stdout).toMatch(/skip/i)
     expect(r.stderr).not.toMatch(/ENOTDIR|ERROR/i)
