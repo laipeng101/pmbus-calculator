@@ -19,6 +19,10 @@ CSP_REQUIRED = (
 SCRIPT_SRC_RE = re.compile(rb"<script[^>]+src=[\"']([^\"']+)[\"']")
 LINK_HREF_RE = re.compile(rb"<link[^>]+href=[\"']([^\"']+)[\"']")
 
+FORBIDDEN_SEGMENTS = ("node_modules", "src")
+CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
+
 
 def fail(message: str) -> None:
     print(f"::error::{message}")
@@ -38,6 +42,35 @@ def is_symlink(info: zipfile.ZipInfo) -> bool:
     return stat.S_ISLNK(mode)
 
 
+def validate_entry_name(name: str) -> None:
+    """M29 WP-E: identical entry policy to scripts/release-artifact-contract.mjs
+    validateZipEntry and scripts/_zip_helper.py validate_entry_name. Every
+    layer must reject the same set, including Windows drive absolute /
+    drive-relative and UNC paths.
+    """
+    if not name:
+        fail("zip contains an empty entry name")
+    if name.startswith("/"):
+        fail(f"zip contains an absolute path: {name!r}")
+    if WINDOWS_DRIVE.match(name):
+        fail(f"zip contains a windows drive path: {name!r}")
+    if "\\" in name:
+        fail(f"zip contains a backslash: {name!r}")
+    if CONTROL_CHARS.search(name):
+        fail(f"zip contains control characters: {name!r}")
+    for seg in name.split("/"):
+        if seg == "..":
+            fail(f"zip contains ../ path traversal: {name!r}")
+        if seg == ".":
+            fail(f"zip contains a dot segment: {name!r}")
+        if not seg:
+            fail(f"zip contains an empty segment: {name!r}")
+        if seg in FORBIDDEN_SEGMENTS:
+            fail(f"zip contains a forbidden segment {seg!r}: {name!r}")
+    if name.endswith(".map"):
+        fail(f"zip contains a source map entry: {name!r}")
+
+
 def main(zip_path: str) -> None:
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
@@ -46,10 +79,7 @@ def main(zip_path: str) -> None:
 
         for info in zf.infolist():
             name = info.filename
-            if is_absolute_path(name):
-                fail(f"zip contains an absolute path: {name!r}")
-            if has_parent_traversal(name):
-                fail(f"zip contains ../ path traversal: {name!r}")
+            validate_entry_name(name)
             if is_symlink(info):
                 fail(f"zip contains a symbolic link: {name!r}")
 

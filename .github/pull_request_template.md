@@ -40,11 +40,18 @@
 
 - CI tier: light / full（由 `scripts/classify-ci-scope.mjs` 判定，fail closed；`workflow_dispatch` 始终 full）
 - light 时分类器结论（tier、原因、changed path 摘要）:
-- PR CI URL:
-- PR CI head SHA:
-- PR CI conclusion:
+- push 次数（每次 push 的 head SHA；第二次 push 后必须立即更新下方 Final head SHA，不得保留第一次提交 SHA）:
+- 每次 CI URL / head SHA / conclusion:
+- 最终成功 CI head_sha:
 - PR CI `checked_sha` / `checked_tree`（`Record checked revision` 步骤输出）:
-- merge 后核对（记入最终任务报告）：merge SHA 的 `HEAD^{tree}` 必须与 PR CI `checked_tree` 完全相同；main 不再有 push CI，必要时用 `workflow_dispatch` 手工执行 full 验证；不在合并后回填本 PR 或 ROADMAP
+- merge SHA / merge tree（merge 后填写）:
+- tree equality（merge HEAD^{tree} 与 PR CI checked_tree 必须完全相同；main 不再有 push CI，必要时用 `workflow_dispatch` 手工执行 full 验证）:
+- security runner 实际覆盖文件列表（`npm run test:release-security` 输出的四个文件）:
+- release-security passed / failed / skipped / todo（zero-skip 合同要求 skipped+todo 为 0）:
+- temp residue（runner 私有目录、系统临时目录、release-output/staging/backup/journal 检查）:
+- signal stress 次数与平台（Node 版本 × SIGINT/SIGTERM 各轮数；0 flaky、0 skip）:
+- journal crash matrix failpoint 数量（每个 mutation boundary 的 crash 注入覆盖）:
+- hygiene 两个 size 指标语义：tracked file count = Git index/HEAD 中 tracked path 的 entry 计数；tree size = 每个 tracked path 对应 blob size 求和（同一 blob 被多路径共享时每路径都计入），两者均以 `git ls-tree -r -l HEAD` 为准
 
 ## Fresh environment 初始化
 

@@ -170,26 +170,26 @@ function makeFailpointRecorder(
 // Shared contract (WP-E #1)
 // ---------------------------------------------------------------------------
 
-describe('shared artifact contract', () => {
-  it('has a single source for zip asset name', () => {
+describe('shared artifact contract', async () => {
+  it('has a single source for zip asset name', async () => {
     const names = assetNames('1.1.5')
     expect(names.zip).toBe('pmbus-calculator-v1.1.5-web.zip')
     expect(names.sums).toBe('SHA256SUMS.txt')
   })
 
-  it('rejects a v-prefixed version', () => {
+  it('rejects a v-prefixed version', async () => {
     expect(isPlainSemver('v1.1.5')).toBe(false)
   })
 
-  it('generates a stable tag from a plain version', () => {
+  it('generates a stable tag from a plain version', async () => {
     expect(stableTag('1.1.5')).toBe('v1.1.5')
   })
 
-  it('rejects non-semver for stable tag', () => {
+  it('rejects non-semver for stable tag', async () => {
     expect(() => stableTag('v1.1.5')).toThrow()
   })
 
-  it('buildReleasePlan is the single plan implementation', () => {
+  it('buildReleasePlan is the single plan implementation', async () => {
     const plan = buildReleasePlan('1.1.8')
     expect(plan.tag).toBe('v1.1.8')
     expect(plan.zipName).toBe('pmbus-calculator-v1.1.8-web.zip')
@@ -201,7 +201,7 @@ describe('shared artifact contract', () => {
     expect(plan.contractSchemaVersion).toBeGreaterThan(0)
   })
 
-  it('buildReleasePlan rejects v-prefixed versions', () => {
+  it('buildReleasePlan rejects v-prefixed versions', async () => {
     expect(() => buildReleasePlan('v1.1.8')).toThrow(/plain semver/)
   })
 })
@@ -210,8 +210,8 @@ describe('shared artifact contract', () => {
 // Atomic lock (WP-A / WP-B)
 // ---------------------------------------------------------------------------
 
-describe('atomic lock (M27 WP-A/B)', () => {
-  it('acquires a lock with O_EXCL', () => {
+describe('atomic lock (M27 WP-A/B)', async () => {
+  it('acquires a lock with O_EXCL', async () => {
     const tmp = makeTempDir()
     const lock = acquireLock(tmp)
     expect(typeof lock.release).toBe('function')
@@ -222,7 +222,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     expect(fs.existsSync(path.join(tmp, '.release-staging.lock'))).toBe(false)
   })
 
-  it('refuses to acquire when lock is held', () => {
+  it('refuses to acquire when lock is held', async () => {
     const tmp = makeTempDir()
     const lock1 = acquireLock(tmp)
     try {
@@ -238,7 +238,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     }
   })
 
-  it('release refuses to delete a replaced lock (inode ownership)', () => {
+  it('release refuses to delete a replaced lock (inode ownership)', async () => {
     const tmp = makeTempDir()
     const lock1 = acquireLock(tmp)
     const lockPath = path.join(tmp, '.release-staging.lock')
@@ -259,7 +259,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     expect(fs.readFileSync(lockPath, 'utf8')).toBe('foreign')
   })
 
-  it('release refuses to delete a tampered foreign lock', () => {
+  it('release refuses to delete a tampered foreign lock', async () => {
     const tmp = makeTempDir()
     const lock1 = acquireLock(tmp)
     const lockPath = path.join(tmp, '.release-staging.lock')
@@ -275,7 +275,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     expect(fs.existsSync(lockPath)).toBe(true)
   })
 
-  it('does not auto-delete invalid JSON lock', () => {
+  it('does not auto-delete invalid JSON lock', async () => {
     const tmp = makeTempDir()
     const lockPath = path.join(tmp, '.release-staging.lock')
     fs.writeFileSync(lockPath, 'not valid json')
@@ -292,7 +292,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     fs.unlinkSync(lockPath)
   })
 
-  it('does not auto-delete stale PID lock (requires --recover-lock)', () => {
+  it('does not auto-delete stale PID lock (requires --recover-lock)', async () => {
     const tmp = makeTempDir()
     const lockPath = path.join(tmp, '.release-staging.lock')
 
@@ -319,7 +319,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     expect(fs.existsSync(lockPath)).toBe(false)
   })
 
-  it('--recover-lock refuses when PID is alive', () => {
+  it('--recover-lock refuses when PID is alive', async () => {
     const tmp = makeTempDir()
     const lockPath = path.join(tmp, '.release-staging.lock')
 
@@ -340,7 +340,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     fs.unlinkSync(lockPath)
   })
 
-  it('--recover-lock refuses when repo does not match', () => {
+  it('--recover-lock refuses when repo does not match', async () => {
     const tmp = makeTempDir()
     const lockPath = path.join(tmp, '.release-staging.lock')
 
@@ -361,7 +361,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     fs.unlinkSync(lockPath)
   })
 
-  it('--recover-lock refuses invalid JSON', () => {
+  it('--recover-lock refuses invalid JSON', async () => {
     const tmp = makeTempDir()
     const lockPath = path.join(tmp, '.release-staging.lock')
     fs.writeFileSync(lockPath, '{invalid')
@@ -374,7 +374,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     fs.unlinkSync(lockPath)
   })
 
-  it('--recover-lock refuses unknown schema versions (WP-B #7)', () => {
+  it('--recover-lock refuses unknown schema versions (WP-B #7)', async () => {
     const tmp = makeTempDir()
     const lockPath = path.join(tmp, '.release-staging.lock')
     fs.writeFileSync(
@@ -396,7 +396,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     fs.unlinkSync(lockPath)
   })
 
-  it('lock metadata contains typed, well-formed fields', () => {
+  it('lock metadata contains typed, well-formed fields', async () => {
     const tmp = makeTempDir()
     const lock = acquireLock(tmp)
     const lockPath = path.join(tmp, '.release-staging.lock')
@@ -413,7 +413,7 @@ describe('atomic lock (M27 WP-A/B)', () => {
     lock.release()
   })
 
-  it('validateLockMetadata rejects malformed records', () => {
+  it('validateLockMetadata rejects malformed records', async () => {
     expect(validateLockMetadata('nope').ok).toBe(false)
     expect(
       validateLockMetadata(
@@ -460,8 +460,8 @@ describe('atomic lock (M27 WP-A/B)', () => {
 // Lock creation/release error integrity (WP-B #1-#4)
 // ---------------------------------------------------------------------------
 
-describe('lock error integrity (M27 WP-B)', () => {
-  it('writeSync failure closes fd and removes ONLY the owned lock inode', () => {
+describe('lock error integrity (M27 WP-B)', async () => {
+  it('writeSync failure closes fd and removes ONLY the owned lock inode', async () => {
     const tmp = makeTempDir()
     let thrown: unknown = null
     try {
@@ -480,7 +480,7 @@ describe('lock error integrity (M27 WP-B)', () => {
     retry.release()
   })
 
-  it('short writes are retried until the full payload is written', () => {
+  it('short writes are retried until the full payload is written', async () => {
     const tmp = makeTempDir()
     const lockPath = path.join(tmp, '.release-staging.lock')
     const realOpenSync = fs.openSync.bind(fs)
@@ -519,7 +519,7 @@ describe('lock error integrity (M27 WP-B)', () => {
     void fdHolder
   })
 
-  it('closeSync failure removes the owned lock inode', () => {
+  it('closeSync failure removes the owned lock inode', async () => {
     const tmp = makeTempDir()
     let thrown: unknown = null
     try {
@@ -535,7 +535,7 @@ describe('lock error integrity (M27 WP-B)', () => {
     expect(fs.existsSync(path.join(tmp, '.release-staging.lock'))).toBe(false)
   })
 
-  it('release unlink failure throws LockReleaseError and keeps recoverable metadata', () => {
+  it('release unlink failure throws LockReleaseError and keeps recoverable metadata', async () => {
     const tmp = makeTempDir()
     const lock = acquireLock(tmp, {
       unlinkSync: () => {
@@ -563,7 +563,7 @@ describe('lock error integrity (M27 WP-B)', () => {
     expect(fs.existsSync(lockPath)).toBe(true)
   })
 
-  it('double release returns an explicit result instead of throwing', () => {
+  it('double release returns an explicit result instead of throwing', async () => {
     const tmp = makeTempDir()
     const lock = acquireLock(tmp)
     expect(lock.release()).toEqual({ released: true })
@@ -575,8 +575,8 @@ describe('lock error integrity (M27 WP-B)', () => {
 // Fatal signal handling (WP-B #6)
 // ---------------------------------------------------------------------------
 
-describe('fatal signal handling (M27 WP-B #6)', () => {
-  it('SIGINT records termination but does NOT release the lock', () => {
+describe('fatal signal handling (M27 WP-B #6)', async () => {
+  it('SIGINT records termination but does NOT release the lock', async () => {
     const tmp = makeTempDir()
     const lock = acquireLock(tmp)
     const lines: string[] = []
@@ -591,7 +591,7 @@ describe('fatal signal handling (M27 WP-B #6)', () => {
     expect(fs.existsSync(path.join(tmp, '.release-staging.lock'))).toBe(false)
   })
 
-  it('SIGTERM keeps the lock held with recoverable metadata (unified finally owns release)', () => {
+  it('SIGTERM keeps the lock held with recoverable metadata (unified finally owns release)', async () => {
     const tmp = makeTempDir()
     const lock = acquireLock(tmp)
     const lines: string[] = []
@@ -607,7 +607,7 @@ describe('fatal signal handling (M27 WP-B #6)', () => {
     lock.release()
   })
 
-  it('never deletes a foreign lock during signal handling', () => {
+  it('never deletes a foreign lock during signal handling', async () => {
     const tmp = makeTempDir()
     const lock = acquireLock(tmp)
     const lockPath = path.join(tmp, '.release-staging.lock')
@@ -663,7 +663,7 @@ describe('fatal signal handling (M27 WP-B #6)', () => {
 // Concurrent lock race (WP-A #8 / matrix: 25 real competitors)
 // ---------------------------------------------------------------------------
 
-describe('concurrent lock race (M27 WP-A, M28 10-round stress)', () => {
+describe('concurrent lock race (M27 WP-A, M28 10-round stress)', async () => {
   it.each(Array.from({ length: 10 }, (_, i) => i))(
     'round %i: only one of 25 REAL acquireLock processes wins',
     async (round) => {
@@ -768,8 +768,8 @@ describe('concurrent lock race (M27 WP-A, M28 10-round stress)', () => {
 // walkDist -- fail-closed Dirent classification (WP-F)
 // ---------------------------------------------------------------------------
 
-describe('walkDist fail-closed', () => {
-  it('collects regular files from a directory', () => {
+describe('walkDist fail-closed', async () => {
+  it('collects regular files from a directory', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const files = walkDist(dist).map((f) => path.relative(dist, f))
@@ -777,21 +777,21 @@ describe('walkDist fail-closed', () => {
     expect(files).toContain('assets/app.js')
   })
 
-  symlinkTest('rejects symlink files', () => {
+  symlinkTest('rejects symlink files', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     fs.symlinkSync('index.html', path.join(dist, 'link.html'))
     expect(() => walkDist(dist)).toThrow(/symlink/)
   })
 
-  symlinkTest('rejects symlink directories', () => {
+  symlinkTest('rejects symlink directories', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     fs.symlinkSync('assets', path.join(dist, 'link-dir'))
     expect(() => walkDist(dist)).toThrow(/symlink/)
   })
 
-  it('rejects FIFO entries (via generateAssets)', () => {
+  it('rejects FIFO entries (via generateAssets)', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const fifoPath = path.join(dist, 'fifo')
@@ -805,24 +805,24 @@ describe('walkDist fail-closed', () => {
       throw new Error('mkfifo unavailable in canonical environment')
     }
     const output = path.join(tmp, 'release-output')
-    expect(() => generateAssets(dist, output, false)).toThrow(/FIFO/)
+    await expect(generateAssets(dist, output, false)).rejects.toThrow(/FIFO/)
   })
 
-  it('rejects source maps (via generateAssets)', () => {
+  it('rejects source maps (via generateAssets)', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     fs.writeFileSync(path.join(dist, 'assets', 'app.js.map'), '{}')
     const output = path.join(tmp, 'release-output')
-    expect(() => generateAssets(dist, output, false)).toThrow(/\.map/)
+    await expect(generateAssets(dist, output, false)).rejects.toThrow(/\.map/)
   })
 
-  it('rejects forbidden path segments (via generateAssets)', () => {
+  it('rejects forbidden path segments (via generateAssets)', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     fs.mkdirSync(path.join(dist, 'node_modules'), { recursive: true })
     fs.writeFileSync(path.join(dist, 'node_modules', 'test.js'), '')
     const output = path.join(tmp, 'release-output')
-    expect(() => generateAssets(dist, output, false)).toThrow(/node_modules/)
+    await expect(generateAssets(dist, output, false)).rejects.toThrow(/node_modules/)
   })
 })
 
@@ -830,12 +830,12 @@ describe('walkDist fail-closed', () => {
 // Transactional publish with commit point (WP-C)
 // ---------------------------------------------------------------------------
 
-describe('transactional publish with commit point (M27 WP-C)', () => {
-  it('generates assets into output directory (first publish)', () => {
+describe('transactional publish with commit point (M27 WP-C)', async () => {
+  it('generates assets into output directory (first publish)', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    const { trace } = generateAssets(dist, output, false)
+    const { trace } = await generateAssets(dist, output, false)
     const names = buildReleasePlan('1.1.5')
     expect(fs.existsSync(path.join(output, names.zipName))).toBe(true)
     expect(fs.existsSync(path.join(output, names.sumsName))).toBe(true)
@@ -854,17 +854,18 @@ describe('transactional publish with commit point (M27 WP-C)', () => {
     expect(fs.existsSync(path.join(tmp, names.journalFile))).toBe(false)
   })
 
-  it('force re-publish traverses backup phases and cleans everything', () => {
+  it('force re-publish traverses backup phases and cleans everything', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
 
     fs.writeFileSync(path.join(dist, 'assets', 'extra.js'), 'extra')
-    const { trace } = generateAssets(dist, output, true)
+    const { trace } = await generateAssets(dist, output, true)
     expect(trace).toEqual([
       'staging.checksum',
       'staging.zipverifier',
+      'backup.intent.before',
       'backup.rename.before',
       'backup.rename.after',
       'promotion.before',
@@ -881,28 +882,28 @@ describe('transactional publish with commit point (M27 WP-C)', () => {
     expect(fs.existsSync(path.join(tmp, buildReleasePlan('1.1.5').journalFile))).toBe(false)
   })
 
-  it('rejects generation when output already exists without --force', () => {
+  it('rejects generation when output already exists without --force', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
-    expect(() => generateAssets(dist, output, false)).toThrow(/already exist/)
+    await generateAssets(dist, output, false)
+    await expect(generateAssets(dist, output, false)).rejects.toThrow(/already exist/)
   })
 
-  it('produces identical zip bytes on repeated generation', () => {
+  it('produces identical zip bytes on repeated generation', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output1 = path.join(tmp, 'out1')
     const output2 = path.join(tmp, 'out2')
-    generateAssets(dist, output1, false)
-    generateAssets(dist, output2, false)
+    await generateAssets(dist, output1, false)
+    await generateAssets(dist, output2, false)
     const names = buildReleasePlan('1.1.5')
     expect(sha256File(path.join(output1, names.zipName))).toBe(
       sha256File(path.join(output2, names.zipName)),
     )
   })
 
-  it('refuses normal runs while a transaction journal exists', () => {
+  it('refuses normal runs while a transaction journal exists', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
@@ -920,11 +921,11 @@ describe('transactional publish with commit point (M27 WP-C)', () => {
         updatedAt: new Date().toISOString(),
       }),
     )
-    expect(() => generateAssets(dist, output, false)).toThrow(/journal/)
+    await expect(generateAssets(dist, output, false)).rejects.toThrow(/journal/)
   })
 
-  it('every declared failpoint exists and fires in order', () => {
-    expect(FAILPOINTS.length).toBe(12)
+  it('every declared failpoint exists and fires in order', async () => {
+    expect(FAILPOINTS.length).toBe(13)
     expect(isCommittedState('STAGING_VERIFIED')).toBe(false)
     expect(isCommittedState('COMMITTED')).toBe(true)
     expect(isCommittedState('BACKUP_CLEANED')).toBe(true)
@@ -935,7 +936,7 @@ describe('transactional publish with commit point (M27 WP-C)', () => {
 // Failpoint-driven rollback & post-commit semantics (WP-C #2/#3/#6/#7/#9)
 // ---------------------------------------------------------------------------
 
-describe('failpoint rollback semantics (M27 WP-C)', () => {
+describe('failpoint rollback semantics (M27 WP-C)', async () => {
   it.each([
     'backup.rename.before',
     'backup.rename.after',
@@ -943,11 +944,11 @@ describe('failpoint rollback semantics (M27 WP-C)', () => {
     'promotion.after',
     'publish.checksum',
     'publish.zipverifier',
-  ] as const)('pre-commit failure at %s restores byte-identical old output', (failpoint) => {
+  ] as const)('pre-commit failure at %s restores byte-identical old output', async (failpoint) => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const plan = buildReleasePlan('1.1.5')
     const oldZipHash = sha256File(path.join(output, plan.zipName))
     const oldSumsHash = sha256File(path.join(output, plan.sumsName))
@@ -957,7 +958,7 @@ describe('failpoint rollback semantics (M27 WP-C)', () => {
     const recorder = makeFailpointRecorder({ throwAt: failpoint })
     let thrown: unknown = null
     try {
-      generateAssets(dist, output, true, undefined, recorder.deps)
+      await generateAssets(dist, output, true, undefined, recorder.deps)
     } catch (e) {
       thrown = e
     }
@@ -974,28 +975,28 @@ describe('failpoint rollback semantics (M27 WP-C)', () => {
     expect(fs.existsSync(path.join(tmp, plan.journalFile))).toBe(false)
   })
 
-  it('pre-commit failure at staging checksum never touches old output', () => {
+  it('pre-commit failure at staging checksum never touches old output', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const plan = buildReleasePlan('1.1.5')
     const oldZipHash = sha256File(path.join(output, plan.zipName))
 
     fs.writeFileSync(path.join(dist, 'assets', 'new.js'), 'NEW CONTENT')
     const recorder = makeFailpointRecorder({ throwAt: 'staging.checksum' })
-    expect(() => generateAssets(dist, output, true, undefined, recorder.deps)).toThrow()
+    await expect(generateAssets(dist, output, true, undefined, recorder.deps)).rejects.toThrow()
     recorder.expectFired('staging.checksum')
     expect(recorder.fired).not.toContain('backup.rename.before')
     expect(recorder.fired).not.toContain('commit.journal')
     expect(sha256File(path.join(output, plan.zipName))).toBe(oldZipHash)
   })
 
-  it('post-commit backup-cleanup failure keeps verified NEW output intact', () => {
+  it('post-commit backup-cleanup failure keeps verified NEW output intact', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const plan = buildReleasePlan('1.1.5')
     const oldHashes = {
       zip: sha256File(path.join(output, plan.zipName)),
@@ -1028,7 +1029,7 @@ describe('failpoint rollback semantics (M27 WP-C)', () => {
 
     let thrown: unknown = null
     try {
-      generateAssets(dist, output, true, undefined, deps)
+      await generateAssets(dist, output, true, undefined, deps)
     } catch (e) {
       thrown = e
     }
@@ -1047,7 +1048,7 @@ describe('failpoint rollback semantics (M27 WP-C)', () => {
     expect(fs.existsSync(path.join(tmp, plan.journalFile))).toBe(true)
 
     // --recover resolves per COMMITTED rules: keep output, clean residual backup.
-    const rec = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const rec = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(rec.recovered).toBe(true)
     expect(rec.action).toBe('committed-cleanup')
     expect(sha256File(path.join(output, plan.zipName))).toBe(newOutputHash)
@@ -1056,18 +1057,18 @@ describe('failpoint rollback semantics (M27 WP-C)', () => {
     void newDistHashSource
   })
 
-  it('rollback restore failure keeps backup+journal and demands recovery (WP-C #9)', () => {
+  it('rollback restore failure keeps backup+journal and demands recovery (WP-C #9)', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const plan = buildReleasePlan('1.1.5')
 
     fs.writeFileSync(path.join(dist, 'assets', 'new.js'), 'NEW CONTENT')
     const realRenameSync = fs.renameSync.bind(fs)
     let thrown: unknown = null
     try {
-      generateAssets(dist, output, true, undefined, {
+      await generateAssets(dist, output, true, undefined, {
         failpoint(name) {
           if (name === 'publish.checksum') throw new Error(`INJECTED-FAILPOINT:${name}`)
         },
@@ -1088,16 +1089,16 @@ describe('failpoint rollback semantics (M27 WP-C)', () => {
     expect(fs.existsSync(path.join(tmp, plan.journalFile))).toBe(true)
 
     // Recovery from this exact state restores the old output.
-    const rec = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const rec = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(rec.recovered).toBe(true)
     expect(fs.existsSync(path.join(output, plan.zipName))).toBe(true)
   })
 
-  it('journal updates are atomic (temp+rename), leaving no tmp files', () => {
+  it('journal updates are atomic (temp+rename), leaving no tmp files', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const residues = fs.readdirSync(tmp).filter((e) => e.includes('.tmp-'))
     expect(residues).toEqual([])
   })
@@ -1107,7 +1108,7 @@ describe('failpoint rollback semantics (M27 WP-C)', () => {
 // Journal validation (WP-C #4/#7, WP-D #3)
 // ---------------------------------------------------------------------------
 
-describe('transaction journal (M27 WP-C/D)', () => {
+describe('transaction journal (M27 WP-C/D)', async () => {
   const validJournal = () => ({
     schema: 1,
     nonce: randomUUID(),
@@ -1120,12 +1121,12 @@ describe('transaction journal (M27 WP-C/D)', () => {
     updatedAt: new Date().toISOString(),
   })
 
-  it('accepts a well-formed journal', () => {
+  it('accepts a well-formed journal', async () => {
     const result = validateJournal(JSON.stringify(validJournal()))
     expect(result.ok).toBe(true)
   })
 
-  it('rejects unknown schema/state/corrupt payloads', () => {
+  it('rejects unknown schema/state/corrupt payloads', async () => {
     expect(validateJournal('broken').ok).toBe(false)
     const badSchema = { ...validJournal(), schema: 99 }
     expect(validateJournal(JSON.stringify(badSchema)).ok).toBe(false)
@@ -1135,7 +1136,7 @@ describe('transaction journal (M27 WP-C/D)', () => {
     expect(validateJournal(JSON.stringify(badDate)).ok).toBe(false)
   })
 
-  it('isCommittedState distinguishes PRE_COMMIT from COMMITTED states', () => {
+  it('isCommittedState distinguishes PRE_COMMIT from COMMITTED states', async () => {
     for (const s of [
       'INIT',
       'STAGING_GENERATED',
@@ -1156,12 +1157,12 @@ describe('transaction journal (M27 WP-C/D)', () => {
 // Recovery integrity (WP-D)
 // ---------------------------------------------------------------------------
 
-describe('transaction recovery (M27 WP-D)', () => {
-  it('restores a fully valid backup when output is absent (journal-driven), then re-verifies', () => {
+describe('transaction recovery (M27 WP-D)', async () => {
+  it('restores a fully valid backup when output is absent (journal-driven), then re-verifies', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const plan = buildReleasePlan('1.1.5')
 
     const backupDir = path.join(tmp, 'release-output.backup-test')
@@ -1188,13 +1189,13 @@ describe('transaction recovery (M27 WP-D)', () => {
       }),
     )
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(true)
     expect(result.action).toBe('pre-commit-restore')
     expect(fs.existsSync(path.join(output, plan.zipName))).toBe(true)
   })
 
-  it('rejects corrupt backup contents (wrong zip bytes)', () => {
+  it('rejects corrupt backup contents (wrong zip bytes)', async () => {
     const tmp = makeTempDir()
     fs.writeFileSync(
       path.join(tmp, 'package.json'),
@@ -1207,18 +1208,18 @@ describe('transaction recovery (M27 WP-D)', () => {
     fs.writeFileSync(path.join(backupDir, plan.zipName), 'NOT-A-ZIP')
     fs.writeFileSync(path.join(backupDir, plan.sumsName), 'garbage')
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(fs.existsSync(output)).toBe(false)
     // Audit trail preserved.
     expect(fs.existsSync(backupDir)).toBe(true)
   })
 
-  it('rejects backup whose SHA256SUMS lists extra or wrong files', () => {
+  it('rejects backup whose SHA256SUMS lists extra or wrong files', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const plan = buildReleasePlan('1.1.5')
     const sumsContent = fs.readFileSync(path.join(output, plan.sumsName), 'utf8')
     const backupDir = path.join(tmp, 'release-output.backup-sums')
@@ -1250,12 +1251,12 @@ describe('transaction recovery (M27 WP-D)', () => {
       }),
     )
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(result.reason).toMatch(/exactly one line/)
   })
 
-  it('rejects backup containing symlinks, directories or extra entries', () => {
+  it('rejects backup containing symlinks, directories or extra entries', async () => {
     const tmp = makeTempDir()
     fs.writeFileSync(
       path.join(tmp, 'package.json'),
@@ -1273,13 +1274,13 @@ describe('transaction recovery (M27 WP-D)', () => {
       const backupDir = path.join(tmp, `release-output.backup-case${index}`)
       fs.mkdirSync(backupDir)
       setup(backupDir)
-      const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+      const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
       expect(result.recovered).toBe(false)
       index++
     }
   })
 
-  it('rejects multiple backups outright', () => {
+  it('rejects multiple backups outright', async () => {
     const tmp = makeTempDir()
     fs.writeFileSync(
       path.join(tmp, 'package.json'),
@@ -1289,32 +1290,32 @@ describe('transaction recovery (M27 WP-D)', () => {
     const output = path.join(tmp, 'release-output')
     fs.mkdirSync(path.join(tmp, 'release-output.backup-a'))
     fs.mkdirSync(path.join(tmp, 'release-output.backup-b'))
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(result.reason).toMatch(/multiple backup/)
   })
 
-  it('both sides present WITHOUT journal -> refuse manual audit', () => {
+  it('both sides present WITHOUT journal -> refuse manual audit', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const plan = buildReleasePlan('1.1.5')
     const backupDir = path.join(tmp, 'release-output.backup-x')
     fs.mkdirSync(backupDir)
     fs.copyFileSync(path.join(output, plan.zipName), path.join(backupDir, plan.zipName))
     fs.copyFileSync(path.join(output, plan.sumsName), path.join(backupDir, plan.sumsName))
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(result.reason).toMatch(/manual audit required/)
   })
 
-  it('PRE_COMMIT journal: drop unverified output, restore VERIFIED old backup', () => {
+  it('PRE_COMMIT journal: drop unverified output, restore VERIFIED old backup', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const plan = buildReleasePlan('1.1.5')
     const oldZipHash = sha256File(path.join(output, plan.zipName))
 
@@ -1339,14 +1340,14 @@ describe('transaction recovery (M27 WP-D)', () => {
       }),
     )
 
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(true)
     expect(result.action).toBe('pre-commit-restore')
     expect(sha256File(path.join(output, plan.zipName))).toBe(oldZipHash)
     expect(fs.existsSync(path.join(tmp, plan.journalFile))).toBe(false)
   })
 
-  it('COMMITTED journal with corrupt OUTPUT refuses (manual audit)', () => {
+  it('COMMITTED journal with corrupt OUTPUT refuses (manual audit)', async () => {
     const tmp = makeTempDir()
     fs.writeFileSync(
       path.join(tmp, 'package.json'),
@@ -1372,26 +1373,26 @@ describe('transaction recovery (M27 WP-D)', () => {
         updatedAt: new Date().toISOString(),
       }),
     )
-    const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
+    const result = await recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
     expect(result.reason).toMatch(/manual audit/)
   })
 
-  it('validateBackupDir enforces internal version contract', () => {
+  it('validateBackupDir enforces internal version contract', async () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp, '1.1.5')
     const output = path.join(tmp, 'release-output')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const plan = buildReleasePlan('1.1.5')
 
     // A valid backup passes full validation (including real Python verifier).
-    expect(() =>
+    await expect(
       validateBackupDir(output, plan, '1.1.5', { skipPythonVerifier: false }),
-    ).not.toThrow()
+    ).resolves.not.toThrow()
     // A zip name embedding a different version than package.json is refused.
     let thrown: unknown = null
     try {
-      validateBackupDir(output, plan, '9.9.9', { skipPythonVerifier: true })
+      await validateBackupDir(output, plan, '9.9.9', { skipPythonVerifier: true })
     } catch (e) {
       thrown = e
     }
@@ -1403,7 +1404,7 @@ describe('transaction recovery (M27 WP-D)', () => {
 // Path contract (WP-C)
 // ---------------------------------------------------------------------------
 
-describe('ZIP entry path contract', () => {
+describe('ZIP entry path contract', async () => {
   function makeDistWithVerify(tmp: string, distPath: string) {
     fs.mkdirSync(distPath, { recursive: true })
     fs.writeFileSync(
@@ -1419,22 +1420,22 @@ describe('ZIP entry path contract', () => {
     )
   }
 
-  it('handles paths with spaces', () => {
+  it('handles paths with spaces', async () => {
     const tmp = makeTempDir()
     const dist = path.join(tmp, 'dist with spaces')
     makeDistWithVerify(tmp, dist)
     const output = path.join(tmp, 'out')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     const names = buildReleasePlan('1.1.5')
     expect(fs.existsSync(path.join(output, names.zipName))).toBe(true)
   })
 
-  it('handles paths with quotes', () => {
+  it('handles paths with quotes', async () => {
     const tmp = makeTempDir()
     const dist = path.join(tmp, "dist'with'quotes")
     makeDistWithVerify(tmp, dist)
     const output = path.join(tmp, 'out')
-    generateAssets(dist, output, false)
+    await generateAssets(dist, output, false)
     expect(fs.existsSync(path.join(output, buildReleasePlan('1.1.5').zipName))).toBe(true)
   })
 })
@@ -1443,8 +1444,8 @@ describe('ZIP entry path contract', () => {
 // External command injectability (real failure asserted, WP-G #1)
 // ---------------------------------------------------------------------------
 
-describe('external command injectability', () => {
-  it('fails when Python is unavailable and leaves no residue', () => {
+describe('external command injectability', async () => {
+  it('fails when Python is unavailable and leaves no residue', async () => {
     const tmp = makeTempDir()
     makeDistDir(tmp)
     const shimDir = path.join(tmp, 'shim')
@@ -1454,7 +1455,7 @@ describe('external command injectability', () => {
 
     let thrown: unknown = null
     try {
-      generateAssets(
+      await generateAssets(
         path.join(tmp, 'dist'),
         path.join(tmp, 'out'),
         false,
@@ -1477,7 +1478,7 @@ describe('external command injectability', () => {
 // Real CLI fixtures against an injected repoRoot (WP-E #5/#6/#7)
 // ---------------------------------------------------------------------------
 
-describe('runCli with injected repoRoot (M27 WP-E)', () => {
+describe('runCli with injected repoRoot (M27 WP-E)', async () => {
   /** Minimal line-buffered stdout/stderr captures for runCli. */
   function makeIo(repoRoot: string) {
     const out: string[] = []
@@ -1574,8 +1575,8 @@ describe('runCli with injected repoRoot (M27 WP-E)', () => {
 // Test determinism infrastructure (WP-G #5)
 // ---------------------------------------------------------------------------
 
-describe('test determinism (M27)', () => {
-  it('symlink probe ran synchronously before registration and was cleaned up after', () => {
+describe('test determinism (M27)', async () => {
+  it('symlink probe ran synchronously before registration and was cleaned up after', async () => {
     // On canonical environments the probe succeeded, so the symlink tests above RUN.
     // This assertion documents the invariant; environments without symlink
     // support legitimately skip the two symlinkTest cases.

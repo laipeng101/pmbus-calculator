@@ -51,8 +51,15 @@ function makeFixture(
   fs.mkdirSync(path.join(tmp, 'node_modules', 'vitest'), { recursive: true })
   fs.mkdirSync(path.join(tmp, 'tests'), { recursive: true })
   fs.copyFileSync(RUNNER_SOURCE, path.join(tmp, 'scripts', 'run-release-security-tests.mjs'))
+  fs.copyFileSync(
+    path.join(REPO_ROOT, 'scripts', 'release-security-test-contract.mjs'),
+    path.join(tmp, 'scripts', 'release-security-test-contract.mjs'),
+  )
+  // All four contract files exist in the fixture repo (M29 WP-A).
   fs.writeFileSync(path.join(tmp, 'tests', 'prepare-release-assets.test.ts'), '')
   fs.writeFileSync(path.join(tmp, 'tests', 'zip-helper-security.test.ts'), '')
+  fs.writeFileSync(path.join(tmp, 'tests', 'm28-recovery.test.ts'), '')
+  fs.writeFileSync(path.join(tmp, 'tests', 'run-release-security-tests.test.ts'), '')
 
   const fakeVitest = [
     "import fs from 'node:fs'",
@@ -77,6 +84,9 @@ function makeFixture(
     `const failed = Number(process.env.FAKE_FAILED || ${JSON.stringify(opts.failed ?? 0)});`,
     `const skipped = Number(process.env.FAKE_SKIPPED || ${JSON.stringify(opts.skipped ?? 0)});`,
     'const report = { numTotalTests: total, numPassedTests: passed, numFailedTests: failed, numSkippedTests: skipped, numPendingTests: 0, numTodoTests: 0 };',
+    // M29 WP-A: the report must carry all four expected suites.
+    "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts'];",
+    "report.testResults = suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] }));",
     'if (mode === "inconsistent") {',
     '  report.numPassedTests = passed + 1; // passed+failed+skipped != total',
     '}',
@@ -91,7 +101,7 @@ function makeFixture(
     '  // failed > 0 -> runner must dump names and fail',
     '  report.numFailedTests = 1;',
     '  report.numPassedTests = passed - 1;',
-    '  report.testResults = [{ assertionResults: [{ fullName: "suite::bad-test", status: "failed", failureMessages: ["boom"] }] }];',
+    '  report.testResults[0].assertionResults = [{ fullName: "suite::bad-test", status: "failed", failureMessages: ["boom"] }];',
     '}',
     'fs.writeFileSync(out, JSON.stringify(report));',
     `process.exit(Number(process.env.FAKE_RC || ${JSON.stringify(rc)}));`,
@@ -307,7 +317,9 @@ describe('M28 WP-C zero-skip runner fail-closed', () => {
       },
     )
     expect(res.status).not.toBe(0)
-    expect(String(res.stderr)).toMatch(/failing|failed/i)
+    // M29 WP-A: a malformed report with no suite names fails the per-file
+    // contract check first (never crashes the runner).
+    expect(String(res.stderr)).toMatch(/missing|not executed|report|failed/i)
 
     const tmp2 = makeFixture('mismatch', 0)
     const res2 = spawnSync(
@@ -401,6 +413,10 @@ describe('M28 WP-C zero-skip runner fail-closed', () => {
     const tmp = makeTempDir()
     fs.mkdirSync(path.join(tmp, 'scripts'), { recursive: true })
     fs.copyFileSync(RUNNER_SOURCE, path.join(tmp, 'scripts', 'run-release-security-tests.mjs'))
+    fs.copyFileSync(
+      path.join(REPO_ROOT, 'scripts', 'release-security-test-contract.mjs'),
+      path.join(tmp, 'scripts', 'release-security-test-contract.mjs'),
+    )
     // No node_modules/vitest at all -> spawnSync error.
     const res = spawnSync(
       process.execPath,
@@ -413,5 +429,165 @@ describe('M28 WP-C zero-skip runner fail-closed', () => {
       },
     )
     expect(res.status).not.toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M29 WP-F: private temp directory + cleanup failure handling (test-first)
+// ---------------------------------------------------------------------------
+
+describe('M29 WP-F runner private temp dir and cleanup contract', () => {
+  /**
+   * Fixture whose fake vitest records the --outputFile path into a marker
+   * file so the test can assert WHERE the report lives and that the private
+   * directory is gone afterwards.
+   */
+  function makeRecordedFixture(extra: string): { tmp: string; marker: string } {
+    const tmp = makeTempDir()
+    fs.mkdirSync(path.join(tmp, 'scripts'), { recursive: true })
+    fs.mkdirSync(path.join(tmp, 'node_modules', 'vitest'), { recursive: true })
+    fs.mkdirSync(path.join(tmp, 'tests'), { recursive: true })
+    fs.mkdirSync(path.join(tmp, 'tmp'), { recursive: true })
+    fs.copyFileSync(RUNNER_SOURCE, path.join(tmp, 'scripts', 'run-release-security-tests.mjs'))
+    fs.copyFileSync(
+      path.join(REPO_ROOT, 'scripts', 'release-security-test-contract.mjs'),
+      path.join(tmp, 'scripts', 'release-security-test-contract.mjs'),
+    )
+    fs.writeFileSync(path.join(tmp, 'tests', 'prepare-release-assets.test.ts'), '')
+    fs.writeFileSync(path.join(tmp, 'tests', 'zip-helper-security.test.ts'), '')
+    const marker = path.join(tmp, 'tmp', 'marker.txt')
+    const fakeVitest = [
+      "import fs from 'node:fs'",
+      'const args = process.argv.slice(2);',
+      "const outIdx = args.findIndex((a) => a.startsWith('--outputFile='));",
+      "const out = outIdx >= 0 ? args[outIdx].slice('--outputFile='.length) : 'report.json';",
+      `fs.writeFileSync(${JSON.stringify(marker)}, out);`,
+      "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts'];",
+      'const report = { numTotalTests: 4, numPassedTests: 4, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + "::t", status: "passed" }] })) };',
+      'fs.writeFileSync(out, JSON.stringify(report));',
+      extra,
+      'process.exit(0);',
+    ].join('\n')
+    fs.writeFileSync(path.join(tmp, 'node_modules', 'vitest', 'vitest.mjs'), fakeVitest)
+    return { tmp, marker }
+  }
+
+  function spawnRunner(
+    tmp: string,
+    env?: Record<string, string>,
+  ): { status: number; stdout: string; stderr: string } {
+    const res = spawnSync(
+      process.execPath,
+      [path.join(tmp, 'scripts', 'run-release-security-tests.mjs')],
+      {
+        cwd: tmp,
+        env: { ...process.env, TMPDIR: path.join(tmp, 'tmp'), TMP: path.join(tmp, 'tmp'), ...env },
+        encoding: 'utf8',
+        timeout: 20_000,
+      },
+    )
+    return { status: res.status ?? -1, stdout: res.stdout ?? '', stderr: res.stderr ?? '' }
+  }
+
+  it('F1: report lives inside a private mkdtemp directory, not a predictable PID file', () => {
+    const { tmp, marker } = makeRecordedFixture('')
+    const r = spawnRunner(tmp)
+    expect(r.status).toBe(0)
+    const recorded = fs.readFileSync(marker, 'utf8')
+    const parent = path.dirname(recorded)
+    const base = path.basename(parent)
+    expect(base).toMatch(/^release-security-tests-/)
+    expect(path.basename(recorded)).not.toMatch(/^release-security-tests-\d+\.json$/)
+    // The private directory must be fully removed on success (zero residue).
+    expect(fs.existsSync(parent)).toBe(false)
+    const leftovers = fs.existsSync(path.join(tmp, 'tmp'))
+      ? fs.readdirSync(path.join(tmp, 'tmp')).filter((f) => f.startsWith('release-security-tests-'))
+      : []
+    expect(leftovers).toEqual([])
+  })
+
+  it('F2: cleanup failure (unlink EACCES) must make the gate NONZERO and report the cleanup error', () => {
+    const { tmp } = makeRecordedFixture('fs.chmodSync(process.env.TMPDIR, 0o555);')
+    const r = spawnRunner(tmp)
+    try {
+      fs.chmodSync(path.join(tmp, 'tmp'), 0o755)
+    } catch {
+      // best effort
+    }
+    expect(r.status).not.toBe(0)
+    expect(r.stderr).toMatch(/cleanup|remove|temp/i)
+  })
+
+  it('F3: temp directory creation failure fails closed with an explicit message', () => {
+    const { tmp } = makeRecordedFixture('')
+    // TMPDIR points to a path whose parent is a regular FILE -> mkdtemp fails.
+    const blocker = path.join(tmp, 'blocker')
+    fs.writeFileSync(blocker, 'file')
+    const r = spawnRunner(tmp, {
+      TMPDIR: path.join(blocker, 'nested'),
+      TMP: path.join(blocker, 'nested'),
+    })
+    expect(r.status).not.toBe(0)
+    expect(r.stderr).toMatch(/temp|mkdtemp|temporary/i)
+  })
+
+  it('F4: report path replaced by a symlink is handled without crashes (read-through allowed)', () => {
+    const { tmp } = makeRecordedFixture(
+      "fs.rmSync(out, { force: true }); fs.symlinkSync(out + '.real', out); fs.writeFileSync(out + '.real', JSON.stringify({ numTotalTests: 4, numPassedTests: 4, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts'].map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] })) }));",
+    )
+    const r = spawnRunner(tmp)
+    expect(r.status).toBe(0)
+    const leftovers = fs.existsSync(path.join(tmp, 'tmp'))
+      ? fs.readdirSync(path.join(tmp, 'tmp')).filter((f) => f.startsWith('release-security-tests-'))
+      : []
+    expect(leftovers).toEqual([])
+  })
+
+  it('F5: report path replaced by a directory fails closed', () => {
+    const { tmp } = makeRecordedFixture('fs.rmSync(out, { force: true }); fs.mkdirSync(out);')
+    const r = spawnRunner(tmp)
+    expect(r.status).not.toBe(0)
+  })
+
+  it('F6: original test failure AND cleanup failure are BOTH reported in stderr', () => {
+    // Fake vitest reports 1 failed test AND leaves the temp dir read-only.
+    const { tmp } = makeRecordedFixture(
+      'fs.chmodSync(process.env.TMPDIR, 0o555); const p = JSON.parse(fs.readFileSync(out, "utf8")); p.numFailedTests = 1; p.numPassedTests = 1; p.testResults[0].assertionResults = [{ fullName: "suite::bad", status: "failed", failureMessages: ["boom"] }]; fs.writeFileSync(out, JSON.stringify(p));',
+    )
+    const r = spawnRunner(tmp)
+    try {
+      fs.chmodSync(path.join(tmp, 'tmp'), 0o755)
+    } catch {
+      // best effort
+    }
+    expect(r.status).not.toBe(0)
+    expect(r.stderr).toMatch(/bad|boom|failed/i)
+    expect(r.stderr).toMatch(/cleanup|remove|temp/i)
+  })
+
+  it('F7: vitest child timeout fails the gate via RELEASE_SECURITY_TIMEOUT_MS', () => {
+    const { tmp } = makeRecordedFixture('')
+    // Fake vitest that never exits; runner must fail via child timeout.
+    fs.writeFileSync(
+      path.join(tmp, 'node_modules', 'vitest', 'vitest.mjs'),
+      "import fs from 'node:fs'\nconst args = process.argv.slice(2);\nconst outIdx = args.findIndex((a) => a.startsWith('--outputFile='));\nconst out = outIdx >= 0 ? args[outIdx].slice('--outputFile='.length) : 'report.json';\nsetTimeout(() => { fs.writeFileSync(out, JSON.stringify({ numTotalTests: 1, numPassedTests: 1, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: [{ name: 'tests/prepare-release-assets.test.ts', assertionResults: [{ fullName: 'x', status: 'passed' }] }] })); process.exit(0); }, 15000);\n",
+    )
+    const res = spawnSync(
+      process.execPath,
+      [path.join(tmp, 'scripts', 'run-release-security-tests.mjs')],
+      {
+        cwd: tmp,
+        env: {
+          ...process.env,
+          TMPDIR: path.join(tmp, 'tmp'),
+          TMP: path.join(tmp, 'tmp'),
+          RELEASE_SECURITY_TIMEOUT_MS: '1000',
+        },
+        encoding: 'utf8',
+        timeout: 20_000,
+      },
+    )
+    expect(res.status).not.toBe(0)
+    expect(String(res.stderr)).toMatch(/timeout|timed out|ETIMEDOUT/i)
   })
 })

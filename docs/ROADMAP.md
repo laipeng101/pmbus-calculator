@@ -61,6 +61,29 @@ M0–M28 complete；stable release v1.1.9；production distribution: GitHub Page
   未知参数仍在创建 lock 前失败。
 - 状态依据：本地 npm run verify 与 workflow 回归测试通过；PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
 
+> **M29 strengthening（v1.1.10）——以下 M28 表述在 M29 修复完成前超出实际实现，已被 M29 强化/取代：**
+>
+> 1. “signal handler 只记录终止请求…收到 signal 后不得输出完整成功声明”：M28 实现依赖最多 10 次
+>    `setImmediate` 的时序启发式等待信号投递；探针实证 SIGINT 15/20、SIGTERM 8/20 的 `Done:` 在
+>    handler 观察到信号前打印（v1.1.9 生效前 Node 24.0.0 CI 曾因此失败）。M29 以协作式 stage 边界
+>    协议取代该启发式（signal 到达后不进入新 transaction stage、lock 在所有写/子进程停止前不释放、
+>    精确 130/143），该表述仅在 M29 之后成立。
+> 2. “全部 M28 security tests zero-skip”：M28 runner 实际只运行 `tests/prepare-release-assets.test.ts`
+>    与 `tests/zip-helper-security.test.ts` 两个文件；`tests/m28-recovery.test.ts` 与
+>    `tests/run-release-security-tests.test.ts` 不在门禁内（探针：m28 中一个测试改为 it.skip 后门禁
+>    仍 exit 0）。M29 建立共享清单 `scripts/release-security-test-contract.mjs`，门禁实际执行四个
+>    预期文件并逐文件校验，zero-skip 表述仅在 M29 之后成立。
+> 3. “journal durability / journal rename 后按平台能力 fsync 父目录”：M28 将父目录 fsync 的**任何**错误（含 EIO/ENOSPC/
+>    EROFS/EBADF/close 失败）降级为 note 并继续成功发布（探针：EIO 注入后仍 SUCCESS、journal 被删、
+>    output 发布）。M29 的 `fsyncParentDirectorySync` 对真实 I/O 故障 fail-closed（非零、保留
+>    journal/backup/lock），仅容忍经实测证明的“平台不支持目录 fsync”错误码（EINVAL/ENOTSUP/
+>    EOPNOTSUPP），该表述仅在 M29 之后成立。
+> 4. “完整自动恢复”：M28 在 STAGING_VERIFIED 写入空 hash 后、OLD_OUTPUT_BACKED_UP 写入 null
+>    oldSha256 后存在 crash window，磁盘 journal 无法通过 validateJournal（探针实证两个窗口）；
+>    PRE_COMMIT 恢复在验证 oldSha256 前已删除 output、移动 backup（topology 不再自洽）。M29 重排
+>    journal 写入顺序（先填 hash 再持久化状态、新增 OLD_OUTPUT_BACKUP_INTENT）、恢复前先比较
+>    backup hash 且零磁盘 mutation，该表述仅在 M29 之后成立。
+
 > **v1.1.8 勘误：** v1.1.8 的发行资产本身正确，但以下实现缺陷由 v1.1.9/M28 加固修复：
 >
 > 1. COMMITTED 恢复接受非 ZIP 文件及自洽 checksum，并删除唯一有效 backup。

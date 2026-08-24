@@ -1,13 +1,21 @@
-// Zero-skip test runner (M27 WP-G #6, fail-closed M28 WP-C).
+// Zero-skip release-security runner (M27 WP-G #6, M28 WP-C, M29 WP-A/WP-F).
 //
-// Runs the generator/security vitest suites and FAILS if any test is
-// skipped, if the JSON report is missing/empty/corrupt/inconsistent, or if
-// vitest itself exits nonzero / is signaled / times out / fails to spawn.
+// M29 WP-A: the file list comes from scripts/release-security-test-contract.mjs
+// (SECURITY_TEST_FILES) -- the same list the contract tests import. The gate
+// fails closed when any expected file is missing, renamed, or silently not
+// executed by vitest, and the report must contain exactly the expected
+// suites. The four expected files and the zero-skip counters are printed to
+// stdout so CI logs show the actual coverage.
 //
-// The runner never calls process.exit() in the middle; run() returns an exit
-// code, process.exitCode is set exactly once at the top level, and the
-// temporary JSON report is removed in a finally block that runs on every
-// result path (success, test failure, parse failure, signal, exception).
+// M29 WP-F: the JSON report lives inside a fresh private mkdtemp directory
+// (mode 0o700) -- never a predictable /tmp/release-security-tests-<pid>.json.
+// Cleanup (report + directory) runs on every path; a cleanup failure makes
+// the gate NONZERO and is reported in stderr alongside any original test
+// failure. The runner never calls process.exit() mid-stream; main() returns
+// an exit code and sets process.exitCode exactly once.
+//
+// The vitest child timeout can be shortened via RELEASE_SECURITY_TIMEOUT_MS
+// (default 10 minutes) so fixtures can exercise child timeout/signal paths.
 
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -15,10 +23,13 @@ import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import {
+  SECURITY_TEST_FILES,
+  SECURITY_TESTS_MIN_TOTAL,
+  validateSecurityReportFiles,
+} from './release-security-test-contract.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-
-const testFiles = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts']
 
 /**
  * @param {string} message
@@ -97,25 +108,31 @@ function collectProblemNames(summary) {
   return names
 }
 
-/** @returns {number} exit code */
-function run() {
-  const outputFile = path.join(os.tmpdir(), 'release-security-tests-' + process.pid + '.json')
+/**
+ * Run vitest and evaluate its JSON report. Returns an exit code; the caller
+ * owns cleanup of the private work directory.
+ *
+ * @param {string} outputFile
+ * @returns {number}
+ */
+function runOnce(outputFile) {
   try {
     fs.rmSync(outputFile, { force: true })
 
+    const timeoutMs = Number(process.env.RELEASE_SECURITY_TIMEOUT_MS || 10 * 60_000)
     const result = spawnSync(
       process.execPath,
       [
         path.join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'),
         'run',
-        ...testFiles,
+        ...SECURITY_TEST_FILES,
         '--reporter=json',
         '--outputFile=' + outputFile,
       ],
       {
         cwd: repoRoot,
         stdio: 'inherit',
-        timeout: 10 * 60_000,
+        timeout: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10 * 60_000,
       },
     )
 
@@ -149,6 +166,22 @@ function run() {
     }
     if (summary === null || typeof summary !== 'object' || Array.isArray(summary)) {
       return fail('vitest JSON report is not an object')
+    }
+
+    // M29 WP-A #4/#5: the report must contain exactly the expected suites.
+    const fileCheck = validateSecurityReportFiles(summary)
+    if (!fileCheck.ok) {
+      return fail(fileCheck.reason)
+    }
+    // Extra suites beyond the contract are also a mismatch (file count != list).
+    const extra = fileCheck.suites.filter(
+      (s) =>
+        !SECURITY_TEST_FILES.some((f) => s === f || s.endsWith('/' + f) || s.endsWith('\\' + f)),
+    )
+    if (extra.length > 0) {
+      return fail(
+        `report executed unexpected test files not in SECURITY_TEST_FILES: ${extra.join(', ')}`,
+      )
     }
 
     // Counters present in vitest v4 JSON reports. numSkippedTests does NOT
@@ -194,6 +227,11 @@ function run() {
     }
 
     process.stdout.write(
+      'release-security: security files:\n' +
+        SECURITY_TEST_FILES.map((f) => '  - ' + f).join('\n') +
+        '\n',
+    )
+    process.stdout.write(
       'release-security: total=' +
         total +
         ' passed=' +
@@ -202,7 +240,9 @@ function run() {
         failed +
         ' skipped=' +
         skipped +
-        '\n',
+        ' (contract floor ' +
+        SECURITY_TESTS_MIN_TOTAL +
+        '; zero-skip policy: skipped+todo must be 0)\n',
     )
 
     // Assertion-level cross-check: a status other than passed/failed is a
@@ -234,15 +274,51 @@ function run() {
     }
 
     return 0
-  } finally {
-    // Every path -- success, test failure, parse failure, signal, exception --
-    // removes the temp report (M28 WP-C).
-    try {
-      fs.rmSync(outputFile, { force: true })
-    } catch {
-      // best effort
+  } catch (e) {
+    return fail('unexpected runner error: ' + /** @type {Error} */ (e).message)
+  }
+}
+
+/**
+ * Run the gate. The private work directory is created here so a temp-dir
+ * creation failure is itself fail-closed, and cleanup runs on EVERY path.
+ *
+ * @returns {number} exit code
+ */
+function run() {
+  /** @type {string | null} */
+  let workDir = null
+  try {
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-security-tests-'))
+  } catch (e) {
+    return fail(
+      'temporary directory creation failed: ' +
+        /** @type {Error} */ (e).message +
+        ' -- refusing to run (M29 WP-F)',
+    )
+  }
+  const outputFile = path.join(workDir, 'report.json')
+
+  let code = runOnce(outputFile)
+
+  // M29 WP-F cleanup contract: remove report + private directory. A cleanup
+  // failure must surface in stderr and force a nonzero exit; it must never
+  // be swallowed, and must not overwrite the original failure.
+  try {
+    fs.rmSync(workDir, { recursive: true, force: true })
+  } catch (e) {
+    process.stderr.write(
+      'run-release-security-tests: CLEANUP FAILED: ' +
+        /** @type {Error} */ (e).message +
+        ' -- residue may remain at ' +
+        workDir +
+        '; treat the gate as FAILED\n',
+    )
+    if (code === 0) {
+      code = 1
     }
   }
+  return code
 }
 
 process.exitCode = run()
