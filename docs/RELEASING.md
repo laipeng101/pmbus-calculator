@@ -29,16 +29,29 @@
 可能遗留锁文件或备份目录。以下命令用于显式恢复：
 
 - **锁文件恢复**：`node scripts/prepare-release-assets.mjs --recover-lock`
-  M33 起锁元数据为 schema v2 并绑定 child-state sidecar
-  （`.release-staging.child-state.json`，同 nonce）。恢复规则：
-  - v1 锁（仅有 owner PID、无 child-state 证明）一律拒绝并 manual audit；
+  M33 起锁元数据为 schema v2 并绑定 child-state sidecar；**M34 起锁 schema v3**，
+  child-state schema v2，sidecar 为 nonce-qualified 文件名
+  （`.release-staging.child-state-<nonce>.json`，basename 绑定锁 nonce，旧恢复的
+  cleanup 不可能删除新 acquisition 的 sidecar）。恢复规则：
+  - v1/v2 锁（旧 schema）一律拒绝并 manual audit——不猜测迁移；
   - owner PID 仍在运行、repo 路径不匹配、元数据不完整或 schema 未知时拒绝；
+  - child-state 必须先通过状态—字段不变量校验（M34）：`EMPTY`/`SPAWN_INTENT`/
+    `QUIESCENCE_PROVEN` 的 pgid/helperPid 必须为 null（非空即不可能状态，拒绝）；
+    `ACTIVE` 的 pgid/helperPid 必须为正整数且相等（detached group-leader 合同，
+    不一致拒绝）；`MANUAL_AUDIT_REQUIRED` 的 pgid/helperPid 必须为 null 且必须
+    携带 lastKnownPgid/lastKnownHelperPid/auditReason；任何额外字段、非法时间、
+    nonce/repo 不匹配一律拒绝；
   - child-state 为 `SPAWN_INTENT`（helper 可能已 spawn 但 ACTIVE 未持久化，
     M33 crash window）时拒绝并 manual audit；
   - child-state 为 `ACTIVE` 时必须 `kill(-pgid, 0)` 得到 ESRCH（组消失）
     且 nonce/repo/schema 合同全部成立才允许显式恢复；EPERM 或状态不可证明
     时拒绝；绝不向可能已 PID/PGID reuse 的旧组发送任何信号；
-  - `EMPTY` 与 `QUIESCENCE_PROVEN` 且 owner 已死时允许恢复。
+  - `EMPTY` 与 `QUIESCENCE_PROVEN` 且 owner 已死时允许恢复；
+  - 删除前重新验证锁 inode/metadata 与 sidecar 形态（被替换的锁或 sidecar
+    绝不删除）；sidecar 读取使用 lstat + no-follow + 字节上限（64 KiB）+
+    open/fstat 竞态校验——symlink/FIFO/目录/超大文件一律拒绝；
+  - `MANUAL_AUDIT_REQUIRED` 普通 `--recover-lock` 继续拒绝。正式恢复路径是
+    **显式 audit acknowledgement**（M34 WP-B）：维护者不再手工编辑 sidecar JSON。
     这是唯一可以在未持有互斥锁的情况下操作锁文件的命令。
 
 - **事务恢复**：`node scripts/prepare-release-assets.mjs --recover`
@@ -53,6 +66,24 @@
   重新验证正式 output。损坏的 backup 绝不会被 rename 为正式 output。
   事务在信号/中断下的最终磁盘状态只能是：已验证 committed output，或 journal 可
   自动恢复的明确 PRE_COMMIT 状态；不允许不确定 topology。
+
+- **显式 audit acknowledgement（M34 WP-B，MANUAL_AUDIT_REQUIRED 的唯一正式恢复路径）**：
+  `node scripts/prepare-release-assets.mjs --audit-lock <nonce> <lastKnownPgid>`
+
+  标准步骤（只确认状态，不负责杀进程）：
+  1. 查看状态：`node scripts/prepare-release-assets.mjs --recover-lock` 会输出拒绝原因
+     （child-state 为 MANUAL_AUDIT_REQUIRED 并给出 last-known PGID/helper PID）；
+     也可直接读 `.release-staging.lock` 与
+     `.release-staging.child-state-<nonce>.json` 确认 lastKnownPgid/auditReason。
+  2. 外部确认并清理：人工确认该事务的进程组确实已消失（例如
+     `kill -0 -<pgid>` 得到 ESRCH），必要时在任务上下文（shell/session/CI job）
+     中终止遗留进程——本命令绝不向历史 PGID 发送信号。
+  3. 等待 ESRCH：owner PID 与 last-known 组都必须 ESRCH。
+  4. 执行 `--audit-lock <nonce> <lastKnownPgid>`：要求精确 lock nonce 与精确
+     last-known PGID；owner/组非 ESRCH、nonce/PGID 不匹配、锁或 sidecar 被
+     替换、EPERM、未知 schema 一律拒绝且零删除。
+  5. 成功后锁与 nonce-qualified sidecar 被删除，随后可正常 `release:prepare-assets`
+     获取 replacement lock。
 
 - **不得自动删除**：无效 JSON、权限不明、未知 schema 的锁不会被自动删除；
   中断后的备份也不被自动移除。始终使用显式恢复命令或人工审计后清理。
@@ -113,17 +144,32 @@ successfully` 等完整成功声明。
       在 registry 为空且 QUIESCENCE_PROVEN 持久化成功后才释放锁）；
     - 正常 child/group 被证明 ESRCH 后才持久化 QUIESCENCE_PROVEN；
     - fail-closed（deadline/EPERM/未知）时 sidecar 置 MANUAL_AUDIT_REQUIRED、
-      registry 保留、release 锁不释放，`--recover-lock` 拒绝，人工审计后可
-      显式恢复。
+      registry 保留、release 锁不释放，`--recover-lock` 拒绝，通过
+      `--audit-lock` 显式确认后可恢复（M34 WP-B）。
+  - M34 WP-A 起（锁 schema v3 / child-state schema v2）：
+    - sidecar 为 nonce-qualified basename（`.release-staging.child-state-<nonce>.json`）；
+      写入前与恢复前都执行同一状态—字段不变量校验（EMPTY/SPAWN_INTENT/
+      QUIESCENCE_PROVEN 的 pgid/helperPid 必须为 null；ACTIVE 两者必须为正整数
+      且相等；MANUAL 用独立 lastKnownPgid/lastKnownHelperPid/auditReason），
+      不可能组合/额外字段/非法时间/未知 schema 一律拒绝，实现自身也无法写出
+      非法状态；
+    - sidecar 读取：lstat 拒绝 symlink/FIFO/目录/设备、64 KiB 字节上限、
+      open+fstat 竞态校验；恢复删除前重新验证锁 inode/metadata 与 sidecar
+      形态；旧 nonce 的 cleanup 绝不触碰新 nonce sidecar。
   - M33 WP-B 起，fail-closed 的 Promise reject 后 CLI 进程必须**有界自然退出**
     （非零）：`execFileAsync` 对存活 child 执行 `unref()` 并销毁其 stdio
     pipes（不 `process.exit()`、不清 registry、不先杀 child），事件循环无
     残留 handle 后进程自然退出；post-spawn error 即使没有设置 `opts.timeout`
     也启动一次受控终止（SIGTERM → 有界 deadline → SIGKILL 升级）。
-  - M33 WP-C 起，CLI 观察到致命信号后除记录 terminating 外，还会立即向
-    activeChildren 的每个受控进程组发送 SIGTERM（与 transaction stage 一致
-    的受控 child termination），不再等待 helper 自身 timeout；watchdog 清理
-    测试覆盖完整进程组。
+  - M34 WP-C 起，用户信号接入 execFileAsync 受控终止状态机：`activeChildren`
+    注册的是 child **controller**（`requestTermination(reason)`），runCli 的
+    signal handler 只决定退出码（130/143）并请求所有 controller 开始一次受控
+    终止——立即启动 bounded deadline 与 escalation timer（SIGTERM → SIGKILL
+    升级 → 等 direct close + group ESRCH → settle）；重复信号只记录
+    `termination already in progress`；signal 路径绝不等待 helper 自身 30/60 秒
+    timeout（M34 P1-B 实证：修复前 SIGTERM 后父进程 >10s 仍存活、无 escalation）；
+    deadline 后仍无法证明组消失 → MANUAL_AUDIT_REQUIRED（保留 last-known
+    ownership）+ registry/锁 fail closed + 父进程自然非零有界退出。
 
 - **平台支持（M31 WP-C）**：release asset generation 仅支持 Linux/macOS
   （POSIX）。Windows 无进程组、`child.kill()` 只能终止直接子进程，无法保证

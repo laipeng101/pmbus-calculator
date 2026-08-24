@@ -153,24 +153,35 @@ function expectDead(pid: number, label: string): void {
   expect(() => process.kill(pid, 0), `${label} (pid ${pid}) still alive`).toThrow(/ESRCH/)
 }
 
-/** Write a v2 lock fixture (+sidecar) with the given child-state. */
+/** M34 WP-A: nonce-qualified sidecar basename for a lock nonce. */
+function sidecarName(nonce: string): string {
+  return `.release-staging.child-state-${nonce}.json`
+}
+
+/** Read the current lock's nonce and return its nonce-qualified sidecar path. */
+function currentSidecarPath(tmp: string): string {
+  const lock = JSON.parse(fs.readFileSync(path.join(tmp, '.release-staging.lock'), 'utf8'))
+  return path.join(tmp, sidecarName((lock as { nonce: string }).nonce))
+}
+
+/** Write a v3 lock fixture (+ nonce-qualified sidecar) with the given child-state. */
 function writeLockFixture(
   tmp: string,
   state: string,
   overrides: Record<string, unknown> = {},
   sidecar: Record<string, unknown> | null = null,
-): { lockPath: string; nonce: string; repoRealpath: string } {
+): { lockPath: string; nonce: string; repoRealpath: string; sidecarPath: string } {
   const nonce = randomUUID4()
   const repoRealpath = fs.realpathSync(tmp)
   const metadata = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     pid: 999999999,
     startedAt: new Date().toISOString(),
     nonce,
     repoRealpath,
-    childStateFile: '.release-staging.child-state.json',
+    childStateFile: sidecarName(nonce),
     childState: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       nonce,
       repoRealpath,
       state,
@@ -183,11 +194,9 @@ function writeLockFixture(
   const lockPath = path.join(tmp, '.release-staging.lock')
   fs.writeFileSync(lockPath, JSON.stringify(metadata) + '\n')
   const cs = (metadata as { childState: Record<string, unknown> }).childState
-  fs.writeFileSync(
-    path.join(tmp, '.release-staging.child-state.json'),
-    JSON.stringify(sidecar ?? cs) + '\n',
-  )
-  return { lockPath, nonce, repoRealpath }
+  const sidecarPath = path.join(tmp, sidecarName(nonce))
+  fs.writeFileSync(sidecarPath, JSON.stringify(sidecar ?? cs) + '\n')
+  return { lockPath, nonce, repoRealpath, sidecarPath }
 }
 
 function randomUUID4(): string {
@@ -233,9 +242,8 @@ describe('M33 WP-A crash-consistent child ownership and lock recovery', () => {
       !(
         fs.existsSync(lockPathFor(tmp)) &&
         fs.existsSync(pidfile) &&
-        fs.existsSync(path.join(tmp, '.release-staging.child-state.json')) &&
-        JSON.parse(fs.readFileSync(path.join(tmp, '.release-staging.child-state.json'), 'utf8'))
-          .state === 'ACTIVE'
+        fs.existsSync(currentSidecarPath(tmp)) &&
+        JSON.parse(fs.readFileSync(currentSidecarPath(tmp), 'utf8')).state === 'ACTIVE'
       )
     ) {
       await sleep(20)
@@ -301,9 +309,7 @@ describe('M33 WP-A crash-consistent child ownership and lock recovery', () => {
       )
       owner.kill('SIGKILL')
       await new Promise((r) => owner.on('close', r))
-      const sidecar = JSON.parse(
-        fs.readFileSync(path.join(tmp, '.release-staging.child-state.json'), 'utf8'),
-      )
+      const sidecar = JSON.parse(fs.readFileSync(currentSidecarPath(tmp), 'utf8'))
       expect(sidecar.state).toBe('SPAWN_INTENT')
       const recover = mod.recoverLock(tmp)
       expect(recover.recovered).toBe(false)
@@ -320,13 +326,13 @@ describe('M33 WP-A crash-consistent child ownership and lock recovery', () => {
 
     // missing sidecar
     const f1 = writeLockFixture(tmp, 'EMPTY')
-    fs.unlinkSync(path.join(tmp, '.release-staging.child-state.json'))
+    fs.unlinkSync(currentSidecarPath(tmp))
     expect(mod.recoverLock(tmp).recovered).toBe(false)
     fs.unlinkSync(f1.lockPath)
 
     // corrupt sidecar
     const f2 = writeLockFixture(tmp, 'EMPTY')
-    fs.writeFileSync(path.join(tmp, '.release-staging.child-state.json'), '{not json')
+    fs.writeFileSync(currentSidecarPath(tmp), '{not json')
     expect(mod.recoverLock(tmp).recovered).toBe(false)
     fs.unlinkSync(f2.lockPath)
 
@@ -355,7 +361,7 @@ describe('M33 WP-A crash-consistent child ownership and lock recovery', () => {
     // nonce mismatch between lock and sidecar
     const f4 = writeLockFixture(tmp, 'EMPTY')
     fs.writeFileSync(
-      path.join(tmp, '.release-staging.child-state.json'),
+      currentSidecarPath(tmp),
       JSON.stringify({
         schemaVersion: 1,
         nonce: randomUUID4(),
@@ -413,7 +419,7 @@ describe('M33 WP-A crash-consistent child ownership and lock recovery', () => {
         },
       )
       fs.writeFileSync(
-        path.join(tmp, '.release-staging.child-state.json'),
+        currentSidecarPath(tmp),
         JSON.stringify({
           schemaVersion: 1,
           nonce: f2.nonce,
@@ -468,9 +474,8 @@ describe('M33 WP-A crash-consistent child ownership and lock recovery', () => {
       !(
         fs.existsSync(lockPathFor(tmp)) &&
         fs.existsSync(pidfile) &&
-        fs.existsSync(path.join(tmp, '.release-staging.child-state.json')) &&
-        JSON.parse(fs.readFileSync(path.join(tmp, '.release-staging.child-state.json'), 'utf8'))
-          .state === 'ACTIVE'
+        fs.existsSync(currentSidecarPath(tmp)) &&
+        JSON.parse(fs.readFileSync(currentSidecarPath(tmp), 'utf8')).state === 'ACTIVE'
       )
     ) {
       await sleep(20)
@@ -576,9 +581,7 @@ describe('M33 WP-A crash-consistent child ownership and lock recovery', () => {
       expect(out).toContain('REGISTRY_SIZE: 1')
       // lock + MANUAL_AUDIT_REQUIRED sidecar preserved
       expect(fs.existsSync(lockPathFor(tmp))).toBe(true)
-      const sidecar = JSON.parse(
-        fs.readFileSync(path.join(tmp, '.release-staging.child-state.json'), 'utf8'),
-      )
+      const sidecar = JSON.parse(fs.readFileSync(currentSidecarPath(tmp), 'utf8'))
       expect(sidecar.state).toBe('MANUAL_AUDIT_REQUIRED')
       // recovery refuses while the helper is still alive
       const recover = mod.recoverLock(tmp)
@@ -592,14 +595,14 @@ describe('M33 WP-A crash-consistent child ownership and lock recovery', () => {
         /* best effort */
       }
       try {
-        fs.unlinkSync(path.join(tmp, '.release-staging.child-state.json'))
+        fs.unlinkSync(currentSidecarPath(tmp))
       } catch {
         /* best effort */
       }
     }
   }, 30_000)
 
-  it('T8: fail-closed then the helper group is cleaned -> explicit recovery succeeds', async () => {
+  it('T8: fail-closed then the helper group is cleaned -> formal audit acknowledgement succeeds', async () => {
     const mod = await import(MODULE_PATH)
     const tmp = makeTempDir()
     const pidfile = path.join(tmp, 'child.pid')
@@ -640,38 +643,43 @@ describe('M33 WP-A crash-consistent child ownership and lock recovery', () => {
     const helperPid = await waitForPidfile(pidfile)
     await new Promise<number | null>((resolve) => child.on('close', (code) => resolve(code)))
     try {
-      // kill the helper group (simulating external cleanup / audit action)
+      const sidecar = JSON.parse(fs.readFileSync(currentSidecarPath(tmp), 'utf8'))
+      expect(sidecar.state).toBe('MANUAL_AUDIT_REQUIRED')
+      // M34 WP-B: MANUAL state carries last-known ownership in dedicated fields.
+      expect(sidecar.lastKnownPgid).toBe(helperPid)
+      expect(sidecar.lastKnownHelperPid).toBe(helperPid)
+      expect(typeof sidecar.auditReason).toBe('string')
+      // audit acknowledgement while the group is STILL ALIVE must refuse
+      const whileAlive = mod.auditLockAcknowledgement(tmp, {
+        nonce: sidecar.nonce,
+        lastKnownPgid: sidecar.lastKnownPgid,
+      })
+      expect(whileAlive.acknowledged).toBe(false)
+      expect(fs.existsSync(lockPathFor(tmp))).toBe(true)
+      // clean the helper group (external audit action), then acknowledge
       await forceCleanTree([helperPid])
       expect(pidAlive(helperPid)).toBe(false)
-      const sidecar = JSON.parse(
-        fs.readFileSync(path.join(tmp, '.release-staging.child-state.json'), 'utf8'),
-      )
-      expect(sidecar.state).toBe('MANUAL_AUDIT_REQUIRED')
-      // audit resolves the state to ACTIVE (proven gone) -> explicit recovery
-      fs.writeFileSync(
-        path.join(tmp, '.release-staging.child-state.json'),
-        JSON.stringify({
-          schemaVersion: 1,
-          nonce: sidecar.nonce,
-          repoRealpath: sidecar.repoRealpath,
-          state: 'ACTIVE',
-          pgid: helperPid,
-          helperPid,
-          updatedAt: new Date().toISOString(),
-        }) + '\n',
-      )
-      const recover = mod.recoverLock(tmp)
-      expect(recover.recovered, `explicit recovery after cleanup: ${recover.reason}`).toBe(true)
+      const wrongNonce = mod.auditLockAcknowledgement(tmp, {
+        nonce: '00000000-0000-4000-8000-000000000000',
+        lastKnownPgid: sidecar.lastKnownPgid,
+      })
+      expect(wrongNonce.acknowledged, 'wrong nonce must refuse').toBe(false)
+      const wrongPgid = mod.auditLockAcknowledgement(tmp, {
+        nonce: sidecar.nonce,
+        lastKnownPgid: sidecar.lastKnownPgid + 1,
+      })
+      expect(wrongPgid.acknowledged, 'wrong last-known PGID must refuse').toBe(false)
+      const audited = mod.auditLockAcknowledgement(tmp, {
+        nonce: sidecar.nonce,
+        lastKnownPgid: sidecar.lastKnownPgid,
+      })
+      expect(audited.acknowledged, `audit acknowledgement: ${audited.reason}`).toBe(true)
       expect(fs.existsSync(lockPathFor(tmp))).toBe(false)
+      expect(fs.existsSync(path.join(tmp, sidecarName(sidecar.nonce)))).toBe(false)
     } finally {
       await forceCleanTree([helperPid, childPid])
       try {
         fs.unlinkSync(lockPathFor(tmp))
-      } catch {
-        /* best effort */
-      }
-      try {
-        fs.unlinkSync(path.join(tmp, '.release-staging.child-state.json'))
       } catch {
         /* best effort */
       }

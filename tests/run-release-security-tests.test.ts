@@ -91,8 +91,12 @@ function makeFixture(
     `const failed = Number(process.env.FAKE_FAILED || ${JSON.stringify(opts.failed ?? 0)});`,
     `const skipped = Number(process.env.FAKE_SKIPPED || ${JSON.stringify(opts.skipped ?? 0)});`,
     'const report = { numTotalTests: total, numPassedTests: passed, numFailedTests: failed, numSkippedTests: skipped, numPendingTests: 0, numTodoTests: 0 };',
-    // M30 WP-D / M32: the report must carry all ten expected suites.
-    "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts', 'tests/m33-child-ownership-recovery.test.ts'];",
+    // M34 WP-D: the report must carry EXACTLY the files this batch invoked
+    // (the phased runner calls vitest once per serial file + one parallel
+    // batch; a report listing all suites in every batch would trip the
+    // duplicate detector).
+    "const invoked = args.filter((a) => a.endsWith('.test.ts'));",
+    "const suiteNames = invoked.length > 0 ? invoked : ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts', 'tests/m33-child-ownership-recovery.test.ts'];",
     "report.testResults = suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] }));",
     'if (mode === "inconsistent") {',
     '  report.numPassedTests = passed + 1; // passed+failed+skipped != total',
@@ -134,8 +138,8 @@ function runFixture(tmp: string): {
         ...process.env,
         FAKE_MODE: 'valid',
         FAKE_RC: '0',
-        FAKE_TOTAL: '2',
-        FAKE_PASSED: '2',
+        FAKE_TOTAL: '30',
+        FAKE_PASSED: '30',
         FAKE_FAILED: '0',
         FAKE_SKIPPED: '0',
         TMPDIR: path.join(tmp, 'tmp'),
@@ -361,7 +365,7 @@ describe('M28 WP-C zero-skip runner fail-closed', () => {
           FAKE_MODE: 'valid',
           FAKE_RC: '0',
           FAKE_TOTAL: '3',
-          FAKE_PASSED: '2',
+          FAKE_PASSED: '30',
           FAKE_SKIPPED: '1',
           TMPDIR: path.join(tmp, 'tmp'),
           TMP: path.join(tmp, 'tmp'),
@@ -373,11 +377,13 @@ describe('M28 WP-C zero-skip runner fail-closed', () => {
     expect(res.status).not.toBe(0)
   })
 
-  it('valid zero-skip report -> exit 0 with summary', () => {
+  it('valid zero-skip report -> exit 0 with summary (aggregated across phased batches)', () => {
     const tmp = makeFixture('valid', 0)
     const r = runFixture(tmp)
     expect(r.status).toBe(0)
-    expect(r.stdout).toMatch(/total=2 passed=2 failed=0 skipped=0/)
+    // parallel batch (2 files) + one serial batch per serial file (9 files)
+    expect(r.stdout).toMatch(/total=330 passed=330 failed=0 skipped=0/)
+    expect(r.stdout).toMatch(/merged summary:/)
   })
 
   it('every result path leaves ZERO temp reports behind', () => {
@@ -478,8 +484,9 @@ describe('M29 WP-F runner private temp dir and cleanup contract', () => {
       "const outIdx = args.findIndex((a) => a.startsWith('--outputFile='));",
       "const out = outIdx >= 0 ? args[outIdx].slice('--outputFile='.length) : 'report.json';",
       `fs.writeFileSync(${JSON.stringify(marker)}, out);`,
-      "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts', 'tests/m33-child-ownership-recovery.test.ts'];",
-      'const report = { numTotalTests: 11, numPassedTests: 11, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + "::t", status: "passed" }] })) };',
+      "const invoked = args.filter((a) => a.endsWith('.test.ts'));",
+      "const suiteNames = invoked.length > 0 ? invoked : ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts', 'tests/m33-child-ownership-recovery.test.ts'];",
+      'const report = { numTotalTests: 300, numPassedTests: 300, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + "::t", status: "passed" }] })) };',
       'fs.writeFileSync(out, JSON.stringify(report));',
       extra,
       'process.exit(0);',
@@ -549,7 +556,7 @@ describe('M29 WP-F runner private temp dir and cleanup contract', () => {
 
   it('F4: report path replaced by a symlink is handled without crashes (read-through allowed)', () => {
     const { tmp } = makeRecordedFixture(
-      "fs.rmSync(out, { force: true }); fs.symlinkSync(out + '.real', out); fs.writeFileSync(out + '.real', JSON.stringify({ numTotalTests: 11, numPassedTests: 11, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts', 'tests/m32-child-group-lifecycle.test.ts', 'tests/m33-child-ownership-recovery.test.ts'].map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] })) }));",
+      "fs.rmSync(out, { force: true }); fs.symlinkSync(out + '.real', out); fs.writeFileSync(out + '.real', JSON.stringify({ numTotalTests: 300, numPassedTests: 300, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: invoked.map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] })) }));",
     )
     const r = spawnRunner(tmp)
     expect(r.status).toBe(0)
@@ -605,5 +612,163 @@ describe('M29 WP-F runner private temp dir and cleanup contract', () => {
     )
     expect(res.status).not.toBe(0)
     expect(String(res.stderr)).toMatch(/timeout|timed out|ETIMEDOUT/i)
+    // The phased runner starts one vitest child per serial file; with the
+    // 1000ms child timeout the whole F7 run takes ~10s, so the vitest-level
+    // timeout is raised accordingly.
+  }, 30_000)
+})
+
+// ---------------------------------------------------------------------------
+// M34 WP-D: aggregation negative tests (pure function, no fixture needed).
+// Each injected defect must make the aggregate fail with a NONZERO result;
+// the valid union must pass with exact counters.
+// ---------------------------------------------------------------------------
+
+import { aggregateSecurityReports } from '../scripts/release-security-test-contract.mjs'
+
+const ALL_SUITES = [
+  'tests/prepare-release-assets.test.ts',
+  'tests/zip-helper-security.test.ts',
+  'tests/m28-recovery.test.ts',
+  'tests/run-release-security-tests.test.ts',
+  'tests/m29-crash-matrix.test.ts',
+  'tests/m29-release-gates.test.ts',
+  'tests/m29-signal-protocol.test.ts',
+  'tests/m30-signal-lifecycle.test.ts',
+  'tests/m30-child-lifecycle.test.ts',
+  'tests/m32-child-group-lifecycle.test.ts',
+  'tests/m33-child-ownership-recovery.test.ts',
+  'tests/m34-child-state-signal-gate.test.ts',
+]
+
+function makeBatch(
+  suites: string[],
+  overrides: Record<string, unknown> = {},
+): {
+  status: number
+  signal: string | null
+  error: string | null
+  report: Record<string, unknown>
+} {
+  return {
+    status: 0,
+    signal: null,
+    error: null,
+    report: {
+      numTotalTests: suites.length,
+      numPassedTests: suites.length,
+      numFailedTests: 0,
+      numPendingTests: 0,
+      numTodoTests: 0,
+      testResults: suites.map((name) => ({
+        name,
+        assertionResults: [{ fullName: name + '::t', status: 'passed' }],
+      })),
+      ...overrides,
+    },
+  }
+}
+
+describe('M34 WP-D aggregateSecurityReports negative tests', () => {
+  it('valid union of phased batches passes with exact counters', () => {
+    const parallel = makeBatch(ALL_SUITES.slice(0, 2))
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    const agg = aggregateSecurityReports([parallel, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(true)
+    expect(agg.total).toBe(ALL_SUITES.length)
+    expect(agg.passed).toBe(ALL_SUITES.length)
+    expect(agg.failed).toBe(0)
+    expect(agg.skipped).toBe(0)
+    expect(agg.todo).toBe(0)
+    expect(agg.missing).toEqual([])
+    expect(agg.extra).toEqual([])
+    expect(agg.duplicates).toEqual([])
+  })
+
+  it('missing file -> nonzero', () => {
+    const parallel = makeBatch(ALL_SUITES.slice(0, 2))
+    const serials = ALL_SUITES.slice(2, -1).map((f) => makeBatch([f])) // drop the last
+    const agg = aggregateSecurityReports([parallel, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
+    expect(agg.missing.length).toBeGreaterThan(0)
+  })
+
+  it('extra unexpected file -> nonzero', () => {
+    const parallel = makeBatch([...ALL_SUITES.slice(0, 2), 'tests/extra-unknown.test.ts'])
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    const agg = aggregateSecurityReports([parallel, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
+    expect(agg.extra.length).toBeGreaterThan(0)
+  })
+
+  it('duplicate execution of one file -> nonzero', () => {
+    const parallel = makeBatch(ALL_SUITES.slice(0, 2))
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    serials.push(makeBatch([ALL_SUITES[2]])) // executed twice
+    const agg = aggregateSecurityReports([parallel, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
+    expect(agg.duplicates).toContain(ALL_SUITES[2])
+  })
+
+  it('skipped > 0 -> nonzero', () => {
+    const parallel = makeBatch(ALL_SUITES.slice(0, 2), { numPendingTests: 1 })
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    const agg = aggregateSecurityReports([parallel, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
+  })
+
+  it('todo > 0 -> nonzero', () => {
+    const parallel = makeBatch(ALL_SUITES.slice(0, 2), { numTodoTests: 1 })
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    const agg = aggregateSecurityReports([parallel, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
+  })
+
+  it('failed > 0 -> nonzero', () => {
+    const parallel = makeBatch(ALL_SUITES.slice(0, 2), { numFailedTests: 1 })
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    const agg = aggregateSecurityReports([parallel, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
+  })
+
+  it('corrupt (non-object) report -> nonzero', () => {
+    const parallel = { status: 0, signal: null, error: null, report: 'not-an-object' }
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    const agg = aggregateSecurityReports([parallel as never, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
+  })
+
+  it('inconsistent counters -> nonzero', () => {
+    const parallel = makeBatch(ALL_SUITES.slice(0, 2), { numPassedTests: 99 })
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    const agg = aggregateSecurityReports([parallel, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
+  })
+
+  it('vitest child signal -> nonzero with the error surfaced', () => {
+    const parallel = {
+      status: null,
+      signal: 'SIGTERM',
+      error: 'spawnSync /x/vitest.mjs ETIMEDOUT',
+      report: null,
+    }
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    const agg = aggregateSecurityReports([parallel as never, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
+    expect(String(agg.reason)).toMatch(/SIGTERM.*ETIMEDOUT/)
+  })
+
+  it('vitest child nonzero status -> nonzero', () => {
+    const parallel = { ...makeBatch(ALL_SUITES.slice(0, 2)), status: 1 }
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    const agg = aggregateSecurityReports([parallel, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
+  })
+
+  it('missing/invalid counter field -> nonzero', () => {
+    const parallel = makeBatch(ALL_SUITES.slice(0, 2), { numTotalTests: 'abc' })
+    const serials = ALL_SUITES.slice(2).map((f) => makeBatch([f]))
+    const agg = aggregateSecurityReports([parallel, ...serials], { minTotal: 1 })
+    expect(agg.ok).toBe(false)
   })
 })

@@ -54,12 +54,27 @@ const LOCK_FILE = '.release-staging.lock'
 // M33 WP-A: lock schema v2 binds a persistent child-state to the lock nonce.
 // v1 locks (owner-PID only) cannot prove a detached helper group is gone and
 // are NEVER auto-recovered -- explicit manual audit (see recoverLock).
-const LOCK_SCHEMA_VERSION = 2
-// Child-state sidecar bound to the lock nonce. Independent file so the lock
-// inode (dev+ino ownership check) never has to be rewritten for state
-// updates; sidecar updates use temp+fsync+rename atomic durability.
-const CHILD_STATE_FILE = '.release-staging.child-state.json'
-const CHILD_STATE_SCHEMA_VERSION = 1
+// M34 WP-A: lock schema v3 upgrades the child-state contract -- the sidecar is
+// nonce-qualified (basename embeds the lock nonce) so stale cleanup from an
+// old recovery can never delete a newer acquisition's state, and the child
+// state carries state/field INVARIANTS (impossible combinations are rejected,
+// never recovered). v1/v2 locks fail closed / manual audit -- no guessing.
+const LOCK_SCHEMA_VERSION = 3
+// M34 WP-A: nonce-qualified sidecar basename. The basename embeds the lock
+// nonce, which (a) lets recovery target EXACTLY the sidecar belonging to the
+// lock under audit and (b) makes the fixed-name cleanup race (old recovery
+// deleting a new acquisition's sidecar) structurally impossible.
+/** @param {string} nonce */
+export function childStateFileName(nonce) {
+  return `.release-staging.child-state-${nonce}.json`
+}
+/**
+ * Max bytes of a readable child-state sidecar. Anything larger is rejected
+ * (M34 WP-A #5) -- a sidecar is a tiny JSON document, oversized content is a
+ * signal of tampering or a non-sidecar file.
+ */
+export const CHILD_STATE_MAX_BYTES = 64 * 1024
+const CHILD_STATE_SCHEMA_VERSION = 2
 
 /**
  * M33 WP-A: persistent child-ownership states (single source of truth).
@@ -83,6 +98,58 @@ export const CHILD_STATES = Object.freeze({
 
 /** @type {readonly string[]} */
 const CHILD_STATE_VALUES = Object.freeze(Object.values(CHILD_STATES))
+
+/**
+ * M34 WP-A: state/field invariants -- the single source of truth for what a
+ * child-state may and may not contain in each state. `validateChildState`
+ * enforces these BEFORE anything (including a recovery) may act on the state;
+ * `writeChildStateSync` validates before writing so the implementation can
+ * never generate an impossible state itself.
+ *
+ * - EMPTY / QUIESCENCE_PROVEN: pgid and helperPid MUST be null. A non-null
+ *   PID field in these states is impossible -- a live group under a
+ *   "no process" claim must be a manual audit, never an auto-recovery
+ *   (P1-A: probe demonstrated both states were recovered while the detached
+ *   helper group was still alive and writing).
+ * - SPAWN_INTENT: pgid/helperPid MUST be null (they are set only in ACTIVE).
+ * - ACTIVE: pgid and helperPid MUST be positive integers AND equal -- under
+ *   the POSIX detached-spawn contract the direct child is the process-group
+ *   leader, so pgid === helperPid. A mismatch is impossible (P1-A-5).
+ * - MANUAL_AUDIT_REQUIRED: pgid/helperPid MUST be null; the last-known
+ *   ownership is carried in dedicated lastKnownPgid/lastKnownHelperPid fields
+ *   with auditReason -- never disguised as a QUIESCENCE/EMPTY state.
+ */
+export const CHILD_STATE_FIELD_INVARIANTS = Object.freeze({
+  EMPTY: Object.freeze({ pgid: 'null', helperPid: 'null' }),
+  SPAWN_INTENT: Object.freeze({ pgid: 'null', helperPid: 'null' }),
+  ACTIVE: Object.freeze({
+    pgid: 'positive-int',
+    helperPid: 'positive-int',
+    pgidEqualsHelperPid: true,
+  }),
+  QUIESCENCE_PROVEN: Object.freeze({ pgid: 'null', helperPid: 'null' }),
+  MANUAL_AUDIT_REQUIRED: Object.freeze({
+    pgid: 'null',
+    helperPid: 'null',
+    requiresLastKnown: true,
+  }),
+})
+
+/** Allowed extra fields per state (beyond the common base). */
+export const CHILD_STATE_EXTRA_FIELDS = Object.freeze({
+  EMPTY: Object.freeze([]),
+  SPAWN_INTENT: Object.freeze([]),
+  ACTIVE: Object.freeze([]),
+  QUIESCENCE_PROVEN: Object.freeze([]),
+  MANUAL_AUDIT_REQUIRED: Object.freeze(['lastKnownPgid', 'lastKnownHelperPid', 'auditReason']),
+})
+
+/**
+ * Strict ISO-8601 timestamp pattern for child-state `updatedAt`. Rejects
+ * ambiguous/loose dates (M34 WP-A #2: invalid timestamps refuse recovery).
+ */
+export const ISO_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/
 const JOURNAL_SCHEMA_VERSION = 1
 const PYTHON3 = process.env.PYTHON3 || 'python3'
 
@@ -235,10 +302,14 @@ export function fsyncParentDirectorySync(dirPath, deps = {}) {
 }
 
 /**
- * M30 WP-B: live registry of every child process spawned through
- * execFileAsync. runCli checks it is EMPTY before releasing the lock, so a
- * helper/verifier (or its descendants) can never keep running -- or keep
- * writing to the release path -- after the lock is gone.
+ * M30 WP-B / M34 WP-C: live registry of every active child CONTROLLER
+ * registered by execFileAsync. Each entry owns its termination state machine:
+ * `requestTermination(reason)` starts the bounded controlled termination
+ * (SIGTERM -> escalation -> deadline -> group-gone proof) -- runCli NEVER
+ * reaches into a ChildProcess directly. runCli checks the registry is EMPTY
+ * before releasing the lock, so a helper/verifier (or its descendants) can
+ * never keep running -- or keep writing to the release path -- after the lock
+ * is gone.
  */
 export const activeChildren = new Set()
 
@@ -286,7 +357,7 @@ export const GROUP_SETTLE_DEADLINE_MS = 10_000
  *     beginSpawn?: () => void | Promise<void>,
  *     onSpawn?: (pgid: number | null, helperPid: number | null) => void | Promise<void>,
  *     onQuiesced?: () => void | Promise<void>,
- *     onAudit?: (why: string) => void | Promise<void>,
+ *     onAudit?: (why: string, lastKnownPgid?: number | null, lastKnownHelperPid?: number | null) => void | Promise<void>,
  *   },
  *   timingProfile?: {
  *     settlePollMs?: number,
@@ -386,7 +457,6 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
         }
       }
       const child = spawn(cmd, args, spawnOpts)
-      activeChildren.add(child)
       let stderrBuf = ''
       let settled = false
       /** Whether the 'spawn' event was observed -- a process was created. */
@@ -410,8 +480,10 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
       let deadlineTimer = null
       /** @type {ReturnType<typeof setTimeout> | null} */
       let groupPollTimer = null
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let faultInjectTimer = null
 
-      /** Clear every timer owned by this call (main + escalation + deadline + poll). */
+      /** Clear every timer owned by this call (main + escalation + deadline + poll + fault-injection). */
       const clearOwnedTimers = () => {
         if (timer) {
           clearTimeout(timer)
@@ -428,6 +500,10 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
         if (groupPollTimer) {
           clearTimeout(groupPollTimer)
           groupPollTimer = null
+        }
+        if (faultInjectTimer) {
+          clearTimeout(faultInjectTimer)
+          faultInjectTimer = null
         }
       }
 
@@ -534,10 +610,11 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
       }
 
       /**
-       * M33 WP-B #4: bounded controlled termination started by a post-spawn
-       * runtime error (kill failure / IPC failure / abort / child-state ACTIVE
-       * persistence failure) even when NO opts.timeout was set. Requests stop,
-       * arms the escalation, and bounds the whole process by the deadline.
+       * M34 WP-C: bounded controlled termination. Started by a timeout, a
+       * post-spawn runtime error (kill failure / IPC failure / abort /
+       * child-state ACTIVE persistence failure) OR an explicit user signal
+       * through the controller's `requestTermination(reason)` -- the signal
+       * path never waits out the helper's own long timeout (P1-B).
        *
        * Re-entrancy guard: a kill() injection that emits a post-spawn 'error'
        * from inside stopTree() would otherwise re-enter this function through
@@ -545,12 +622,21 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
        * times and only 3 timers were cleared). The FIRST entry owns the
        * termination; later entries are no-ops.
        *
+       * @param {string} reason
        * @returns {void}
        */
       let terminationStarted = false
-      const startControlledTermination = () => {
+      /** @type {string | null} */
+      let terminationReason = null
+      /** @param {string} reason @returns {void} */
+      const startControlledTermination = (reason) => {
         if (terminationStarted) return
         terminationStarted = true
+        terminationReason = reason
+        // Diagnostic only: the reason rides into the final error message via
+        // failClosedSettle below (M34 WP-C: signal/timeout/runtime-error are
+        // distinguishable in the audit trail).
+        void terminationReason
         startTerminationDeadline()
         stopTree('SIGTERM')
         if (!escalationTimer) {
@@ -561,6 +647,30 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
           }, escalationDelayMs)
         }
       }
+
+      /**
+       * M34 WP-C: this call's controller -- the ONLY surface runCli (or a
+       * signal handler) may use to stop this child. Registered in the
+       * activeChildren registry from spawn until settle; removed on settle
+       * (or on a never-spawned error). requestTermination is idempotent:
+       * repeated calls only record that a termination was already in
+       * progress and never create a second timer.
+       */
+      const controller = {
+        /** @param {string} reason @returns {boolean} */
+        requestTermination: (reason) => {
+          if (settled || terminationStarted) {
+            // already in progress / already settled -- idempotent
+            return false
+          }
+          startControlledTermination(reason)
+          return true
+        },
+        get alive() {
+          return !settled
+        },
+      }
+      activeChildren.add(controller)
 
       /**
        * Normal completion: direct child closed AND the controlled group is
@@ -604,7 +714,7 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
       const finishSettleAfterQuiesce = () => {
         if (settled) return
         settled = true
-        activeChildren.delete(child)
+        activeChildren.delete(controller)
         clearOwnedTimers()
         if (runtimeError) {
           reject(runtimeError)
@@ -640,9 +750,12 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
         if (settled) return
         settled = true
         clearOwnedTimers()
+        // M34 WP-B #1: the MANUAL_AUDIT_REQUIRED state records last-known
+        // ownership (pgid/helperPid) so a formal audit acknowledgement can
+        // act on it later -- never a bare QUIESCENCE-shaped state.
         if (opts.childState && typeof opts.childState.onAudit === 'function') {
           try {
-            opts.childState.onAudit(why)
+            opts.childState.onAudit(why, pgid, child.pid ?? null)
           } catch {
             // best effort -- the preserved registry entry and the held lock
             // are the primary fail-closed guarantees
@@ -726,8 +839,10 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
         // (IPC failure / abort / external kill failure) arriving asynchronously
         // even when NO opts.timeout was set -- the controlled termination must
         // start regardless. Small delay so the child has started executing.
+        // M34 WP-C #8: the fault-injection timer is an OWNED timer -- cleared
+        // on settle so no live handle survives the state machine.
         if (deps.postSpawnError !== undefined) {
-          setTimeout(() => {
+          faultInjectTimer = setTimeout(() => {
             if (!settled) {
               child.emit('error', deps.postSpawnError)
             }
@@ -742,7 +857,7 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
             runtimeError = new Error(
               `${cmd}: child-state ACTIVE persistence failed after spawn (${e instanceof Error ? e.message : String(e)})`,
             )
-            startControlledTermination()
+            startControlledTermination('child-state-ACTIVE-persistence-failed')
           }
           try {
             const r = opts.childState.onSpawn(pgid, child.pid ?? null)
@@ -762,7 +877,7 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
           // here -- there is no process, no group and no 'close' to wait for;
           // the registry entry is removed because nothing is alive to leak.
           settled = true
-          activeChildren.delete(child)
+          activeChildren.delete(controller)
           clearOwnedTimers()
           reject(new Error(`failed to start ${cmd}: ${e.message}`))
           return
@@ -774,7 +889,7 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
         runtimeError = new Error(
           `${cmd} failed after spawn (${/** @type {{ code?: string }} */ (/** @type {unknown} */ (e)).code || 'runtime error'}): ${e.message}`,
         )
-        startControlledTermination()
+        startControlledTermination('post-spawn-error')
       })
 
       const stderrStream = child.stderr
@@ -826,7 +941,7 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
               // handler settles (or escalates + polls); 4) escalate if close
               // never arrives. Unified with the post-spawn-error path so the
               // escalation timer is created exactly once (M33 WP-B #4).
-              startControlledTermination()
+              startControlledTermination('timeout')
             }, opts.timeout)
           : null
       timer = mainTimeoutTimer
@@ -1052,8 +1167,11 @@ export function writeAllSync(fd, payload, deps = {}) {
 }
 
 /**
- * M33 WP-A: persistent child-ownership state (single source of truth shared
- * by the lock metadata and the sidecar file).
+ * M33 WP-A / M34 WP-A: persistent child-ownership state (single source of
+ * truth shared by the lock metadata and the sidecar file). M34 adds the
+ * MANUAL_AUDIT_REQUIRED last-known fields: when a group cannot be proven gone,
+ * lastKnownPgid/lastKnownHelperPid/auditReason carry the audit trail in
+ * DEDICATED fields (never disguised as a QUIESCENCE/EMPTY state).
  *
  * @typedef {{
  *   schemaVersion: number,
@@ -1063,13 +1181,17 @@ export function writeAllSync(fd, payload, deps = {}) {
  *   pgid: number | null,
  *   helperPid: number | null,
  *   updatedAt: string,
+ *   lastKnownPgid?: number | null,
+ *   lastKnownHelperPid?: number | null,
+ *   auditReason?: string,
  * }} ChildState
  */
 
 /**
- * Validate a child-state object. Unknown schema, unknown state, nonce/repo
- * mismatch or impossible pid fields are all manual-audit conditions -- never
- * auto-recovered.
+ * M34 WP-A: validate a child-state object against the schema AND the
+ * state/field invariants (CHILD_STATE_FIELD_INVARIANTS). Any impossible
+ * combination, extra dangerous field, unknown schema/state, invalid timestamp
+ * or nonce/repo mismatch refuses recovery (manual audit) -- never guessed.
  *
  * @param {unknown} value
  * @param {string} [expectedNonce] -- lock nonce the child-state must match
@@ -1111,23 +1233,114 @@ export function validateChildState(value, expectedNonce, expectedRepoRealpath) {
       reason: 'child-state repoRealpath does not match lock repoRealpath -- manual audit required',
     }
   }
+  if (typeof cs.updatedAt !== 'string' || !ISO_TIMESTAMP_PATTERN.test(cs.updatedAt)) {
+    return {
+      ok: false,
+      reason:
+        'child-state updatedAt missing or not a strict ISO-8601 timestamp -- manual audit required',
+    }
+  }
+  if (Number.isNaN(Date.parse(cs.updatedAt))) {
+    return {
+      ok: false,
+      reason: 'child-state updatedAt is not a parseable date -- manual audit required',
+    }
+  }
+
   /** @param {unknown} v */
   const posInt = (v) => typeof v === 'number' && Number.isInteger(v) && v > 0
-  if (cs.helperPid !== null && !posInt(cs.helperPid)) {
+
+  // M34 WP-A #1: state/field invariants -- validate the COMBINATION, not just
+  // the field types. Impossible combinations are manual-audit conditions.
+  const invariant =
+    /** @type {Record<string, { pgid: string, helperPid: string, pgidEqualsHelperPid?: boolean, requiresLastKnown?: boolean }>} */ (
+      CHILD_STATE_FIELD_INVARIANTS
+    )[cs.state]
+  /** @param {string} field @returns {string | null} */
+  const checkNull = (field) => {
+    if (cs[field] !== null) {
+      return `child-state ${cs.state} requires ${field} to be null (got ${JSON.stringify(cs[field])}) -- impossible state, manual audit required`
+    }
+    return null
+  }
+  /** @param {string} field @returns {string | null} */
+  const checkPosInt = (field) => {
+    if (!posInt(cs[field])) {
+      return `child-state ${cs.state} requires ${field} to be a positive integer (got ${JSON.stringify(cs[field])}) -- impossible state, manual audit required`
+    }
+    return null
+  }
+  if (invariant.pgid === 'null') {
+    const err = checkNull('pgid')
+    if (err) return { ok: false, reason: err }
+  } else {
+    const err = checkPosInt('pgid')
+    if (err) return { ok: false, reason: err }
+  }
+  if (invariant.helperPid === 'null') {
+    const err = checkNull('helperPid')
+    if (err) return { ok: false, reason: err }
+  } else {
+    const err = checkPosInt('helperPid')
+    if (err) return { ok: false, reason: err }
+  }
+  if (invariant.pgidEqualsHelperPid && cs.pgid !== cs.helperPid) {
     return {
       ok: false,
-      reason: 'child-state helperPid must be null or a positive integer -- manual audit required',
+      reason: `child-state ACTIVE pgid (${JSON.stringify(cs.pgid)}) does not equal helperPid (${JSON.stringify(cs.helperPid)}) -- violates detached group-leader contract, manual audit required`,
     }
   }
-  if (cs.pgid !== null && !posInt(cs.pgid)) {
-    return {
-      ok: false,
-      reason: 'child-state pgid must be null or a positive integer -- manual audit required',
+
+  // M34 WP-A #1: extra fields beyond the schema are dangerous -- reject.
+  const baseFields = [
+    'schemaVersion',
+    'nonce',
+    'repoRealpath',
+    'state',
+    'pgid',
+    'helperPid',
+    'updatedAt',
+  ]
+  const allowed = new Set([
+    ...baseFields,
+    .../** @type {readonly string[]} */ (
+      /** @type {Record<string, readonly string[]>} */ (CHILD_STATE_EXTRA_FIELDS)[cs.state] || []
+    ),
+  ])
+  for (const key of Object.keys(cs)) {
+    if (!allowed.has(key)) {
+      return {
+        ok: false,
+        reason: `child-state contains unexpected field ${JSON.stringify(key)} -- manual audit required`,
+      }
     }
   }
-  if (typeof cs.updatedAt !== 'string' || Number.isNaN(Date.parse(cs.updatedAt))) {
-    return { ok: false, reason: 'child-state updatedAt missing or not an ISO timestamp' }
+
+  // M34 WP-A #1: MANUAL_AUDIT_REQUIRED must carry last-known ownership and a
+  // reason in DEDICATED fields -- never disguised as QUIESCENCE/EMPTY.
+  if (cs.state === CHILD_STATES.MANUAL_AUDIT_REQUIRED) {
+    if (typeof cs.auditReason !== 'string' || cs.auditReason.length === 0) {
+      return {
+        ok: false,
+        reason: 'child-state MANUAL_AUDIT_REQUIRED missing auditReason -- manual audit required',
+      }
+    }
+    if (!posInt(cs.lastKnownPgid)) {
+      return {
+        ok: false,
+        reason:
+          'child-state MANUAL_AUDIT_REQUIRED missing/invalid lastKnownPgid -- manual audit required',
+      }
+    }
+    if (!posInt(cs.lastKnownHelperPid)) {
+      return {
+        ok: false,
+        reason:
+          'child-state MANUAL_AUDIT_REQUIRED missing/invalid lastKnownHelperPid -- manual audit required',
+      }
+    }
   }
+
   return {
     ok: true,
     childState: /** @type {ChildState} */ (cs),
@@ -1135,49 +1348,195 @@ export function validateChildState(value, expectedNonce, expectedRepoRealpath) {
 }
 
 /**
- * Read and validate the child-state sidecar file bound to a lock.
+ * M34 WP-A #4/#5: safely read and validate the nonce-qualified child-state
+ * sidecar bound to a lock.
+ *
+ * Hardening over M33:
+ * - the sidecar basename embeds the lock nonce (strict basename validation --
+ *   no path traversal, nothing but a UUID suffix);
+ * - lstat first: symlink / directory / FIFO / socket / device are all
+ *   rejected (P2-1a: a symlink sidecar was followed and the lock recovered;
+ *   P2-1b: a FIFO sidecar blocked readFileSync forever);
+ * - bounded size: CHILD_STATE_MAX_BYTES -- oversized content is rejected
+ *   before reading;
+ * - open + fstat: the fd must be a regular file with the SAME dev+ino the
+ *   lstat observed -- a replace race between lstat and open is detected;
+ * - read errors, short reads and JSON parse failures are manual-audit
+ *   conditions.
  *
  * @param {string} repoRoot
- * @param {{ readFileSync?: typeof fs.readFileSync, existsSync?: typeof fs.existsSync }} [deps]
+ * @param {string} nonce -- the lock nonce; the sidecar basename must match
+ * @param {{
+ *   lstatSync?: typeof fs.lstatSync,
+ *   openSync?: typeof fs.openSync,
+ *   fstatSync?: typeof fs.fstatSync,
+ *   readSync?: typeof fs.readSync,
+ *   closeSync?: typeof fs.closeSync,
+ * }} [deps]
  * @returns {{ ok: true, childState: ChildState, path: string } | { ok: false, reason: string, path: string }}
  */
-export function readChildStateFile(repoRoot, deps = {}) {
-  const readFileSync = deps.readFileSync || fs.readFileSync
-  const existsSync = deps.existsSync || fs.existsSync
-  const childStatePath = path.join(repoRoot, CHILD_STATE_FILE)
-  if (!existsSync(childStatePath)) {
+export function readChildStateFile(repoRoot, nonce, deps = {}) {
+  const lstatSync = deps.lstatSync || fs.lstatSync
+  const openSync = deps.openSync || fs.openSync
+  const fstatSync = deps.fstatSync || fs.fstatSync
+  const readSync = deps.readSync || fs.readSync
+  const closeSync = deps.closeSync || fs.closeSync
+
+  // Strict basename: nonce-qualified, no separators, no traversal.
+  const basename = childStateFileName(nonce)
+  if (basename.includes('/') || basename.includes('\\') || basename.includes('..')) {
     return {
       ok: false,
-      reason: `${CHILD_STATE_FILE} missing -- cannot prove child ownership -- manual audit required`,
+      reason: `child-state sidecar basename for nonce ${nonce} is unsafe -- manual audit required`,
+      path: path.join(repoRoot, basename),
+    }
+  }
+  const childStatePath = path.join(repoRoot, basename)
+
+  /** @type {fs.Stats} */
+  let lst
+  try {
+    lst = lstatSync(childStatePath)
+  } catch (e) {
+    const err = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
+    if (err.code === 'ENOENT') {
+      return {
+        ok: false,
+        reason: `${basename} missing -- cannot prove child ownership -- manual audit required`,
+        path: childStatePath,
+      }
+    }
+    return {
+      ok: false,
+      reason: `${basename} unreadable (${e instanceof Error ? e.message : String(e)}) -- manual audit required`,
       path: childStatePath,
     }
   }
-  let raw = ''
+  if (lst.isSymbolicLink()) {
+    return {
+      ok: false,
+      reason: `${basename} is a symlink -- manual audit required`,
+      path: childStatePath,
+    }
+  }
+  if (!lst.isFile()) {
+    return {
+      ok: false,
+      reason: `${basename} is not a regular file -- manual audit required`,
+      path: childStatePath,
+    }
+  }
+  if (lst.size > CHILD_STATE_MAX_BYTES) {
+    return {
+      ok: false,
+      reason: `${basename} exceeds the ${CHILD_STATE_MAX_BYTES}-byte sidecar limit (${lst.size} bytes) -- manual audit required`,
+      path: childStatePath,
+    }
+  }
+
+  /** @type {number} */
+  let fd
   try {
-    raw = readFileSync(childStatePath, 'utf8')
+    fd = openSync(childStatePath, 'r')
   } catch (e) {
     return {
       ok: false,
-      reason: `${CHILD_STATE_FILE} unreadable (${e instanceof Error ? e.message : String(e)}) -- manual audit required`,
+      reason: `${basename} open failed (${e instanceof Error ? e.message : String(e)}) -- manual audit required`,
       path: childStatePath,
     }
   }
+  /** @type {fs.Stats} */
+  let fst
+  try {
+    fst = fstatSync(fd)
+  } catch (e) {
+    try {
+      closeSync(fd)
+    } catch {
+      // best effort
+    }
+    return {
+      ok: false,
+      reason: `${basename} fstat failed (${e instanceof Error ? e.message : String(e)}) -- manual audit required`,
+      path: childStatePath,
+    }
+  }
+  // Replace race: the fd must be the exact inode the lstat observed.
+  if (!fst.isFile() || fst.dev !== lst.dev || fst.ino !== lst.ino) {
+    try {
+      closeSync(fd)
+    } catch {
+      // best effort
+    }
+    return {
+      ok: false,
+      reason: `${basename} was replaced between stat and open -- manual audit required`,
+      path: childStatePath,
+    }
+  }
+  if (fst.size > CHILD_STATE_MAX_BYTES) {
+    try {
+      closeSync(fd)
+    } catch {
+      // best effort
+    }
+    return {
+      ok: false,
+      reason: `${basename} exceeds the ${CHILD_STATE_MAX_BYTES}-byte sidecar limit after open (${fst.size} bytes) -- manual audit required`,
+      path: childStatePath,
+    }
+  }
+
+  const buf = Buffer.alloc(fst.size)
+  let offset = 0
+  while (offset < buf.length) {
+    let n = 0
+    try {
+      n = readSync(fd, buf, offset, buf.length - offset, null)
+    } catch (e) {
+      try {
+        closeSync(fd)
+      } catch {
+        // best effort
+      }
+      return {
+        ok: false,
+        reason: `${basename} read failed (${e instanceof Error ? e.message : String(e)}) -- manual audit required`,
+        path: childStatePath,
+      }
+    }
+    if (n === 0) break // EOF before expected size -- the file shrank mid-read
+    offset += n
+  }
+  try {
+    closeSync(fd)
+  } catch {
+    // best effort -- content already read
+  }
+  if (offset !== buf.length) {
+    return {
+      ok: false,
+      reason: `${basename} shrank while reading (read ${offset}/${buf.length} bytes) -- manual audit required`,
+      path: childStatePath,
+    }
+  }
+
   /** @type {unknown} */
   let parsed
   try {
-    parsed = JSON.parse(raw)
+    parsed = JSON.parse(buf.toString('utf8'))
   } catch {
     return {
       ok: false,
-      reason: `${CHILD_STATE_FILE} is not valid JSON -- manual audit required`,
+      reason: `${basename} is not valid JSON -- manual audit required`,
       path: childStatePath,
     }
   }
-  const validated = validateChildState(parsed)
+  const validated = validateChildState(parsed, nonce)
   if (!validated.ok) {
     return {
       ok: false,
-      reason: `${CHILD_STATE_FILE} rejected: ${validated.reason}`,
+      reason: `${basename} rejected: ${validated.reason}`,
       path: childStatePath,
     }
   }
@@ -1214,8 +1573,9 @@ export function writeChildStateSync(
   const renameSync = deps.renameSync || fs.renameSync
   const unlinkSync = deps.unlinkSync || fs.unlinkSync
   const fsyncSync = deps.fsyncSync || fs.fsyncSync
-  const childStatePath = path.join(repoRoot, CHILD_STATE_FILE)
-  const tmpPath = path.join(repoRoot, `.${CHILD_STATE_FILE}.tmp-${nonce}`)
+  const basename = childStateFileName(nonce)
+  const childStatePath = path.join(repoRoot, basename)
+  const tmpPath = path.join(repoRoot, `.${basename}.tmp`)
   /** @type {ChildState} */
   const stateObj = {
     schemaVersion: CHILD_STATE_SCHEMA_VERSION,
@@ -1225,6 +1585,14 @@ export function writeChildStateSync(
     pgid,
     helperPid,
     updatedAt: new Date().toISOString(),
+  }
+  // M34 WP-A #3: the SAME validator used for recovery runs before writing --
+  // the implementation can never persist an impossible state (a write of an
+  // invalid state would otherwise be read back as a manual-audit condition
+  // forever).
+  const selfCheck = validateChildState(stateObj, nonce, repoRealpath)
+  if (!selfCheck.ok) {
+    throw new Error(`refusing to write impossible child-state: ${selfCheck.reason}`)
   }
   const payload = Buffer.from(JSON.stringify(stateObj) + '\n', 'utf8')
   let fd
@@ -1268,7 +1636,9 @@ export function writeChildStateSync(
 /**
  * Child-state manager bound to a specific lock acquisition (nonce). Used by
  * execFileAsync hooks and by runCli's unified finally. All state transitions
- * are durable or throw (fail closed).
+ * are durable or throw (fail closed). M34 WP-A: every artifact (path, temp,
+ * cleanup) is nonce-qualified so an old recovery can never touch a new
+ * acquisition's sidecar.
  *
  * @param {string} repoRoot
  * @param {string} lockNonce
@@ -1279,13 +1649,13 @@ export function writeChildStateSync(
  *   beginSpawn: () => void,
  *   onSpawn: (pgid: number | null, helperPid: number | null) => void,
  *   onQuiesced: () => void,
- *   onAudit: (why: string) => void,
+ *   onAudit: (why: string, lastKnownPgid?: number | null, lastKnownHelperPid?: number | null) => void,
  *   finalize: () => boolean,
  *   cleanup: () => void,
  * }}
  */
 export function makeChildStateManager(repoRoot, lockNonce, repoRealpath, deps = {}) {
-  const childStatePath = path.join(repoRoot, CHILD_STATE_FILE)
+  const childStatePath = path.join(repoRoot, childStateFileName(lockNonce))
   /**
    * @param {string} state
    * @param {number | null} pgid
@@ -1299,9 +1669,76 @@ export function makeChildStateManager(repoRoot, lockNonce, repoRealpath, deps = 
     // execFileAsync hook contract (onSpawn/onQuiesced/onAudit).
     onSpawn: (pgid, helperPid) => write(CHILD_STATES.ACTIVE, pgid, helperPid),
     onQuiesced: () => write(CHILD_STATES.QUIESCENCE_PROVEN, null, null),
-    onAudit: (why) => {
-      void why
-      write(CHILD_STATES.MANUAL_AUDIT_REQUIRED, null, null)
+    // M34 WP-B #1: MANUAL_AUDIT_REQUIRED keeps last-known ownership in
+    // DEDICATED fields (lastKnownPgid/lastKnownHelperPid) plus the reason --
+    // never disguised as a QUIESCENCE/EMPTY state, so a formal audit
+    // acknowledgement can act on it. The write is atomic (temp+fsync+rename)
+    // and self-validated.
+    onAudit: (why, lastKnownPgid = null, lastKnownHelperPid = null) => {
+      const sidecar = {
+        schemaVersion: CHILD_STATE_SCHEMA_VERSION,
+        nonce: lockNonce,
+        repoRealpath,
+        state: CHILD_STATES.MANUAL_AUDIT_REQUIRED,
+        pgid: null,
+        helperPid: null,
+        lastKnownPgid: lastKnownPgid ?? null,
+        lastKnownHelperPid: lastKnownHelperPid ?? null,
+        auditReason: why,
+        updatedAt: new Date().toISOString(),
+      }
+      const selfCheck = validateChildState(sidecar, lockNonce, repoRealpath)
+      if (!selfCheck.ok) {
+        // The audit state must always be persistable when a real fail-closed
+        // path runs; a failure here means the world is inconsistent -- surface
+        // it loudly (the preserved registry entry and held lock remain the
+        // primary fail-closed guarantees).
+        throw new Error(
+          `refusing to write impossible MANUAL_AUDIT_REQUIRED state: ${selfCheck.reason}`,
+        )
+      }
+      const tmpPath = path.join(repoRoot, `.${childStateFileName(lockNonce)}.tmp`)
+      const payload = Buffer.from(JSON.stringify(sidecar, null, 2) + '\n', 'utf8')
+      let fd
+      try {
+        fd = (deps.openSync || fs.openSync)(tmpPath, 'wx', 0o600)
+      } catch (e) {
+        throw new Error(
+          `child-state audit temp open failed (${e instanceof Error ? e.message : String(e)})`,
+        )
+      }
+      try {
+        writeAllSync(fd, payload, { writeSync: deps.writeSync || fs.writeSync })
+        ;(deps.fsyncSync || fs.fsyncSync)(fd)
+        ;(deps.closeSync || fs.closeSync)(fd)
+      } catch (e) {
+        try {
+          ;(deps.closeSync || fs.closeSync)(fd)
+        } catch {
+          // original error wins
+        }
+        try {
+          ;(deps.unlinkSync || fs.unlinkSync)(tmpPath)
+        } catch {
+          // best effort
+        }
+        throw new Error(
+          `child-state audit write failed (${e instanceof Error ? e.message : String(e)})`,
+        )
+      }
+      try {
+        ;(deps.renameSync || fs.renameSync)(tmpPath, childStatePath)
+        fsyncParentDirectorySync(repoRoot, deps)
+      } catch (e) {
+        try {
+          ;(deps.unlinkSync || fs.unlinkSync)(tmpPath)
+        } catch {
+          // best effort
+        }
+        throw new Error(
+          `child-state audit rename/durability failed (${e instanceof Error ? e.message : String(e)})`,
+        )
+      }
     },
     finalize: () => {
       try {
@@ -1311,6 +1748,9 @@ export function makeChildStateManager(repoRoot, lockNonce, repoRealpath, deps = 
         return false
       }
     },
+    // M34 WP-A #6: cleanup targets the nonce-qualified sidecar ONLY -- a stale
+    // recovery cleanup can never delete a newer acquisition's sidecar (which
+    // has a different nonce in its basename).
     cleanup: () => {
       try {
         fs.unlinkSync(childStatePath)
@@ -1353,16 +1793,19 @@ export function validateLockMetadata(raw) {
   if (typeof parsed.startedAt !== 'string' || Number.isNaN(Date.parse(parsed.startedAt))) {
     return { ok: false, reason: 'startedAt missing or not an ISO timestamp' }
   }
+  // M34 WP-A #4: the childStateFile must be the EXACT nonce-qualified basename
+  // for this lock's nonce -- nothing else (prevents path traversal and any
+  // attempt to bind the lock to a foreign sidecar).
   if (typeof parsed.nonce !== 'string' || !UUID_PATTERN.test(parsed.nonce)) {
     return { ok: false, reason: 'nonce missing or not a UUID' }
   }
   if (typeof parsed.repoRealpath !== 'string' || parsed.repoRealpath.length === 0) {
     return { ok: false, reason: 'repoRealpath missing' }
   }
-  if (parsed.childStateFile !== CHILD_STATE_FILE) {
+  if (parsed.childStateFile !== childStateFileName(parsed.nonce)) {
     return {
       ok: false,
-      reason: `unsupported childStateFile ${JSON.stringify(parsed.childStateFile)} -- manual audit required`,
+      reason: `unsupported childStateFile ${JSON.stringify(parsed.childStateFile)} (expected ${childStateFileName(parsed.nonce)}) -- manual audit required`,
     }
   }
   const csValidated = validateChildState(parsed.childState, parsed.nonce, parsed.repoRealpath)
@@ -1395,6 +1838,7 @@ export function validateLockMetadata(raw) {
  * @typedef {{
  *   openSync?: (path: fs.PathLike, flags: string | number, mode?: number | null) => number,
  *   writeSync?: (fd: number, buffer: ArrayBufferView, offset?: number | null, length?: number | null) => number,
+ *   readSync?: (fd: number, buffer: ArrayBufferView, offset?: number | null, length?: number | null, position?: fs.ReadPosition | null) => number,
  *   closeSync?: typeof fs.closeSync,
  *   existsSync?: typeof fs.existsSync,
  *   readFileSync?: typeof fs.readFileSync,
@@ -1452,7 +1896,7 @@ export function acquireLock(repoRoot, deps) {
     startedAt: new Date().toISOString(),
     nonce,
     repoRealpath,
-    childStateFile: CHILD_STATE_FILE,
+    childStateFile: childStateFileName(nonce),
     childState: {
       schemaVersion: CHILD_STATE_SCHEMA_VERSION,
       nonce,
@@ -1680,10 +2124,26 @@ function diagnoseExistingLock(lockPath, readFileSync) {
 }
 
 /**
- * Attempt to recover a stale lock. Only succeeds when the lock provably
- * belongs to this repo, has a known schema, complete valid metadata, and a
- * dead owner PID. Unknown schema, EPERM, or incomplete metadata require a
- * manual audit and are NEVER auto-recovered (WP-B #7).
+ * M34 WP-A: attempt to recover a stale lock. Succeeds ONLY when every
+ * contract holds: the lock provably belongs to this repo, has the exact
+ * schema (v3, nonce-qualified sidecar), complete valid metadata, a dead owner
+ * PID, and a child-state whose state/field INVARIANTS prove no live group
+ * exists. Unknown schema, EPERM, impossible state combinations, live ACTIVE
+ * groups or any replace race are manual-audit conditions -- NEVER recovered.
+ *
+ * M34 hardening over M33:
+ * - the sidecar is read by nonce-qualified basename with lstat/no-follow/
+ *   bounded-size/replace-race guards (P2-1a/1b: symlink was followed and a
+ *   FIFO blocked recovery);
+ * - EMPTY/QUIESCENCE_PROVEN recovery requires the invariant pgid/helperPid
+ *   === null (enforced by validateChildState); a live group under a
+ *   "no process" claim is impossible and refused (P1-A-1/P1-A-2);
+ * - before deletion the lock metadata AND inode and the sidecar are
+ *   re-verified against the values already audited -- a replaced lock or
+ *   sidecar is never deleted (M34 WP-A #7);
+ * - cleanup targets the nonce-qualified sidecar of THIS lock only -- an old
+ *   recovery can never delete a newer acquisition's sidecar (P2-2);
+ * - recovery NEVER sends a signal to a historical PGID -- probe only.
  *
  * @param {string} repoRoot
  * @param {{
@@ -1776,12 +2236,10 @@ export function recoverLock(repoRoot, deps) {
     // ESRCH -- process not running; child ownership must still be proven
   }
 
-  // M33 WP-A #9: child-state gate. A v1 lock (or any lock whose child-state
-  // sidecar is missing/invalid/mismatched) is NEVER auto-recovered -- the
-  // owner-PID check alone cannot prove a detached helper group is gone
-  // (probe P1-A: recover succeeded and a replacement lock was acquired while
-  // the old helper was still writing the sentinel).
-  const childStateRes = readChildStateFile(repoRoot, deps)
+  // M34 WP-A: child-state gate -- read the NONCE-QUALIFIED sidecar with the
+  // hardened read path (lstat/no-follow/size/replace-race). A missing,
+  // invalid, oversized, symlinked or replaced sidecar is NEVER recovered.
+  const childStateRes = readChildStateFile(repoRoot, metadata.nonce, deps)
   if (!childStateRes.ok) {
     return { recovered: false, reason: `lock recovery refused: ${childStateRes.reason}` }
   }
@@ -1801,11 +2259,17 @@ export function recoverLock(repoRoot, deps) {
     }
   }
 
+  // M34 WP-A #8/#9: state branch. IMPOSSIBLE state/field combinations were
+  // already rejected by validateChildState (EMPTY/QUIESCENCE_PROVEN with any
+  // non-null PID field, ACTIVE with null/mismatched PIDs, MANUAL without
+  // last-known fields, extra dangerous fields). What remains here is the
+  // per-state decision; recovery never signals a historical PGID.
   switch (childState.state) {
     case CHILD_STATES.EMPTY:
     case CHILD_STATES.QUIESCENCE_PROVEN:
-      // No helper was ever spawned, or the group was already proven absent:
-      // recovery is safe once the owner PID is dead.
+      // M34 WP-A #9: invariant fields are exactly null (validated above) --
+      // no helper was ever spawned, or the group was already proven absent.
+      // Recovery is safe once the owner PID is dead.
       break
     case CHILD_STATES.SPAWN_INTENT:
       // A helper may have been spawned but ACTIVE was never persisted (the
@@ -1816,33 +2280,31 @@ export function recoverLock(repoRoot, deps) {
           'lock recovery refused: child-state is SPAWN_INTENT -- cannot prove no process was spawned -- manual audit required',
       }
     case CHILD_STATES.MANUAL_AUDIT_REQUIRED:
+      // M34 WP-B #2: normal --recover-lock keeps refusing MANUAL state; only
+      // the explicit audit acknowledgement path may act on it.
       return {
         recovered: false,
         reason:
-          'lock recovery refused: child-state is MANUAL_AUDIT_REQUIRED -- manual audit required',
+          'lock recovery refused: child-state is MANUAL_AUDIT_REQUIRED -- use the explicit audit acknowledgement (see RELEASING.md)',
       }
     case CHILD_STATES.ACTIVE: {
-      if (childState.pgid === null || childState.pgid <= 0) {
-        return {
-          recovered: false,
-          reason:
-            'lock recovery refused: child-state ACTIVE without a known PGID -- manual audit required',
-        }
-      }
       // Probe only (signal 0): never deliver a signal to a possibly-reused
       // PGID. ESRCH proves the group is gone; anything else is unprovable.
+      // (validateChildState guaranteed pgid === helperPid positive; TS needs
+      // the explicit narrowing.)
+      const activePgid = /** @type {number} */ (childState.pgid)
       try {
-        process.kill(-childState.pgid, 0)
+        process.kill(-activePgid, 0)
         return {
           recovered: false,
-          reason: `lock recovery refused: ACTIVE process group ${childState.pgid} still exists (or its state is unprovable) -- manual audit required`,
+          reason: `lock recovery refused: ACTIVE process group ${activePgid} still exists (or its state is unprovable) -- manual audit required`,
         }
       } catch (e) {
         const kerr = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
         if (kerr.code !== 'ESRCH') {
           return {
             recovered: false,
-            reason: `lock recovery refused: cannot prove ACTIVE group ${childState.pgid} gone (${kerr.code || 'unknown'}) -- manual audit required`,
+            reason: `lock recovery refused: cannot prove ACTIVE group ${activePgid} gone (${kerr.code || 'unknown'}) -- manual audit required`,
           }
         }
         // ESRCH + all nonce/repo/schema/inode contracts hold -> explicit
@@ -1857,6 +2319,57 @@ export function recoverLock(repoRoot, deps) {
       }
   }
 
+  // M34 WP-A #7: re-verify BEFORE deleting -- the lock must still be the
+  // same regular file with the same metadata, and the sidecar must still be
+  // the same regular file. A replaced lock or sidecar is never deleted.
+  let recheck
+  try {
+    const st = lstatSync(lockPath)
+    if (st.isSymbolicLink() || !st.isFile()) {
+      return {
+        recovered: false,
+        reason: `lock recovery refused: ${LOCK_FILE} changed shape before deletion -- manual audit required`,
+      }
+    }
+    recheck = validateLockMetadata(readFileSync(lockPath, 'utf8'))
+    if (!recheck.ok) {
+      return {
+        recovered: false,
+        reason: `lock recovery refused: ${LOCK_FILE} metadata changed before deletion (${recheck.reason})`,
+      }
+    }
+    if (
+      recheck.metadata.nonce !== metadata.nonce ||
+      recheck.metadata.pid !== metadata.pid ||
+      recheck.metadata.repoRealpath !== currentRepoRealpath
+    ) {
+      return {
+        recovered: false,
+        reason:
+          'lock recovery refused: lock metadata changed before deletion -- manual audit required',
+      }
+    }
+  } catch (e) {
+    return {
+      recovered: false,
+      reason: `lock recovery refused: cannot re-verify lock before deletion (${/** @type {Error} */ (e).message})`,
+    }
+  }
+  try {
+    const sst = lstatSync(childStateRes.path)
+    if (sst.isSymbolicLink() || !sst.isFile()) {
+      return {
+        recovered: false,
+        reason: `lock recovery refused: sidecar ${path.basename(childStateRes.path)} changed shape before deletion -- manual audit required`,
+      }
+    }
+  } catch {
+    return {
+      recovered: false,
+      reason: 'lock recovery refused: sidecar disappeared before deletion -- manual audit required',
+    }
+  }
+
   try {
     unlinkSync(lockPath)
   } catch (e) {
@@ -1865,14 +2378,243 @@ export function recoverLock(repoRoot, deps) {
       reason: `unlink failed (${/** @type {Error} */ (e).message}) -- manual audit required`,
     }
   }
-  // Best-effort sidecar cleanup: the lock is already gone; a stale sidecar is
-  // bound to the old nonce and harmless (the next acquire overwrites it).
+  // M34 WP-A #6: cleanup targets THIS lock's nonce-qualified sidecar only --
+  // an old recovery can never delete a newer acquisition's sidecar.
   try {
-    fs.unlinkSync(childStateRes.path)
+    unlinkSync(childStateRes.path)
   } catch {
-    // best effort
+    // best effort -- the lock is gone; a stale sidecar is bound to its
+    // (removed) lock nonce and harmless
   }
   return { recovered: true }
+}
+
+/**
+ * M34 WP-B #3/#4/#6: explicit audit acknowledgement for a MANUAL_AUDIT_REQUIRED
+ * lock. This is the ONLY formal recovery path for MANUAL state -- maintainers
+ * no longer hand-edit the sidecar JSON.
+ *
+ * The operator must supply the exact lock nonce and the exact last-known PGID
+ * recorded in the MANUAL state. The function:
+ * - re-reads and re-validates the lock metadata (schema/nonce/inode/repo);
+ * - requires state === MANUAL_AUDIT_REQUIRED;
+ * - requires the supplied nonce to match the lock nonce EXACTLY;
+ * - requires the supplied PGID to match lastKnownPgid EXACTLY;
+ * - requires owner PID ESRCH (alive/EPERM refuses);
+ * - requires the last-known group to be ESRCH (probe only -- never signals);
+ * - refuses on ANY mismatch with ZERO deletions;
+ * - on success deletes the lock and its nonce-qualified sidecar (state
+ *   acknowledgement only -- it never kills processes).
+ *
+ * @param {string} repoRoot
+ * @param {{ nonce: string, lastKnownPgid: number }} request
+ * @param {{
+ *   existsSync?: typeof fs.existsSync,
+ *   readFileSync?: typeof fs.readFileSync,
+ *   unlinkSync?: typeof fs.unlinkSync,
+ *   realpathSync?: typeof fs.realpathSync,
+ *   lstatSync?: typeof fs.lstatSync,
+ * }} [deps]
+ * @returns {{ acknowledged: boolean, reason?: string }}
+ */
+export function auditLockAcknowledgement(repoRoot, request, deps = {}) {
+  const readFileSync = deps.readFileSync || fs.readFileSync
+  const unlinkSync = deps.unlinkSync || fs.unlinkSync
+  const realpathSync = deps.realpathSync || fs.realpathSync
+  const lstatSync = deps.lstatSync || fs.lstatSync
+  const existsSync = deps.existsSync || fs.existsSync
+  const lockPath = path.join(repoRoot, LOCK_FILE)
+
+  if (typeof request !== 'object' || request === null) {
+    return {
+      acknowledged: false,
+      reason: 'audit acknowledgement requires { nonce, lastKnownPgid }',
+    }
+  }
+  const { nonce, lastKnownPgid } = request
+  if (typeof nonce !== 'string' || !UUID_PATTERN.test(nonce)) {
+    return {
+      acknowledged: false,
+      reason: 'audit acknowledgement requires the exact lock nonce (UUID)',
+    }
+  }
+  if (!Number.isInteger(lastKnownPgid) || lastKnownPgid <= 0) {
+    return {
+      acknowledged: false,
+      reason: 'audit acknowledgement requires the exact last-known PGID (positive integer)',
+    }
+  }
+  if (!existsSync(lockPath)) {
+    return { acknowledged: false, reason: 'no lock file found' }
+  }
+
+  // Shape + inode capture of the lock under audit.
+  let lockStat
+  try {
+    lockStat = lstatSync(lockPath)
+    if (lockStat.isSymbolicLink() || !lockStat.isFile()) {
+      return {
+        acknowledged: false,
+        reason: `lock file ${LOCK_FILE} is not a regular file -- refusing`,
+      }
+    }
+  } catch {
+    return { acknowledged: false, reason: `cannot stat ${lockPath}` }
+  }
+
+  let raw
+  try {
+    raw = readFileSync(lockPath, 'utf8')
+  } catch (e) {
+    return {
+      acknowledged: false,
+      reason: `lock file ${LOCK_FILE} unreadable (${/** @type {Error} */ (e).message}) -- refusing`,
+    }
+  }
+  const validated = validateLockMetadata(raw)
+  if (!validated.ok) {
+    return { acknowledged: false, reason: `lock file ${LOCK_FILE} rejected: ${validated.reason}` }
+  }
+  const metadata = validated.metadata
+
+  const currentRepoRealpath = realpathSync(repoRoot)
+  if (metadata.repoRealpath !== currentRepoRealpath) {
+    return {
+      acknowledged: false,
+      reason: `lock belongs to a different repo: ${metadata.repoRealpath}`,
+    }
+  }
+
+  // Exact nonce.
+  if (metadata.nonce !== nonce) {
+    return {
+      acknowledged: false,
+      reason: `audit acknowledgement refused: nonce does not match the lock (lock nonce ${metadata.nonce}) -- zero deletions`,
+    }
+  }
+
+  // Must be MANUAL state -- acknowledging a non-MANUAL state is refused.
+  const childStateRes = readChildStateFile(repoRoot, metadata.nonce, deps)
+  if (!childStateRes.ok) {
+    return { acknowledged: false, reason: `audit acknowledgement refused: ${childStateRes.reason}` }
+  }
+  const childState = childStateRes.childState
+  if (childState.state !== CHILD_STATES.MANUAL_AUDIT_REQUIRED) {
+    return {
+      acknowledged: false,
+      reason: `audit acknowledgement refused: child-state is ${childState.state}, not MANUAL_AUDIT_REQUIRED -- zero deletions`,
+    }
+  }
+
+  // Exact last-known PGID.
+  if (childState.lastKnownPgid !== lastKnownPgid) {
+    return {
+      acknowledged: false,
+      reason: `audit acknowledgement refused: lastKnownPgid ${childState.lastKnownPgid} does not match requested ${lastKnownPgid} -- zero deletions`,
+    }
+  }
+
+  // Owner must be ESRCH (alive / EPERM refuses).
+  try {
+    process.kill(metadata.pid, 0)
+    return {
+      acknowledged: false,
+      reason: `audit acknowledgement refused: PID ${metadata.pid} is still running`,
+    }
+  } catch (e) {
+    const kerr = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
+    if (kerr.code === 'EPERM') {
+      return {
+        acknowledged: false,
+        reason: `audit acknowledgement refused: PID ${metadata.pid} status unknown (EPERM)`,
+      }
+    }
+    if (kerr.code !== 'ESRCH') {
+      return {
+        acknowledged: false,
+        reason: `audit acknowledgement refused: cannot determine PID ${metadata.pid} status`,
+      }
+    }
+  }
+
+  // Last-known group must be ESRCH -- probe only, never a signal.
+  try {
+    process.kill(-lastKnownPgid, 0)
+    return {
+      acknowledged: false,
+      reason: `audit acknowledgement refused: last-known process group ${lastKnownPgid} still exists (or its state is unprovable) -- zero deletions; clean it up externally and retry`,
+    }
+  } catch (e) {
+    const kerr = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
+    if (kerr.code !== 'ESRCH') {
+      return {
+        acknowledged: false,
+        reason: `audit acknowledgement refused: cannot prove last-known group ${lastKnownPgid} gone (${kerr.code || 'unknown'}) -- zero deletions`,
+      }
+    }
+  }
+
+  // Final re-verification before deletion (same inode + same metadata).
+  try {
+    const st = lstatSync(lockPath)
+    if (st.isSymbolicLink() || !st.isFile() || st.dev !== lockStat.dev || st.ino !== lockStat.ino) {
+      return {
+        acknowledged: false,
+        reason:
+          'audit acknowledgement refused: lock file was replaced during acknowledgement -- zero deletions',
+      }
+    }
+    const recheck = validateLockMetadata(readFileSync(lockPath, 'utf8'))
+    if (
+      !recheck.ok ||
+      recheck.metadata.nonce !== metadata.nonce ||
+      recheck.metadata.pid !== metadata.pid
+    ) {
+      return {
+        acknowledged: false,
+        reason:
+          'audit acknowledgement refused: lock metadata changed during acknowledgement -- zero deletions',
+      }
+    }
+  } catch {
+    return {
+      acknowledged: false,
+      reason:
+        'audit acknowledgement refused: cannot re-verify lock before deletion -- zero deletions',
+    }
+  }
+  try {
+    const sst = lstatSync(childStateRes.path)
+    if (sst.isSymbolicLink() || !sst.isFile()) {
+      return {
+        acknowledged: false,
+        reason:
+          'audit acknowledgement refused: sidecar changed shape during acknowledgement -- zero deletions',
+      }
+    }
+  } catch {
+    return {
+      acknowledged: false,
+      reason:
+        'audit acknowledgement refused: sidecar disappeared during acknowledgement -- zero deletions',
+    }
+  }
+
+  // Acknowledgement ONLY: delete the lock + its nonce-qualified sidecar.
+  try {
+    unlinkSync(lockPath)
+  } catch (e) {
+    return {
+      acknowledged: false,
+      reason: `audit acknowledgement failed: unlink ${LOCK_FILE} failed (${/** @type {Error} */ (e).message}) -- zero further deletions`,
+    }
+  }
+  try {
+    unlinkSync(childStateRes.path)
+  } catch {
+    // best effort -- the lock is gone
+  }
+  return { acknowledged: true }
 }
 
 // ---------------------------------------------------------------------------
@@ -3397,6 +4139,11 @@ export async function runCli(argv, io = {}) {
   let force = false
   let recoverFlag = false
   let recoverLockFlag = false
+  // M34 WP-B #3: explicit audit acknowledgement -- the ONLY formal recovery
+  // path for MANUAL_AUDIT_REQUIRED state (maintainers no longer hand-edit the
+  // sidecar JSON). Usage: --audit-lock <nonce> <lastKnownPgid>
+  /** @type {string[] | null} */
+  let auditLockArgs = null
 
   for (const arg of args) {
     if (arg === '--force') {
@@ -3405,22 +4152,36 @@ export async function runCli(argv, io = {}) {
       recoverFlag = true
     } else if (arg === '--recover-lock') {
       recoverLockFlag = true
+    } else if (arg === '--audit-lock') {
+      auditLockArgs = []
+    } else if (auditLockArgs !== null) {
+      // the two positional arguments following --audit-lock
+      auditLockArgs.push(arg)
     } else {
       stderr.write(`unknown option: ${arg}\n`)
       stderr.write(
-        'Usage: node scripts/prepare-release-assets.mjs [--force] [--recover] [--recover-lock]\n',
+        'Usage: node scripts/prepare-release-assets.mjs [--force] [--recover] [--recover-lock] [--audit-lock <nonce> <lastKnownPgid>]\n',
       )
       return 2
     }
   }
 
-  // M28 WP-F: --force, --recover and --recover-lock are mutually exclusive.
-  // Reject conflicts BEFORE any lock is created.
-  const flagCount = (force ? 1 : 0) + (recoverFlag ? 1 : 0) + (recoverLockFlag ? 1 : 0)
+  if (auditLockArgs !== null && auditLockArgs.length !== 2) {
+    stderr.write('--audit-lock requires exactly two arguments: <nonce> <lastKnownPgid>\n')
+    return 2
+  }
+
+  // M28 WP-F / M34 WP-B: --force, --recover, --recover-lock and --audit-lock
+  // are mutually exclusive. Reject conflicts BEFORE any lock is created.
+  const flagCount =
+    (force ? 1 : 0) +
+    (recoverFlag ? 1 : 0) +
+    (recoverLockFlag ? 1 : 0) +
+    (auditLockArgs !== null ? 1 : 0)
   if (flagCount > 1) {
-    stderr.write('--force, --recover and --recover-lock are mutually exclusive\n')
+    stderr.write('--force, --recover, --recover-lock and --audit-lock are mutually exclusive\n')
     stderr.write(
-      'Usage: node scripts/prepare-release-assets.mjs [--force] [--recover] [--recover-lock]\n',
+      'Usage: node scripts/prepare-release-assets.mjs [--force] [--recover] [--recover-lock] [--audit-lock <nonce> <lastKnownPgid>]\n',
     )
     return 2
   }
@@ -3453,6 +4214,22 @@ export async function runCli(argv, io = {}) {
     return 1
   }
 
+  // M34 WP-B #3: --audit-lock runs OUTSIDE the lock domain (like
+  // --recover-lock) and never sends signals -- it only acknowledges a
+  // MANUAL_AUDIT_REQUIRED state after the operator externally confirmed the
+  // last-known group is gone.
+  if (auditLockArgs !== null) {
+    const nonce = auditLockArgs[0]
+    const lastKnownPgid = Number(auditLockArgs[1])
+    const result = auditLockAcknowledgement(repoRoot, { nonce, lastKnownPgid })
+    if (result.acknowledged) {
+      stdout.write('Lock audit acknowledged; lock and its child-state sidecar removed.\n')
+      return 0
+    }
+    stderr.write(`Lock audit acknowledgement failed: ${result.reason}\n`)
+    return 1
+  }
+
   // M30 WP-A: register the signal handlers BEFORE acquiring the lock so a
   // signal arriving during lock acquisition or the transaction is observed by
   // the protocol (never the default raw death). process.on (not process.once)
@@ -3474,28 +4251,18 @@ export async function runCli(argv, io = {}) {
           process.exitCode = code
         },
       })
-      // M33 WP-C #5: request every active helper to stop NOW (controlled
-      // SIGTERM to each controlled process group) instead of only recording
-      // the termination request and waiting for the helper's own timeout.
-      // The execFileAsync state machine still owns escalation (SIGKILL) and
-      // the group-gone proof; transaction stage boundaries still refuse to
-      // start new stages. This is the "transaction-stage-consistent" child
-      // termination requested by M33 -- a signal-observed run never waits
-      // out a long helper timeout.
-      for (const child of activeChildren) {
+      // M34 WP-C: request every active child CONTROLLER to start its bounded
+      // controlled termination NOW (SIGTERM -> escalation -> deadline ->
+      // group-gone proof). runCli never reaches into a ChildProcess directly
+      // -- the execFileAsync state machine owns escalation and the
+      // group-gone proof; transaction stage boundaries still refuse to start
+      // new stages. A signal-observed run never waits out a helper's own
+      // long timeout (P1-B: the parent stayed alive >10s after one SIGTERM).
+      for (const controller of activeChildren) {
         try {
-          if (process.platform !== 'win32') {
-            if (child.pid !== undefined) {
-              process.kill(-child.pid, sig)
-            } else {
-              child.kill(sig)
-            }
-          } else {
-            child.kill(sig)
-          }
+          controller.requestTermination(`signal:${sig}`)
         } catch {
-          // group already gone or unprovable -- the execFileAsync state
-          // machine owns the outcome; never a crash here
+          // the controller's state machine owns the outcome; never crash here
         }
       }
     } else {
