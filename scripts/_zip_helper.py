@@ -156,11 +156,12 @@ def validate_and_open(file_path: str, dist_dir: str) -> tuple[int, str]:
 
 
 def verify_read_identity(fd: int, st_initial: os.stat_result, total_read: int) -> None:
-    """Post-read integrity gate (M27 WP-F).
+    """Post-read integrity gate (M27 WP-F, hardened M28 WP-E).
 
-    Fails when the file changed length or identity while being read --
-    the produced bytes would otherwise silently mismatch the directory
-    state the transaction believes it archived.
+    Fails when the file changed length, identity, or content metadata
+    (mtime_ns/ctime_ns) while being read. A same-inode, same-size rewrite
+    is therefore detected instead of being silently archived as a torn
+    snapshot.
     """
     if total_read != st_initial.st_size:
         fail(
@@ -173,6 +174,43 @@ def verify_read_identity(fd: int, st_initial: os.stat_result, total_read: int) -
         st_initial.st_ino,
     ):
         fail("file identity changed during read")
+    if (
+        st_after.st_mtime_ns != st_initial.st_mtime_ns
+        or st_after.st_ctime_ns != st_initial.st_ctime_ns
+    ):
+        fail("file content metadata (mtime/ctime) changed during read")
+
+
+def validate_entry_name(entry: str) -> None:
+    """Validate a manifest ZIP entry name (M28 WP-E).
+
+    Mirror scripts/release-artifact-contract.mjs validateZipEntry so the
+    helper itself is fail-closed even when invoked directly: non-empty
+    POSIX-relative path, no absolute path, no ".." segment, no backslash,
+    no empty or "." segment, no forbidden segment, no .map suffix, no
+    control characters.
+    """
+    if not isinstance(entry, str) or not entry:
+        fail(f"invalid or empty zip entry: {entry!r}")
+    if entry.startswith("/"):
+        fail(f"absolute zip entry: {entry}")
+    if "\\" in entry:
+        fail(f"backslash in zip entry: {entry}")
+    for ch in entry:
+        if ord(ch) < 0x20 or ord(ch) == 0x7F:
+            fail(f"control character in zip entry: {entry!r}")
+    segments = entry.split("/")
+    for seg in segments:
+        if seg == "..":
+            fail(f"path traversal in zip entry: {entry}")
+        if seg == ".":
+            fail(f"dot segment in zip entry: {entry}")
+        if not seg:
+            fail(f"empty segment in zip entry: {entry}")
+        if seg in ("node_modules", "src"):
+            fail(f"forbidden segment {seg!r} in zip entry: {entry}")
+    if entry.endswith(".map"):
+        fail(f"source map in zip entry: {entry}")
 
 
 def main() -> None:
@@ -209,10 +247,12 @@ def main() -> None:
                 entry = item.get("entry", "")
                 file_path = item.get("path", "")
 
-                if not entry:
+                if not isinstance(entry, str) or not entry:
                     fail(f"manifest item missing 'entry': {item}")
                 if not file_path:
                     fail(f"manifest item missing 'path': {item}")
+
+                validate_entry_name(entry)
 
                 if entry in seen:
                     fail(f"duplicate zip entry: {entry}")

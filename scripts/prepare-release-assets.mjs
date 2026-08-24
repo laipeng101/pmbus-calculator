@@ -262,6 +262,37 @@ function verifyChecksums(sumsPath, expectedDir, deps) {
 // ---------------------------------------------------------------------------
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const SHA256_HEX = /^[0-9a-f]{64}$/
+const SAFE_BACKUP_NAME = /^release-output\.backup-[0-9a-zA-Z-]+$/
+const STRICT_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+
+/**
+ * Write a buffer completely using writeSync, failing fast when the
+ * underlying call makes no forward progress (M28 WP-B). Zero, negative,
+ * NaN, non-integer, or values larger than the remaining payload are all
+ * treated as failures -- never as a license to loop forever.
+ *
+ * @param {number} fd
+ * @param {Buffer} payload
+ * @param {Record<string, any>} [deps]
+ */
+export function writeAllSync(fd, payload, deps = {}) {
+  const writeSync =
+    /** @type {(fd: number, buffer: NodeJS.ArrayBufferView, offset?: number | null, length?: number | null) => number} */ (
+      (deps && deps.writeSync) || fs.writeSync
+    )
+  let written = 0
+  while (written < payload.length) {
+    const remaining = payload.length - written
+    const n = writeSync(fd, payload, written, remaining)
+    if (typeof n !== 'number' || !Number.isInteger(n) || n <= 0 || n > remaining) {
+      throw new Error(
+        `writeSync returned ${String(n)} (expected an integer in 1..${remaining}); aborting to avoid an infinite loop`,
+      )
+    }
+    written += n
+  }
+}
 
 /**
  * Parse and validate lock metadata. Unknown schema versions are rejected:
@@ -425,13 +456,10 @@ export function acquireLock(repoRoot, deps) {
     )
   }
 
-  // Write metadata with a short-write-safe loop (WP-B #1).
+  // Write metadata with a progress-checked loop (M28 WP-B).
   const payload = Buffer.from(JSON.stringify(metadata) + '\n', 'utf8')
   try {
-    let written = 0
-    while (written < payload.length) {
-      written += writeSync(fd, payload, written, payload.length - written)
-    }
+    writeAllSync(fd, payload, { writeSync })
   } catch (e) {
     try {
       closeSync(fd)
@@ -743,7 +771,17 @@ export function isCommittedState(state) {
  * @param {string} raw
  * @returns {{ ok: true, journal: TransactionJournal } | { ok: false, reason: string }}
  */
-export function validateJournal(raw) {
+/**
+ * Validate a journal record read from disk. With M28 WP-B the journal is
+ * strictly bound to the current transaction: package version, normalized
+ * output path, safe single-segment backup name, lowercase 64-hex hashes,
+ * consistent state/backupPath/oldSha256 combos, and a strict ISO updatedAt.
+ *
+ * @param {string} raw
+ * @param {string} [expectedVersion] -- package.json version to bind against
+ * @returns {{ ok: true, journal: TransactionJournal } | { ok: false, reason: string }}
+ */
+export function validateJournal(raw, expectedVersion) {
   /** @type {any} */
   let parsed
   try {
@@ -766,37 +804,78 @@ export function validateJournal(raw) {
   if (typeof parsed.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(parsed.version)) {
     return { ok: false, reason: 'journal version missing or invalid' }
   }
+  if (expectedVersion !== undefined && parsed.version !== expectedVersion) {
+    return {
+      ok: false,
+      reason: `journal version ${parsed.version} does not match package.json version ${expectedVersion}`,
+    }
+  }
   if (typeof parsed.state !== 'string' || !STATE_ORDER.includes(parsed.state)) {
     return {
       ok: false,
       reason: `journal state missing or unknown: ${JSON.stringify(parsed.state)}`,
     }
   }
-  if (typeof parsed.outputPath !== 'string' || parsed.outputPath.length === 0) {
-    return { ok: false, reason: 'journal outputPath missing' }
+  if (parsed.outputPath !== OUTPUT_DIR) {
+    return {
+      ok: false,
+      reason: `journal outputPath must be exactly ${JSON.stringify(OUTPUT_DIR)}, got ${JSON.stringify(parsed.outputPath)}`,
+    }
   }
-  if (parsed.backupPath !== null && typeof parsed.backupPath !== 'string') {
-    return { ok: false, reason: 'journal backupPath must be a string or null' }
+  if (parsed.backupPath !== null) {
+    if (typeof parsed.backupPath !== 'string' || !SAFE_BACKUP_NAME.test(parsed.backupPath)) {
+      return {
+        ok: false,
+        reason: `journal backupPath invalid (must be a safe single-segment backup name): ${JSON.stringify(parsed.backupPath)}`,
+      }
+    }
   }
+
+  const validSha = (/** @type {any} */ v) =>
+    v !== null &&
+    typeof v === 'object' &&
+    typeof v.zip === 'string' &&
+    SHA256_HEX.test(v.zip) &&
+    typeof v.sums === 'string' &&
+    SHA256_HEX.test(v.sums)
+
+  if (!validSha(parsed.newSha256)) {
+    return {
+      ok: false,
+      reason: 'journal newSha256 invalid (must be lowercase 64-hex zip+sums)',
+    }
+  }
+  if (parsed.oldSha256 !== null && !validSha(parsed.oldSha256)) {
+    return {
+      ok: false,
+      reason: 'journal oldSha256 invalid (must be lowercase 64-hex zip+sums)',
+    }
+  }
+
+  // Field-combination consistency (M28 WP-B): a journal must not claim a
+  // backup without hashes, nor carry pre-backup state with backup fields.
+  const preBackupStates = new Set(['INIT', 'STAGING_GENERATED', 'STAGING_VERIFIED'])
+  if (preBackupStates.has(parsed.state)) {
+    if (parsed.backupPath !== null) {
+      return { ok: false, reason: `journal state ${parsed.state} cannot have backupPath set` }
+    }
+    if (parsed.oldSha256 !== null) {
+      return { ok: false, reason: `journal state ${parsed.state} cannot have oldSha256 set` }
+    }
+  }
+  if (parsed.backupPath !== null && parsed.oldSha256 === null) {
+    return { ok: false, reason: 'journal backupPath set but oldSha256 null' }
+  }
+
   if (
-    parsed.oldSha256 !== null &&
-    (parsed.oldSha256 === null ||
-      typeof parsed.oldSha256 !== 'object' ||
-      typeof parsed.oldSha256.zip !== 'string' ||
-      typeof parsed.oldSha256.sums !== 'string')
+    typeof parsed.updatedAt !== 'string' ||
+    !STRICT_ISO.test(parsed.updatedAt) ||
+    Number.isNaN(Date.parse(parsed.updatedAt))
   ) {
-    return { ok: false, reason: 'journal oldSha256 invalid' }
-  }
-  if (
-    typeof parsed.newSha256 !== 'object' ||
-    parsed.newSha256 === null ||
-    typeof parsed.newSha256.zip !== 'string' ||
-    typeof parsed.newSha256.sums !== 'string'
-  ) {
-    return { ok: false, reason: 'journal newSha256 invalid' }
-  }
-  if (typeof parsed.updatedAt !== 'string' || Number.isNaN(Date.parse(parsed.updatedAt))) {
-    return { ok: false, reason: 'journal updatedAt invalid' }
+    return {
+      ok: false,
+      reason: 'journal updatedAt invalid (must be strict ISO 8601 with milliseconds)',
+    }
   }
   return { ok: true, journal: /** @type {TransactionJournal} */ (parsed) }
 }
@@ -815,8 +894,24 @@ export function readJournalFile(repoRoot, deps) {
   if (!existsSync(journalPath)) {
     return { present: false }
   }
+  // Bind the journal to the current package.json version (M28 WP-B).
+  let expectedVersion
   try {
-    return { present: true, validated: validateJournal(readFileSync(journalPath, 'utf8')) }
+    expectedVersion = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version
+  } catch (e) {
+    return {
+      present: true,
+      validated: {
+        ok: false,
+        reason: `package.json unreadable for journal binding: ${/** @type {Error} */ (e).message}`,
+      },
+    }
+  }
+  try {
+    return {
+      present: true,
+      validated: validateJournal(readFileSync(journalPath, 'utf8'), expectedVersion),
+    }
   } catch (e) {
     return {
       present: true,
@@ -845,7 +940,6 @@ export function readJournalFile(repoRoot, deps) {
  */
 function writeJournal(repoRoot, journal, deps) {
   const openSync = (deps && deps.openSync) || fs.openSync
-  const writeSync = (deps && deps.writeSync) || fs.writeSync
   const fsyncSync = (deps && deps.fsyncSync) || fs.fsyncSync
   const closeSync = (deps && deps.closeSync) || fs.closeSync
   const renameSync = (deps && deps.renameSync) || fs.renameSync
@@ -855,29 +949,63 @@ function writeJournal(repoRoot, journal, deps) {
   const tmpPath = `${journalPath}.tmp-${journal.nonce.slice(0, 8)}`
   const payload = Buffer.from(JSON.stringify(journal, null, 2) + '\n', 'utf8')
 
-  const fd = openSync(tmpPath, 'w', 0o600)
-  try {
-    let written = 0
-    while (written < payload.length) {
-      written += writeSync(fd, payload, written, payload.length - written)
-    }
-    fsyncSync(fd)
-  } finally {
-    try {
-      closeSync(fd)
-    } catch {
-      // best effort; rename below is the durability gate
-    }
-  }
-  try {
-    renameSync(tmpPath, journalPath)
-  } catch (e) {
+  const cleanupTmp = () => {
     try {
       unlinkSync(tmpPath)
     } catch {
-      // best effort
+      // best effort -- the journal must never be promoted from a tmp path
+      // that was not fully written, fsynced, and closed.
     }
-    throw e
+  }
+
+  let fd
+  try {
+    fd = openSync(tmpPath, 'w', 0o600)
+  } catch (e) {
+    throw new Error(`failed to open journal temp file: ${/** @type {Error} */ (e).message}`)
+  }
+
+  try {
+    writeAllSync(fd, payload, deps)
+    fsyncSync(fd)
+  } catch (e) {
+    try {
+      closeSync(fd)
+    } catch {
+      // keep the original error
+    }
+    cleanupTmp()
+    throw new Error(`failed to write journal: ${/** @type {Error} */ (e).message}`)
+  }
+
+  try {
+    closeSync(fd)
+  } catch (e) {
+    cleanupTmp()
+    throw new Error(`failed to close journal temp file: ${/** @type {Error} */ (e).message}`)
+  }
+
+  try {
+    renameSync(tmpPath, journalPath)
+  } catch (e) {
+    cleanupTmp()
+    throw new Error(`failed to promote journal: ${/** @type {Error} */ (e).message}`)
+  }
+
+  // Post-rename durability: fsync the parent directory where the platform
+  // supports it. When unsupported we document the boundary instead of
+  // silently claiming more durability than the filesystem offers (M28 WP-B).
+  try {
+    const dirFd = openSync(path.dirname(journalPath), 'r')
+    try {
+      fsyncSync(dirFd)
+    } finally {
+      closeSync(dirFd)
+    }
+  } catch (e) {
+    process.stderr.write(
+      `note: journal renamed but parent-directory fsync unavailable (${/** @type {Error} */ (e).message}); durability boundary documented in docs/RELEASING.md\n`,
+    )
   }
 }
 
@@ -1146,26 +1274,20 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
   const readdirSync = deps.readdirSync || fs.readdirSync
   const renameSync = deps.renameSync || fs.renameSync
   const rmSync = deps.rmSync || fs.rmSync
+  const readFileSync = deps.readFileSync || fs.readFileSync
 
   // Derive the plan from package.json -- recovery validates against the
   // same naming contract the generator used.
-  const pkg = JSON.parse(
-    (deps.readFileSync || fs.readFileSync)(path.join(repoRoot, 'package.json'), 'utf8'),
-  )
+  const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
   const plan = buildReleasePlan(pkg.version)
   if (zipName !== plan.zipName || sumsName !== plan.sumsName) {
     return {
       recovered: false,
-      reason: `requested asset names (\`${zipName}\`, \`${sumsName}\`) do not match the release plan (\`${plan.zipName}\`, \`${plan.sumsName}\`) -- refusing recovery`,
+      reason: `requested asset names (${zipName}, ${sumsName}) do not match the release plan (${plan.zipName}, ${plan.sumsName}) -- refusing recovery`,
     }
   }
 
   const backups = readdirSync(repoRoot).filter((e) => e.startsWith(BACKUP_PREFIX))
-
-  if (backups.length === 0) {
-    return { recovered: false, reason: 'no backup directories found' }
-  }
-
   if (backups.length > 1) {
     return {
       recovered: false,
@@ -1173,126 +1295,187 @@ export function recoverTransaction(repoRoot, outputDir, zipName, sumsName, deps 
     }
   }
 
-  const backupRel = backups[0]
-  const backupDir = path.join(repoRoot, backupRel)
+  // M28 WP-A: read and strictly validate the journal FIRST, then decide the
+  // action from (journal state + output presence + backup count). The old
+  // "backup required before journal" ordering is gone.
+  const journalState = readJournalFile(repoRoot, { existsSync, readFileSync })
+  if (!journalState.present) {
+    return {
+      recovered: false,
+      reason:
+        'no transaction journal found -- manual audit required; recovery must be journal-driven',
+    }
+  }
+  if (!journalState.validated || journalState.validated.ok === false) {
+    const detail = journalState.validated
+      ? journalState.validated.reason
+      : 'the journal is unreadable'
+    return {
+      recovered: false,
+      reason: `transaction journal invalid (${detail}) -- manual audit required`,
+    }
+  }
+  const journal = journalState.validated.journal
+
+  // Bind journal.backupPath to the single actual backup directory (M28 WP-B).
+  const actualBackup = backups.length === 1 ? backups[0] : null
+  if (journal.backupPath !== null) {
+    if (actualBackup !== journal.backupPath) {
+      return {
+        recovered: false,
+        reason: `journal references backup "${journal.backupPath}" but disk has ${actualBackup === null ? 'no backup' : '"' + actualBackup + '"'} -- manual audit required`,
+      }
+    }
+  } else if (actualBackup !== null) {
+    return {
+      recovered: false,
+      reason: `journal has backupPath null but backup directory "${actualBackup}" exists on disk -- manual audit required`,
+    }
+  }
+
   const outputExists = existsSync(outputDir)
+  const backupDir = journal.backupPath !== null ? path.join(repoRoot, journal.backupPath) : null
 
-  // Journal decides the semantics when both sides exist (WP-D #3).
-  const journalState = readJournalFile(repoRoot, { existsSync, readFileSync: deps.readFileSync })
+  /** Full verification plus hash equality against the journal. */
+  const verifyOutput = (/** @type {{ zip: string, sums: string } | undefined} */ expectSha) => {
+    verifyOutputAgainstSha(outputDir, plan, deps, expectSha)
+  }
 
-  /** Validate backup; returns error message or null. */
-  const validateBackup = () => {
+  if (isCommittedState(journal.state)) {
+    // COMMITTED / BACKUP_CLEANED: the new output is authoritative. Verify it
+    // FULLY (asset pair + SHA256SUMS + ZIP verifier + journal hash equality)
+    // before deleting any backup or the journal (M28 WP-A #1/#2).
+    if (!outputExists) {
+      return {
+        recovered: false,
+        reason: `journal says ${journal.state} but ${OUTPUT_DIR} is missing -- manual audit required`,
+      }
+    }
+    try {
+      verifyOutput(journal.newSha256)
+    } catch (e) {
+      return {
+        recovered: false,
+        reason: `journal says ${journal.state} but output failed full verification (${/** @type {Error} */ (e).message}) -- output, backup and journal preserved; manual audit required`,
+      }
+    }
+    if (backupDir) {
+      try {
+        rmSync(backupDir, { recursive: true, force: true })
+      } catch (e) {
+        return {
+          recovered: false,
+          reason: `output verified but residual backup could not be removed (${/** @type {Error} */ (e).message}) -- manual audit required`,
+        }
+      }
+    }
+    try {
+      deleteJournal(repoRoot, deps.unlinkSync, existsSync)
+    } catch (e) {
+      return {
+        recovered: false,
+        reason: `output verified but journal could not be removed (${/** @type {Error} */ (e).message}) -- output is safe; rerun --recover to retry journal cleanup`,
+      }
+    }
+    return {
+      recovered: true,
+      action: backupDir ? 'committed-cleanup' : 'committed-no-backup-cleanup',
+    }
+  }
+
+  // PRE_COMMIT states.
+  if (backupDir) {
+    // Validate the backup deeply BEFORE deleting or moving anything (M28 WP-A #4).
     try {
       validateBackupDir(backupDir, plan, pkg.version, {
         readdirSync,
         lstatSync: deps.lstatSync,
-        readFileSync: deps.readFileSync,
+        readFileSync,
         createHash: deps.createHash,
         execFile: deps.execFile,
         python3: deps.python3,
         skipPythonVerifier: deps.skipPythonVerifier,
       })
-      return null
     } catch (e) {
-      return /** @type {Error} */ (e).message
-    }
-  }
-
-  if (outputExists) {
-    if (!journalState.present) {
       return {
         recovered: false,
-        reason:
-          `both output and backup exist and no transaction journal exists -- manual audit required. ` +
-          `Compare ${OUTPUT_DIR} and ${backupRel} before proceeding.`,
+        reason: `PRE_COMMIT recovery refused: ${/** @type {Error} */ (e).message} -- backup, output and journal preserved`,
       }
     }
-    if (!journalState.validated || journalState.validated.ok === false) {
-      const detail =
-        journalState.validated && journalState.validated.ok === false
-          ? journalState.validated.reason
-          : 'the journal is unreadable'
-      return {
-        recovered: false,
-        reason: `both output and backup exist but ${detail} -- manual audit required`,
-      }
-    }
-
-    const journal = journalState.validated.journal
-    if (isCommittedState(journal.state)) {
-      // COMMITTED: the new output is authoritative. Keep it, verify it,
-      // then clean the residual backup + journal.
+    if (outputExists) {
       try {
-        verifyAssetPair(outputDir, plan.zipName, plan.sumsName, {
-          existsSync,
-          readdirSync,
-          lstatSync: deps.lstatSync,
-        })
-        verifyChecksums(path.join(outputDir, plan.sumsName), outputDir, {
-          readFileSync: deps.readFileSync,
-          createHash: deps.createHash,
-        })
+        rmSync(outputDir, { recursive: true, force: true })
       } catch (e) {
         return {
           recovered: false,
-          reason: `journal says COMMITTED but output failed verification (${/** @type {Error} */ (e).message}) -- manual audit required`,
+          reason: `PRE_COMMIT recovery could not remove unverified output (${/** @type {Error} */ (e).message}) -- manual audit required`,
         }
       }
-      rmSync(backupDir, { recursive: true, force: true })
-      try {
-        deleteJournal(repoRoot, deps.unlinkSync, existsSync)
-      } catch {
-        // journal residue is harmless once backup is gone; report cleanup need
-        return { recovered: true, action: 'committed-cleanup-journal-residue' }
-      }
-      return { recovered: true, action: 'committed-cleanup' }
     }
-
-    // PRE_COMMIT: the backup holds the last verified old output. Drop the
-    // uncommitted new output and restore the old one -- but ONLY if the
-    // backup passes full validation first (WP-D #7).
-    const backupError = validateBackup()
-    if (backupError) {
+    try {
+      renameSync(backupDir, outputDir)
+    } catch (e) {
       return {
         recovered: false,
-        reason: `PRE_COMMIT recovery refused: ${backupError}`,
+        reason: `PRE_COMMIT recovery restore failed (${/** @type {Error} */ (e).message}) -- backup and journal preserved; manual audit required`,
       }
     }
-    rmSync(outputDir, { recursive: true, force: true })
-    renameSync(backupDir, outputDir)
-    reverifyOutput(outputDir, plan, deps)
+    // Re-verify the restored old output AND bind it to journal.oldSha256.
+    try {
+      verifyOutput(journal.oldSha256 ?? undefined)
+    } catch (e) {
+      return {
+        recovered: false,
+        reason: `restored output failed full verification (${/** @type {Error} */ (e).message}) -- manual audit required`,
+      }
+    }
     try {
       deleteJournal(repoRoot, deps.unlinkSync, existsSync)
     } catch {
-      // keep residue rather than failing a completed restore; caller informed
+      // Keep the residue rather than failing a completed restore.
     }
     return { recovered: true, action: 'pre-commit-restore' }
   }
 
-  // output absent: plain restore path -- validate BEFORE touching anything.
-  const backupError = validateBackup()
-  if (backupError) {
-    return { recovered: false, reason: backupError }
+  // PRE_COMMIT with no backup: first publish interrupted before COMMITTED.
+  // Only a hash-proven output may finalize; nothing is deleted blindly (M28 WP-A #3).
+  if (!outputExists) {
+    return {
+      recovered: false,
+      reason: `journal ${journal.state} (no backup) but ${OUTPUT_DIR} is missing -- manual audit required`,
+    }
   }
-  renameSync(backupDir, outputDir)
-  reverifyOutput(outputDir, plan, deps)
+  try {
+    verifyOutput(journal.newSha256)
+  } catch (e) {
+    return {
+      recovered: false,
+      reason: `journal ${journal.state} (first publish, no backup) but output failed verification (${/** @type {Error} */ (e).message}) -- output and journal preserved; manual audit required`,
+    }
+  }
   try {
     deleteJournal(repoRoot, deps.unlinkSync, existsSync)
-  } catch {
-    // see above
+  } catch (e) {
+    return {
+      recovered: false,
+      reason: `output verified but journal could not be removed (${/** @type {Error} */ (e).message})`,
+    }
   }
-  return { recovered: true, action: 'restore-backup' }
+  return { recovered: true, action: 'pre-commit-first-publish-finalize' }
 }
 
 /**
- * Re-verify the formal output after recovery (WP-D #6).
+ * Full output verification (M28 WP-A): asset pair, SHA256SUMS, the real
+ * ZIP verifier, and optional hash equality against the journal's recorded
+ * zip/sums hashes. Throws on any failure; deletes nothing.
  *
  * @param {string} outputDir
  * @param {ReturnType<typeof buildReleasePlan>} plan
  * @param {Record<string, any>} deps
- * @returns {void} -- throws on failure
+ * @param {{ zip: string, sums: string } | undefined} expectSha
+ * @returns {void}
  */
-function reverifyOutput(outputDir, plan, deps) {
+function verifyOutputAgainstSha(outputDir, plan, deps, expectSha) {
   verifyAssetPair(outputDir, plan.zipName, plan.sumsName, {
     existsSync: deps.existsSync,
     readdirSync: deps.readdirSync,
@@ -1316,6 +1499,18 @@ function reverifyOutput(outputDir, plan, deps) {
       stdio: 'pipe',
       timeout: 30_000,
     })
+  }
+  if (expectSha) {
+    const zipHash = sha256File(path.join(outputDir, plan.zipName), deps.createHash)
+    const sumsHash = sha256File(path.join(outputDir, plan.sumsName), deps.createHash)
+    if (zipHash !== expectSha.zip) {
+      throw new Error(`output zip hash ${zipHash} does not match journal zip hash ${expectSha.zip}`)
+    }
+    if (sumsHash !== expectSha.sums) {
+      throw new Error(
+        `output sums hash ${sumsHash} does not match journal sums hash ${expectSha.sums}`,
+      )
+    }
   }
 }
 
@@ -1780,18 +1975,15 @@ export function handleFatalSignal(signal, lockHandle, io = {}) {
     ((code) => {
       process.exitCode = code
     })
+  // M28 WP-D: a signal handler only RECORDS the termination request. The
+  // lock is released by the unified finally after every write/rename/execFile
+  // has stopped -- never while the process may still modify release state.
   if (lockHandle) {
-    try {
-      const result = lockHandle.release()
-      stderr.write(
-        `release:${signal}: released owned lock (${result.released ? 'ok' : result.reason})\n`,
-      )
-    } catch (e) {
-      // Could not release: KEEP the lock file with its recoverable metadata.
-      stderr.write(
-        `release:${signal}: could not release lock (${/** @type {Error} */ (e).message}). `,
-      )
-    }
+    stderr.write(
+      `release:${signal}: termination requested -- finishing the current atomic stage; lock stays held until all writes stop (unified finally)\n`,
+    )
+  } else {
+    stderr.write(`release:${signal}: termination requested\n`)
   }
   const code = signal === 'SIGINT' ? 130 : 143
   exit(code)
@@ -1841,6 +2033,17 @@ export async function runCli(argv, io = {}) {
     }
   }
 
+  // M28 WP-F: --force, --recover and --recover-lock are mutually exclusive.
+  // Reject conflicts BEFORE any lock is created.
+  const flagCount = (force ? 1 : 0) + (recoverFlag ? 1 : 0) + (recoverLockFlag ? 1 : 0)
+  if (flagCount > 1) {
+    stderr.write('--force, --recover and --recover-lock are mutually exclusive\n')
+    stderr.write(
+      'Usage: node scripts/prepare-release-assets.mjs [--force] [--recover] [--recover-lock]\n',
+    )
+    return 2
+  }
+
   const distDir = path.join(repoRoot, 'dist')
   const outputDir = path.join(repoRoot, OUTPUT_DIR)
   const python3 = env.PYTHON3 || PYTHON3
@@ -1866,16 +2069,20 @@ export async function runCli(argv, io = {}) {
     return 1
   }
 
-  // Fatal signals while holding the lock: release the OWNED lock when
-  // possible, otherwise keep recoverable metadata; never touch foreign
-  // locks (WP-B #6). handleFatalSignal enforces this via release().
+  // M28 WP-D: record termination requests only. The lock stays held until
+  // the unified release below runs AFTER runLocked has fully returned.
+  /** @type {'SIGINT' | 'SIGTERM' | null} */
+  let terminating = null
   const signalHandler = (/** @type {string} */ signal) => {
-    handleFatalSignal(signal, lock, {
-      stderr,
-      exit: (code) => {
-        process.exitCode = code
-      },
-    })
+    if (terminating === null) {
+      terminating = /** @type {'SIGINT' | 'SIGTERM'} */ (signal)
+      handleFatalSignal(signal, lock, {
+        stderr,
+        exit: (code) => {
+          process.exitCode = code
+        },
+      })
+    }
   }
   process.once('SIGINT', signalHandler)
   process.once('SIGTERM', signalHandler)
@@ -1907,12 +2114,22 @@ export async function runCli(argv, io = {}) {
 
   const outcome = await runLocked()
 
+  // Yield to the event loop so a signal that arrived during the synchronous
+  // generator work is delivered to the handler BEFORE the exit-code decision
+  // (M28 WP-D). Writes have already stopped; the lock is still held. A single
+  // setImmediate can race the pending signal handler on some Node versions, so
+  // yield in a bounded loop until the termination request is observed.
+  for (let flushed = 0; flushed < 10 && terminating === null; flushed++) {
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+
   process.removeListener('SIGINT', signalHandler)
   process.removeListener('SIGTERM', signalHandler)
 
-  // Release the lock. A release failure must produce a nonzero exit and,
-  // after a successful generation, an explicit partial-success message
-  // instead of a full success claim (WP-B #5).
+  // Unified release: the lock is released ONLY after every write/rename/
+  // execFile inside runLocked has stopped (M28 WP-D). A release failure must
+  // produce a nonzero exit and, after a successful generation, an explicit
+  // partial-success message instead of a full success claim (WP-B #5).
   let lockLeaked = false
   try {
     const released = lock.release()
@@ -1923,6 +2140,15 @@ export async function runCli(argv, io = {}) {
   } catch (e) {
     lockLeaked = true
     stderr.write(`release:prepare-assets: LOCK NOT RELEASED: ${/** @type {Error} */ (e).message} `)
+  }
+
+  // A termination request wins over any generation result; never claim a
+  // full success after a signal (M28 WP-D).
+  if (terminating !== null) {
+    stderr.write(
+      `release:${terminating}: run stopped; lock released in unified finally; final state preserved for audit\n`,
+    )
+    return terminating === 'SIGINT' ? 130 : 143
   }
 
   if (outcome === 'ok') {
