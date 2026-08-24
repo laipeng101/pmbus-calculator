@@ -224,23 +224,26 @@ describe('ci.yml release generator/security specialisation (M27)', () => {
   })
 })
 
-describe('ci.yml secondary LTS compatibility (M20)', () => {
+describe('ci.yml canonical/compatibility runtimes (M20/M30)', () => {
   function setupNodeSteps(): string[] {
     return stepBlocks(workflow).filter((block) => block.includes('actions/setup-node'))
   }
 
-  function findSetupStepByVersion(version: number): string {
+  function findSetupStepByNodeVersion(version: string): string {
     const match = setupNodeSteps().find((block) => block.includes(`node-version: '${version}`))
     if (!match) throw new Error(`setup-node step for Node ${version} not found`)
     return match
   }
 
-  it('keeps primary verification on Node 22', () => {
-    expect(normalize(findSetupStepByVersion(22))).not.toContain(`if: ${FULL_TIER_CONDITION}`)
+  it('keeps primary verification on .node-version (canonical Node 24.19.0, no full-tier gate)', () => {
+    const primary = setupNodeSteps().find((block) => block.includes('node-version-file'))
+    expect(primary).toBeDefined()
+    expect(normalize(primary!)).not.toContain(`if: ${FULL_TIER_CONDITION}`)
+    expect(primary).toMatch(/node-version-file:\s*['"]?\.node-version['"]?/)
   })
 
-  it('adds a Node 24 compatibility setup behind the shared full-tier condition', () => {
-    const normalized = normalize(findSetupStepByVersion(24))
+  it('adds the exact 22.20.0 compatibility setup behind the shared full-tier condition', () => {
+    const normalized = normalize(findSetupStepByNodeVersion('22.20.0'))
     expect(normalized).toContain(`if: ${FULL_TIER_CONDITION}`)
   })
 
@@ -252,16 +255,23 @@ describe('ci.yml secondary LTS compatibility (M20)', () => {
     expect(new Set(shas).size).toBe(1)
   })
 
-  it('runs the real typecheck and unit suite under Node 24 in the same single check job', () => {
+  it('runs the real typecheck and unit suite under Node 22.20.0 in the same single check job', () => {
     // The combined command is unique: the primary "Install dependencies"
     // step runs a bare `npm ci` and must stay available on the light tier.
-    // M23 extended the secondary re-check to `typecheck && test:run` so the
-    // Node 24 line validates the tsc -b gate too.
     const normalized = normalize(findStepByRun('npm ci && npm run typecheck && npm run test:run'))
     expect(normalized).toContain(`if: ${FULL_TIER_CONDITION}`)
-    expect(normalize(findStepByName('Typecheck and unit tests on secondary LTS (Node 24)'))).toBe(
-      normalized,
-    )
+    expect(
+      normalize(findStepByName('Typecheck and unit tests on compatibility LTS (Node 22.20.0)')),
+    ).toBe(normalized)
+  })
+
+  it('activates the exact canonical npm 11.17.0 for the compatibility runtime (M30 WP-E)', () => {
+    const activate = findStepByName('Activate canonical npm 11.17.0 on compatibility runtime')
+    expect(normalize(activate)).toContain(`if: ${FULL_TIER_CONDITION}`)
+    expect(normalize(activate)).toMatch(/npm install -g npm@11\.17\.0/)
+    // The upgrade must run OUTSIDE the repo so the bundled npm 10.9.3 never
+    // trips the repo's devEngines fail-closed check while upgrading itself.
+    expect(normalize(activate)).toMatch(/cd \/tmp/)
   })
 })
 

@@ -46,10 +46,15 @@
 - PR CI `checked_sha` / `checked_tree`（`Record checked revision` 步骤输出）:
 - merge SHA / merge tree（merge 后填写）:
 - tree equality（merge HEAD^{tree} 与 PR CI checked_tree 必须完全相同；main 不再有 push CI，必要时用 `workflow_dispatch` 手工执行 full 验证）:
-- security runner 实际覆盖文件列表（`npm run test:release-security` 输出的四个文件）:
+- security runner 实际覆盖文件列表（`npm run test:release-security` 输出的九个文件）:
 - release-security passed / failed / skipped / todo（zero-skip 合同要求 skipped+todo 为 0）:
 - temp residue（runner 私有目录、系统临时目录、release-output/staging/backup/journal 检查）:
 - signal stress 次数与平台（Node 版本 × SIGINT/SIGTERM 各轮数；0 flaky、0 skip）:
+- repeated-signal stress 轮次（INT+INT / TERM+TERM / INT+TERM / TERM+INT / 三连信号；0 raw signal death、0 stale lock、0 orphan process）:
+- timeout/process-tree stress 轮次（0 孤儿进程；Promise settle 后 helper 后代停止写 sentinel）:
+- signal-observed run 的 `Done:`/`Transaction recovered successfully` 出现次数（必须为 0）:
+- canonical toolchain：Node（.node-version/.nvmrc/engines/CI primary）、npm（packageManager/engines.npm/devEngines/CI 双运行时）、`npm run doctor`/`check:toolchain` exit code、@types/node 精确版本:
+- worktree hooks：主 checkout / linked+detached worktree / CI env / 非 Git 目录四形态 postinstall 行为（skip 消息清晰、无 ENOTDIR、exit 0）:
 - journal crash matrix failpoint 数量（每个 mutation boundary 的 crash 注入覆盖）:
 - hygiene 两个 size 指标语义：tracked file count = Git index/HEAD 中 tracked path 的 entry 计数；tree size = 每个 tracked path 对应 blob size 求和（同一 blob 被多路径共享时每路径都计入），两者均以 `git ls-tree -r -l HEAD` 为准
 

@@ -28,7 +28,7 @@ function parseSemver(version: string): { major: number; minor: number; patch: nu
 
 /**
  * Parse the engines.node range into precise minimum versions.
- * Example: ">=22.20.0 <23 || >=24.0.0 <25" → { node22Min: {major:22,minor:20,patch:0}, node24Min: {major:24,minor:0,patch:0} }
+ * Example: ">=22.20.0 <23 || >=24.19.0 <25" → { node22Min: {major:22,minor:20,patch:0}, node24Min: {major:24,minor:19,patch:0} }
  */
 function parseEnginesRanges(enginesNode: string): {
   node22Min: { major: number; minor: number; patch: number } | null
@@ -77,11 +77,11 @@ describe('runtime/type contract (M24/M25)', () => {
     }
   })
 
-  it('engines Node 24 floor is exactly 24.0.0 (M25)', () => {
+  it('engines Node 24 floor is exactly 24.19.0 (M30)', () => {
     expect(ranges.node24Min).toBeTruthy()
     const v = ranges.node24Min!
     expect(v.major).toBe(24)
-    expect(v.minor).toBe(0)
+    expect(v.minor).toBe(19)
     expect(v.patch).toBe(0)
   })
 
@@ -97,20 +97,21 @@ describe('runtime/type contract (M24/M25)', () => {
     expect(v.minor).toBe(20)
   })
 
-  it('CI primary Node version is exact 22.20.0 (not rolling) (M25)', () => {
+  it('CI primary Node version reads .node-version (24.19.0, not rolling) (M30)', () => {
     const workflow = readRepoFile('.github/workflows/ci.yml')
-    expect(workflow).toMatch(/node-version:\s*'22\.20\.0'/)
-    // Must NOT have bare rolling 22
-    const primaryBlocks = workflow.split('Setup Node.js')
-    const primary = primaryBlocks[1] ?? ''
-    expect(primary).not.toMatch(/node-version:\s*22\b/)
+    expect(workflow).toMatch(/node-version-file:\s*['"]?\.node-version['"]?/)
+    // Must NOT have bare rolling 22/24 in setup-node.
+    expect(workflow).not.toMatch(/node-version:\s*(22|24)\b/)
   })
 
-  it('CI secondary Node version is exact 24.0.0 (not rolling) (M25)', () => {
+  it('CI compatibility Node version is exact 22.20.0 (not rolling) (M30)', () => {
     const workflow = readRepoFile('.github/workflows/ci.yml')
-    const secondaryBlocks = workflow.split('Setup Node.js 24')
-    const secondary = secondaryBlocks[1] ?? ''
-    expect(secondary).toMatch(/node-version:\s*'24\.0\.0'/)
+    expect(workflow).toMatch(/node-version:\s*'22\.20\.0'/)
+  })
+
+  it('.node-version and .nvmrc pin the canonical primary exactly (M30)', () => {
+    expect(readRepoFile('.node-version').trim()).toBe('24.19.0')
+    expect(readRepoFile('.nvmrc').trim()).toBe('24.19.0')
   })
 
   it('@types/node must not be a higher Current major than engines supports', () => {

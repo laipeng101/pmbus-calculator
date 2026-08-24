@@ -62,12 +62,17 @@ function writePkg(tmp: string, version = '1.1.5'): void {
 // ---------------------------------------------------------------------------
 
 describe('M29 WP-A security gate completeness', () => {
-  it('A1: SECURITY_TEST_FILES lists all four expected files and they exist on disk', () => {
+  it('A1: SECURITY_TEST_FILES lists all nine expected files and they exist on disk', () => {
     expect(SECURITY_TEST_FILES).toEqual([
       'tests/prepare-release-assets.test.ts',
       'tests/zip-helper-security.test.ts',
       'tests/m28-recovery.test.ts',
       'tests/run-release-security-tests.test.ts',
+      'tests/m29-crash-matrix.test.ts',
+      'tests/m29-release-gates.test.ts',
+      'tests/m29-signal-protocol.test.ts',
+      'tests/m30-signal-lifecycle.test.ts',
+      'tests/m30-child-lifecycle.test.ts',
     ])
     for (const f of SECURITY_TEST_FILES) {
       expect(fs.existsSync(path.join(REPO_ROOT, f)), `missing contract file ${f}`).toBe(true)
