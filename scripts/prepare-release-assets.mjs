@@ -51,7 +51,38 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const scriptRepoRoot = path.resolve(scriptDir, '..')
 
 const LOCK_FILE = '.release-staging.lock'
-const LOCK_SCHEMA_VERSION = 1
+// M33 WP-A: lock schema v2 binds a persistent child-state to the lock nonce.
+// v1 locks (owner-PID only) cannot prove a detached helper group is gone and
+// are NEVER auto-recovered -- explicit manual audit (see recoverLock).
+const LOCK_SCHEMA_VERSION = 2
+// Child-state sidecar bound to the lock nonce. Independent file so the lock
+// inode (dev+ino ownership check) never has to be rewritten for state
+// updates; sidecar updates use temp+fsync+rename atomic durability.
+const CHILD_STATE_FILE = '.release-staging.child-state.json'
+const CHILD_STATE_SCHEMA_VERSION = 1
+
+/**
+ * M33 WP-A: persistent child-ownership states (single source of truth).
+ * - EMPTY: lock acquired, no helper was ever spawned.
+ * - SPAWN_INTENT: persisted (durable) BEFORE the first spawn; a crash after
+ *   this point but before ACTIVE means we CANNOT prove no process exists --
+ *   recovery must refuse (manual audit).
+ * - ACTIVE: a helper group is running (PGID recorded at spawn time).
+ * - QUIESCENCE_PROVEN: the controlled group was proven absent (ESRCH) and
+ *   the state was persisted before the lock may be released.
+ * - MANUAL_AUDIT_REQUIRED: fail-closed path -- the group could not be proven
+ *   gone; recovery refuses and a human must audit.
+ */
+export const CHILD_STATES = Object.freeze({
+  EMPTY: 'EMPTY',
+  SPAWN_INTENT: 'SPAWN_INTENT',
+  ACTIVE: 'ACTIVE',
+  QUIESCENCE_PROVEN: 'QUIESCENCE_PROVEN',
+  MANUAL_AUDIT_REQUIRED: 'MANUAL_AUDIT_REQUIRED',
+})
+
+/** @type {readonly string[]} */
+const CHILD_STATE_VALUES = Object.freeze(Object.values(CHILD_STATES))
 const JOURNAL_SCHEMA_VERSION = 1
 const PYTHON3 = process.env.PYTHON3 || 'python3'
 
@@ -247,6 +278,25 @@ export const GROUP_SETTLE_POLL_MS = 50
 export const GROUP_SETTLE_DEADLINE_MS = 10_000
 
 /**
+ * @typedef {{
+ *   input?: string,
+ *   stdio?: Array<'pipe' | 'inherit' | 'ignore'> | 'pipe' | 'inherit' | 'ignore',
+ *   timeout?: number,
+ *   childState?: {
+ *     beginSpawn?: () => void | Promise<void>,
+ *     onSpawn?: (pgid: number | null, helperPid: number | null) => void | Promise<void>,
+ *     onQuiesced?: () => void | Promise<void>,
+ *     onAudit?: (why: string) => void | Promise<void>,
+ *   },
+ *   timingProfile?: {
+ *     settlePollMs?: number,
+ *     settleDeadlineMs?: number,
+ *     escalationDelayMs?: number,
+ *   },
+ * }} ExecFileOpts
+ */
+
+/**
  * M30 WP-B / M31 WP-B / M32 WP-A: promisified execFile with inherited stdio
  * and a fully controlled child/process-tree lifecycle. The child runs
  * ASYNCHRONOUSLY so the Node event loop can deliver pending signals while
@@ -294,8 +344,11 @@ export const GROUP_SETTLE_DEADLINE_MS = 10_000
  *
  * @param {string} cmd
  * @param {string[]} args
- * @param {{ input?: string, stdio?: Array<'pipe' | 'inherit' | 'ignore'> | 'pipe' | 'inherit' | 'ignore', timeout?: number }} [opts]
- * @param {{ kill?: (child: import('node:child_process').ChildProcess, signal: NodeJS.Signals) => boolean }} [deps]
+ * @param {ExecFileOpts} [opts]
+ * @param {{
+ *   kill?: (child: import('node:child_process').ChildProcess, signal: NodeJS.Signals) => boolean,
+ *   postSpawnError?: Error,
+ * }} [deps]
  * @returns {Promise<void>}
  */
 export function execFileAsync(cmd, args, opts = {}, deps = {}) {
@@ -314,308 +367,471 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
     if (process.platform !== 'win32') {
       spawnOpts.detached = true
     }
-    const child = spawn(cmd, args, spawnOpts)
-    activeChildren.add(child)
-    let stderrBuf = ''
-    let settled = false
-    /** Whether the 'spawn' event was observed -- a process was created. */
-    let spawned = false
-    /** PGID captured at spawn time (POSIX); never re-derived after close. */
-    /** @type {number | null} */
-    let pgid = null
-    /** @type {number | null} */
-    let exitCode = null
-    /** @type {NodeJS.Signals | null} */
-    let exitSignal = null
-    /** @type {Error | null} */
-    let timeoutError = null
-    /** @type {Error | null} */
-    let runtimeError = null
-    /** @type {ReturnType<typeof setTimeout> | null} */
-    let timer = null
-    /** @type {ReturnType<typeof setTimeout> | null} */
-    let escalationTimer = null
-    /** @type {ReturnType<typeof setTimeout> | null} */
-    let deadlineTimer = null
-    /** @type {ReturnType<typeof setTimeout> | null} */
-    let groupPollTimer = null
-
-    /** Clear every timer owned by this call (main + escalation + deadline + poll). */
-    const clearOwnedTimers = () => {
-      if (timer) {
-        clearTimeout(timer)
-        timer = null
-      }
-      if (escalationTimer) {
-        clearTimeout(escalationTimer)
-        escalationTimer = null
-      }
-      if (deadlineTimer) {
-        clearTimeout(deadlineTimer)
-        deadlineTimer = null
-      }
-      if (groupPollTimer) {
-        clearTimeout(groupPollTimer)
-        groupPollTimer = null
-      }
-    }
-
-    /**
-     * POSIX: does the controlled process group still exist? ESRCH means gone;
-     * EPERM or any unknown error means we CANNOT prove it is gone -- treat it
-     * as alive (fail closed).
-     *
-     * @returns {boolean}
-     */
-    const groupExists = () => {
-      if (process.platform === 'win32' || pgid === null) return false
-      try {
-        process.kill(-pgid, 0)
-        return true
-      } catch (e) {
-        const err = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
-        if (err.code === 'ESRCH') return false
-        return true
-      }
-    }
-
-    /**
-     * Stop the whole controlled process group (POSIX) or the direct child
-     * (Windows fallback). Never throws; returns whether the signal was
-     * delivered.
-     *
-     * @param {NodeJS.Signals} signal
-     * @returns {boolean}
-     */
-    const stopTree = (signal) => {
-      if (deps.kill) {
+    // M33 WP-A #3/#4: the pre-spawn barrier. SPAWN_INTENT is made durable
+    // (sidecar temp+fsync+rename) BEFORE the process is created, so a crash
+    // between this point and the ACTIVE write leaves SPAWN_INTENT on disk and
+    // recovery refuses (manual audit) -- the crash window is closed by
+    // fail-closed recovery, never by a plain post-spawn write.
+    const begin = async () => {
+      if (opts.childState && typeof opts.childState.beginSpawn === 'function') {
         try {
-          return deps.kill(child, signal)
-        } catch {
-          return false
+          await opts.childState.beginSpawn()
+        } catch (e) {
+          reject(
+            new Error(
+              `${cmd}: child-state SPAWN_INTENT persistence failed before spawn (${e instanceof Error ? e.message : String(e)}) -- no process created; lock must not be released`,
+            ),
+          )
+          return
         }
       }
-      if (process.platform !== 'win32') {
+      const child = spawn(cmd, args, spawnOpts)
+      activeChildren.add(child)
+      let stderrBuf = ''
+      let settled = false
+      /** Whether the 'spawn' event was observed -- a process was created. */
+      let spawned = false
+      /** PGID captured at spawn time (POSIX); never re-derived after close. */
+      /** @type {number | null} */
+      let pgid = null
+      /** @type {number | null} */
+      let exitCode = null
+      /** @type {NodeJS.Signals | null} */
+      let exitSignal = null
+      /** @type {Error | null} */
+      let timeoutError = null
+      /** @type {Error | null} */
+      let runtimeError = null
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let timer = null
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let escalationTimer = null
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let deadlineTimer = null
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let groupPollTimer = null
+
+      /** Clear every timer owned by this call (main + escalation + deadline + poll). */
+      const clearOwnedTimers = () => {
+        if (timer) {
+          clearTimeout(timer)
+          timer = null
+        }
+        if (escalationTimer) {
+          clearTimeout(escalationTimer)
+          escalationTimer = null
+        }
+        if (deadlineTimer) {
+          clearTimeout(deadlineTimer)
+          deadlineTimer = null
+        }
+        if (groupPollTimer) {
+          clearTimeout(groupPollTimer)
+          groupPollTimer = null
+        }
+      }
+
+      /**
+       * POSIX: does the controlled process group still exist? ESRCH means gone;
+       * EPERM or any unknown error means we CANNOT prove it is gone -- treat it
+       * as alive (fail closed).
+       *
+       * @returns {boolean}
+       */
+      const groupExists = () => {
+        if (process.platform === 'win32' || pgid === null) return false
         try {
-          if (pgid === null) {
-            return child.kill(signal)
-          }
-          process.kill(-pgid, signal)
+          process.kill(-pgid, 0)
           return true
         } catch (e) {
           const err = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
           if (err.code === 'ESRCH') return false
+          return true
+        }
+      }
+
+      /**
+       * Stop the whole controlled process group (POSIX) or the direct child
+       * (Windows fallback). Never throws; returns whether the signal was
+       * delivered.
+       *
+       * @param {NodeJS.Signals} signal
+       * @returns {boolean}
+       */
+      const stopTree = (signal) => {
+        if (deps.kill) {
           try {
-            return child.kill(signal)
+            return deps.kill(child, signal)
           } catch {
             return false
           }
         }
-      }
-      try {
-        return child.kill(signal)
-      } catch {
-        return false
-      }
-    }
-
-    /**
-     * Normal completion: direct child closed AND the controlled group is
-     * proven absent; timers cleared; registry updated.
-     *
-     * @returns {void}
-     */
-    const finishSettle = () => {
-      if (settled) return
-      settled = true
-      activeChildren.delete(child)
-      clearOwnedTimers()
-      if (runtimeError) {
-        reject(runtimeError)
-        return
-      }
-      if (timeoutError) {
-        reject(timeoutError)
-        return
-      }
-      if (exitSignal) {
-        reject(new Error(`${cmd} was terminated by signal ${exitSignal}: ${stderrBuf.trim()}`))
-        return
-      }
-      if (exitCode !== 0) {
-        reject(new Error(`${cmd} exited with status ${String(exitCode)}: ${stderrBuf.trim()}`))
-        return
-      }
-      resolve()
-    }
-
-    /**
-     * Fail closed: the group could not be proven gone within the bounded
-     * deadline. The registry entry is PRESERVED on purpose -- runCli refuses
-     * to release the release lock while activeChildren is non-empty, so the
-     * on-disk state stays recoverable/auditable.
-     *
-     * @param {string} why
-     * @returns {void}
-     */
-    const failClosedSettle = (why) => {
-      if (settled) return
-      settled = true
-      clearOwnedTimers()
-      const runtimeDetail = runtimeError ? `; runtime error: ${runtimeError.message}` : ''
-      reject(
-        new Error(
-          `${cmd}: FAILED CLOSED -- ${why}${runtimeDetail}; child registry entry preserved and release lock must not be released`,
-        ),
-      )
-    }
-
-    /**
-     * Bounded poll for process-group disappearance (ESRCH).
-     *
-     * @param {number} deadlineAt
-     * @returns {void}
-     */
-    const pollGroupGone = (deadlineAt) => {
-      if (settled) return
-      if (!groupExists()) {
-        finishSettle()
-        return
-      }
-      if (Date.now() >= deadlineAt) {
-        failClosedSettle(
-          'could not prove the process group disappeared within the bounded deadline',
-        )
-        return
-      }
-      groupPollTimer = setTimeout(() => pollGroupGone(deadlineAt), GROUP_SETTLE_POLL_MS)
-      // NOTE: intentionally NOT unref'd. After the direct child's close the
-      // poll timer can be the ONLY active handle in the event loop; unref'd
-      // timers do not keep the loop alive and the promise would never settle
-      // (observed as an unsettled top-level await in the standalone stress
-      // process). The timer is always cleared by clearOwnedTimers on settle.
-    }
-
-    /**
-     * The direct child closed but the controlled group is STILL alive (e.g. a
-     * grandchild that alone ignores SIGTERM): escalate to SIGKILL and poll
-     * until ESRCH or the bounded deadline.
-     *
-     * @returns {void}
-     */
-    const escalateAndWaitGroup = () => {
-      if (settled) return
-      stopTree('SIGKILL')
-      pollGroupGone(Date.now() + GROUP_SETTLE_DEADLINE_MS)
-    }
-
-    /**
-     * Bounded overall termination deadline: after a timeout or a post-spawn
-     * runtime error, if neither close nor a proven-gone group arrives in
-     * time, fail closed instead of waiting forever.
-     *
-     * @returns {void}
-     */
-    const startTerminationDeadline = () => {
-      if (deadlineTimer) return
-      deadlineTimer = setTimeout(() => {
-        if (!settled) {
-          failClosedSettle(
-            'termination deadline exceeded: neither the direct child close nor a proven-gone process group arrived in time',
-          )
+        if (process.platform !== 'win32') {
+          try {
+            if (pgid === null) {
+              return child.kill(signal)
+            }
+            process.kill(-pgid, signal)
+            return true
+          } catch (e) {
+            const err = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
+            if (err.code === 'ESRCH') return false
+            try {
+              return child.kill(signal)
+            } catch {
+              return false
+            }
+          }
         }
-      }, GROUP_SETTLE_DEADLINE_MS)
-    }
-
-    child.on('spawn', () => {
-      spawned = true
-      // POSIX: the detached child is the process-group leader, so the PGID
-      // equals child.pid -- captured at spawn time (never re-derived from a
-      // recycled PID after close, M32 WP-A #9).
-      if (process.platform !== 'win32' && child.pid !== undefined) {
-        pgid = child.pid
+        try {
+          return child.kill(signal)
+        } catch {
+          return false
+        }
       }
-    })
 
-    child.on('error', (e) => {
-      if (settled) return
-      if (!spawned) {
-        // A child that was never created (spawn error, e.g. ENOENT) rejects
-        // here -- there is no process, no group and no 'close' to wait for;
-        // the registry entry is removed because nothing is alive to leak.
+      /**
+       * M33 WP-D: injectable timing profile (production defaults unchanged;
+       * tests use short deterministic values; no global mutable constants).
+       */
+      const timing = opts.timingProfile || {}
+      const settlePollMs = timing.settlePollMs ?? GROUP_SETTLE_POLL_MS
+      const settleDeadlineMs = timing.settleDeadlineMs ?? GROUP_SETTLE_DEADLINE_MS
+      const escalationDelayMs = timing.escalationDelayMs ?? 1000
+
+      /**
+       * M33 WP-B: let the parent process exit NATURALLY (non-zero) after a
+       * fail-closed settle while the unterminatable child keeps running.
+       * child.unref() alone is not sufficient -- the stdio pipes are also
+       * active event-loop handles and must be destroyed (probe P1-B: the CLI
+       * stayed alive >1s after top-level await completed). This never calls
+       * process.exit() and never clears the registry entry: the preserved
+       * entry is what forces runCli to refuse releasing the lock.
+       *
+       * @returns {void}
+       */
+      const detachForNaturalExit = () => {
+        try {
+          child.unref()
+        } catch {
+          // defensive
+        }
+        try {
+          if (child.stdin) child.stdin.destroy()
+        } catch {
+          // defensive
+        }
+        try {
+          if (child.stdout) child.stdout.destroy()
+        } catch {
+          // defensive
+        }
+        try {
+          if (child.stderr) child.stderr.destroy()
+        } catch {
+          // defensive
+        }
+      }
+
+      /**
+       * M33 WP-B #4: bounded controlled termination started by a post-spawn
+       * runtime error (kill failure / IPC failure / abort / child-state ACTIVE
+       * persistence failure) even when NO opts.timeout was set. Requests stop,
+       * arms the escalation, and bounds the whole process by the deadline.
+       *
+       * Re-entrancy guard: a kill() injection that emits a post-spawn 'error'
+       * from inside stopTree() would otherwise re-enter this function through
+       * the error handler (probe M5: the escalation timer was created 73
+       * times and only 3 timers were cleared). The FIRST entry owns the
+       * termination; later entries are no-ops.
+       *
+       * @returns {void}
+       */
+      let terminationStarted = false
+      const startControlledTermination = () => {
+        if (terminationStarted) return
+        terminationStarted = true
+        startTerminationDeadline()
+        stopTree('SIGTERM')
+        if (!escalationTimer) {
+          escalationTimer = setTimeout(() => {
+            if (!settled) {
+              stopTree('SIGKILL')
+            }
+          }, escalationDelayMs)
+        }
+      }
+
+      /**
+       * Normal completion: direct child closed AND the controlled group is
+       * proven absent; QUIESCENCE_PROVEN persisted (fail closed if that
+       * persistence fails); timers cleared; registry updated.
+       *
+       * @returns {void}
+       */
+      const finishSettle = () => {
+        if (settled) return
+        // M33 WP-A #7/#8: persist QUIESCENCE_PROVEN BEFORE settling -- the
+        // child-state must prove the group was gone before the lock may be
+        // released. A persistence failure fails closed (registry preserved,
+        // lock not released). Supports both sync and async callbacks.
+        if (opts.childState && typeof opts.childState.onQuiesced === 'function') {
+          const failQuiesce = (/** @type {unknown} */ e) => {
+            failClosedSettle(
+              `child-state QUIESCENCE_PROVEN persistence failed after group proven gone: ${e instanceof Error ? e.message : String(e)}`,
+            )
+          }
+          let r
+          try {
+            r = opts.childState.onQuiesced()
+          } catch (e) {
+            failQuiesce(e)
+            return
+          }
+          if (r && typeof r.then === 'function') {
+            r.then(() => finishSettleAfterQuiesce(), failQuiesce)
+            return
+          }
+        }
+        finishSettleAfterQuiesce()
+      }
+
+      /**
+       * Second half of finishSettle (after the quiescence persistence step).
+       *
+       * @returns {void}
+       */
+      const finishSettleAfterQuiesce = () => {
+        if (settled) return
         settled = true
         activeChildren.delete(child)
         clearOwnedTimers()
-        reject(new Error(`failed to start ${cmd}: ${e.message}`))
-        return
+        if (runtimeError) {
+          reject(runtimeError)
+          return
+        }
+        if (timeoutError) {
+          reject(timeoutError)
+          return
+        }
+        if (exitSignal) {
+          reject(new Error(`${cmd} was terminated by signal ${exitSignal}: ${stderrBuf.trim()}`))
+          return
+        }
+        if (exitCode !== 0) {
+          reject(new Error(`${cmd} exited with status ${String(exitCode)}: ${stderrBuf.trim()}`))
+          return
+        }
+        resolve()
       }
-      // Post-spawn runtime error (kill failure / IPC failure / abort): record
-      // it, do NOT settle, do NOT touch the registry -- controlled
-      // termination and group cleanup continue (M32 WP-A #3).
-      runtimeError = new Error(
-        `${cmd} failed after spawn (${/** @type {{ code?: string }} */ (/** @type {unknown} */ (e)).code || 'runtime error'}): ${e.message}`,
-      )
-      startTerminationDeadline()
-    })
 
-    const stderrStream = child.stderr
-    if (stderrStream) {
-      stderrStream.on('data', (d) => {
-        stderrBuf += String(d)
-      })
-      stderrStream.on('error', () => {
-        // stderr stream errors are not fatal for the outcome.
-      })
-    }
-
-    if (opts.input !== undefined && child.stdin) {
-      // stdin errors (e.g. EPIPE when the helper exits before reading the
-      // manifest) must never surface as unhandled stream errors -- record
-      // them; the outcome is decided by the state machine above.
-      child.stdin.on('error', (e) => {
-        const err = /** @type {{ code?: string, message: string }} */ (/** @type {unknown} */ (e))
-        stderrBuf += `(stdin: ${err.code || err.message})\n`
-      })
-      try {
-        child.stdin.write(opts.input)
-      } catch {
-        // sink -- the error listener above owns the failure
+      /**
+       * Fail closed: the group could not be proven gone within the bounded
+       * deadline. The registry entry is PRESERVED on purpose -- runCli refuses
+       * to release the release lock while activeChildren is non-empty, so the
+       * on-disk state stays recoverable/auditable. The child-state is marked
+       * MANUAL_AUDIT_REQUIRED (best effort) and the child is detached so the
+       * CLI process can still exit naturally and non-zero.
+       *
+       * @param {string} why
+       * @returns {void}
+       */
+      const failClosedSettle = (why) => {
+        if (settled) return
+        settled = true
+        clearOwnedTimers()
+        if (opts.childState && typeof opts.childState.onAudit === 'function') {
+          try {
+            opts.childState.onAudit(why)
+          } catch {
+            // best effort -- the preserved registry entry and the held lock
+            // are the primary fail-closed guarantees
+          }
+        }
+        detachForNaturalExit()
+        const runtimeDetail = runtimeError ? `; runtime error: ${runtimeError.message}` : ''
+        reject(
+          new Error(
+            `${cmd}: FAILED CLOSED -- ${why}${runtimeDetail}; child registry entry preserved and release lock must not be released`,
+          ),
+        )
       }
-      child.stdin.end()
-    }
 
-    child.on('close', (code, signal) => {
-      if (settled) return
-      exitCode = code
-      exitSignal = signal
-      // M32 WP-A #5: the direct child's close is NOT proof the process group
-      // is gone. While the group still exists, keep terminating (SIGKILL
-      // escalation) and poll for ESRCH -- only then settle.
-      if (process.platform !== 'win32' && pgid !== null && groupExists()) {
-        escalateAndWaitGroup()
-        return
+      /**
+       * Bounded poll for process-group disappearance (ESRCH).
+       *
+       * @param {number} deadlineAt
+       * @returns {void}
+       */
+      const pollGroupGone = (deadlineAt) => {
+        if (settled) return
+        if (!groupExists()) {
+          finishSettle()
+          return
+        }
+        if (Date.now() >= deadlineAt) {
+          failClosedSettle(
+            'could not prove the process group disappeared within the bounded deadline',
+          )
+          return
+        }
+        groupPollTimer = setTimeout(() => pollGroupGone(deadlineAt), settlePollMs)
+        // NOTE: intentionally NOT unref'd. After the direct child's close the
+        // poll timer can be the ONLY active handle in the event loop; unref'd
+        // timers do not keep the loop alive and the promise would never settle
+        // (observed as an unsettled top-level await in the standalone stress
+        // process). The timer is always cleared by clearOwnedTimers on settle.
       }
-      finishSettle()
-    })
 
-    const mainTimeoutTimer =
-      opts.timeout !== undefined && opts.timeout > 0
-        ? setTimeout(() => {
+      /**
+       * The direct child closed but the controlled group is STILL alive (e.g. a
+       * grandchild that alone ignores SIGTERM): escalate to SIGKILL and poll
+       * until ESRCH or the bounded deadline.
+       *
+       * @returns {void}
+       */
+      const escalateAndWaitGroup = () => {
+        if (settled) return
+        stopTree('SIGKILL')
+        pollGroupGone(Date.now() + settleDeadlineMs)
+      }
+
+      /**
+       * Bounded overall termination deadline: after a timeout or a post-spawn
+       * runtime error, if neither close nor a proven-gone group arrives in
+       * time, fail closed instead of waiting forever.
+       *
+       * @returns {void}
+       */
+      const startTerminationDeadline = () => {
+        if (deadlineTimer) return
+        deadlineTimer = setTimeout(() => {
+          if (!settled) {
+            failClosedSettle(
+              'termination deadline exceeded: neither the direct child close nor a proven-gone process group arrived in time',
+            )
+          }
+        }, settleDeadlineMs)
+      }
+
+      child.on('spawn', () => {
+        spawned = true
+        // POSIX: the detached child is the process-group leader, so the PGID
+        // equals child.pid -- captured at spawn time (never re-derived from a
+        // recycled PID after close, M32 WP-A #9).
+        if (process.platform !== 'win32' && child.pid !== undefined) {
+          pgid = child.pid
+        }
+        // M33 WP-B #4 test/fault-injection hook: simulate a post-spawn error
+        // (IPC failure / abort / external kill failure) arriving asynchronously
+        // even when NO opts.timeout was set -- the controlled termination must
+        // start regardless. Small delay so the child has started executing.
+        if (deps.postSpawnError !== undefined) {
+          setTimeout(() => {
+            if (!settled) {
+              child.emit('error', deps.postSpawnError)
+            }
+          }, 300)
+        }
+        // M33 WP-A #4: persist ACTIVE as early as possible after spawn. A crash
+        // between SPAWN_INTENT and this write leaves SPAWN_INTENT on disk and
+        // recovery refuses (manual audit) -- the crash window is fail-closed.
+        if (opts.childState && typeof opts.childState.onSpawn === 'function') {
+          const failActivate = (/** @type {unknown} */ e) => {
             if (settled) return
-            timeoutError = new Error(`child ${cmd} timed out after ${opts.timeout}ms`)
-            // 1) bounded overall deadline; 2) request stop; 3) the close
-            // handler settles (or escalates + polls); 4) escalate if close
-            // never arrives.
-            startTerminationDeadline()
-            stopTree('SIGTERM')
-            escalationTimer = setTimeout(() => {
-              if (!settled) {
-                stopTree('SIGKILL')
-              }
-            }, 1000)
-          }, opts.timeout)
-        : null
-    timer = mainTimeoutTimer
+            runtimeError = new Error(
+              `${cmd}: child-state ACTIVE persistence failed after spawn (${e instanceof Error ? e.message : String(e)})`,
+            )
+            startControlledTermination()
+          }
+          try {
+            const r = opts.childState.onSpawn(pgid, child.pid ?? null)
+            if (r && typeof r.catch === 'function') {
+              r.catch(failActivate)
+            }
+          } catch (e) {
+            failActivate(e)
+          }
+        }
+      })
+
+      child.on('error', (e) => {
+        if (settled) return
+        if (!spawned) {
+          // A child that was never created (spawn error, e.g. ENOENT) rejects
+          // here -- there is no process, no group and no 'close' to wait for;
+          // the registry entry is removed because nothing is alive to leak.
+          settled = true
+          activeChildren.delete(child)
+          clearOwnedTimers()
+          reject(new Error(`failed to start ${cmd}: ${e.message}`))
+          return
+        }
+        // Post-spawn runtime error (kill failure / IPC failure / abort): record
+        // it, do NOT settle, do NOT touch the registry -- controlled
+        // termination and group cleanup continue (M32 WP-A #3). M33 WP-B #4:
+        // even without opts.timeout a bounded controlled termination starts.
+        runtimeError = new Error(
+          `${cmd} failed after spawn (${/** @type {{ code?: string }} */ (/** @type {unknown} */ (e)).code || 'runtime error'}): ${e.message}`,
+        )
+        startControlledTermination()
+      })
+
+      const stderrStream = child.stderr
+      if (stderrStream) {
+        stderrStream.on('data', (d) => {
+          stderrBuf += String(d)
+        })
+        stderrStream.on('error', () => {
+          // stderr stream errors are not fatal for the outcome.
+        })
+      }
+
+      if (opts.input !== undefined && child.stdin) {
+        // stdin errors (e.g. EPIPE when the helper exits before reading the
+        // manifest) must never surface as unhandled stream errors -- record
+        // them; the outcome is decided by the state machine above.
+        child.stdin.on('error', (e) => {
+          const err = /** @type {{ code?: string, message: string }} */ (/** @type {unknown} */ (e))
+          stderrBuf += `(stdin: ${err.code || err.message})\n`
+        })
+        try {
+          child.stdin.write(opts.input)
+        } catch {
+          // sink -- the error listener above owns the failure
+        }
+        child.stdin.end()
+      }
+
+      child.on('close', (code, signal) => {
+        if (settled) return
+        exitCode = code
+        exitSignal = signal
+        // M32 WP-A #5: the direct child's close is NOT proof the process group
+        // is gone. While the group still exists, keep terminating (SIGKILL
+        // escalation) and poll for ESRCH -- only then settle.
+        if (process.platform !== 'win32' && pgid !== null && groupExists()) {
+          escalateAndWaitGroup()
+          return
+        }
+        finishSettle()
+      })
+
+      const mainTimeoutTimer =
+        opts.timeout !== undefined && opts.timeout > 0
+          ? setTimeout(() => {
+              if (settled) return
+              timeoutError = new Error(`child ${cmd} timed out after ${opts.timeout}ms`)
+              // 1) bounded overall deadline; 2) request stop; 3) the close
+              // handler settles (or escalates + polls); 4) escalate if close
+              // never arrives. Unified with the post-spawn-error path so the
+              // escalation timer is created exactly once (M33 WP-B #4).
+              startControlledTermination()
+            }, opts.timeout)
+          : null
+      timer = mainTimeoutTimer
+    }
+    void begin()
   })
 }
 
@@ -717,7 +933,18 @@ function validateAndCollectEntries(distDir, files) {
  * @returns {Promise<void>}
  */
 async function createDeterministicZip(distDir, files, outputPath, python3 = PYTHON3, deps) {
-  const execFile = (deps && deps.execFile) || execFileAsync
+  // M33 WP-A: childState is threaded into every execFile call so SPAWN_INTENT
+  // is persisted before each helper spawn and ACTIVE after it.
+  /**
+   * @param {string} cmd
+   * @param {string[]} args
+   * @param {ExecFileOpts} [opts2]
+   */
+  const execFile = (cmd, args, opts2 = {}) =>
+    (deps && deps.execFile ? deps.execFile : execFileAsync)(cmd, args, {
+      ...opts2,
+      childState: deps && deps.childState,
+    })
   const entries = validateAndCollectEntries(distDir, files)
 
   // Build manifest as JSON lines
@@ -825,8 +1052,280 @@ export function writeAllSync(fd, payload, deps = {}) {
 }
 
 /**
+ * M33 WP-A: persistent child-ownership state (single source of truth shared
+ * by the lock metadata and the sidecar file).
+ *
+ * @typedef {{
+ *   schemaVersion: number,
+ *   nonce: string,
+ *   repoRealpath: string,
+ *   state: string,
+ *   pgid: number | null,
+ *   helperPid: number | null,
+ *   updatedAt: string,
+ * }} ChildState
+ */
+
+/**
+ * Validate a child-state object. Unknown schema, unknown state, nonce/repo
+ * mismatch or impossible pid fields are all manual-audit conditions -- never
+ * auto-recovered.
+ *
+ * @param {unknown} value
+ * @param {string} [expectedNonce] -- lock nonce the child-state must match
+ * @param {string} [expectedRepoRealpath]
+ * @returns {{ ok: true, childState: ChildState } | { ok: false, reason: string }}
+ */
+export function validateChildState(value, expectedNonce, expectedRepoRealpath) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return { ok: false, reason: 'childState is not an object' }
+  }
+  const cs = /** @type {Record<string, unknown>} */ (value)
+  if (cs.schemaVersion !== CHILD_STATE_SCHEMA_VERSION) {
+    return {
+      ok: false,
+      reason: `unsupported child-state schemaVersion ${JSON.stringify(cs.schemaVersion)} (expected ${CHILD_STATE_SCHEMA_VERSION}) -- manual audit required`,
+    }
+  }
+  if (typeof cs.state !== 'string' || !CHILD_STATE_VALUES.includes(cs.state)) {
+    return {
+      ok: false,
+      reason: `unknown child-state state ${JSON.stringify(cs.state)} -- manual audit required`,
+    }
+  }
+  if (typeof cs.nonce !== 'string' || cs.nonce.length === 0) {
+    return { ok: false, reason: 'child-state nonce missing' }
+  }
+  if (expectedNonce !== undefined && cs.nonce !== expectedNonce) {
+    return {
+      ok: false,
+      reason: `child-state nonce does not match lock nonce ${expectedNonce} -- manual audit required`,
+    }
+  }
+  if (typeof cs.repoRealpath !== 'string' || cs.repoRealpath.length === 0) {
+    return { ok: false, reason: 'child-state repoRealpath missing' }
+  }
+  if (expectedRepoRealpath !== undefined && cs.repoRealpath !== expectedRepoRealpath) {
+    return {
+      ok: false,
+      reason: 'child-state repoRealpath does not match lock repoRealpath -- manual audit required',
+    }
+  }
+  /** @param {unknown} v */
+  const posInt = (v) => typeof v === 'number' && Number.isInteger(v) && v > 0
+  if (cs.helperPid !== null && !posInt(cs.helperPid)) {
+    return {
+      ok: false,
+      reason: 'child-state helperPid must be null or a positive integer -- manual audit required',
+    }
+  }
+  if (cs.pgid !== null && !posInt(cs.pgid)) {
+    return {
+      ok: false,
+      reason: 'child-state pgid must be null or a positive integer -- manual audit required',
+    }
+  }
+  if (typeof cs.updatedAt !== 'string' || Number.isNaN(Date.parse(cs.updatedAt))) {
+    return { ok: false, reason: 'child-state updatedAt missing or not an ISO timestamp' }
+  }
+  return {
+    ok: true,
+    childState: /** @type {ChildState} */ (cs),
+  }
+}
+
+/**
+ * Read and validate the child-state sidecar file bound to a lock.
+ *
+ * @param {string} repoRoot
+ * @param {{ readFileSync?: typeof fs.readFileSync, existsSync?: typeof fs.existsSync }} [deps]
+ * @returns {{ ok: true, childState: ChildState, path: string } | { ok: false, reason: string, path: string }}
+ */
+export function readChildStateFile(repoRoot, deps = {}) {
+  const readFileSync = deps.readFileSync || fs.readFileSync
+  const existsSync = deps.existsSync || fs.existsSync
+  const childStatePath = path.join(repoRoot, CHILD_STATE_FILE)
+  if (!existsSync(childStatePath)) {
+    return {
+      ok: false,
+      reason: `${CHILD_STATE_FILE} missing -- cannot prove child ownership -- manual audit required`,
+      path: childStatePath,
+    }
+  }
+  let raw = ''
+  try {
+    raw = readFileSync(childStatePath, 'utf8')
+  } catch (e) {
+    return {
+      ok: false,
+      reason: `${CHILD_STATE_FILE} unreadable (${e instanceof Error ? e.message : String(e)}) -- manual audit required`,
+      path: childStatePath,
+    }
+  }
+  /** @type {unknown} */
+  let parsed
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return {
+      ok: false,
+      reason: `${CHILD_STATE_FILE} is not valid JSON -- manual audit required`,
+      path: childStatePath,
+    }
+  }
+  const validated = validateChildState(parsed)
+  if (!validated.ok) {
+    return {
+      ok: false,
+      reason: `${CHILD_STATE_FILE} rejected: ${validated.reason}`,
+      path: childStatePath,
+    }
+  }
+  return { ok: true, childState: validated.childState, path: childStatePath }
+}
+
+/**
+ * Durably persist a child-state sidecar update: temp file + writeAllSync +
+ * fsync + rename + parent-directory fsync. Throws on ANY failure -- the
+ * caller must fail closed (never release the main lock when child-state
+ * persistence cannot be proven).
+ *
+ * @param {string} repoRoot
+ * @param {string} nonce -- lock nonce the state is bound to
+ * @param {string} repoRealpath
+ * @param {string} state
+ * @param {number | null} pgid
+ * @param {number | null} helperPid
+ * @param {LockDeps} [deps]
+ * @returns {void}
+ */
+export function writeChildStateSync(
+  repoRoot,
+  nonce,
+  repoRealpath,
+  state,
+  pgid,
+  helperPid,
+  deps = {},
+) {
+  const openSync = deps.openSync || fs.openSync
+  const writeSync = deps.writeSync || fs.writeSync
+  const closeSync = deps.closeSync || fs.closeSync
+  const renameSync = deps.renameSync || fs.renameSync
+  const unlinkSync = deps.unlinkSync || fs.unlinkSync
+  const fsyncSync = deps.fsyncSync || fs.fsyncSync
+  const childStatePath = path.join(repoRoot, CHILD_STATE_FILE)
+  const tmpPath = path.join(repoRoot, `.${CHILD_STATE_FILE}.tmp-${nonce}`)
+  /** @type {ChildState} */
+  const stateObj = {
+    schemaVersion: CHILD_STATE_SCHEMA_VERSION,
+    nonce,
+    repoRealpath,
+    state,
+    pgid,
+    helperPid,
+    updatedAt: new Date().toISOString(),
+  }
+  const payload = Buffer.from(JSON.stringify(stateObj) + '\n', 'utf8')
+  let fd
+  try {
+    fd = openSync(tmpPath, 'wx', 0o600)
+  } catch (e) {
+    throw new Error(`child-state temp open failed (${e instanceof Error ? e.message : String(e)})`)
+  }
+  try {
+    writeAllSync(fd, payload, { writeSync })
+    fsyncSync(fd)
+    closeSync(fd)
+  } catch (e) {
+    try {
+      closeSync(fd)
+    } catch {
+      // original error wins
+    }
+    try {
+      unlinkSync(tmpPath)
+    } catch {
+      // best effort
+    }
+    throw new Error(`child-state write failed (${e instanceof Error ? e.message : String(e)})`)
+  }
+  try {
+    renameSync(tmpPath, childStatePath)
+    fsyncParentDirectorySync(repoRoot, deps)
+  } catch (e) {
+    try {
+      unlinkSync(tmpPath)
+    } catch {
+      // best effort
+    }
+    throw new Error(
+      `child-state rename/durability failed (${e instanceof Error ? e.message : String(e)})`,
+    )
+  }
+}
+
+/**
+ * Child-state manager bound to a specific lock acquisition (nonce). Used by
+ * execFileAsync hooks and by runCli's unified finally. All state transitions
+ * are durable or throw (fail closed).
+ *
+ * @param {string} repoRoot
+ * @param {string} lockNonce
+ * @param {string} repoRealpath
+ * @param {LockDeps} [deps]
+ * @returns {{
+ *   childStatePath: string,
+ *   beginSpawn: () => void,
+ *   onSpawn: (pgid: number | null, helperPid: number | null) => void,
+ *   onQuiesced: () => void,
+ *   onAudit: (why: string) => void,
+ *   finalize: () => boolean,
+ *   cleanup: () => void,
+ * }}
+ */
+export function makeChildStateManager(repoRoot, lockNonce, repoRealpath, deps = {}) {
+  const childStatePath = path.join(repoRoot, CHILD_STATE_FILE)
+  /**
+   * @param {string} state
+   * @param {number | null} pgid
+   * @param {number | null} helperPid
+   */
+  const write = (state, pgid, helperPid) =>
+    writeChildStateSync(repoRoot, lockNonce, repoRealpath, state, pgid, helperPid, deps)
+  return {
+    childStatePath,
+    beginSpawn: () => write(CHILD_STATES.SPAWN_INTENT, null, null),
+    // execFileAsync hook contract (onSpawn/onQuiesced/onAudit).
+    onSpawn: (pgid, helperPid) => write(CHILD_STATES.ACTIVE, pgid, helperPid),
+    onQuiesced: () => write(CHILD_STATES.QUIESCENCE_PROVEN, null, null),
+    onAudit: (why) => {
+      void why
+      write(CHILD_STATES.MANUAL_AUDIT_REQUIRED, null, null)
+    },
+    finalize: () => {
+      try {
+        write(CHILD_STATES.QUIESCENCE_PROVEN, null, null)
+        return true
+      } catch {
+        return false
+      }
+    },
+    cleanup: () => {
+      try {
+        fs.unlinkSync(childStatePath)
+      } catch {
+        // best effort -- a stale sidecar is bound to its (already gone) lock
+      }
+    },
+  }
+}
+
+/**
  * Parse and validate lock metadata. Unknown schema versions are rejected:
- * they must never be recovered automatically (WP-B #7).
+ * they must never be recovered automatically (WP-B #7). M33 WP-A: schema v1
+ * (owner-PID only) is explicitly unsupported -- it cannot prove a detached
+ * helper group is gone and requires manual audit.
  *
  * @param {string} raw
  * @returns {{ ok: true, metadata: LockMetadata } | { ok: false, reason: string }}
@@ -860,6 +1359,16 @@ export function validateLockMetadata(raw) {
   if (typeof parsed.repoRealpath !== 'string' || parsed.repoRealpath.length === 0) {
     return { ok: false, reason: 'repoRealpath missing' }
   }
+  if (parsed.childStateFile !== CHILD_STATE_FILE) {
+    return {
+      ok: false,
+      reason: `unsupported childStateFile ${JSON.stringify(parsed.childStateFile)} -- manual audit required`,
+    }
+  }
+  const csValidated = validateChildState(parsed.childState, parsed.nonce, parsed.repoRealpath)
+  if (!csValidated.ok) {
+    return { ok: false, reason: `childState rejected: ${csValidated.reason}` }
+  }
   return {
     ok: true,
     metadata: /** @type {LockMetadata} */ (parsed),
@@ -877,6 +1386,8 @@ export function validateLockMetadata(raw) {
  *   startedAt: string,
  *   nonce: string,
  *   repoRealpath: string,
+ *   childStateFile: string,
+ *   childState: ChildState,
  * }} LockMetadata
  */
 
@@ -891,6 +1402,8 @@ export function validateLockMetadata(raw) {
  *   realpathSync?: typeof fs.realpathSync,
  *   fstatSync?: typeof fs.fstatSync,
  *   lstatSync?: typeof fs.lstatSync,
+ *   renameSync?: typeof fs.renameSync,
+ *   fsyncSync?: typeof fs.fsyncSync,
  * }} LockDeps
  */
 
@@ -914,6 +1427,7 @@ export function validateLockMetadata(raw) {
  * @returns {{
  *   nonce: string,
  *   lockPath: string,
+ *   childState: ReturnType<typeof makeChildStateManager>,
  *   release: () => { released: boolean, reason?: string },
  * }}
  */
@@ -938,6 +1452,16 @@ export function acquireLock(repoRoot, deps) {
     startedAt: new Date().toISOString(),
     nonce,
     repoRealpath,
+    childStateFile: CHILD_STATE_FILE,
+    childState: {
+      schemaVersion: CHILD_STATE_SCHEMA_VERSION,
+      nonce,
+      repoRealpath,
+      state: CHILD_STATES.EMPTY,
+      pgid: null,
+      helperPid: null,
+      updatedAt: new Date().toISOString(),
+    },
   }
 
   /** Remove the lock file only if it is still the exact inode we created. */
@@ -1007,11 +1531,24 @@ export function acquireLock(repoRoot, deps) {
     throw new Error(`failed to close lock file descriptor: ${/** @type {Error} */ (e).message}. `)
   }
 
+  // M33 WP-A #3/#8: persist the EMPTY child-state sidecar (durable) as part
+  // of lock acquisition. If it cannot be persisted, the lock must NOT be
+  // handed out -- child ownership could never be proven afterwards.
+  try {
+    writeChildStateSync(repoRoot, nonce, repoRealpath, CHILD_STATES.EMPTY, null, null, deps)
+  } catch (e) {
+    removeOwnedInode()
+    throw new Error(
+      `failed to persist initial child-state (${/** @type {Error} */ (e).message}) -- lock file removed; nothing was handed out`,
+    )
+  }
+
   let released = false
 
   return {
     nonce,
     lockPath,
+    childState: makeChildStateManager(repoRoot, nonce, repoRealpath, deps),
 
     /**
      * Release the lock. Never swallows errors (WP-B #3/#4):
@@ -1236,7 +1773,88 @@ export function recoverLock(repoRoot, deps) {
         reason: `cannot determine PID ${metadata.pid} status: ${/** @type {Error} */ (/** @type {unknown} */ (e)).message || kerr}`,
       }
     }
-    // ESRCH -- process not running, safe to recover
+    // ESRCH -- process not running; child ownership must still be proven
+  }
+
+  // M33 WP-A #9: child-state gate. A v1 lock (or any lock whose child-state
+  // sidecar is missing/invalid/mismatched) is NEVER auto-recovered -- the
+  // owner-PID check alone cannot prove a detached helper group is gone
+  // (probe P1-A: recover succeeded and a replacement lock was acquired while
+  // the old helper was still writing the sentinel).
+  const childStateRes = readChildStateFile(repoRoot, deps)
+  if (!childStateRes.ok) {
+    return { recovered: false, reason: `lock recovery refused: ${childStateRes.reason}` }
+  }
+  const childState = childStateRes.childState
+  if (childState.nonce !== metadata.nonce) {
+    return {
+      recovered: false,
+      reason:
+        'lock recovery refused: child-state nonce does not match lock nonce -- manual audit required',
+    }
+  }
+  if (childState.repoRealpath !== currentRepoRealpath) {
+    return {
+      recovered: false,
+      reason:
+        'lock recovery refused: child-state repoRealpath does not match lock repoRealpath -- manual audit required',
+    }
+  }
+
+  switch (childState.state) {
+    case CHILD_STATES.EMPTY:
+    case CHILD_STATES.QUIESCENCE_PROVEN:
+      // No helper was ever spawned, or the group was already proven absent:
+      // recovery is safe once the owner PID is dead.
+      break
+    case CHILD_STATES.SPAWN_INTENT:
+      // A helper may have been spawned but ACTIVE was never persisted (the
+      // M33 crash window): we CANNOT prove no process exists.
+      return {
+        recovered: false,
+        reason:
+          'lock recovery refused: child-state is SPAWN_INTENT -- cannot prove no process was spawned -- manual audit required',
+      }
+    case CHILD_STATES.MANUAL_AUDIT_REQUIRED:
+      return {
+        recovered: false,
+        reason:
+          'lock recovery refused: child-state is MANUAL_AUDIT_REQUIRED -- manual audit required',
+      }
+    case CHILD_STATES.ACTIVE: {
+      if (childState.pgid === null || childState.pgid <= 0) {
+        return {
+          recovered: false,
+          reason:
+            'lock recovery refused: child-state ACTIVE without a known PGID -- manual audit required',
+        }
+      }
+      // Probe only (signal 0): never deliver a signal to a possibly-reused
+      // PGID. ESRCH proves the group is gone; anything else is unprovable.
+      try {
+        process.kill(-childState.pgid, 0)
+        return {
+          recovered: false,
+          reason: `lock recovery refused: ACTIVE process group ${childState.pgid} still exists (or its state is unprovable) -- manual audit required`,
+        }
+      } catch (e) {
+        const kerr = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
+        if (kerr.code !== 'ESRCH') {
+          return {
+            recovered: false,
+            reason: `lock recovery refused: cannot prove ACTIVE group ${childState.pgid} gone (${kerr.code || 'unknown'}) -- manual audit required`,
+          }
+        }
+        // ESRCH + all nonce/repo/schema/inode contracts hold -> explicit
+        // recovery is allowed below.
+      }
+      break
+    }
+    default:
+      return {
+        recovered: false,
+        reason: `lock recovery refused: unknown child-state ${childState.state} -- manual audit required`,
+      }
   }
 
   try {
@@ -1246,6 +1864,13 @@ export function recoverLock(repoRoot, deps) {
       recovered: false,
       reason: `unlink failed (${/** @type {Error} */ (e).message}) -- manual audit required`,
     }
+  }
+  // Best-effort sidecar cleanup: the lock is already gone; a stale sidecar is
+  // bound to the old nonce and harmless (the next acquire overwrites it).
+  try {
+    fs.unlinkSync(childStateRes.path)
+  } catch {
+    // best effort
   }
   return { recovered: true }
 }
@@ -1654,6 +2279,7 @@ export const verifyOutputContents = verifyAssetPair
  *   readFileSync?: typeof fs.readFileSync,
  *   createHash?: typeof createHash,
  *   execFile?: (cmd: string, args: string[], opts?: any) => Promise<void>,
+ *   childState?: ReturnType<typeof makeChildStateManager>,
  *   python3?: string,
  *   skipPythonVerifier?: boolean,
  * }} [opts]
@@ -1664,7 +2290,14 @@ export async function validateBackupDir(backupDir, plan, version, opts = {}) {
   const readFileSync = opts.readFileSync || fs.readFileSync
   const hashFn = opts.createHash || createHash
   const python3 = opts.python3 || PYTHON3
-  const execFile = opts.execFile || execFileAsync
+  // M33 WP-A: childState is threaded into every execFile call.
+  /**
+   * @param {string} cmd
+   * @param {string[]} args
+   * @param {ExecFileOpts} [opts2]
+   */
+  const execFile = (cmd, args, opts2 = {}) =>
+    (opts.execFile || execFileAsync)(cmd, args, { ...opts2, childState: opts.childState })
 
   let dirents
   try {
@@ -1822,6 +2455,7 @@ function detectStaleState(repoRoot, deps) {
  *   python3?: string,
  *   skipPythonVerifier?: boolean,
  *   shouldStop?: () => string | null,
+ *   childState?: ReturnType<typeof makeChildStateManager>,
  * }} [deps]
  * @returns {Promise<{ recovered: boolean, action?: string, reason?: string }>}
  */
@@ -2028,6 +2662,7 @@ export async function recoverTransaction(repoRoot, outputDir, zipName, sumsName,
         readFileSync,
         createHash: deps.createHash,
         execFile: deps.execFile,
+        childState: deps.childState,
         python3: deps.python3,
         skipPythonVerifier: deps.skipPythonVerifier,
       })
@@ -2148,7 +2783,13 @@ async function verifyOutputAgainstSha(outputDir, plan, deps, expectSha) {
       'scripts',
       'verify_release_zip.py',
     )
-    const execFile = deps.execFile || execFileAsync
+    /**
+     * @param {string} cmd
+     * @param {string[]} args
+     * @param {ExecFileOpts} [opts2]
+     */
+    const execFile = (cmd, args, opts2 = {}) =>
+      (deps.execFile || execFileAsync)(cmd, args, { ...opts2, childState: deps.childState })
     const python3 = deps.python3 || PYTHON3
     await execFile(python3, [verifyScript, path.join(outputDir, plan.zipName)], {
       stdio: 'pipe',
@@ -2240,6 +2881,7 @@ export const FAILPOINTS = [
  *   closeSync?: typeof fs.closeSync,
  *   failpoint?: (name: string) => void,
  *   shouldStop?: () => string | null,
+ *   childState?: ReturnType<typeof makeChildStateManager>,
  *   trace?: string[],
  * }} [deps]
  * @returns {Promise<{ trace: string[], plan: ReturnType<typeof buildReleasePlan>, zipSize: number, sumsName: string, committed: boolean }>}
@@ -2253,7 +2895,14 @@ export async function generateAssets(distDir, outputDir, force, python3 = PYTHON
   const statSync = deps.statSync || fs.statSync
   const readFileSync = deps.readFileSync || fs.readFileSync
   const trace = deps.trace || []
-  const execFile = deps.execFile || execFileAsync
+  // M33 WP-A: childState is threaded into every execFile call.
+  /**
+   * @param {string} cmd
+   * @param {string[]} args
+   * @param {ExecFileOpts} [opts2]
+   */
+  const execFile = (cmd, args, opts2 = {}) =>
+    (deps.execFile || execFileAsync)(cmd, args, { ...opts2, childState: deps.childState })
   const shouldStop = deps.shouldStop
   /** M30 WP-C: committed zip size, returned (not printed) to runCli. */
   let zipSize = 0
@@ -2518,8 +3167,15 @@ export async function generateAssets(distDir, outputDir, force, python3 = PYTHON
       } catch (e) {
         // M29 WP-C/WP-B: durability uncertainty or an observed signal must
         // never trigger rollback -- keep the on-disk state and journal for
-        // explicit --recover (no new stage may be entered).
-        if (e instanceof DurabilityError || e instanceof SignalStoppedError) {
+        // explicit --recover (no new stage may be entered). M33 WP-C: when a
+        // signal was observed, the controlled termination may surface as an
+        // ordinary execFile rejection (helper SIGTERMed) -- that is still a
+        // signal-driven stop and must preserve the journal, never roll back.
+        if (
+          e instanceof DurabilityError ||
+          e instanceof SignalStoppedError ||
+          (shouldStop && shouldStop())
+        ) {
           throw e
         }
         // Pre-commit failure: rollback to the byte-identical old output.
@@ -2583,8 +3239,14 @@ export async function generateAssets(distDir, outputDir, force, python3 = PYTHON
     // M29 WP-C/WP-B: durability cannot be proven, or a signal was observed --
     // keep the journal/backup/lock recovery information and NEVER roll back
     // or delete the journal while the on-disk state may not be durable or a
-    // new stage must not be entered. Fail closed for --recover.
-    if (e instanceof DurabilityError || e instanceof SignalStoppedError) {
+    // new stage must not be entered. Fail closed for --recover. M33 WP-C:
+    // a signal-driven helper termination surfaces as an ordinary rejection;
+    // while a signal is observed it must be treated as a signal stop.
+    if (
+      e instanceof DurabilityError ||
+      e instanceof SignalStoppedError ||
+      (shouldStop && shouldStop())
+    ) {
       throw e
     }
     // Any pre-commit failure that escaped local handling gets a rollback
@@ -2812,6 +3474,30 @@ export async function runCli(argv, io = {}) {
           process.exitCode = code
         },
       })
+      // M33 WP-C #5: request every active helper to stop NOW (controlled
+      // SIGTERM to each controlled process group) instead of only recording
+      // the termination request and waiting for the helper's own timeout.
+      // The execFileAsync state machine still owns escalation (SIGKILL) and
+      // the group-gone proof; transaction stage boundaries still refuse to
+      // start new stages. This is the "transaction-stage-consistent" child
+      // termination requested by M33 -- a signal-observed run never waits
+      // out a long helper timeout.
+      for (const child of activeChildren) {
+        try {
+          if (process.platform !== 'win32') {
+            if (child.pid !== undefined) {
+              process.kill(-child.pid, sig)
+            } else {
+              child.kill(sig)
+            }
+          } else {
+            child.kill(sig)
+          }
+        } catch {
+          // group already gone or unprovable -- the execFileAsync state
+          // machine owns the outcome; never a crash here
+        }
+      }
     } else {
       // M30 WP-A #2/#3: later signals (same or different) never change the
       // first-signal exit code and never trigger default raw death.
@@ -2861,6 +3547,7 @@ export async function runCli(argv, io = {}) {
             plan.sumsName,
             {
               shouldStop,
+              childState: lock ? lock.childState : undefined,
             },
           )
           if (result.recovered) {
@@ -2870,7 +3557,10 @@ export async function runCli(argv, io = {}) {
           stderr.write(`Transaction recovery failed: ${result.reason}\n`)
           return 'failed'
         }
-        const gen = await generateAssets(distDir, outputDir, force, python3, { shouldStop })
+        const gen = await generateAssets(distDir, outputDir, force, python3, {
+          shouldStop,
+          childState: lock ? lock.childState : undefined,
+        })
         generatedPlan = gen.plan
         generatedZipSize = gen.zipSize
         return 'ok'
@@ -2899,12 +3589,23 @@ export async function runCli(argv, io = {}) {
         `release:prepare-assets: FATAL: ${activeChildren.size} child process(es) still active while releasing the lock -- refusing to release; state preserved for audit\n`,
       )
       lockLeaked = true
+    } else if (lock && lock.childState && !lock.childState.finalize()) {
+      // M33 WP-A #8: the child-state must prove QUIESCENCE (or EMPTY) before
+      // the lock may be released. A persistence failure keeps the lock held.
+      stderr.write(
+        'release:prepare-assets: FATAL: child-state QUIESCENCE_PROVEN persistence failed -- refusing to release the lock; state preserved for audit\n',
+      )
+      lockLeaked = true
     } else if (lock) {
       try {
         const released = lock.release()
         if (!released.released && released.reason !== 'already-released') {
           stderr.write(`release:prepare-assets: lock release skipped (${released.reason})\n`)
           lockLeaked = true
+        } else if (lock.childState) {
+          // Best-effort sidecar cleanup after a successful release; a stale
+          // sidecar is bound to the (now removed) lock nonce and harmless.
+          lock.childState.cleanup()
         }
       } catch (e) {
         lockLeaked = true

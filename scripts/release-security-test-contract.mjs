@@ -13,8 +13,9 @@
 // release-security suites (repeated-signal lifecycle and controlled
 // child/process-tree lifecycle). M32 adds the tenth suite: process-group
 // lifecycle (direct-child close != process-group gone; post-spawn error
-// contract). None of these files invoke the runner itself, so the gate
-// cannot recurse.
+// contract). M33 adds the eleventh suite: crash-consistent child ownership,
+// bounded fail-closed exit and lock-recovery safety. None of these files
+// invoke the runner itself, so the gate cannot recurse.
 
 export const SECURITY_TEST_FILES = Object.freeze([
   'tests/prepare-release-assets.test.ts',
@@ -27,6 +28,7 @@ export const SECURITY_TEST_FILES = Object.freeze([
   'tests/m30-signal-lifecycle.test.ts',
   'tests/m30-child-lifecycle.test.ts',
   'tests/m32-child-group-lifecycle.test.ts',
+  'tests/m33-child-ownership-recovery.test.ts',
 ])
 
 /**
@@ -35,7 +37,7 @@ export const SECURITY_TEST_FILES = Object.freeze([
  * the primary contract is per-file presence in the report plus
  * zero skipped/todo/pending. Do not use a drifting total as the only gate.
  */
-export const SECURITY_TESTS_MIN_TOTAL = 195
+export const SECURITY_TESTS_MIN_TOTAL = 205
 
 /**
  * Validate that a vitest JSON report actually executed every expected file.

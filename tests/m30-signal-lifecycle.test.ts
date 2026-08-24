@@ -59,17 +59,23 @@ interface RunOutcome {
 
 /**
  * Run the real CLI in a child process and deliver the given signals:
- * signal[0] as soon as the lock appears, then each further signal 300ms
- * after the previous "termination requested" line is observed. The slow
- * python shim keeps the transaction in flight long enough for all signals.
+ * signal[0] as soon as BOTH the lock appears AND the helper reports ready
+ * (deterministic handshake -- M33 WP-C #1, no blind 5ms timing guess), then
+ * each further signal 300ms after the previous "termination requested" line
+ * is observed. The slow python shim traps the first signal with a short
+ * grace window so later signals can still be observed as duplicates before
+ * the CLI exits (the runCli signal handler requests the helper group to stop
+ * immediately -- M33 WP-C #5 -- so the helper must stay alive long enough
+ * for the remaining signals).
  */
 function runOnce(
   label: string,
   signals: Array<'SIGINT' | 'SIGTERM'>,
-  slowSeconds = 3,
+  slowSeconds = 0.5,
 ): Promise<RunOutcome> {
   return new Promise((resolve) => {
     const tmp = makeTempDir()
+    const helperPidfile = path.join(tmp, 'helper.pid')
     fs.mkdirSync(path.join(tmp, 'dist', 'assets'), { recursive: true })
     fs.writeFileSync(path.join(tmp, 'dist', 'index.html'), CSP_HTML)
     fs.writeFileSync(path.join(tmp, 'dist', 'assets', 'app.js'), 'console.log("x")')
@@ -79,7 +85,17 @@ function runOnce(
       JSON.stringify({ name: 't', version: '1.1.5', private: true }),
     )
     const shim = path.join(tmp, 'slow-python3')
-    fs.writeFileSync(shim, '#!/bin/sh\nsleep ' + slowSeconds + '\nexec /usr/bin/env python3 "$@"\n')
+    // Deterministic helper: report readiness via a pid file, then trap the
+    // first signal with a 1s grace window (so repeated signals are still
+    // observed), then exit 0. `exec` keeps the shell PID for the group.
+    fs.writeFileSync(
+      shim,
+      '#!/bin/sh\necho $$ > "' +
+        helperPidfile +
+        '"\ntrap "sleep 1; exit 0" TERM INT\nsleep ' +
+        slowSeconds +
+        '\nexec /usr/bin/env python3 "$@"\n',
+    )
     fs.chmodSync(shim, 0o755)
 
     const childScript = path.join(tmp, 'child.mjs')
@@ -109,7 +125,8 @@ function runOnce(
     let out = ''
     let err = ''
     let sigIdx = 0
-    let lockSeen = false
+    let ready = false
+    let helperPid: number | null = null
 
     child.stdout.on('data', (d) => {
       out += String(d)
@@ -130,8 +147,16 @@ function runOnce(
     const lockPath = path.join(tmp, '.release-staging.lock')
     const deadline = Date.now() + 20_000
     const poll = setInterval(() => {
-      if (!lockSeen && fs.existsSync(lockPath)) {
-        lockSeen = true
+      if (!ready && fs.existsSync(lockPath) && fs.existsSync(helperPidfile)) {
+        // M33 WP-C #1: deterministic handshake -- the lock exists AND the
+        // helper reported readiness, so the first signal is delivered to a
+        // CLI that is guaranteed to have an active helper group.
+        ready = true
+        try {
+          helperPid = Number(fs.readFileSync(helperPidfile, 'utf8').trim())
+        } catch {
+          helperPid = null
+        }
         if (sigIdx < signals.length) {
           const first = signals[sigIdx]
           sigIdx++
@@ -143,8 +168,26 @@ function runOnce(
       }
     }, 5)
 
-    const timer = setTimeout(() => {
+    /** M33 WP-C #2/#3: watchdog must clean the WHOLE process group it owns
+     * (helper group + CLI), not just the outer Node process. */
+    const killOwnedTree = () => {
+      if (helperPid !== null && Number.isInteger(helperPid) && helperPid > 0) {
+        try {
+          process.kill(-helperPid, 'SIGKILL')
+        } catch {
+          // group already gone
+        }
+        try {
+          process.kill(helperPid, 'SIGKILL')
+        } catch {
+          // already gone
+        }
+      }
       child.kill('SIGKILL')
+    }
+
+    const timer = setTimeout(() => {
+      killOwnedTree()
       resolve({
         label,
         code: -999,
@@ -160,6 +203,14 @@ function runOnce(
     child.on('close', (code, signalCode) => {
       clearTimeout(timer)
       clearInterval(poll)
+      // M33 WP-C #4: every exit path cleans the helper group it owns.
+      if (helperPid !== null && Number.isInteger(helperPid) && helperPid > 0) {
+        try {
+          process.kill(-helperPid, 'SIGKILL')
+        } catch {
+          // already gone -- fine
+        }
+      }
       resolve({
         label,
         code,

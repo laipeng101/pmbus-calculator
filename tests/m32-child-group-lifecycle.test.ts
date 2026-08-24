@@ -222,6 +222,8 @@ async function runTreeCase(c: TreeCase, timeoutMs = 800): Promise<void> {
     await mod.execFileAsync('python3', [wrapper], {
       stdio: ['pipe', 'inherit', 'inherit'],
       timeout: timeoutMs,
+      // M33 WP-D: short deterministic escalation for tests.
+      timingProfile: { escalationDelayMs: 1500, settleDeadlineMs: 3000 },
     })
   } catch (e) {
     message = e instanceof Error ? e.message : String(e)
@@ -280,6 +282,9 @@ describe('M32 WP-B process-group lifecycle (direct close != group gone)', () => 
         `  await execFileAsync(${JSON.stringify('python3')}, [${JSON.stringify(wrapper)}], {`,
         "    stdio: ['pipe', 'inherit', 'inherit'],",
         '    timeout: 400,',
+        // M33 WP-D: short deterministic timing profile (production defaults
+        // stay safe; tests must not wait the 10s production deadline).
+        '    timingProfile: { settleDeadlineMs: 500, escalationDelayMs: 100 },',
         '  }, {',
         '    kill: (child, signal) => {',
         '      if (recordedPid === null) recordedPid = child.pid',
@@ -353,6 +358,8 @@ describe('M32 WP-B process-group lifecycle (direct close != group gone)', () => 
         `  await execFileAsync(${JSON.stringify('python3')}, [${JSON.stringify(wrapper)}], {`,
         "    stdio: ['pipe', 'inherit', 'inherit'],",
         '    timeout: 400,',
+        // M33 WP-D: short deterministic timing profile.
+        '    timingProfile: { settleDeadlineMs: 500, escalationDelayMs: 100 },',
         '  }, {',
         '    kill: (child, signal) => {',
         '      if (recordedPid === null) recordedPid = child.pid',
@@ -448,7 +455,7 @@ describe('M32 WP-B process-group lifecycle (direct close != group gone)', () => 
     expect((mod.activeChildren as Set<unknown>).size).toBe(0)
   }, 20_000)
 
-  it('M9: every timeout path clears ALL owned timers (main + escalation + deadline + group poll)', async () => {
+  it('M9: every timeout path leaves ZERO live timer handles (main + escalation + deadline + group poll)', async () => {
     const origSetTimeout = globalThis.setTimeout
     const origClearTimeout = globalThis.clearTimeout
     let created = 0
@@ -456,7 +463,18 @@ describe('M32 WP-B process-group lifecycle (direct close != group gone)', () => 
     const live = new Set<unknown>()
     const patchedSetTimeout = (fn: TimerHandler, ms?: number, ...args: unknown[]) => {
       created++
-      const t = origSetTimeout(fn, ms, ...args)
+      // M33 T12: a FIRED timer is no longer a live handle -- remove it from
+      // `live` when it runs, so `live.size` is the authoritative still-live
+      // count (cleared === created would fail when the group poll fires more
+      // than once on slow machines: earlier polls fired and need no clear).
+      const t = origSetTimeout(
+        () => {
+          live.delete(t)
+          ;(fn as (...args: unknown[]) => void)(...args)
+        },
+        ms,
+        ...args,
+      )
       live.add(t)
       return t
     }
@@ -488,6 +506,8 @@ describe('M32 WP-B process-group lifecycle (direct close != group gone)', () => 
         await mod.execFileAsync('python3', [wrapper], {
           stdio: ['pipe', 'inherit', 'inherit'],
           timeout: 300,
+          // M33 WP-D: short deterministic timing profile.
+          timingProfile: { escalationDelayMs: 1500, settleDeadlineMs: 2000 },
         })
       } catch (e) {
         message = e instanceof Error ? e.message : String(e)
@@ -510,7 +530,14 @@ describe('M32 WP-B process-group lifecycle (direct close != group gone)', () => 
         created,
         'expected main + escalation + deadline (group poll when needed)',
       ).toBeGreaterThanOrEqual(3)
-      expect(cleared, 'every owned timer must be cleared on settle').toBe(created)
+      // M33 T12: the authoritative still-live count is `live` -- fired timers
+      // were removed on fire and settled ones were cleared; zero live handles
+      // is the contract (NOT cleared === created, which breaks when the group
+      // poll legitimately fires more than once on slow machines).
+      expect(
+        live.size,
+        `live timer handles must be 0 after settle (created=${created}, cleared=${cleared})`,
+      ).toBe(0)
     } finally {
       await forceCleanTree([readPid(gpidfile), readPid(wpidfile)])
     }
