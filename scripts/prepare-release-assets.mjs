@@ -204,17 +204,43 @@ export function fsyncParentDirectorySync(dirPath, deps = {}) {
 }
 
 /**
- * M29 WP-B: promisified execFile with inherited stdio. The child process
- * runs ASYNCHRONOUSLY so the Node event loop can deliver pending signals
- * (the signal handler runs) while the helper/verifier executes. Rejects on
- * non-zero exit, signal death, spawn failure, or timeout.
+ * M30 WP-B: live registry of every child process spawned through
+ * execFileAsync. runCli checks it is EMPTY before releasing the lock, so a
+ * helper/verifier (or its descendants) can never keep running -- or keep
+ * writing to the release path -- after the lock is gone.
+ */
+export const activeChildren = new Set()
+
+/**
+ * M30 WP-B: promisified execFile with inherited stdio and a fully controlled
+ * child/process-tree lifecycle. The child runs ASYNCHRONOUSLY so the Node
+ * event loop can deliver pending signals while the helper/verifier executes.
+ *
+ * Lifecycle contract (WP-B):
+ * 1. The promise settles ONLY after the child emits 'close'.
+ * 2. On timeout: record a TimeoutError, request stop (SIGTERM to the whole
+ *    controlled process group), WAIT for close, escalate to SIGKILL if close
+ *    does not arrive, wait again, clean the tree, and only then reject.
+ * 3. child.kill() returning false is never a crash -- the promise still
+ *    settles when 'close' arrives.
+ * 4. stdin EPIPE/error is captured (error listener) -- never an unhandled
+ *    stream error; the outcome still comes from 'close'.
+ * 5. Every child is tracked in the exported activeChildren registry and
+ *    removed only on 'close'.
+ * 6. POSIX uses a dedicated process group (detached: true) so SIGTERM/SIGKILL
+ *    can address the whole tree (-pid); descendants cannot outlive the
+ *    promise and keep writing to the release path. Windows has no process
+ *    groups: only the direct child is killed -- a documented fail-closed
+ *    boundary (the helper would fail on its own; the lock is still held
+ *    until this promise settles).
  *
  * @param {string} cmd
  * @param {string[]} args
  * @param {{ input?: string, stdio?: Array<'pipe' | 'inherit' | 'ignore'> | 'pipe' | 'inherit' | 'ignore', timeout?: number }} [opts]
+ * @param {{ kill?: (child: import('node:child_process').ChildProcess, signal: NodeJS.Signals) => boolean }} [deps]
  * @returns {Promise<void>}
  */
-function execFileAsync(cmd, args, opts = {}) {
+export function execFileAsync(cmd, args, opts = {}, deps = {}) {
   return new Promise((resolve, reject) => {
     const stdio = /** @type {Array<'pipe' | 'inherit' | 'ignore'>} */ (
       Array.isArray(opts.stdio)
@@ -224,24 +250,77 @@ function execFileAsync(cmd, args, opts = {}) {
           : ['pipe', 'inherit', 'inherit']
     )
     const spawnOpts = /** @type {import('node:child_process').SpawnOptions} */ ({ stdio })
+    // POSIX: dedicated process group so the whole tree can be stopped.
+    // Windows: no process groups -- leave default (fail-closed boundary).
+    if (process.platform !== 'win32') {
+      spawnOpts.detached = true
+    }
     const child = spawn(cmd, args, spawnOpts)
+    activeChildren.add(child)
     let stderrBuf = ''
     let settled = false
+    /** @type {Error | null} */
+    let timeoutError = null
+
+    /**
+     * Stop the whole controlled process group (POSIX) or the direct child
+     * (Windows). Never throws; returns whether the signal was delivered.
+     *
+     * @param {NodeJS.Signals} signal
+     * @returns {boolean}
+     */
+    const stopTree = (signal) => {
+      if (deps.kill) {
+        try {
+          return deps.kill(child, signal)
+        } catch {
+          return false
+        }
+      }
+      if (process.platform !== 'win32') {
+        try {
+          if (child.pid === undefined) {
+            return child.kill(signal)
+          }
+          process.kill(-child.pid, signal)
+          return true
+        } catch (e) {
+          const err = /** @type {{ code?: string }} */ (/** @type {unknown} */ (e))
+          if (err.code === 'ESRCH') return false
+          try {
+            return child.kill(signal)
+          } catch {
+            return false
+          }
+        }
+      }
+      try {
+        return child.kill(signal)
+      } catch {
+        return false
+      }
+    }
 
     const timer =
       opts.timeout !== undefined && opts.timeout > 0
         ? setTimeout(() => {
-            if (!settled) {
-              child.kill('SIGKILL')
-              settled = true
-              reject(new Error(`child ${cmd} timed out after ${opts.timeout}ms`))
-            }
+            if (settled) return
+            timeoutError = new Error(`child ${cmd} timed out after ${opts.timeout}ms`)
+            // 1) request stop; 2) wait for close (the close listener below
+            // rejects with timeoutError); 3) escalate if close never arrives.
+            stopTree('SIGTERM')
+            setTimeout(() => {
+              if (!settled) {
+                stopTree('SIGKILL')
+              }
+            }, 1000).unref()
           }, opts.timeout)
         : null
 
     child.on('error', (e) => {
       if (!settled) {
         settled = true
+        activeChildren.delete(child)
         if (timer) clearTimeout(timer)
         reject(new Error(`failed to start ${cmd}: ${e.message}`))
       }
@@ -252,17 +331,37 @@ function execFileAsync(cmd, args, opts = {}) {
       stderrStream.on('data', (d) => {
         stderrBuf += String(d)
       })
+      stderrStream.on('error', () => {
+        // stderr stream errors are not fatal for the outcome.
+      })
     }
 
     if (opts.input !== undefined && child.stdin) {
-      child.stdin.write(opts.input)
+      // stdin errors (e.g. EPIPE when the helper exits before reading the
+      // manifest) must never surface as unhandled stream errors -- record
+      // them; the outcome is decided by 'close' (M30 WP-B #4 / probe D).
+      child.stdin.on('error', (e) => {
+        const err = /** @type {{ code?: string, message: string }} */ (/** @type {unknown} */ (e))
+        stderrBuf += `(stdin: ${err.code || err.message})\n`
+      })
+      try {
+        child.stdin.write(opts.input)
+      } catch {
+        // sink -- the error listener above owns the failure
+      }
       child.stdin.end()
     }
 
     child.on('close', (code, signal) => {
       if (settled) return
       settled = true
+      activeChildren.delete(child)
       if (timer) clearTimeout(timer)
+      // M30 WP-B #1: settle only here, after the child actually closed.
+      if (timeoutError) {
+        reject(timeoutError)
+        return
+      }
       if (signal) {
         reject(new Error(`${cmd} was terminated by signal ${signal}: ${stderrBuf.trim()}`))
       } else if (code !== 0) {
@@ -1897,7 +1996,7 @@ export const FAILPOINTS = [
  *   shouldStop?: () => string | null,
  *   trace?: string[],
  * }} [deps]
- * @returns {Promise<{ trace: string[], plan: ReturnType<typeof buildReleasePlan> }>}
+ * @returns {Promise<{ trace: string[], plan: ReturnType<typeof buildReleasePlan>, zipSize: number, sumsName: string, committed: boolean }>}
  */
 export async function generateAssets(distDir, outputDir, force, python3 = PYTHON3, deps = {}) {
   const mkdirSync = deps.mkdirSync || fs.mkdirSync
@@ -1910,6 +2009,8 @@ export async function generateAssets(distDir, outputDir, force, python3 = PYTHON
   const trace = deps.trace || []
   const execFile = deps.execFile || execFileAsync
   const shouldStop = deps.shouldStop
+  /** M30 WP-C: committed zip size, returned (not printed) to runCli. */
+  let zipSize = 0
 
   /** Record and invoke a named failpoint (tests assert these names). */
   const fp = (/** @type {string} */ name) => {
@@ -2224,11 +2325,14 @@ export async function generateAssets(distDir, outputDir, force, python3 = PYTHON
       deleteJournal(repoRoot, deps.unlinkSync, existsSync, deps)
     }
 
-    // M29 WP-B: never print a full success claim after a signal was observed.
+    // M30 WP-C: generateAssets NEVER prints the full success claim itself.
+    // It only returns the committed outcome (plan, zip size, sums name,
+    // committed flag); runCli prints "Done:" AFTER the final protocol
+    // completed (registry empty, lock released, listeners removed, no
+    // observed signal). The checkStop below keeps the pre-existing
+    // stage-boundary contract (no new stage after a signal).
     await checkStop(shouldStop)
-    const zipSize = statSync(zipPath).size
-    console.log(`\nDone: ${plan.zipName} (${zipSize} bytes)`)
-    console.log(`      ${plan.sumsName}`)
+    zipSize = statSync(zipPath).size
   } catch (e) {
     // M29 WP-C/WP-B: durability cannot be proven, or a signal was observed --
     // keep the journal/backup/lock recovery information and NEVER roll back
@@ -2285,7 +2389,9 @@ export async function generateAssets(distDir, outputDir, force, python3 = PYTHON
     // journal remain on disk deliberately.
   }
 
-  return { trace, plan }
+  // M30 WP-C: the return value carries the committed outcome; no stdout
+  // success claim is printed here (runCli owns the final "Done:").
+  return { trace, plan, zipSize, sumsName: plan.sumsName, committed }
 }
 
 /**
@@ -2424,33 +2530,51 @@ export async function runCli(argv, io = {}) {
     return 1
   }
 
-  // M29 WP-B: register the signal handlers BEFORE acquiring the lock so a
+  // M30 WP-A: register the signal handlers BEFORE acquiring the lock so a
   // signal arriving during lock acquisition or the transaction is observed by
-  // the protocol (never the default raw death). The handler only records the
-  // termination request; the lock stays held until the unified release below
-  // runs AFTER runLocked has fully returned.
+  // the protocol (never the default raw death). process.on (not process.once)
+  // keeps BOTH listeners installed for the whole protocol: a repeated same or
+  // cross signal only records "termination already in progress" and can never
+  // fall through to default raw death. The listeners are removed ONLY after
+  // lock.release completed (unified finally below).
   /** @type {'SIGINT' | 'SIGTERM' | null} */
   let terminating = null
   /** @type {ReturnType<typeof acquireLock> | null} */
   let lock = null
   const signalHandler = (/** @type {string} */ signal) => {
+    const sig = /** @type {'SIGINT' | 'SIGTERM'} */ (signal)
     if (terminating === null) {
-      terminating = /** @type {'SIGINT' | 'SIGTERM'} */ (signal)
-      handleFatalSignal(signal, lock, {
+      terminating = sig
+      handleFatalSignal(sig, lock, {
         stderr,
         exit: (code) => {
           process.exitCode = code
         },
       })
+    } else {
+      // M30 WP-A #2/#3: later signals (same or different) never change the
+      // first-signal exit code and never trigger default raw death.
+      stderr.write(
+        `release:${sig}: termination already in progress (first signal: ${terminating}); ignoring\n`,
+      )
     }
   }
-  process.once('SIGINT', signalHandler)
-  process.once('SIGTERM', signalHandler)
+  process.on('SIGINT', signalHandler)
+  process.on('SIGTERM', signalHandler)
   // Cooperative stop getter read at every transaction stage boundary.
   const shouldStop = () => terminating
 
   /** @type {'ok' | 'failed' | 'stopped'} */
   let outcome = 'failed'
+  // M30 WP-C: generated outcome carried to the final success-claim site.
+  /** @type {any} */
+  let generatedPlan = null
+  /** @type {number} */
+  let generatedZipSize = 0
+  /** @type {string | null} */
+  let recoveredAction = null
+  /** @type {boolean} */
+  let lockLeaked = false
   try {
     // EVERYTHING below runs under the atomic mutex (WP-A #1).
     try {
@@ -2479,13 +2603,15 @@ export async function runCli(argv, io = {}) {
             },
           )
           if (result.recovered) {
-            stdout.write(`Transaction recovered successfully (${result.action ?? 'restore'}).\n`)
+            recoveredAction = result.action ?? 'restore'
             return 'ok'
           }
           stderr.write(`Transaction recovery failed: ${result.reason}\n`)
           return 'failed'
         }
-        await generateAssets(distDir, outputDir, force, python3, { shouldStop })
+        const gen = await generateAssets(distDir, outputDir, force, python3, { shouldStop })
+        generatedPlan = gen.plan
+        generatedZipSize = gen.zipSize
         return 'ok'
       } catch (e) {
         if (e instanceof SignalStoppedError) {
@@ -2503,31 +2629,49 @@ export async function runCli(argv, io = {}) {
 
     outcome = await runLocked()
   } finally {
-    // M29 WP-B: no bounded setImmediate flush loop. Signals are delivered
-    // while runLocked awaits child processes at every stage boundary; the
-    // exit-code decision below reads the authoritative `terminating` state.
-    process.removeListener('SIGINT', signalHandler)
-    process.removeListener('SIGTERM', signalHandler)
-  }
-
-  // Unified release: the lock is released ONLY after every write/rename/
-  // execFile inside runLocked has stopped (M28 WP-D). A release failure must
-  // produce a nonzero exit and, after a successful generation, an explicit
-  // partial-success message instead of a full success claim (WP-B #5).
-  let lockLeaked = false
-  try {
-    const released = lock.release()
-    if (!released.released && released.reason !== 'already-released') {
-      stderr.write(`release:prepare-assets: lock release skipped (${released.reason})\n`)
+    // M30 WP-A #4/#5/#6 + WP-C #2/#3: unified release runs ONLY after every
+    // write/rename/execFile inside runLocked has stopped. The active-child
+    // registry must be empty BEFORE the lock is released (WP-B #5); the
+    // signal listeners are removed only AFTER lock.release completed.
+    if (activeChildren.size > 0) {
+      stderr.write(
+        `release:prepare-assets: FATAL: ${activeChildren.size} child process(es) still active while releasing the lock -- refusing to release; state preserved for audit\n`,
+      )
+      lockLeaked = true
+    } else if (lock) {
+      try {
+        const released = lock.release()
+        if (!released.released && released.reason !== 'already-released') {
+          stderr.write(`release:prepare-assets: lock release skipped (${released.reason})\n`)
+          lockLeaked = true
+        }
+      } catch (e) {
+        lockLeaked = true
+        stderr.write(
+          `release:prepare-assets: LOCK NOT RELEASED: ${/** @type {Error} */ (e).message} `,
+        )
+      }
+    } else {
+      // acquireLock failed earlier (already returned 1); nothing to release.
       lockLeaked = true
     }
-  } catch (e) {
-    lockLeaked = true
-    stderr.write(`release:prepare-assets: LOCK NOT RELEASED: ${/** @type {Error} */ (e).message} `)
+    try {
+      // M30 WP-A #5: listeners are removed only after lock.release completed
+      // (or the release was refused); only then does the controlled signal
+      // protocol end. Repeated signals before this point are always handled.
+      process.removeListener('SIGINT', signalHandler)
+      process.removeListener('SIGTERM', signalHandler)
+    } catch {
+      // best effort -- the process is about to exit with its final code
+    }
+    if (lockLeaked) {
+      stderr.write('release:prepare-assets: lock not released -- exit 1\n')
+      outcome = 'failed'
+    }
   }
 
   // A termination request wins over any generation result; never claim a
-  // full success after a signal (M28 WP-D / M29 WP-B).
+  // full success after a signal (M28 WP-D / M29 WP-B / M30 WP-C).
   if (terminating !== null) {
     stderr.write(
       `release:${terminating}: run stopped; lock released in unified finally; final state preserved for audit\n`,
@@ -2542,11 +2686,20 @@ export async function runCli(argv, io = {}) {
   }
 
   if (outcome === 'ok') {
-    if (lockLeaked) {
+    if (lockLeaked || activeChildren.size > 0) {
       stderr.write(
         `release:prepare-assets: ASSETS WERE GENERATED SUCCESSFULLY, but the lock was not released -- treating the run as FAILED (exit 1).\n`,
       )
       return 1
+    }
+    // M30 WP-C: the ONLY success claim, printed after runLocked completed,
+    // the child registry is empty, the lock was released successfully, the
+    // signal listeners were removed, and no signal was observed.
+    if (recoveredAction !== null) {
+      stdout.write(`Transaction recovered successfully (${recoveredAction}).\n`)
+    } else if (generatedPlan !== null) {
+      stdout.write(`\nDone: ${generatedPlan.zipName} (${generatedZipSize} bytes)\n`)
+      stdout.write(`      ${generatedPlan.sumsName}\n`)
     }
     return 0
   }

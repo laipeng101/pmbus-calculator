@@ -61,7 +61,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22.20.0'
+          node-version-file: '.node-version'
           cache: 'npm'
 
       # Single source of truth for the light/full split: scripts/classify-ci-scope.mjs
@@ -95,6 +95,11 @@ jobs:
       - name: Release contract check
         if: steps.scope.outputs.run_full != 'false'
         run: npm run check:release-contract
+
+      # M30 WP-E: canonical toolchain gate on the primary (24.19.0) runtime.
+      - name: Canonical toolchain check
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run check:toolchain
 
       - name: Type check
         if: steps.scope.outputs.run_full != 'false'
@@ -151,21 +156,28 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm audit --audit-level=high
 
-      # Secondary LTS compatibility (M20/M23): engines deliberately supports
-      # the two maintained LTS lines (22 and 24). Primary verification stays
-      # on Node 22; this re-check reinstalls under Node 24 and runs the real
-      # `tsc -b` typecheck plus the unit suite so the runtime local
-      # development actually uses stays continuously validated — inside the
-      # same single `check` job, without a second job or a second required
-      # check. Light tier skips it.
-      - name: Setup Node.js 24 (secondary LTS)
+      # Secondary compatibility runtime (M20/M23/M30): engines deliberately
+      # supports the two maintained LTS lines (22 and 24). Primary
+      # verification now runs on the canonical Node 24.19.0 from
+      # .node-version (M30 WP-E); this re-check reinstalls under the exact
+      # compatibility Node 22.20.0 and runs the real `tsc -b` typecheck plus
+      # the unit suite so the runtime floor stays continuously validated —
+      # inside the same single `check` job, without a second job or a second
+      # required check. Light tier skips it.
+      - name: Setup Node.js 22.20.0 (compatibility LTS)
         if: steps.scope.outputs.run_full != 'false'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '24.0.0'
+          node-version: '22.20.0'
           cache: 'npm'
 
-      - name: Typecheck and unit tests on secondary LTS (Node 24)
+      # M30 WP-E #10: both CI runtimes use the exact canonical npm 11.17.0
+      # (Node 24.19.0 ships it; the 22.20.0 runtime needs the explicit pin).
+      - name: Activate canonical npm 11.17.0 on compatibility runtime
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm install -g npm@11.17.0
+
+      - name: Typecheck and unit tests on compatibility LTS (Node 22.20.0)
         if: steps.scope.outputs.run_full != 'false'
         run: npm ci && npm run typecheck && npm run test:run
 

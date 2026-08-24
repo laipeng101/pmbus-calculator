@@ -55,11 +55,16 @@ function makeFixture(
     path.join(REPO_ROOT, 'scripts', 'release-security-test-contract.mjs'),
     path.join(tmp, 'scripts', 'release-security-test-contract.mjs'),
   )
-  // All four contract files exist in the fixture repo (M29 WP-A).
+  // All nine contract files exist in the fixture repo (M30 WP-D).
   fs.writeFileSync(path.join(tmp, 'tests', 'prepare-release-assets.test.ts'), '')
   fs.writeFileSync(path.join(tmp, 'tests', 'zip-helper-security.test.ts'), '')
   fs.writeFileSync(path.join(tmp, 'tests', 'm28-recovery.test.ts'), '')
   fs.writeFileSync(path.join(tmp, 'tests', 'run-release-security-tests.test.ts'), '')
+  fs.writeFileSync(path.join(tmp, 'tests', 'm29-crash-matrix.test.ts'), '')
+  fs.writeFileSync(path.join(tmp, 'tests', 'm29-release-gates.test.ts'), '')
+  fs.writeFileSync(path.join(tmp, 'tests', 'm29-signal-protocol.test.ts'), '')
+  fs.writeFileSync(path.join(tmp, 'tests', 'm30-signal-lifecycle.test.ts'), '')
+  fs.writeFileSync(path.join(tmp, 'tests', 'm30-child-lifecycle.test.ts'), '')
 
   const fakeVitest = [
     "import fs from 'node:fs'",
@@ -84,8 +89,8 @@ function makeFixture(
     `const failed = Number(process.env.FAKE_FAILED || ${JSON.stringify(opts.failed ?? 0)});`,
     `const skipped = Number(process.env.FAKE_SKIPPED || ${JSON.stringify(opts.skipped ?? 0)});`,
     'const report = { numTotalTests: total, numPassedTests: passed, numFailedTests: failed, numSkippedTests: skipped, numPendingTests: 0, numTodoTests: 0 };',
-    // M29 WP-A: the report must carry all four expected suites.
-    "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts'];",
+    // M30 WP-D: the report must carry all nine expected suites.
+    "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts'];",
     "report.testResults = suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] }));",
     'if (mode === "inconsistent") {',
     '  report.numPassedTests = passed + 1; // passed+failed+skipped != total',
@@ -455,6 +460,13 @@ describe('M29 WP-F runner private temp dir and cleanup contract', () => {
     )
     fs.writeFileSync(path.join(tmp, 'tests', 'prepare-release-assets.test.ts'), '')
     fs.writeFileSync(path.join(tmp, 'tests', 'zip-helper-security.test.ts'), '')
+    fs.writeFileSync(path.join(tmp, 'tests', 'm28-recovery.test.ts'), '')
+    fs.writeFileSync(path.join(tmp, 'tests', 'run-release-security-tests.test.ts'), '')
+    fs.writeFileSync(path.join(tmp, 'tests', 'm29-crash-matrix.test.ts'), '')
+    fs.writeFileSync(path.join(tmp, 'tests', 'm29-release-gates.test.ts'), '')
+    fs.writeFileSync(path.join(tmp, 'tests', 'm29-signal-protocol.test.ts'), '')
+    fs.writeFileSync(path.join(tmp, 'tests', 'm30-signal-lifecycle.test.ts'), '')
+    fs.writeFileSync(path.join(tmp, 'tests', 'm30-child-lifecycle.test.ts'), '')
     const marker = path.join(tmp, 'tmp', 'marker.txt')
     const fakeVitest = [
       "import fs from 'node:fs'",
@@ -462,8 +474,8 @@ describe('M29 WP-F runner private temp dir and cleanup contract', () => {
       "const outIdx = args.findIndex((a) => a.startsWith('--outputFile='));",
       "const out = outIdx >= 0 ? args[outIdx].slice('--outputFile='.length) : 'report.json';",
       `fs.writeFileSync(${JSON.stringify(marker)}, out);`,
-      "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts'];",
-      'const report = { numTotalTests: 4, numPassedTests: 4, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + "::t", status: "passed" }] })) };',
+      "const suiteNames = ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts'];",
+      'const report = { numTotalTests: 9, numPassedTests: 9, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: suiteNames.map((name) => ({ name, assertionResults: [{ fullName: name + "::t", status: "passed" }] })) };',
       'fs.writeFileSync(out, JSON.stringify(report));',
       extra,
       'process.exit(0);',
@@ -533,7 +545,7 @@ describe('M29 WP-F runner private temp dir and cleanup contract', () => {
 
   it('F4: report path replaced by a symlink is handled without crashes (read-through allowed)', () => {
     const { tmp } = makeRecordedFixture(
-      "fs.rmSync(out, { force: true }); fs.symlinkSync(out + '.real', out); fs.writeFileSync(out + '.real', JSON.stringify({ numTotalTests: 4, numPassedTests: 4, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts'].map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] })) }));",
+      "fs.rmSync(out, { force: true }); fs.symlinkSync(out + '.real', out); fs.writeFileSync(out + '.real', JSON.stringify({ numTotalTests: 9, numPassedTests: 9, numFailedTests: 0, numSkippedTests: 0, numPendingTests: 0, numTodoTests: 0, testResults: ['tests/prepare-release-assets.test.ts', 'tests/zip-helper-security.test.ts', 'tests/m28-recovery.test.ts', 'tests/run-release-security-tests.test.ts', 'tests/m29-crash-matrix.test.ts', 'tests/m29-release-gates.test.ts', 'tests/m29-signal-protocol.test.ts', 'tests/m30-signal-lifecycle.test.ts', 'tests/m30-child-lifecycle.test.ts'].map((name) => ({ name, assertionResults: [{ fullName: name + '::t', status: 'passed' }] })) }));",
     )
     const r = spawnRunner(tmp)
     expect(r.status).toBe(0)
