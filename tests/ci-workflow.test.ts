@@ -247,6 +247,13 @@ describe('ci.yml canonical/compatibility runtimes (M20/M30)', () => {
     expect(normalized).toContain(`if: ${FULL_TIER_CONDITION}`)
   })
 
+  it('keeps the compatibility setup cache-free (no second npm cache, no node_modules cache; M31 WP-D)', () => {
+    const block = findSetupStepByNodeVersion('22.20.0')
+    expect(block).toContain('package-manager-cache: false')
+    expect(block).not.toMatch(/^\s*cache: 'npm'\s*$/m)
+    expect(block).not.toMatch(/^\s*cache-dependency-path:/m)
+  })
+
   it('pins both setup-node steps to the same reviewed SHA', () => {
     const shas = setupNodeSteps().map(
       (block) => block.match(/actions\/setup-node@([0-9a-f]{40})/)?.[1],

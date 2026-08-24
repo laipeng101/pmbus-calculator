@@ -68,14 +68,23 @@
   signal 被观察后，本次运行不得输出 `Done:` 或 `Transaction recovered
 successfully` 等完整成功声明。
 
-- **子进程/进程树（M30 WP-B）**：helper/verifier 通过受控 `execFileAsync`
-  执行——Promise 只在子进程 `close` 后 settle；timeout 先请求停止（POSIX 向
-  整个进程组发 SIGTERM）、等待 close、必要时升级 SIGKILL、清理后代后才
-  reject；stdin EPIPE 等流错误被捕获为受控 rejection，绝不作为 unhandled
-  stream error 崩溃；active-child registry 在锁释放前必须为空（否则拒绝
-  释放并保留恢复元数据）。POSIX 使用独立进程组，helper 的孙进程无法在
-  Promise settle 后继续存活写 release 路径；Windows 无进程组，仅杀直接
-  子进程（文档化 fail-closed 边界）。
+- **子进程/进程树（M30 WP-B / M31 WP-B）**：helper/verifier 通过受控
+  `execFileAsync` 执行——成功 spawn 的子进程 Promise 只在 `close` 后 settle；
+  未成功创建进程（spawn `error`，如 ENOENT）在 `error` 事件上受控 reject，
+  registry 保持干净（M31 明确合同）；timeout 先请求停止（POSIX 向整个进程组
+  发 SIGTERM）、等待 close、必要时升级 SIGKILL、清理后代后才 reject；主
+  timeout timer 与升级 timer 在 settle 时全部清除；stdin EPIPE 等流错误被
+  捕获为受控 rejection，绝不作为 unhandled stream error 崩溃；active-child
+  registry 在锁释放前必须为空（否则拒绝释放并保留恢复元数据）。POSIX 使用
+  独立进程组，helper 的孙进程无法在 Promise settle 后继续存活写 release 路径；
+  测试以严格 quiescence（size + sha256 在稳定期后不再变化）与孙进程
+  `kill(pid, 0)` 返回 ESRCH 为证据，不再使用宽松的字节增长上限。
+
+- **平台支持（M31 WP-C）**：release asset generation 仅支持 Linux/macOS
+  （POSIX）。Windows 无进程组、`child.kill()` 只能终止直接子进程，无法保证
+  孙进程停止，因此此前文档化的 Windows 进程树边界表述已撤销。CLI 在 Windows
+  上会在创建锁、staging、journal、backup 或 output 等任何事务副作用之前直接
+  拒绝并退出非零，输出仅支持 Linux/macOS 的说明。
 
 ## 发布流程
 
@@ -133,6 +142,24 @@ npm run test:e2e:release
    zip hash 必须完全相同）。
 
 以上任一步失败：停止发布并修复，不得带病打 tag。
+
+## 本地验证环境与磁盘策略（M31 WP-D）
+
+- 长期只保留 canonical Node（当前 24.19.0）；compatibility runtime（Node
+  22.20.0）按需临时安装（如临时 worktree），验证完成后删除，不在本机长期
+  保留两套 Node。
+- 验证 worktree 及其 `node_modules` 用完即删；不跨里程碑复用旧 worktree、
+  node_modules 或旧的测试输出/成功日志。
+- 使用 `npm cache verify` 核对缓存完整性；不要每轮 `npm cache clean --force`
+  清空仍有效的缓存。
+- Playwright 只保留 lockfile 对应的 browser revision（当前仅 chromium），
+  不安装多余浏览器；不需要时删除临时安装的浏览器。
+- 不自动删除用户的全局 Node、npm cache 或 Playwright 浏览器；清理只针对本
+  次任务创建的资源（任务结束门禁见 `docs/REPOSITORY_HYGIENE.md`）。
+- CI 侧（M31 WP-D）：同一 job 中 primary 运行时已恢复 npm 下载缓存，
+  compatibility 运行时不再建立第二套缓存（`package-manager-cache: false`），
+  node_modules 一律不缓存；compatibility 的 npm 11.17.0 激活在仓库外
+  （`cd /tmp`）进行。
 
 ### 4. tag 与 GitHub Release
 

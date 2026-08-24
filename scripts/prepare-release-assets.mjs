@@ -211,13 +211,42 @@ export function fsyncParentDirectorySync(dirPath, deps = {}) {
  */
 export const activeChildren = new Set()
 
+// ---------------------------------------------------------------------------
+// Platform capability gate (M31 WP-C)
+// ---------------------------------------------------------------------------
+
+/**
+ * M31 WP-C: release asset generation is POSIX-only. Windows has no process
+ * groups and child.kill() only reaches the DIRECT child, so a "kill the
+ * direct child and call it fail-closed" policy cannot guarantee that
+ * grandchildren stop writing to the release path (probe P3/P4). Instead of
+ * pretending that is safe, the CLI refuses to run on unsupported platforms
+ * BEFORE registering any transaction side effect, lock, staging or output.
+ *
+ * @type {readonly string[]}
+ */
+export const SUPPORTED_GENERATION_PLATFORMS = Object.freeze(['linux', 'darwin'])
+
+/**
+ * Testable capability gate.
+ *
+ * @param {string} platform
+ * @returns {boolean}
+ */
+export function isSupportedPlatform(platform) {
+  return SUPPORTED_GENERATION_PLATFORMS.includes(platform)
+}
+
 /**
  * M30 WP-B: promisified execFile with inherited stdio and a fully controlled
  * child/process-tree lifecycle. The child runs ASYNCHRONOUSLY so the Node
  * event loop can deliver pending signals while the helper/verifier executes.
  *
- * Lifecycle contract (WP-B):
- * 1. The promise settles ONLY after the child emits 'close'.
+ * Lifecycle contract (WP-B, M31 WP-B strengthening):
+ * 1. A SUCCESSFULLY spawned child settles ONLY after it emits 'close'. A
+ *    child that was never created (spawn 'error', e.g. ENOENT) is the
+ *    documented exception: the promise rejects from the 'error' event with a
+ *    clean registry -- there is no process and no 'close' to wait for.
  * 2. On timeout: record a TimeoutError, request stop (SIGTERM to the whole
  *    controlled process group), WAIT for close, escalate to SIGKILL if close
  *    does not arrive, wait again, clean the tree, and only then reject.
@@ -226,13 +255,18 @@ export const activeChildren = new Set()
  * 4. stdin EPIPE/error is captured (error listener) -- never an unhandled
  *    stream error; the outcome still comes from 'close'.
  * 5. Every child is tracked in the exported activeChildren registry and
- *    removed only on 'close'.
- * 6. POSIX uses a dedicated process group (detached: true) so SIGTERM/SIGKILL
+ *    removed only on 'close' (or on the 'error' path for a never-created
+ *    child -- nothing is alive to leak).
+ * 6. Both the main timeout timer AND the escalation timer are cleared when
+ *    the promise settles, so no timer outlives the call (M31 WP-B).
+ * 7. POSIX uses a dedicated process group (detached: true) so SIGTERM/SIGKILL
  *    can address the whole tree (-pid); descendants cannot outlive the
  *    promise and keep writing to the release path. Windows has no process
- *    groups: only the direct child is killed -- a documented fail-closed
- *    boundary (the helper would fail on its own; the lock is still held
- *    until this promise settles).
+ *    groups and child.kill() only reaches the DIRECT child -- it cannot
+ *    guarantee descendants are stopped. The CLI therefore refuses to run on
+ *    Windows entirely (M31 WP-C platform gate) instead of claiming a
+ *    fail-closed boundary; this function keeps a defensive direct-kill fallback
+ *    for direct callers.
  *
  * @param {string} cmd
  * @param {string[]} args
@@ -251,7 +285,8 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
     )
     const spawnOpts = /** @type {import('node:child_process').SpawnOptions} */ ({ stdio })
     // POSIX: dedicated process group so the whole tree can be stopped.
-    // Windows: no process groups -- leave default (fail-closed boundary).
+    // Windows: no process groups -- leave default (CLI refuses Windows at the
+    // platform gate, M31 WP-C; direct callers get a defensive direct kill).
     if (process.platform !== 'win32') {
       spawnOpts.detached = true
     }
@@ -261,10 +296,22 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
     let settled = false
     /** @type {Error | null} */
     let timeoutError = null
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let escalationTimer = null
+
+    /** Clear every timer owned by this call (main + escalation). */
+    const clearOwnedTimers = () => {
+      if (timer) clearTimeout(timer)
+      if (escalationTimer) {
+        clearTimeout(escalationTimer)
+        escalationTimer = null
+      }
+    }
 
     /**
      * Stop the whole controlled process group (POSIX) or the direct child
-     * (Windows). Never throws; returns whether the signal was delivered.
+     * (Windows fallback). Never throws; returns whether the signal was
+     * delivered.
      *
      * @param {NodeJS.Signals} signal
      * @returns {boolean}
@@ -309,19 +356,26 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
             // 1) request stop; 2) wait for close (the close listener below
             // rejects with timeoutError); 3) escalate if close never arrives.
             stopTree('SIGTERM')
-            setTimeout(() => {
+            // M31 WP-B: keep a handle to the escalation timer so it is
+            // cleared when the promise settles (probe: leftover timers).
+            escalationTimer = setTimeout(() => {
               if (!settled) {
                 stopTree('SIGKILL')
               }
-            }, 1000).unref()
+            }, 1000)
+            escalationTimer.unref()
           }, opts.timeout)
         : null
 
     child.on('error', (e) => {
       if (!settled) {
         settled = true
+        // M31 WP-B contract: a child that was never created (spawn error)
+        // rejects here -- there is no process to wait for and no 'close' will
+        // arrive before this handler. The registry entry is removed because
+        // nothing is alive to leak.
         activeChildren.delete(child)
-        if (timer) clearTimeout(timer)
+        clearOwnedTimers()
         reject(new Error(`failed to start ${cmd}: ${e.message}`))
       }
     })
@@ -356,8 +410,9 @@ export function execFileAsync(cmd, args, opts = {}, deps = {}) {
       if (settled) return
       settled = true
       activeChildren.delete(child)
-      if (timer) clearTimeout(timer)
-      // M30 WP-B #1: settle only here, after the child actually closed.
+      clearOwnedTimers()
+      // M30 WP-B #1 / M31 WP-B: settle only here, after the child actually
+      // closed (spawn-failure rejections are the documented 'error' exception).
       if (timeoutError) {
         reject(timeoutError)
         return
@@ -2474,6 +2529,7 @@ export function handleFatalSignal(signal, lockHandle, io = {}) {
  *   stderr?: { write: (chunk: string) => boolean },
  *   env?: typeof process.env,
  *   repoRoot?: string,
+ *   platform?: string,
  * }} [io]
  * @returns {Promise<number>} exit code
  */
@@ -2482,6 +2538,7 @@ export async function runCli(argv, io = {}) {
   const stderr = io.stderr || { write: (chunk) => process.stderr.write(chunk) }
   const env = io.env || process.env
   const repoRoot = io.repoRoot || defaultRepoRoot
+  const platform = io.platform || process.platform
 
   const args = argv.slice(2)
   let force = false
@@ -2518,6 +2575,19 @@ export async function runCli(argv, io = {}) {
   const distDir = path.join(repoRoot, 'dist')
   const outputDir = path.join(repoRoot, OUTPUT_DIR)
   const python3 = env.PYTHON3 || PYTHON3
+
+  // M31 WP-C: POSIX-only platform gate. Checked BEFORE --recover-lock and
+  // before anything else that could create a lock, staging, journal, backup
+  // or output -- on Windows the CLI must refuse with zero side effects.
+  // Windows has no process groups, so only the direct child is killable and
+  // descendants cannot be guaranteed to stop (probe P3/P4); the M30
+  // "direct-child kill is fail-closed" claim is withdrawn.
+  if (!isSupportedPlatform(platform)) {
+    stderr.write(
+      `release:prepare-assets: unsupported platform "${platform}" -- release asset generation is only supported on Linux/macOS (POSIX). Refusing to run before creating any lock, staging or output.\n`,
+    )
+    return 2
+  }
 
   // Handle --recover-lock OUTSIDE the lock domain (WP-A #2).
   if (recoverLockFlag) {
