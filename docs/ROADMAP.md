@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-23（M27 Done：Release transaction commit semantics、recovery integrity、真实并发/故障注入与零 skip 验收，v1.1.8 PATCH）
+最后更新：2026-08-23（M28 Done：Release recovery integrity、zero-skip fail-closed、signal/lock lifecycle 与 journal durability，v1.1.9 PATCH）
 
 ## 当前产品基线
 
@@ -19,8 +19,59 @@
 ## 当前里程碑
 
 ```text
-M0–M27 complete；stable release v1.1.8；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M28 complete；stable release v1.1.9；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
+
+### M28 done — Release recovery integrity、zero-skip fail-closed、signal/lock lifecycle 与 journal durability（v1.1.9 PATCH）
+
+- 恢复状态机以 journal 为唯一事实来源（WP-A）：recoverTransaction 先读取并严格验证 journal，
+  再依据 journal state + output 是否存在 + backup 数量决定动作，不再先要求 backup；
+  COMMITTED + output + backup 时对 output 执行完整 reverify（asset pair、SHA256SUMS、verify_release_zip.py、
+  版本合同、实际 hash 等于 journal.newSha256），全部通过后才可删除 backup，任一失败保留 output/backup/journal
+  返回 manual audit；COMMITTED/BACKUP_CLEANED + output + 无 backup（首次发布 journal.delete 失败或已完成
+  backup cleanup 的正式恢复路径）完整验证 output 与 journal.newSha256，成功时只清理 journal；
+  PRE_COMMIT + 无 backup 只允许基于精确 journal/path/hash 采取保守动作，无法证明所有权时 manual audit；
+  PRE_COMMIT + backup 先深度验证 backup、再恢复、恢复后再次完整验证，失败不删除最后一个有效副本。
+- journal 绑定与耐久性（WP-B）：validateJournal 验证 journal.version 等于 package.json version、
+  outputPath 精确等于规范化的 release-output、backupPath 为 null 或安全单段名称并与唯一实际 backup 精确一致、
+  禁止绝对路径/.. /反斜杠/路径分隔符、oldSha256/newSha256 为小写 64 位十六进制、
+  state 与 backupPath/oldSha256/newSha256 的必需字段组合一致、updatedAt 为严格 ISO 时间；
+  抽取 writeAllSync，writeSync 返回 0/负数/NaN/非整数/大于 remaining 均立即失败、不得无限循环，
+  lock/journal 写失败不得把部分提升为正式，close/fsync/rename 错误全部有负向测试，
+  journal rename 后按平台能力 fsync 父目录。
+- zero-skip runner 真正 fail-closed（WP-C）：重构 scripts/run-release-security-tests.mjs，
+  不在中间调用 process.exit()，main 返回退出码、顶层最后设置 process.exitCode，
+  report cleanup 位于 try/finally 并在所有结果路径执行，report 缺失/空/损坏/字段缺失/字段非有限整数/
+  统计不一致无论 Vitest status 是多少都必须 exit nonzero，result.status 必须严格为 0，
+  total > 0、failed === 0、skipped === 0、passed + failed + skipped 与 total 一致，
+  输出失败测试名但不得因 malformed assertionResults 自身崩溃；为 runner 本身增加独立单测，
+  运行真实 npm run test:release-security 后确认 /tmp 无报告残留。
+- SIGINT/SIGTERM 与锁生命周期（WP-D）：进程仍可能修改 staging/output/backup/journal 时绝不能提前释放锁，
+  signal handler 只记录终止请求、锁由统一 finally 在所有写操作停止后释放，
+  无法安全即时中断同步操作时保守地保持锁完成当前原子阶段后停止，
+  最终 SIGINT 返回 130、SIGTERM 返回 143，main 不得用 runCli 的 0 覆盖 signal code，
+  收到 signal 后不得输出完整成功声明，lock release 失败保持 recoverable metadata 并返回非零；
+  真实子进程测试使用慢速可控 helper 在持锁期间发送 SIGINT/SIGTERM，
+  另一 generator 在第一进程完全停止前绝不能获得锁，退出码精确为 130/143。
+- ZIP helper 自身 fail-closed（WP-E）：\_zip_helper.py 直接验证 manifest entry（非空 POSIX relative path、
+  禁止绝对路径/.. /反斜杠/空 segment/"." segment/重复 entry），与 release-artifact-contract 的 ZIP entry policy
+  保持一致，非法 manifest 或任一文件失败时删除 partial ZIP；补充同 inode 同大小但读取期间内容变化的策略
+  （比较 size/dev/ino/mtime_ns/ctime_ns），无法证明稳定快照时失败。
+- CLI 与审计（WP-F）：--force/--recover/--recover-lock 互斥，任意冲突组合在创建 lock 前 exit 2，
+  未知参数仍在创建 lock 前失败。
+- 状态依据：本地 npm run verify 与 workflow 回归测试通过；PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
+
+> **v1.1.8 勘误：** v1.1.8 的发行资产本身正确，但以下实现缺陷由 v1.1.9/M28 加固修复：
+>
+> 1. COMMITTED 恢复接受非 ZIP 文件及自洽 checksum，并删除唯一有效 backup。
+> 2. 首次发布或 backup 已清除后，只剩 COMMITTED/BACKUP_CLEANED journal 时 --recover 返回"无 backup"无法恢复。
+> 3. zero-skip runner 在 JSON report 缺失/损坏时可能 exit 0。
+> 4. runner 的临时 JSON cleanup 位于 process.exit() 之后，永远不可达。
+> 5. SIGINT/SIGTERM 释放锁但不终止/中止工作，退出码还可能被 main 覆盖。
+> 6. lock/journal writeSync 返回 0 时存在无限循环。
+> 7. journal 的 version/path/hash 没有与当前事务及磁盘资产严格绑定。
+> 8. Python ZIP helper 不验证 manifest entry 名。
+> 9. --force、--recover、--recover-lock 的冲突组合未明确拒绝。
 
 ### M27 done — Release transaction commit semantics、recovery integrity、真实并发/故障注入与零 skip 验收（v1.1.8 PATCH）
 

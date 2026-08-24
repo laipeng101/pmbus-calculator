@@ -353,3 +353,138 @@ print("SHORT-READ-OK:", len(data))
     expect(res.stdout).toContain('SHORT-READ-OK:')
   })
 })
+
+// ---------------------------------------------------------------------------
+// M28 WP-E -- the helper itself must validate manifest entry names (fail
+// closed), not rely on the post-generation verifier.
+// ---------------------------------------------------------------------------
+
+describe('zip helper entry-name validation (M28 WP-E)', () => {
+  it('rejects a traversal entry name even when the backing file is inside dist', () => {
+    const tmp = makeTempDir()
+    const dist = path.join(tmp, 'dist')
+    makeDist(dist)
+    const out = path.join(tmp, 'out.zip')
+    const r = runHelper(
+      dist,
+      out,
+      JSON.stringify({ entry: '../escape.txt', path: path.join(dist, 'index.html') }) + '\n',
+    )
+    expect(r.status).toBe(1)
+    expect(r.stderr).toMatch(/traversal|escape|entry/i)
+    expect(fs.existsSync(out)).toBe(false)
+  })
+
+  it('rejects an absolute entry name', () => {
+    const tmp = makeTempDir()
+    const dist = path.join(tmp, 'dist')
+    makeDist(dist)
+    const out = path.join(tmp, 'out.zip')
+    const r = runHelper(
+      dist,
+      out,
+      JSON.stringify({ entry: '/absolute.txt', path: path.join(dist, 'index.html') }) + '\n',
+    )
+    expect(r.status).toBe(1)
+    expect(r.stderr).toMatch(/absolute/i)
+    expect(fs.existsSync(out)).toBe(false)
+  })
+
+  it('rejects backslash entry names', () => {
+    const tmp = makeTempDir()
+    const dist = path.join(tmp, 'dist')
+    makeDist(dist)
+    const out = path.join(tmp, 'out.zip')
+    const r = runHelper(
+      dist,
+      out,
+      JSON.stringify({ entry: 'a\\b.txt', path: path.join(dist, 'index.html') }) + '\n',
+    )
+    expect(r.status).toBe(1)
+    expect(r.stderr).toMatch(/backslash/i)
+    expect(fs.existsSync(out)).toBe(false)
+  })
+
+  it('rejects dot and empty segments', () => {
+    const tmp = makeTempDir()
+    const dist = path.join(tmp, 'dist')
+    makeDist(dist)
+    for (const entry of ['a/./b.txt', 'a//b.txt', 'a/']) {
+      const out = path.join(tmp, 'out-' + entry.replace(/[^a-z]/gi, '') + '.zip')
+      const r = runHelper(
+        dist,
+        out,
+        JSON.stringify({ entry, path: path.join(dist, 'index.html') }) + '\n',
+      )
+      expect(r.status).toBe(1)
+      expect(fs.existsSync(out)).toBe(false)
+    }
+  })
+
+  it('rejects forbidden segments and source maps (contract parity)', () => {
+    const tmp = makeTempDir()
+    const dist = path.join(tmp, 'dist')
+    makeDist(dist)
+    for (const entry of ['node_modules/x.js', 'src/app.js', 'assets/app.js.map']) {
+      const out = path.join(tmp, 'out-' + entry.replace(/[^a-z]/gi, '') + '.zip')
+      const r = runHelper(
+        dist,
+        out,
+        JSON.stringify({ entry, path: path.join(dist, 'index.html') }) + '\n',
+      )
+      expect(r.status).toBe(1)
+      expect(fs.existsSync(out)).toBe(false)
+    }
+  })
+
+  it('rejects empty entry names and non-string entries', () => {
+    const tmp = makeTempDir()
+    const dist = path.join(tmp, 'dist')
+    makeDist(dist)
+    for (const entry of ['', 42, null]) {
+      const out = path.join(tmp, 'out-' + String(entry).length + '.zip')
+      const r = runHelper(
+        dist,
+        out,
+        JSON.stringify({ entry, path: path.join(dist, 'index.html') }) + '\n',
+      )
+      expect(r.status).toBe(1)
+      expect(fs.existsSync(out)).toBe(false)
+    }
+  })
+
+  it('verify_read_identity detects same-inode same-size content rewrite (mtime_ns/ctime_ns)', () => {
+    const tmp = makeTempDir()
+    const dist = path.join(tmp, 'dist')
+    makeDist(dist)
+    const target = path.join(dist, 'swap.txt')
+    fs.writeFileSync(target, 'AAAA')
+
+    const scriptPath = path.join(tmp, 'verify_mtime.py')
+    const scriptLines = [
+      'import os, sys',
+      'hdir = sys.argv[1]',
+      'target = sys.argv[2]',
+      'sys.path.insert(0, hdir)',
+      'import _zip_helper as h',
+      'st_before = os.lstat(target)',
+      'fd2 = os.open(target, os.O_WRONLY)',
+      'os.write(fd2, b"BBBB")',
+      'os.close(fd2)',
+      'fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))',
+      'data = h.read_all_from_fd(fd)',
+      'try:',
+      '    h.verify_read_identity(fd, st_before, len(data))',
+      '    print("NO-THROW")',
+      'except SystemExit:',
+      '    print("FAILED-CLOSED")',
+      'os.close(fd)',
+    ]
+    fs.writeFileSync(scriptPath, scriptLines.join('\n'))
+    const res = spawnSync(python3, [scriptPath, path.dirname(HELPER), target], {
+      encoding: 'utf8',
+      timeout: 15_000,
+    })
+    expect(res.stdout.trim()).toContain('FAILED-CLOSED')
+  })
+})

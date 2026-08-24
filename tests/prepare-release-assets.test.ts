@@ -576,7 +576,7 @@ describe('lock error integrity (M27 WP-B)', () => {
 // ---------------------------------------------------------------------------
 
 describe('fatal signal handling (M27 WP-B #6)', () => {
-  it('SIGINT releases the owned lock when possible', () => {
+  it('SIGINT records termination but does NOT release the lock', () => {
     const tmp = makeTempDir()
     const lock = acquireLock(tmp)
     const lines: string[] = []
@@ -585,28 +585,26 @@ describe('fatal signal handling (M27 WP-B #6)', () => {
       exit: () => {},
     })
     expect(code).toBe(130)
+    expect(lines.join('')).toMatch(/termination requested/i)
+    expect(fs.existsSync(path.join(tmp, '.release-staging.lock'))).toBe(true)
+    lock.release()
     expect(fs.existsSync(path.join(tmp, '.release-staging.lock'))).toBe(false)
-    expect(lines[0]).toContain('released owned lock')
   })
 
-  it('unreleasable lock keeps recoverable metadata on SIGTERM', () => {
+  it('SIGTERM keeps the lock held with recoverable metadata (unified finally owns release)', () => {
     const tmp = makeTempDir()
-    const lock = acquireLock(tmp, {
-      unlinkSync: () => {
-        throw new Error('EACCES-SIMULATED')
-      },
-    })
+    const lock = acquireLock(tmp)
     const lines: string[] = []
     const code = handleFatalSignal('SIGTERM', lock, {
       stderr: { write: (s: string) => lines.push(s) },
       exit: () => {},
     })
     expect(code).toBe(143)
-    // Lock file stays with valid metadata -> recoverable later.
     const lockPath = path.join(tmp, '.release-staging.lock')
     expect(fs.existsSync(lockPath)).toBe(true)
     expect(validateLockMetadata(fs.readFileSync(lockPath, 'utf8')).ok).toBe(true)
-    expect(lines.join('')).toMatch(/could not release lock/)
+    expect(lines.join('')).toMatch(/termination requested/i)
+    lock.release()
   })
 
   it('never deletes a foreign lock during signal handling', () => {
@@ -665,16 +663,20 @@ describe('fatal signal handling (M27 WP-B #6)', () => {
 // Concurrent lock race (WP-A #8 / matrix: 25 real competitors)
 // ---------------------------------------------------------------------------
 
-describe('concurrent lock race (M27 WP-A)', () => {
-  it('only one of 25 REAL acquireLock processes wins', async () => {
-    const tmp = makeTempDir()
-    const CONCURRENT = 25
+describe('concurrent lock race (M27 WP-A, M28 10-round stress)', () => {
+  it.each(Array.from({ length: 10 }, (_, i) => i))(
+    'round %i: only one of 25 REAL acquireLock processes wins',
+    async (round) => {
+      void round
+      const tmp = makeTempDir()
+      const CONCURRENT = 25
 
-    // Barrier semantics without busy-wait skew: every child first appends an
-    // 'attempted' marker, then tries acquireLock in a bounded retry loop
-    // while the marker count is below CONCURRENT. The single winner holds
-    // the lock until every other child has recorded EEXIST-attempt.
-    const childCode = `
+      // Barrier + readiness handshake without widening sleeps (M28):
+      // - every child first records an 'attempted' marker;
+      // - competitors retry while the winner's lock metadata is still being
+      //   written (a valid mid-write race, never misclassified);
+      // - the winner holds until every loser has recorded an EEXIST attempt.
+      const childCode = `
       const fs = require('fs');
       const path = require('path');
       (async () => {
@@ -687,60 +689,79 @@ describe('concurrent lock race (M27 WP-A)', () => {
         const attempts = () => {
           try { return fs.readdirSync(attemptsDir).length } catch { return 0 }
         };
-        const deadline = Date.now() + 20000;
-        while (attempts() < ${CONCURRENT} && Date.now() < deadline) {
+        const barrierDeadline = Date.now() + 20000;
+        while (attempts() < ${CONCURRENT} && Date.now() < barrierDeadline) {
           await new Promise((r) => setTimeout(r, 5));
         }
 
-        try {
-          const lock = mod.acquireLock(lockDir);
-          console.log('WINNER:' + process.pid);
-          // Hold until all losers have attempted, then release.
-          const holdDeadline = Date.now() + 30000;
-          while (attempts() < ${CONCURRENT} * 2 && Date.now() < holdDeadline) {
-            await new Promise((r) => setTimeout(r, 20));
-          }
-          lock.release();
-          process.exit(0);
-        } catch (e) {
-          if (/another release|in progress/i.test(e.message)) {
-            fs.writeFileSync(path.join(attemptsDir, process.pid + '.lost'), '1');
-            console.log('LOSER:' + process.pid);
+        const raceDeadline = Date.now() + 20000;
+        while (Date.now() < raceDeadline) {
+          try {
+            const lock = mod.acquireLock(lockDir);
+            console.log('WINNER:' + process.pid);
+            const lostCount = () => {
+              try {
+                return fs.readdirSync(attemptsDir).filter((f) => f.endsWith('.lost')).length
+              } catch { return 0 }
+            };
+            const holdDeadline = Date.now() + 10000;
+            while (lostCount() < ${CONCURRENT} - 1 && Date.now() < holdDeadline) {
+              await new Promise((r) => setTimeout(r, 10));
+            }
+            lock.release();
             process.exit(0);
+          } catch (e) {
+            const message = e && e.message ? String(e.message) : '';
+            if (/another release|in progress/i.test(message)) {
+              fs.writeFileSync(path.join(attemptsDir, process.pid + '.lost'), '1');
+              console.log('LOSER:' + process.pid);
+              process.exit(0);
+            }
+            if (/cannot be used|invalid JSON|unreadable/i.test(message)) {
+              // Winner still writing lock metadata -- bounded retry.
+              await new Promise((r) => setTimeout(r, 5));
+              continue;
+            }
+            console.error(message);
+            process.exit(3);
           }
-          console.error(e.message);
-          process.exit(3);
         }
+        // Deadline: never leave the runner guessing -- record a clean loss.
+        fs.writeFileSync(path.join(attemptsDir, process.pid + '.lost'), '1');
+        console.log('LOSER:' + process.pid + ':deadline');
+        process.exit(0);
       })();
     `
-    const scriptPath = path.join(tmp, 'racer.cjs')
-    fs.writeFileSync(scriptPath, childCode)
+      const scriptPath = path.join(tmp, 'racer.cjs')
+      fs.writeFileSync(scriptPath, childCode)
 
-    const children = Array.from({ length: CONCURRENT }, () =>
-      spawn(process.execPath, [scriptPath], {
-        env: { ...process.env, LOCK_DIR: tmp },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }),
-    )
+      const children = Array.from({ length: CONCURRENT }, () =>
+        spawn(process.execPath, [scriptPath], {
+          env: { ...process.env, LOCK_DIR: tmp },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }),
+      )
 
-    const results = await Promise.all(
-      children.map(
-        (c) =>
-          new Promise<{ out: string; code: number | null }>((resolve) => {
-            let out = ''
-            c.stdout.on('data', (d) => (out += String(d)))
-            c.on('close', (code) => resolve({ out, code }))
-          }),
-      ),
-    )
+      const results = await Promise.all(
+        children.map(
+          (c) =>
+            new Promise<{ out: string; code: number | null }>((resolve) => {
+              let out = ''
+              c.stdout.on('data', (d) => (out += String(d)))
+              c.on('close', (code) => resolve({ out, code }))
+            }),
+        ),
+      )
 
-    const winners = results.filter((r) => r.out.includes('WINNER'))
-    const losers = results.filter((r) => r.out.includes('LOSER'))
-    expect(winners.length).toBe(1)
-    expect(losers.length).toBe(CONCURRENT - 1)
-    expect(results.every((r) => r.code === 0)).toBe(true)
-    expect(fs.existsSync(path.join(tmp, '.release-staging.lock'))).toBe(false)
-  }, 45000)
+      const winners = results.filter((r) => r.out.includes('WINNER'))
+      const losers = results.filter((r) => r.out.includes('LOSER'))
+      expect(winners.length).toBe(1)
+      expect(losers.length).toBe(CONCURRENT - 1)
+      expect(results.every((r) => r.code === 0)).toBe(true)
+      expect(fs.existsSync(path.join(tmp, '.release-staging.lock'))).toBe(false)
+    },
+    45000,
+  )
 })
 
 // ---------------------------------------------------------------------------
@@ -1136,19 +1157,40 @@ describe('transaction journal (M27 WP-C/D)', () => {
 // ---------------------------------------------------------------------------
 
 describe('transaction recovery (M27 WP-D)', () => {
-  it('restores a fully valid backup when output is absent, then re-verifies', () => {
+  it('restores a fully valid backup when output is absent (journal-driven), then re-verifies', () => {
     const tmp = makeTempDir()
     const dist = makeDistDir(tmp)
     const output = path.join(tmp, 'release-output')
     generateAssets(dist, output, false)
     const plan = buildReleasePlan('1.1.5')
 
-    const backupDir = path.join(tmp, `release-output.backup-test`)
+    const backupDir = path.join(tmp, 'release-output.backup-test')
     fs.renameSync(output, backupDir)
     expect(fs.existsSync(output)).toBe(false)
 
+    // M28: recovery is journal-driven; a backup without a journal is not
+    // enough ownership proof. Record the OLD_OUTPUT_BACKED_UP state.
+    fs.writeFileSync(
+      path.join(tmp, plan.journalFile),
+      JSON.stringify({
+        schema: 1,
+        nonce: randomUUID(),
+        version: '1.1.5',
+        state: 'OLD_OUTPUT_BACKED_UP',
+        outputPath: 'release-output',
+        backupPath: 'release-output.backup-test',
+        oldSha256: {
+          zip: sha256File(path.join(backupDir, plan.zipName)),
+          sums: sha256File(path.join(backupDir, plan.sumsName)),
+        },
+        newSha256: { zip: '0'.repeat(64), sums: '0'.repeat(64) },
+        updatedAt: new Date().toISOString(),
+      }),
+    )
+
     const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(true)
+    expect(result.action).toBe('pre-commit-restore')
     expect(fs.existsSync(path.join(output, plan.zipName))).toBe(true)
   })
 
@@ -1187,6 +1229,26 @@ describe('transaction recovery (M27 WP-D)', () => {
       sumsContent + `deadbeef  wrong-extra.txt\n`,
     )
     fs.rmSync(output, { recursive: true, force: true })
+
+    // M28: journal-driven recovery -- record the PRE_COMMIT state so the
+    // backup is actually validated.
+    fs.writeFileSync(
+      path.join(tmp, plan.journalFile),
+      JSON.stringify({
+        schema: 1,
+        nonce: randomUUID(),
+        version: '1.1.5',
+        state: 'OLD_OUTPUT_BACKED_UP',
+        outputPath: 'release-output',
+        backupPath: 'release-output.backup-sums',
+        oldSha256: {
+          zip: sha256File(path.join(backupDir, plan.zipName)),
+          sums: sha256File(path.join(backupDir, plan.sumsName)),
+        },
+        newSha256: { zip: '0'.repeat(64), sums: '0'.repeat(64) },
+        updatedAt: new Date().toISOString(),
+      }),
+    )
 
     const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
@@ -1312,7 +1374,7 @@ describe('transaction recovery (M27 WP-D)', () => {
     )
     const result = recoverTransaction(tmp, output, plan.zipName, plan.sumsName)
     expect(result.recovered).toBe(false)
-    expect(result.reason).toMatch(/COMMITTED but output failed verification|manual audit/)
+    expect(result.reason).toMatch(/manual audit/)
   })
 
   it('validateBackupDir enforces internal version contract', () => {
@@ -1500,7 +1562,7 @@ describe('runCli with injected repoRoot (M27 WP-E)', () => {
     const { io, err, out } = makeIo(tmp)
     const rc = await runCli(['node', 'prepare-release-assets.mjs', '--recover'], io)
     expect(rc).toBe(1)
-    expect(err()).toMatch(/SHA256SUMS|malformed|verification/i)
+    expect(err()).toMatch(/journal|manual audit/i)
     expect(out()).not.toMatch(/recovered successfully/)
     expect(fs.existsSync(path.join(tmp, 'release-output'))).toBe(false)
     // Lock was acquired and released cleanly despite the refusal.
