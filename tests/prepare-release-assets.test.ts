@@ -72,9 +72,10 @@ function makeTempDir(): string {
 }
 
 /**
- * M33 WP-A: write a schema-v2 lock fixture (+ optional child-state sidecar).
- * The child-state (inline and sidecar) is derived from the FINAL metadata
- * (after overrides), so nonce/repo mismatches are expressed consistently.
+ * M33 WP-A / M34 WP-A: write a schema-v3 lock fixture (+ nonce-qualified
+ * child-state sidecar). The child-state (inline and sidecar) is derived from
+ * the FINAL metadata (after overrides), so nonce/repo mismatches are
+ * expressed consistently.
  */
 function writeLockFixture(
   tmp: string,
@@ -82,19 +83,20 @@ function writeLockFixture(
   sidecarState: string | null = 'EMPTY',
 ): string {
   const base = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     pid: 999999999,
     startedAt: new Date().toISOString(),
     nonce: randomUUID(),
     repoRealpath: fs.realpathSync(tmp),
-    childStateFile: '.release-staging.child-state.json',
   }
+  const finalNonce = (overrides.nonce as string | undefined) ?? base.nonce
   const metadata = {
     ...base,
     ...overrides,
+    childStateFile: `.release-staging.child-state-${finalNonce}.json`,
     childState: {
-      schemaVersion: 1,
-      nonce: ((overrides.nonce as string | undefined) ?? base.nonce) as string,
+      schemaVersion: 2,
+      nonce: finalNonce,
       repoRealpath: ((overrides.repoRealpath as string | undefined) ?? base.repoRealpath) as string,
       state: sidecarState ?? 'EMPTY',
       pgid: null,
@@ -106,9 +108,9 @@ function writeLockFixture(
   fs.writeFileSync(lockPath, JSON.stringify(metadata) + '\n')
   if (sidecarState !== null) {
     fs.writeFileSync(
-      path.join(tmp, '.release-staging.child-state.json'),
+      path.join(tmp, `.release-staging.child-state-${finalNonce}.json`),
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         nonce: metadata.childState.nonce,
         repoRealpath: metadata.childState.repoRealpath,
         state: sidecarState,
@@ -426,7 +428,7 @@ describe('atomic lock (M27 WP-A/B)', async () => {
     const validated = validateLockMetadata(fs.readFileSync(lockPath, 'utf8'))
     expect(validated.ok).toBe(true)
     if (validated.ok) {
-      expect(validated.metadata.schemaVersion).toBe(2)
+      expect(validated.metadata.schemaVersion).toBe(3)
       expect(validated.metadata.pid).toBe(process.pid)
       expect(Number.isNaN(Date.parse(validated.metadata.startedAt))).toBe(false)
       expect(validated.metadata.nonce).toBe(lock.nonce)

@@ -14,6 +14,8 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   SECURITY_TEST_FILES,
+  SECURITY_TEST_FILES_PARALLEL,
+  SECURITY_TEST_FILES_SERIAL,
   validateSecurityReportFiles,
 } from '../scripts/release-security-test-contract.mjs'
 import { validateZipEntry } from '../scripts/release-artifact-contract.mjs'
@@ -62,7 +64,7 @@ function writePkg(tmp: string, version = '1.1.5'): void {
 // ---------------------------------------------------------------------------
 
 describe('M29 WP-A security gate completeness', () => {
-  it('A1: SECURITY_TEST_FILES lists all eleven expected files and they exist on disk', () => {
+  it('A1: SECURITY_TEST_FILES lists all twelve expected files and they exist on disk', () => {
     expect(SECURITY_TEST_FILES).toEqual([
       'tests/prepare-release-assets.test.ts',
       'tests/zip-helper-security.test.ts',
@@ -75,9 +77,19 @@ describe('M29 WP-A security gate completeness', () => {
       'tests/m30-child-lifecycle.test.ts',
       'tests/m32-child-group-lifecycle.test.ts',
       'tests/m33-child-ownership-recovery.test.ts',
+      'tests/m34-child-state-signal-gate.test.ts',
     ])
     for (const f of SECURITY_TEST_FILES) {
       expect(fs.existsSync(path.join(REPO_ROOT, f)), `missing contract file ${f}`).toBe(true)
+    }
+  })
+
+  it('A1b: M34 phased split is exhaustive and disjoint', () => {
+    const both = [...SECURITY_TEST_FILES_PARALLEL, ...SECURITY_TEST_FILES_SERIAL]
+    expect(both.length).toBe(SECURITY_TEST_FILES.length)
+    expect(new Set(both).size).toBe(SECURITY_TEST_FILES.length)
+    for (const f of SECURITY_TEST_FILES) {
+      expect(both).toContain(f)
     }
   })
 

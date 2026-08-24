@@ -29,7 +29,9 @@
 ## Release-security evidence（release/进程树相关任务必填；非 release 任务一律明确填 N/A，减少无关证据填写成本）
 
 - 验证去重：`test:coverage` 测试文件数/测试数、`test:release-security` 文件数/测试数（文件列表一律来自共享 `SECURITY_TEST_FILES`，数量以 `node scripts/collect-verification-evidence.mjs` 输出为准，不写死“N 个文件”）、security suite 在 coverage 中的重复执行数（必须为 0）:
-- release-security passed / failed / skipped / todo（zero-skip 合同要求 skipped+todo 为 0）:
+- release-security passed / failed / skipped / todo（zero-skip 合同要求 skipped+todo 为 0；M34 起由分阶段 runner 输出 merged summary：`release-security: merged summary: {...}`）:
+- release-security 分阶段调度（M34：并行批文件数 / 串行批文件数 fileParallelism=false；merged summary 中 missing/extra/duplicates 必须为空）:
+- release-security 失败诊断 artifact（M34：`RELEASE_SECURITY_REPORT_DIR` 下的 merged-summary.json + per-batch JSON；本地失败保留的明确路径）:
 - 进程树/child ownership 证据（按任务要求列出）：
   - child-state 状态机与 crash window（SPAWN_INTENT/ACTIVE/QUIESCENCE_PROVEN/MANUAL_AUDIT_REQUIRED）:
   - journal crash matrix failpoint 数量（每个 mutation boundary 的 crash 注入覆盖）:
@@ -37,7 +39,7 @@
   - fail-closed natural exit（CLI 非零自然退出、锁保留、helper 存活时 recovery 拒绝、清理后显式恢复成功）:
   - 四 SIGTERM 组合与 post-spawn error、timer created/cleared 与 live-timer 断言:
 - signal gate 证据（INT+INT/TERM+TERM/INT+TERM/TERM+INT/triple/no-Done 轮次；0 raw signal death、0 stale lock、0 orphan、watchdog 触发次数）:
-- 压力验证（Node 24/22 各轮次与 bad/orphan/stale-lock/unsafe-recovery/residual-writer/live-timer/skipped/todo 计数）:
+- 压力验证（M34 起 versioned schema v2 + truthful counters；`all N` 语义 = N 为总轮数、类别间确定性分配；每类别轮次与 bad/unsafeRecovery/orphanAtSafeCompletion/cleanupResidual/staleLockAfterSafeCompletion/residualWriter/liveTimer/rawSignalDeath/doneSeen/recoveredSuccessClaimSeen/watchdogTriggered/timeout 计数；skipped/todo 已删除字段不再伪造 0；`--self-test` 结果）:
 
 ## UI/visual evidence（UI 任务必填；否则 N/A）
 

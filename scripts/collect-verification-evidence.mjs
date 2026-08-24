@@ -1,8 +1,8 @@
-// M33 WP-E #5: collect-verification-evidence -- a small, testable evidence
-// collection script. It ONLY collects facts (git SHAs/trees/stats, hygiene
-// numbers, manifest lists, toolchain versions) and merges machine-readable
-// test results that the caller passes in -- it never invokes tests and never
-// fabricates results.
+// M33 WP-E #5 / M34 WP-F: collect-verification-evidence -- a small, testable
+// evidence collection script. It ONLY collects facts (git SHAs/trees/stats,
+// hygiene numbers, manifest lists, toolchain versions) and merges
+// machine-readable test results that the caller passes in -- it never invokes
+// tests and never fabricates results.
 //
 // Usage:
 //   node scripts/collect-verification-evidence.mjs [--json] [--markdown]
@@ -14,6 +14,14 @@
 //   --results   path to a JSON summary of test results produced elsewhere;
 //               its keys are embedded verbatim into the "results" field
 //   --repo      repository root (default: this script's parent)
+//
+// M34 WP-F hardening:
+// - binary changed files ARE counted (they were silently dropped before);
+//   additions/deletions stay null for binary files (not text lines);
+// - a --results payload is NOT endorsed verbatim: it must satisfy the
+//   results contract (schemaVersion, command, exitCode, durationMs,
+//   toolchain.node/npm); a head/tree mismatch marks it "unverified" instead
+//   of silently blessing it.
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -38,6 +46,42 @@ function gitStatus(args) {
 }
 
 /**
+ * M34 WP-F #2: validate the machine-readable results payload BEFORE it is
+ * merged into the evidence. A payload missing the contract fields is REJECTED
+ * (no label), while a head/tree mismatch is marked unverified by the caller.
+ *
+ * @param {unknown} results
+ * @returns {{ ok: true } | { ok: false, reason: string }}
+ */
+export function validateResultsContract(results) {
+  if (results === null || typeof results !== 'object' || Array.isArray(results)) {
+    return { ok: false, reason: 'results is not an object' }
+  }
+  const r = /** @type {Record<string, unknown>} */ (results)
+  const errs = []
+  if (r.schemaVersion !== 1) errs.push('results.schemaVersion must be 1')
+  if (typeof r.command !== 'string' || r.command.length === 0) {
+    errs.push('results.command (string) missing')
+  }
+  if (typeof r.exitCode !== 'number' || !Number.isInteger(r.exitCode)) {
+    errs.push('results.exitCode (integer) missing')
+  }
+  if (typeof r.durationMs !== 'number' || !Number.isFinite(r.durationMs)) {
+    errs.push('results.durationMs (number) missing')
+  }
+  const tc = /** @type {Record<string, unknown> | null | undefined} */ (r.toolchain)
+  if (!tc || typeof tc !== 'object') {
+    errs.push('results.toolchain missing')
+  } else {
+    if (typeof tc.node !== 'string' || tc.node.length === 0)
+      errs.push('results.toolchain.node missing')
+    if (typeof tc.npm !== 'string' || tc.npm.length === 0)
+      errs.push('results.toolchain.npm missing')
+  }
+  return errs.length > 0 ? { ok: false, reason: errs.join('; ') } : { ok: true }
+}
+
+/**
  * Collect factual evidence from the repository.
  *
  * @param {string} base
@@ -51,6 +95,9 @@ export async function collectEvidence(base, results) {
   const baseTree = base === 'HEAD' ? tree : git(['rev-parse', base + '^{tree}'])
 
   // changed files / additions / deletions (base...HEAD)
+  // M34 WP-F #1: BINARY files are counted in changedFiles (they were silently
+  // dropped before, undercounting the change set); their additions/deletions
+  // are null (binary blobs have no text line counts).
   const numstat = git(['diff', '--numstat', baseSha + '...' + head])
     .split('\n')
     .filter((l) => l.length > 0)
@@ -58,12 +105,17 @@ export async function collectEvidence(base, results) {
   let deletions = 0
   /** @type {string[]} */
   const changedFiles = []
+  /** @type {Array<{ file: string, binary: boolean }>} */
+  const fileEntries = []
   for (const line of numstat) {
     const [add, del, file] = line.split('\t')
-    if (add === '-' || del === '-') continue // binary
-    additions += Number(add) || 0
-    deletions += Number(del) || 0
+    const isBinary = add === '-' || del === '-'
     changedFiles.push(file)
+    fileEntries.push({ file, binary: isBinary })
+    if (!isBinary) {
+      additions += Number(add) || 0
+      deletions += Number(del) || 0
+    }
   }
 
   // tracked paths + tree bytes (git ls-tree -r -l HEAD)
@@ -125,6 +177,32 @@ export async function collectEvidence(base, results) {
     fullWhitespace = 'non-clean'
   }
 
+  // M34 WP-F #2: results are merged ONLY after the contract check; a mismatch
+  // is marked unverified (never blessed verbatim).
+  /** @type {Record<string, unknown>} */
+  const resultsField = { verified: false, unverifiedReason: 'no results payload provided' }
+  if (results !== null) {
+    const check = validateResultsContract(results)
+    if (!check.ok) {
+      resultsField.verified = false
+      resultsField.unverifiedReason = check.reason
+      resultsField.raw = results
+    } else {
+      const r = /** @type {Record<string, unknown>} */ (results)
+      const headMismatch = typeof r.head === 'string' && r.head !== head
+      const treeMismatch = typeof r.tree === 'string' && r.tree !== tree
+      if (headMismatch || treeMismatch) {
+        resultsField.verified = false
+        resultsField.unverifiedReason = `results head/tree mismatch (head ${headMismatch ? 'mismatch' : 'ok'}, tree ${treeMismatch ? 'mismatch' : 'ok'})`
+        resultsField.raw = results
+      } else {
+        resultsField.verified = true
+        resultsField.unverifiedReason = null
+        Object.assign(resultsField, results)
+      }
+    }
+  }
+
   return {
     base: baseSha,
     baseTree,
@@ -135,6 +213,7 @@ export async function collectEvidence(base, results) {
       additions,
       deletions,
       fileList: changedFiles,
+      fileEntries,
     },
     hygiene: {
       trackedCount,
@@ -151,7 +230,7 @@ export async function collectEvidence(base, results) {
       cached: whitespaceStatus.cachedCheck,
       fullBaseToHead: fullWhitespace,
     },
-    results: results || {},
+    results: resultsField,
     collectedAt: new Date().toISOString(),
   }
 }
@@ -185,6 +264,9 @@ async function main() {
     )
     console.log(
       `- Whitespace: working-tree ${c.whitespace.workingTree}, cached ${c.whitespace.cached}, full base→head ${c.whitespace.fullBaseToHead}`,
+    )
+    console.log(
+      `- Results: ${c.results.verified ? 'verified' : 'UNVERIFIED (' + c.results.unverifiedReason + ')'}`,
     )
   } else {
     console.log(JSON.stringify(evidence, null, 2))

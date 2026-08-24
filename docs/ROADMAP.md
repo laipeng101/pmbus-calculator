@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > 历史完整快照见 [`docs/archive/web-refactor-m0-m10.1/`](archive/web-refactor-m0-m10.1/README.md)。
 
-最后更新：2026-08-25（M33 done：release child ownership crash-consistency、bounded fail-closed exit、lock recovery safety、signal gate determinism 与证据流程降本，v1.1.11 工程基线，未发布新版本）
+最后更新：2026-08-25（M34 done：child-state invariant safety、bounded signal termination、deterministic release-security gate 与 truthful stress evidence，v1.1.11 工程基线，未发布新版本）
 
 ## 当前产品基线
 
@@ -19,7 +19,7 @@
 ## 当前里程碑
 
 ```text
-M0–M33 complete；stable release v1.1.11；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M34 complete；stable release v1.1.11；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ### M31 done — release lifecycle 证据加固、跨平台 fail-closed 与验证去重（v1.1.11 工程基线，未发布新版本）
@@ -258,6 +258,107 @@ verify` 不清空有效缓存、只保留 lockfile 对应 Playwright browser rev
 >   `release:prepare-assets`（含 `--force`）zip/SHA256SUMS 逐字节一致且与
 >   v1.1.11 已发布资产 hash 完全相同（ZIP `777c871b…`、SHA256SUMS
 >   `743b43c3…`）；PR/CI 审计证据见对应 PR 与 Actions 运行，不在本文件维护。
+
+> **M34 strengthening（v1.1.11 工程基线）——以下 M33 表述在 M34 修复完成前超出实际实现：**
+>
+> 1. “child-state 必须先通过 nonce/repo/schema 合同才显式恢复”：M33 的
+>    `validateChildState` 只校验字段**类型**，不校验状态—字段**不变量**——
+>    探针 P1-A 实证 `QUIESCENCE_PROVEN`/`EMPTY` + 非空且仍存活的 pgid/helperPid
+>    被 validator 接受、`recoverLock` 删除锁，而 detached helper 组仍存活持续写
+>    sentinel（54→… 字节增长）；其余不可能组合（SPAWN_INTENT+非空 PID、
+>    ACTIVE+null pgid、ACTIVE pgid≠helperPid、MANUAL 伪装字段）validator 也全部
+>    错误接受。M34 实现状态—字段不变量 + 额外字段/非法时间拒绝，该表述仅在
+>    M34 之后成立。
+> 2. “signal 后立即向每个受控进程组发送 SIGTERM（受控 child termination）”：
+>    M33 的 signal handler 只发送**一次** SIGTERM，没有启动 escalation timer 与
+>    bounded deadline——探针 P1-B 实证 helper 忽略 SIGINT/SIGTERM 时，父进程
+>    在 >GROUP_SETTLE_DEADLINE_MS（10s）后仍存活、无任何升级，只能等 helper
+>    自身 60s timeout。M34 把用户信号接入 execFileAsync 受控终止状态机
+>    （controller.requestTermination → SIGTERM → deadline → SIGKILL → group
+>    ESRCH → settle），该表述仅在 M34 之后成立。
+> 3. “release-security 连续稳定、零 flake”：M33 未做串行对照与连续多轮验证；
+>    M34 P1-C 显示整批并行运行墙钟 ~44s，且真实 signal/process-group 文件同批
+>    并行存在进程间干扰风险。M34 建立分阶段调度（结构文件有限并行 + 真实
+>    进程文件单 worker 串行）+ 聚合负向测试 + 连续 3 次验证，稳定性表述仅在
+>    M34 之后成立。
+> 4. “stress summary 包含 unsafeRecovery/residual-writer/live-timer/… 计数”：
+>    M33 stress 的多个计数器**没有更新路径**（恒 0 假零），`doneSeen` 不参与
+>    NO-DONE round 判定，`staleLock` 在删除 temp 目录后才读取（恒 false），
+>    safe-completion 后仍活、被 force cleanup 杀的 helper 不计入 orphan，
+>    `all N` 语义为“每类 N”而非“总 N”但未文档化（探针 P1-D 实证）。M34 重构为
+>    versioned schema + 全部真实更新路径 + 注入自测，该表述仅在 M34 之后成立。
+> 5. “MANUAL_AUDIT_REQUIRED 人工审计后可显式恢复”：M33 的恢复只能通过测试/
+>    维护者**手改 sidecar JSON** 为 ACTIVE 实现（P2-3），正式 CLI 没有安全路径。
+>    M34 增加显式 `--audit-lock <nonce> <lastKnownPgid>` acknowledgement
+>    （精确 nonce/PGID、owner 与组 ESRCH、inode/schema/repo 重验证、零删除），
+>    该表述仅在 M34 之后成立。
+
+### M34 done — child-state invariant safety、bounded signal termination、deterministic release-security gate 与 truthful stress evidence（v1.1.11 工程基线，未发布新版本）
+
+- child-state 不变量与恢复安全（WP-A）：锁 schema 升 v3、child-state schema v2；
+  sidecar 改为 nonce-qualified basename（`.release-staging.child-state-<nonce>.json`，
+  绑定锁 nonce，旧恢复 cleanup 结构上无法触碰新 acquisition 的 sidecar）；
+  `validateChildState` 强制状态—字段不变量（EMPTY/SPAWN_INTENT/QUIESCENCE_PROVEN
+  的 pgid/helperPid 必须为 null；ACTIVE 两者为正整数且相等——POSIX detached
+  group-leader 合同；MANUAL_AUDIT_REQUIRED 用独立 lastKnownPgid/
+  lastKnownHelperPid/auditReason，不伪装成 QUIESCENCE），额外危险字段、未知
+  schema/state、非法时间、nonce/repo 不匹配全部拒绝；`writeChildStateSync` 写入
+  前调用同一 validator（实现自身无法生成非法状态）；sidecar 读取 lstat 拒绝
+  symlink/FIFO/目录/设备、64 KiB 字节上限、open+fstat dev/ino 竞态校验；
+  recoverLock 删除前重新验证锁 inode/metadata 与 sidecar 形态；恢复绝不向历史
+  PGID 发信号。探针 P1-A（修改前）：QUIESCENCE_PROVEN/EMPTY + 存活组被错误
+  恢复，锁删除、replacement 可获取、helper 仍写 sentinel。
+- 正式 MANUAL audit 流程（WP-B）：普通 `--recover-lock` 对 MANUAL 继续拒绝；
+  新增 `--audit-lock <nonce> <lastKnownPgid>` 显式 acknowledgement——要求精确
+  lock nonce 与精确 last-known PGID、owner PID ESRCH、last-known 组 ESRCH
+  （probe only，绝不发信号）、metadata/inode/repo/schema 全量重验证、锁或
+  sidecar 被替换/EPERM/未知 schema 拒绝且零删除；只确认状态不杀进程；
+  测试不再通过 `fs.writeFileSync` 手改状态模拟恢复（P2-3 修正）。
+- 用户信号接入受控终止状态机（WP-C）：`activeChildren` 注册 child controller
+  （`requestTermination(reason)`），runCli 的 signal handler 只决定退出码并请求
+  所有 controller 启动一次受控终止（SIGTERM → bounded deadline → SIGKILL 升级
+  → 等 direct close + group ESRCH → settle）；重复信号只记录
+  `termination already in progress` 且不改变退出码；signal 路径绝不等待 helper
+  自身 30/60 秒 timeout（P1-B 修改前实证：SIGTERM 后父进程 12s 仍存活、无
+  escalation）；deadline 后无法证明组消失 → MANUAL_AUDIT_REQUIRED（last-known
+  ownership 持久化）+ registry/锁 fail closed + 父进程自然非零有界退出；
+  fault-injection timer 也是 owned timer（settle 时清除）。
+- release-security 分阶段调度（WP-D）：`SECURITY_TEST_FILES_PARALLEL`（结构/
+  fixture，有限并行）与 `SECURITY_TEST_FILES_SERIAL`（真实 signal/process-group/
+  recovery，单 worker + fileParallelism=false）穷尽且不相交；每文件只执行一次；
+  多 JSON report 由 `aggregateSecurityReports` 聚合（独立负向测试覆盖
+  missing/extra/duplicate/skip/todo/failed/corrupt/信号/status）；
+  同时输出 default reporter 与机器可读 merged summary；失败时保留明确路径
+  （本地打印私有目录，CI 经 `RELEASE_SECURITY_REPORT_DIR` 上传 7 天短期
+  retention artifact）。
+- truthful stress（WP-E）：versioned schema v2 + 真实计数器
+  （unsafeRecovery/orphanAtSafeCompletion/cleanupResidual/
+  staleLockAfterSafeCompletion/residualWriter/liveTimer/rawSignalDeath/doneSeen/
+  recoveredSuccessClaimSeen/watchdogTriggered/timeout），每个 counter 有更新路径
+  与注入自测（`--self-test` 逐计数器注入后精确变 1）；`doneSeen`/recovered
+  success claim 出现在 signal-observed round 即失败；cleanup 前仍活的 helper
+  计为 orphan、cleanup 后仍活的计 cleanupResidual（fail-closed/recovery 的
+  合同存活不计 orphan——它们是 MANUAL 受控状态）；`all N` 语义唯一化：N 为
+  总轮数、五个类别间确定性分配；任一非零安全计数 exit 1；skipped/todo 无法
+  真实测量故删除字段（不再伪造 0）；失败 round 保留最小诊断 artifact。
+- evidence 与文档纠偏（WP-F）：`collect-verification-evidence.mjs` 的 changedFiles
+  现在包含 binary 文件（additions/deletions 为 null，不合并进文本行数）；
+  `--results` 增加 schema/head/tree/command/exitCode/durationMs/toolchain 合同
+  校验，不匹配拒绝或标记 unverified（head/tree 不匹配标 unverified，不再无标签
+  背书）；ROADMAP/RELEASING/PR 模板同步 M34 合同。
+- 探针（修改前，未复用旧证据）：P1-A（impossible QUIESCENCE/EMPTY + 存活组被
+  错误恢复）、P1-B（signal 无 escalation/deadline，父进程 12s 仍存活）、P1-C
+  （并行两次 213/213 全绿 ~44s；串行对照运行期间代码被编辑故结果无效、最终
+  阶段重新串行验证）、P1-D（stress 假零：7 个计数器无更新路径、doneSeen 不参与
+  判定、staleLock 在 rm 后读恒 false、all 1=4 轮）、P2（symlink sidecar 被跟随
+  并恢复、FIFO sidecar 阻塞、固定名 cleanup 删除新 nonce sidecar、MANUAL 只能
+  手改 JSON、evidence binary 少算）。
+- 状态依据：本地 Node 24.19.0/npm 11.17.0 全套验证与 stress 矩阵结果见最终任务
+  报告（release-security 十二文件零 skip、分阶段 batch 全部 status=0、
+  merged summary missing/extra/duplicates 为空）；Node 22.20.0/npm 11.17.0
+  fresh worktree 兼容验证；资产回归：两次 `release:prepare-assets`（含
+  `--force`）逐字节一致且与 v1.1.11 已发布资产 hash 完全相同；PR/CI 审计证据
+  见对应 PR 与 Actions 运行，不在本文件维护。
 
 ### M30 done — release child-process lifecycle、repeated-signal safety、zero-skip completeness 与 canonical Node/npm toolchain（v1.1.11 PATCH）
 

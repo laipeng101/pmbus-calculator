@@ -117,9 +117,23 @@ jobs:
       # transaction/lock/recovery/symlink/FIFO/concurrency suites on Linux
       # without Playwright and fails if ANY test is skipped, so a canonical
       # environment can never silently drop security coverage again.
+      # M34 WP-D: the runner is phased (parallel structure files + serial
+      # real-process files) and preserves JSON diagnostics on failure.
       - name: Release generator and security tests (zero-skip)
         if: steps.scope.outputs.run_full != 'false'
+        env:
+          RELEASE_SECURITY_REPORT_DIR: ${{ runner.temp }}/security-diagnostics
         run: npm run test:release-security
+
+      # M34 WP-D #3: keep the security diagnostics (merged summary + per-batch
+      # JSON reports) as a short-retention artifact on failure.
+      - name: Upload security diagnostics (failure only)
+        if: failure() && steps.scope.outputs.run_full != 'false'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: security-diagnostics
+          path: ${{ runner.temp }}/security-diagnostics
+          retention-days: 7
 
       - name: Install Playwright browsers
         if: steps.scope.outputs.run_full != 'false'
