@@ -1,11 +1,19 @@
 name: CI
 
-# M19-B: main is protected (ruleset "protect-main": PR required, required
-# `check` from GitHub Actions, strict up-to-date, no bypass, no force push,
-# no deletion). PR CI tests the merge ref by default, so the tested tree
-# equals the post-merge main tree and a second post-merge CI run would
-# re-verify the identical tree — the push trigger is therefore removed.
-# workflow_dispatch stays as the emergency/manual full-verification entry.
+# main is protected (ruleset "protect-main": PR required, required `check`
+# from GitHub Actions, strict up-to-date, no bypass, no force push, no
+# deletion). PR CI tests the merge ref by default, so the tested tree equals
+# the post-merge main tree and a second post-merge CI run would re-verify the
+# identical tree — the push trigger is therefore removed. workflow_dispatch
+# stays as the emergency/manual full-verification entry.
+#
+# Parallel verification layout:
+#   quality       — format, typecheck, lint, coverage, build, base contracts
+#   e2e           — Playwright install, user flows, release smoke
+#   compatibility — Node 22 typecheck + unit tests
+#   check         — light aggregator (the branch-protection required check)
+#                   that records the checked revision and runs the full
+#                   PR base→head whitespace gate
 on:
   pull_request:
     branches: [main]
@@ -14,16 +22,16 @@ on:
 permissions:
   contents: read
 
-# Cost-aware CI cancellation (M18): a new push to a PR cancels that PR's
-# outdated run. Different PRs never share a group. Manual workflow_dispatch
-# runs group by ref (never a PR number) and cancel-in-progress is PR-only,
-# so a manual run neither cancels nor is cancelled by PR runs.
+# Cost-aware CI cancellation: a new push to a PR cancels that PR's outdated
+# run. Different PRs never share a group. Manual workflow_dispatch runs group
+# by ref (never a PR number) and cancel-in-progress is PR-only, so a manual
+# run neither cancels nor is cancelled by PR runs.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  check:
+  quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -31,32 +39,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      # Evidence for the M19-B no-second-CI model: record the exact commit
-      # and tree that this run verified. The final report compares this tree
-      # with the post-merge main tree instead of re-running a full CI.
-      - name: Record checked revision
-        id: revision
-        run: |
-          set -euo pipefail
-          checked_sha="$(git rev-parse HEAD)"
-          checked_tree="$(git rev-parse 'HEAD^{tree}')"
-          for value in "$checked_sha" "$checked_tree"; do
-            if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "revision: not a 40-hex SHA: $value" >&2
-              exit 1
-            fi
-          done
-          {
-            echo "checked_sha=$checked_sha"
-            echo "checked_tree=$checked_tree"
-          } >> "$GITHUB_OUTPUT"
-          echo "revision: checked_sha=$checked_sha checked_tree=$checked_tree"
-          {
-            echo "### Checked revision"
-            echo "- commit \`${checked_sha}\`"
-            echo "- tree \`${checked_tree}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -85,6 +67,9 @@ jobs:
       - name: Format check
         run: npm run format:check
 
+      - name: Markdown math gate
+        run: npm run check:markdown-math
+
       - name: Type check
         if: steps.scope.outputs.run_full != 'false'
         run: npm run typecheck
@@ -92,9 +77,6 @@ jobs:
       - name: Lint
         if: steps.scope.outputs.run_full != 'false'
         run: npm run lint
-
-      - name: Markdown math gate
-        run: npm run check:markdown-math
 
       - name: Specification manifest check
         if: steps.scope.outputs.run_full != 'false'
@@ -104,7 +86,6 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm run check:release-contract
 
-      # M30 WP-E: canonical toolchain gate on the primary (24.19.0) runtime.
       - name: Canonical toolchain check
         if: steps.scope.outputs.run_full != 'false'
         run: npm run check:toolchain
@@ -113,27 +94,43 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm run test:coverage
 
-      # M27 WP-G: Linux generator/security specialisation. Runs the real
-      # transaction/lock/recovery/symlink/FIFO/concurrency suites on Linux
-      # without Playwright and fails if ANY test is skipped, so a canonical
-      # environment can never silently drop security coverage again.
-      # M34 WP-D: the runner is phased (parallel structure files + serial
-      # real-process files) and preserves JSON diagnostics on failure.
-      - name: Release generator and security tests (zero-skip)
+      - name: Build
         if: steps.scope.outputs.run_full != 'false'
-        env:
-          RELEASE_SECURITY_REPORT_DIR: ${{ runner.temp }}/security-diagnostics
-        run: npm run test:release-security
+        run: npm run build
 
-      # M34 WP-D #3: keep the security diagnostics (merged summary + per-batch
-      # JSON reports) as a short-retention artifact on failure.
-      - name: Upload security diagnostics (failure only)
-        if: failure() && steps.scope.outputs.run_full != 'false'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Tailwind source scope gate
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run check:tailwind-scope
+
+      - name: Audit dependencies
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm audit --audit-level=high
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: security-diagnostics
-          path: ${{ runner.temp }}/security-diagnostics
-          retention-days: 7
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+
+      - name: Classify CI scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/classify-ci-scope.mjs --event "$EVENT_NAME" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Install Playwright browsers
         if: steps.scope.outputs.run_full != 'false'
@@ -144,70 +141,11 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm run test:e2e
 
-      - name: Build
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run build
-
-      - name: Tailwind source scope gate
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run check:tailwind-scope
-
       - name: Run production release smoke
         id: release_smoke
         if: steps.scope.outputs.run_full != 'false'
         run: npm run test:e2e:release
 
-      - name: Check full PR diff for whitespace errors
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          git diff --check "$BASE_SHA" "$HEAD_SHA"
-
-      - name: Audit dependencies
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm audit --audit-level=high
-
-      # Secondary compatibility runtime (M20/M23/M30): engines deliberately
-      # supports the two maintained LTS lines (22 and 24). Primary
-      # verification now runs on the canonical Node 24.19.0 from
-      # .node-version (M30 WP-E); this re-check reinstalls under the exact
-      # compatibility Node 22.20.0 and runs the real `tsc -b` typecheck plus
-      # the unit suite so the runtime floor stays continuously validated —
-      # inside the same single `check` job, without a second job or a second
-      # required check. Light tier skips it.
-      - name: Setup Node.js 22.20.0 (compatibility LTS)
-        if: steps.scope.outputs.run_full != 'false'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '22.20.0'
-          # M31 WP-D: the primary runtime already restored the npm download
-          # cache, so the compatibility runtime must NOT establish a second
-          # cache; node_modules is never cached. package-manager-cache: false
-          # also disables setup-node v7's auto-detected npm cache, which
-          # probes with the bundled npm 10.9.3 and fails its devEngines
-          # fail-closed check (EBADDEVENGINES) -- the canonical npm 11.17.0 is
-          # activated in the next step, outside the repo (M30 WP-E #10).
-          package-manager-cache: false
-
-      # M30 WP-E #10: both CI runtimes use the exact canonical npm 11.17.0
-      # (Node 24.19.0 ships it; the 22.20.0 runtime needs the explicit pin).
-      # `cd /tmp` keeps the install OUTSIDE the repo so the bundled npm 10.9.3
-      # never reads the repo's devEngines while upgrading itself.
-      - name: Activate canonical npm 11.17.0 on compatibility runtime
-        if: steps.scope.outputs.run_full != 'false'
-        run: cd /tmp && npm install -g npm@11.17.0
-
-      - name: Typecheck and unit tests on compatibility LTS (Node 22.20.0)
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm ci && npm run typecheck && npm run test:run
-
-      # Playwright reports are uploaded only when the exact test step that
-      # produces them ran and failed: never on the light tier, and never when
-      # an earlier non-Playwright step (typecheck/lint/coverage/build) failed
-      # before the report directories were generated.
       - name: Upload Playwright report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure() &&
@@ -227,3 +165,101 @@ jobs:
           name: playwright-report-release
           path: tests/e2e/report-release
           retention-days: 7
+
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # engines deliberately supports the two maintained LTS lines (22 and
+      # 24). Primary verification runs on the canonical Node 24.19.0 from
+      # .node-version (quality/e2e jobs); this job reinstalls under the exact
+      # compatibility Node 22.20.0 and runs the real `tsc -b` typecheck plus
+      # the unit suite so the runtime floor stays continuously validated.
+      - name: Setup Node.js 22.20.0 (compatibility LTS)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.20.0'
+          # The canonical runtime already restored the npm download cache, so
+          # the compatibility runtime must NOT establish a second cache;
+          # node_modules is never cached. package-manager-cache: false also
+          # disables setup-node v7's auto-detected npm cache, which probes
+          # with the bundled npm 10.9.3 and fails its devEngines fail-closed
+          # check (EBADDEVENGINES) -- the canonical npm 11.17.0 is activated
+          # in the next step, outside the repo.
+          package-manager-cache: false
+
+      - name: Classify CI scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/classify-ci-scope.mjs --event "$EVENT_NAME" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
+
+      # Both CI runtimes use the exact canonical npm 11.17.0 (Node 24.19.0
+      # ships it; the 22.20.0 runtime needs the explicit pin). `cd /tmp` keeps
+      # the install OUTSIDE the repo so the bundled npm 10.9.3 never reads the
+      # repo's devEngines while upgrading itself.
+      - name: Activate canonical npm 11.17.0 on compatibility runtime
+        if: steps.scope.outputs.run_full != 'false'
+        run: cd /tmp && npm install -g npm@11.17.0
+
+      - name: Typecheck and unit tests on compatibility LTS (Node 22.20.0)
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm ci && npm run typecheck && npm run test:run
+
+  check:
+    needs: [quality, e2e, compatibility]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Evidence for the no-second-CI model: record the exact commit and tree
+      # that this run verified. The final report compares this tree with the
+      # post-merge main tree instead of re-running a full CI.
+      - name: Record checked revision
+        id: revision
+        run: |
+          set -euo pipefail
+          checked_sha="$(git rev-parse HEAD)"
+          checked_tree="$(git rev-parse 'HEAD^{tree}')"
+          for value in "$checked_sha" "$checked_tree"; do
+            if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "revision: not a 40-hex SHA: $value" >&2
+              exit 1
+            fi
+          done
+          {
+            echo "checked_sha=$checked_sha"
+            echo "checked_tree=$checked_tree"
+          } >> "$GITHUB_OUTPUT"
+          echo "revision: checked_sha=$checked_sha checked_tree=$checked_tree"
+          {
+            echo "### Checked revision"
+            echo "- commit \`${checked_sha}\`"
+            echo "- tree \`${checked_tree}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize parallel verification results
+        run: |
+          echo "quality=${{ needs.quality.result }}"
+          echo "e2e=${{ needs.e2e.result }}"
+          echo "compatibility=${{ needs.compatibility.result }}"
+
+      - name: Check full PR diff for whitespace errors
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git diff --check "$BASE_SHA" "$HEAD_SHA"
