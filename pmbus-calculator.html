@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
-    <title>PMBus 协议计算器 (L11/L16/DIRECT/HALF)</title>
+    <title>PMBus 数值格式计算器 (L11/L16/DIRECT/HALF) — 历史离线兼容</title>
     <style>
       :root{--p:#1e40af;--bg:#f8fafc;--surface:#ffffff;--text-primary:#0f172a;--text-secondary:#475569;--text-muted:#64748b;--border:#e2e8f0;--input-bg:#ffffff;--input-border:#e2e8f0;--input-text:#0f172a;--hover-bg:#f1f5f9;--warning-bg:#fffbeb;--error-bg:#fef2f2;--focus-ring:rgba(30,64,175,0.15);--bl:#3b82f6;--gn:#10b981;--am:#f59e0b;--rd:#ef4444;--pu:#8b5cf6;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05);--container-pad:32px;--title-size:1.75rem;--result-size:2.75rem;--bit-size:34px;--bit-font:15px}
       @media (prefers-color-scheme: dark){:root{--p:#60a5fa;--bg:#0f172a;--surface:#1e2937;--text-primary:#e2e8f0;--text-secondary:#94a3b8;--text-muted:#cbd5e1;--border:#475569;--input-bg:#334155;--input-border:#475569;--input-text:#e2e8f0;--hover-bg:#334155;--warning-bg:#451a03;--error-bg:#450a0a;--focus-ring:rgba(147,197,253,0.25);--bl:#60a5fa;--gn:#34d399;--am:#fbbf24;--rd:#f87171;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3);--container-pad:32px;--title-size:1.75rem;--result-size:2.75rem;--bit-size:34px;--bit-font:15px}}
@@ -782,7 +782,7 @@
         <a href="https://laipeng101.github.io/pmbus-calculator/">https://laipeng101.github.io/pmbus-calculator/</a>。
         PMBus 数值格式语义请以 <code>src/legacy/pmbus-math.ts</code> 与 <code>docs/DOMAIN_MODEL.md</code> 为准。
       </div>
-      <h1>PMBus 协议计算器（历史离线兼容）</h1>
+      <h1>PMBus 数值格式计算器（历史离线兼容）</h1>
       <button
         id="themeToggle"
         class="toggle-small"
@@ -859,7 +859,7 @@
           <option value="READ_POUT">READ_POUT (0x96) - 输出功率</option>
           <option value="READ_FAN_SPEED_1">READ_FAN_SPEED_1 (0x90)</option>
           <option value="STATUS_WORD">STATUS_WORD (0x79) - 状态字</option>
-          <option value="READ_EIN">READ_EIN (0x86) - 累计能量 (Part II 18.14)</option>
+          <option value="READ_EIN">READ_EIN (0x86) - 累计能量 (Part II 18.13)</option>
         </select>
       </div>
 
@@ -1240,7 +1240,8 @@
         // 注意：旧实现 (byte>>5)&0x07 把 bit7 混入 mode 是错误；mode 只有 2 位。
         parseVoutMode(byte) {
           byte = byte & 0xff
-          const modeBits = (byte >> 5) & 0x07
+          const isRelative = (byte & 0x80) !== 0
+          const modeBits = (byte >> 5) & 0x03
           const paramBits = byte & 0x1f
           const modeNames = { 0: 'LINEAR', 1: 'VID', 2: 'DIRECT', 3: 'IEEE Half Float' }
           let n = null
@@ -1252,6 +1253,7 @@
           }
           return {
             byte,
+            isRelative,
             mode: modeBits,
             modeName: modeNames[modeBits] || '保留',
             param: paramBits,
@@ -1261,11 +1263,11 @@
         },
 
         // 检查特殊值 (溢出、零值等)
+        // Y=1023 / Y=-1024 是合法的 LINEAR11 边界编码，不是天然的溢出标记；
+        // 饱和只能由“用户输入的物理值超出可表示范围”判定（与新版领域模型一致）。
         checkSpecial(raw, mode) {
           if (mode === 'L11') {
             const y = this.toSigned(raw & 0x7ff, 11)
-            if (y === 1023 || y === -1024)
-              return { type: 'overflow', msg: 'Y 接近极值 (±1023/±1024)，可能是饱和/溢出标记' }
             if (y === 0) return { type: 'info', msg: 'Y = 0，表示零值或未初始化' }
           }
           return null
@@ -1409,7 +1411,7 @@
           cmd: 0x79,
           type: 'statusWord',
           spec: 'PMBus Part II 17.2 Table 16',
-          note: 'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。',
+          note: 'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。通常为 Read Word；特殊写入 0x0100 仅用于清除 UNKNOWN 位，其余状态位经底层状态寄存器或 CLEAR_FAULTS 处理。',
         },
         READ_EIN: {
           mode: 'DIRECT',
@@ -1421,7 +1423,7 @@
           cmd: 0x86,
           type: 'blockRead',
           spec: 'PMBus Part II 18.13 / command table',
-          note: 'READ_EIN 属于 Block Read，多于 16 位；当前页面仅能辅助理解其累加器前 2 字节的编码方式，不能代表完整 6 字节报文。',
+          note: 'READ_EIN 属于 Block Read，多于 16 位；规范内部存在字节数冲突：PMBus Part II §18.13 描述 6 个数据字节，Appendix I Table 31 列为 5；以目标器件资料及适用规范修订为准，计算器不是 READ_EIN packet-length authority。',
         },
       }
 
@@ -2818,7 +2820,52 @@
               'VOUT_MODE 0x18 指数应为 -8',
               `N=${parsed.linearExponent}`,
             )
-            return '0x18 -> LINEAR, N=-8'
+            assert(
+              parsed.isRelative === false,
+              'VOUT_MODE 0x18 应为 absolute',
+              `isRelative=${parsed.isRelative}`,
+            )
+            return '0x18 -> LINEAR, N=-8, absolute'
+          })
+
+          test('VOUT_MODE 位域：relative/VID/DIRECT/IEEE Half 不再混淆 bit7', () => {
+            const relLinear = PMBusMath.parseVoutMode(0x98)
+            assert(
+              relLinear.mode === 0 && relLinear.isRelative === true,
+              '0x98 应为 relative LINEAR',
+              `mode=${relLinear.mode} relative=${relLinear.isRelative}`,
+            )
+            assert(
+              relLinear.linearExponent === -8,
+              '0x98 的指数参数应为 -8',
+              `N=${relLinear.linearExponent}`,
+            )
+            const vid = PMBusMath.parseVoutMode(0x20)
+            const direct = PMBusMath.parseVoutMode(0x40)
+            const half = PMBusMath.parseVoutMode(0x60)
+            const relHalf = PMBusMath.parseVoutMode(0xe0)
+            assert(vid.mode === 1, '0x20 应为 VID', `mode=${vid.mode}`)
+            assert(vid.linearExponent === null, 'VID 不应生成线性指数', `N=${vid.linearExponent}`)
+            assert(direct.mode === 2, '0x40 应为 DIRECT', `mode=${direct.mode}`)
+            assert(direct.linearExponent === null, 'DIRECT 不应生成线性指数', `N=${direct.linearExponent}`)
+            assert(half.mode === 3, '0x60 应为 IEEE Half Float', `mode=${half.mode}`)
+            assert(half.linearExponent === 'IEEE Half', '0x60 应为 IEEE Half 指数语义', `N=${half.linearExponent}`)
+            assert(relHalf.isRelative === true, '0xE0 应为 relative IEEE Half', `relative=${relHalf.isRelative}`)
+            return '0x98/0x20/0x40/0x60/0xE0 位域解析正确'
+          })
+
+          test('Y=1023/-1024 是合法 L11 边界编码，checkSpecial 不报警', () => {
+            assert(
+              PMBusMath.checkSpecial(0x7fff, 'L11') === null,
+              'N=15,Y=1023 不应被标记为溢出',
+              JSON.stringify(PMBusMath.checkSpecial(0x7fff, 'L11')),
+            )
+            assert(
+              PMBusMath.checkSpecial(0xffff, 'L11') === null,
+              'N=15,Y=-1024 不应被标记为溢出',
+              JSON.stringify(PMBusMath.checkSpecial(0xffff, 'L11')),
+            )
+            return '边界编码不再当作饱和/溢出标记'
           })
 
           test('VOUT_MODE 保留/非线性模式不会误生效', () => {
@@ -2911,6 +2958,12 @@
               '提示内容缺少状态字说明',
               $('specialWarn').textContent,
             )
+            assert(
+              $('specialWarn').textContent.includes('0x0100') &&
+                $('specialWarn').textContent.includes('UNKNOWN'),
+              'STATUS_WORD 说明缺少 0x0100 特殊写入语义',
+              $('specialWarn').textContent,
+            )
             return $('specialWarn').textContent
           })
 
@@ -2924,6 +2977,13 @@
             assert(
               $('specialWarn').textContent.includes('Block Read'),
               '缺少 Block Read 提示',
+              $('specialWarn').textContent,
+            )
+            assert(
+              $('specialWarn').textContent.includes('规范内部存在字节数冲突') &&
+                $('specialWarn').textContent.includes('6 个数据字节') &&
+                $('specialWarn').textContent.includes('列为 5'),
+              'READ_EIN 说明缺少 6/5 字节规范冲突',
               $('specialWarn').textContent,
             )
             return $('specialWarn').textContent
