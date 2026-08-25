@@ -4,6 +4,26 @@
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-08-25
+
+### Fixed
+
+- 线上产品名称统一为 **PMBus 数值格式计算器**：页面标题（AppHeader）与浏览器标题
+  （index.html）与 README/ROADMAP/Release notes 的产品定位一致，并补充范围说明
+  “数值格式换算，不实现完整 PMBus/SMBus 协议栈”。
+- 新增构建时版本徽标：`__APP_VERSION__` 由 vite.config.ts 从 package.json 注入，
+  页面显示只读 `v2.0.1`，不再手工维护版本文本；release/deployment smoke 增加版本断言。
+- legacy `pmbus-calculator.html` 领域语义对齐（离线兼容文件不再宣称已纠正却保留旧算法）：
+  - `parseVoutMode` 修正为 bits[6:5] 两位 mode + bit7 `isRelative`（Part II §8.3）；
+  - `checkSpecial` 不再把 Y=1023 / Y=-1024 标记为饱和/溢出边界；
+  - STATUS_WORD 说明补充“通常为 Read Word；特殊写入 0x0100 仅用于清除 UNKNOWN 位”；
+  - READ_EIN 说明展示 §18.13 6 字节 vs Appendix I Table 31 5 字节的规范冲突；
+  - 下拉引用由 Part II 18.14 改为 Part II 18.13；
+  - 内置自检新增 0x98/0x20/0x40/0x60/0xE0 VOUT_MODE、L11 边界、STATUS_WORD/READ_EIN 说明断言。
+- 命令参考视觉快照改为对 `.command-ref-table-shell` 元素截图（light/dark），
+  真正覆盖表格与新增的“说明”列，不再只拍 viewport 折叠区。
+- 新增 `tests/legacy-html-contract.test.ts`，在 CI 中守护 legacy 文件的领域一致性。
+
 ## [2.0.0] - 2026-08-25
 
 ### Changed

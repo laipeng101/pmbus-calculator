@@ -28,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M34 complete；stable release v2.0.0；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M34 complete；stable release v2.0.1；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -37,7 +37,7 @@ M0–M34 complete；stable release v2.0.0；production distribution: GitHub Page
 - M11–M24：领域模型、命令元数据、规范分发边界与发布合同建立。
 - M25–M34：发布链路事务化与加固（v1.1.11 工程基线；2026-08-25 完成发布链路简化后，
   事务锁/journal/恢复/进程监督机制已退役，详见 Git 历史与本任务 PR）。
-- 当前：v2.0.0 已发布；无进行中的功能里程碑。
+- 当前：v2.0.1 已发布；无进行中的功能里程碑。
 
 ## 下一产品目标
 

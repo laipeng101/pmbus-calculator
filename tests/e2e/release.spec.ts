@@ -1,4 +1,9 @@
+import { readFileSync } from 'node:fs'
 import { test, expect } from '@playwright/test'
+
+const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+  version: string
+}
 
 test.describe('production build smoke', () => {
   test('生产构建加载正常：标题、核心控件、CSP 与静态资源', async ({ page }) => {
@@ -31,6 +36,8 @@ test.describe('production build smoke', () => {
 
     await expect(page).toHaveTitle(/PMBus/)
     await expect(page.getByRole('heading', { name: 'PMBus' })).toBeVisible()
+    // 构建时从 package.json 注入的版本徽标必须与当前包版本一致。
+    await expect(page.getByTestId('version-badge')).toHaveText(`v${pkg.version}`)
     await expect(page.getByLabel('模式切换')).toBeVisible()
     await expect(page.getByLabel('命令参考')).toBeVisible()
     await expect(page.getByLabel('结果面板')).toBeVisible()
