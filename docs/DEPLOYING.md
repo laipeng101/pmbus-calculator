@@ -19,6 +19,10 @@
 https://laipeng101.github.io/pmbus-calculator/
 ```
 
+> 仓库根目录的 `pmbus-calculator.html` 保留仓库内离线兼容用途（只接受必要纠偏），不是
+> Pages 部署资产；Pages 上的 `/pmbus-calculator.html` 路径实际返回 404。产品入口只有
+> Pages 根页面（React Web App，HTTP 200）。
+
 ## Pages workflow
 
 工作流文件：`.github/workflows/pages.yml`
@@ -50,7 +54,7 @@ https://laipeng101.github.io/pmbus-calculator/
 - 测试文件：`tests/e2e/deployment.spec.ts`
 - Playwright 配置：`playwright.deployment.config.ts`
 - URL 由环境变量 `DEPLOYMENT_URL` 提供；测试不启动本地 dev/preview server。
-- 覆盖：HTTPS URL、页面可加载、标题包含 PMBus、模式切换/命令选择器/结果面板可见、
+- 覆盖：HTTPS URL、页面可加载、标题包含 PMBus、模式切换/只读命令参考/结果面板可见、
   production CSP meta 存在、无 page error、document/script/stylesheet/font/image/fetch
   无 4xx/5xx、资源位于 Pages origin、390px viewport 无横向滚动、L11 输入/结果闭环。
 

@@ -23,7 +23,7 @@ test.describe('GitHub Pages production deployment', () => {
     await expect(page).toHaveTitle(/PMBus/)
     await expect(page.getByRole('heading', { name: 'PMBus' })).toBeVisible()
     await expect(page.getByLabel('模式切换')).toBeVisible()
-    await expect(page.getByLabel('PMBus 命令')).toBeVisible()
+    await expect(page.getByLabel('命令参考')).toBeVisible()
     await expect(page.getByLabel('结果面板')).toBeVisible()
 
     const csp = page.locator('meta[http-equiv="Content-Security-Policy"]')

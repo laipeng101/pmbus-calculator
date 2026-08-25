@@ -185,6 +185,20 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
     }
 
     case 'L16': {
+      const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+      const canCompute = parsed.mode === 0 && parsed.isRelative === false
+      if (canCompute === false) {
+        const label = parsed.isRelative ? '相对 LINEAR' : parsed.modeName
+        const hex = state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')
+        const plainText = `VOUT_MODE 0x${hex} 为 ${label}；需要参考值或器件 Profile，当前不计算绝对电压`
+        const latex = `\\text{VOUT_MODE \\#0x${hex}: ${label} — 需要参考值/器件 Profile}`
+        return {
+          plainText,
+          latex,
+          genericLatex: 'X = V \\times 2^N',
+          detailLines: singleExpansionLine(plainText, latex),
+        }
+      }
       const plainText = `V=${state.raw} × 2^${state.l16.n}`
       const latex = `X = V \\times 2^N = ${state.raw} \\times 2^{${state.l16.n}}`
       return {

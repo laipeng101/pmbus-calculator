@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { PMBusMath } from '../src/legacy/pmbus-math'
 import { appReducer, INITIAL_STATE } from '../src/app/reducer'
 import { toCalculatorViewModel } from '../src/app/view-model'
-import { L11_DECODE_CASES, L11_ROUNDTRIP_CASES, L11_SPECIAL_CASES } from './fixtures/linear11-cases'
+import {
+  L11_DECODE_CASES,
+  L11_ROUNDTRIP_CASES,
+  L11_BOUNDARY_CODES,
+} from './fixtures/linear11-cases'
 
 describe('L11 golden decode cases', () => {
   for (const c of L11_DECODE_CASES) {
@@ -35,20 +39,41 @@ describe('L11 value -> raw roundtrip (auto-N)', () => {
   }
 })
 
-describe('L11 special-value warnings', () => {
-  for (const c of L11_SPECIAL_CASES) {
-    it(c.name, () => {
+describe('L11 boundary codes and saturation', () => {
+  for (const c of L11_BOUNDARY_CODES) {
+    it(`${c.name} is a legal boundary code, never an overflow marker`, () => {
       const vm = toCalculatorViewModel({
         ...INITIAL_STATE,
         raw: c.raw,
       })
-      const warning = vm.warnings.find((w) => w.id.startsWith('special-'))
-      expect(warning).toBeDefined()
-      if (c.expectedWarningType === 'overflow') {
-        expect(warning?.level).toBe('warning')
-      } else {
-        expect(warning?.level).toBe('info')
-      }
+      expect(vm.warnings.find((w) => w.id.startsWith('special-'))).toBeUndefined()
+      expect(vm.warnings.some((w) => w.id === 'l11-saturation')).toBe(false)
     })
   }
+
+  it('saturation warning appears only when the requested physical value is out of range', () => {
+    const max = PMBusMath.maxLinear11()
+    const min = PMBusMath.minLinear11()
+
+    const atMax = toCalculatorViewModel({
+      ...INITIAL_STATE,
+      raw: 0x7fff,
+      l11: { ...INITIAL_STATE.l11, valueInput: max },
+    })
+    expect(atMax.warnings.some((w) => w.id === 'l11-saturation')).toBe(false)
+
+    const over = toCalculatorViewModel({
+      ...INITIAL_STATE,
+      raw: 0x7fff,
+      l11: { ...INITIAL_STATE.l11, valueInput: max + 1 },
+    })
+    expect(over.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
+
+    const under = toCalculatorViewModel({
+      ...INITIAL_STATE,
+      raw: 0xffff,
+      l11: { ...INITIAL_STATE.l11, valueInput: min - 1 },
+    })
+    expect(under.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
+  })
 })

@@ -69,9 +69,12 @@ test.describe('contrast', () => {
     for (const theme of ['light', 'dark'] as const) {
       await setTheme(page, theme)
       await page.goto('/')
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
       const toggle = page.getByRole('button', { name: /当前主题/ })
-      const styles = await readContrast(toggle)
-      expect(await contrastOf(styles)).toBeGreaterThanOrEqual(4.5)
+      // 等待颜色过渡结束：transition-colors 期间读取会得到中间色
+      await expect
+        .poll(async () => contrastOf(await readContrast(toggle)))
+        .toBeGreaterThanOrEqual(4.5)
     }
   })
 

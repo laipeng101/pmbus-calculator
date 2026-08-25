@@ -331,57 +331,18 @@ test.describe('HALF（1280×900 dark）：NaN/Infinity 合法、垃圾文本非�
   })
 })
 
-test.describe('CommandPicker（950×304）：搜索、键盘、popup containment', () => {
+test.describe('命令参考（950×304）：只读表格无溢出', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 950, height: 304 })
     await page.goto('/')
   })
 
-  test('搜索框有稳定可访问名称且 query 变化后 activedescendant 不悬空', async ({ page }) => {
-    await page.locator('#command-picker').click()
-    const search = page.locator('input[placeholder="搜索命令..."]')
-    await expect(search).toBeFocused()
-    // 可访问名称必须来自显式 aria-label/aria-labelledby，不能只依赖视觉 placeholder
-    const label = await search.getAttribute('aria-label')
-    const labelledBy = await search.getAttribute('aria-labelledby')
-    expect(label ?? labelledBy).toBeTruthy()
-
-    await page.keyboard.press('ArrowDown') // active VOUT_COMMAND
-    await expect(search).toHaveAttribute('aria-activedescendant', 'command-option-VOUT_COMMAND')
-
-    await search.fill('STATUS')
-    const described = await search.getAttribute('aria-activedescendant')
-    expect(described).toBeTruthy()
-    expect(
-      await page.locator(`#${described}`).count(),
-      'aria-activedescendant must reference an existing option',
-    ).toBe(1)
-
-    // 键盘移动与选择仍工作
-    await page.keyboard.press('ArrowDown')
-    await page.keyboard.press('Enter')
-    await expect(page.locator('#command-picker')).toHaveAttribute('aria-expanded', 'false')
-    await expect(page.locator('#command-picker')).toContainText('STATUS')
-  })
-
-  test('短 viewport 下 popup 完整位于 viewport 内且只滚动 listbox', async ({ page }) => {
-    await page.locator('#command-picker').click()
-    const listbox = page.locator('#command-picker-listbox')
-    await expect(listbox).toBeVisible()
-    const popup = listbox.locator('xpath=ancestor::div[contains(@class,"popover-enter")]')
-    const popupBox = await popup.boundingBox()
-    const viewport = page.viewportSize()
-    if (popupBox == null || viewport == null) throw new Error('missing boxes')
-    expect(popupBox.x).toBeGreaterThanOrEqual(8 - 0.5)
-    expect(popupBox.y).toBeGreaterThanOrEqual(8 - 0.5)
-    expect(popupBox.x + popupBox.width).toBeLessThanOrEqual(viewport.width - 8 + 0.5)
-    expect(popupBox.y + popupBox.height).toBeLessThanOrEqual(viewport.height - 8 + 0.5)
-
-    const scrollYBefore = await page.evaluate(() => window.scrollY)
-    for (let i = 0; i < 10; i++) {
-      await page.keyboard.press('ArrowDown')
-    }
-    expect(await page.evaluate(() => window.scrollY)).toBe(scrollYBefore)
+  test('展开后表格完整可读且页面不产生横向滚动', async ({ page }) => {
+    await page.locator('#command-reference-toggle').click()
+    await expect(page.getByRole('row', { name: /STATUS_WORD/ })).toBeVisible()
+    const scrollWidth = await page.locator('body').evaluate((el) => el.scrollWidth)
+    const clientWidth = await page.locator('body').evaluate((el) => el.clientWidth)
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
   })
 })
 
@@ -430,19 +391,6 @@ test.describe('全局快捷键：编辑区不触发、非编辑区触发', () =>
       'aria-selected',
       'true',
     )
-  })
-
-  test('焦点在 CommandPicker 搜索框内按 Ctrl+4：不切换、popup 保持', async ({ page }) => {
-    await page.locator('#command-picker').click()
-    const search = page.locator('input[placeholder="搜索命令..."]')
-    await expect(search).toBeFocused()
-    await search.press('Control+4')
-    await expect(page.getByRole('tab', { name: /LINEAR11/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
-    await expect(search).toBeFocused()
-    await expect(page.locator('#command-picker-listbox')).toBeVisible()
   })
 
   test('焦点在 DIRECT 系数与 L11 N/Y 输入内按快捷键：不切换', async ({ page }) => {

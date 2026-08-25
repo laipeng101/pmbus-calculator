@@ -60,8 +60,16 @@ function encodeL11FromValue(state: AppState, value: number): AppState {
 /**
  * Encode a physical value into LINEAR16 raw (V), mirroring legacy
  * updateAll('val') for L16: V = clamp(round(value / 2^N), 0, 65535).
+ *
+ * Domain constraint (Part II §8.3): LINEAR16 encoding is only meaningful for
+ * absolute LINEAR VOUT_MODE.  Under relative LINEAR the value is a ratio that
+ * needs a reference, and under VID/DIRECT/IEEE Half the raw word is not a
+ * LINEAR16 V×2^N payload at all — the reducer must refuse to fabricate a
+ * LINEAR16 encoding instead of relying on hidden UI inputs.
  */
 function encodeL16FromValue(state: AppState, value: number): AppState {
+  const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+  if (parsed.mode !== 0 || parsed.isRelative) return state
   const n = PMBusMath.clamp(state.l16.n, -16, 15)
   const p = PMBusMath.pow2(n)
   const v = PMBusMath.clamp(Math.round(value / p), 0, 65535)
@@ -80,66 +88,6 @@ function withRaw(state: AppState, raw: number): AppState {
   }
 }
 
-/**
- * Apply an optional command preset only when the user explicitly asks for it.
- *
- * `command/set` never applies parameters.  `command/apply-preset` is the only
- * path that may switch mode, load parameters, and re-encode raw.  Presets that
- * carry project-demo values are therefore never mistaken for standard defaults.
- */
-function applyCommandPreset(state: AppState, commandKey: string | null): AppState {
-  if (!commandKey) return { ...state, commandKey: null }
-
-  const cfg = getCommandConfig(commandKey)
-  if (!cfg) return state
-
-  const next = { ...state, commandKey }
-  const preset = cfg.preset
-  if (!preset) return next
-
-  if (preset.mode === 'L16') {
-    const voutMode = preset.voutMode ?? state.l16.voutMode
-    const parsed = PMBusMath.parseVoutMode(voutMode)
-    const n =
-      typeof parsed.linearExponent === 'number' ? parsed.linearExponent : (preset.n ?? state.l16.n)
-    const withL16 = {
-      ...next,
-      mode: 'L16' as const,
-      l16: { ...next.l16, voutMode, n },
-    }
-    return encodeL16FromValue(withL16, preset.value)
-  }
-
-  if (preset.mode === 'L11') {
-    const n = preset.n ?? state.l11.n
-    const withL11 = {
-      ...next,
-      mode: 'L11' as const,
-      l11: { ...next.l11, n, valueInput: null },
-    }
-    return encodeL11FromValue(withL11, preset.value)
-  }
-
-  if (preset.mode === 'DIRECT') {
-    const direct = {
-      m: preset.m ?? next.direct.m,
-      b: preset.b ?? next.direct.b,
-      r: preset.R ?? next.direct.r,
-      errors: { m: null, b: null, r: null } as AppState['direct']['errors'],
-    }
-    const withDirect = { ...next, mode: 'DIRECT' as const, direct }
-    const y = PMBusMath.encodeDirect(preset.value, direct.m, direct.b, direct.r)
-    return { ...withDirect, raw: PMBusMath.fromSigned(y, 16) }
-  }
-
-  if (preset.mode === 'HALF') {
-    const withHalf = { ...next, mode: 'HALF' as const }
-    return { ...withHalf, raw: PMBusMath.encodeHalf(preset.value) }
-  }
-
-  return next
-}
-
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'mode/set': {
@@ -155,18 +103,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'command/set':
-      // Selecting a command only records the selection and shows command info.
-      // It must not switch modes or rewrite raw; device/demo presets stay inert
-      // until the user explicitly applies them.
+      // Kept for state-level compatibility only; the UI command reference is
+      // read-only and never dispatches this action.  It must not switch modes
+      // or rewrite raw.
       return action.commandKey === null
         ? { ...state, commandKey: null }
         : {
             ...state,
             commandKey: getCommandConfig(action.commandKey) ? action.commandKey : state.commandKey,
           }
-
-    case 'command/apply-preset':
-      return applyCommandPreset(state, action.commandKey)
 
     case 'raw/set-from-hex': {
       const parsed = parseHexStrict(action.hex, 4)

@@ -3,7 +3,6 @@ import type { AppMode, Endian, Theme } from './state'
 export type AppAction =
   | { type: 'mode/set'; mode: AppMode }
   | { type: 'command/set'; commandKey: string | null }
-  | { type: 'command/apply-preset'; commandKey: string | null }
   | { type: 'raw/set-from-hex'; hex: string }
   | { type: 'raw/set'; raw: string }
   | { type: 'bit/toggle'; bit: number }

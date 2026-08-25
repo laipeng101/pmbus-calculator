@@ -3,7 +3,11 @@
   "projectBaseline": {
     "pmbus": "1.3",
     "smbus": "3.0",
-    "description": "Project domain baseline is PMBus 1.3 / SMBus 3.0. This manifest is the machine-readable provenance source for third-party specification PDFs; the PDFs themselves are not tracked in the Git tree and must be fetched on demand from the official URLs below."
+    "description": "Product scope: PMBus numeric-format calculator (LINEAR11 / VOUT-LINEAR16 / DIRECT / IEEE 754 binary16 bidirectional conversion). Validated reference: PMBus 1.3/1.3.1 public archive and SMBus 3.0. Current published revision: PMBus 1.5 (official site), noted for awareness only. Full PMBus 1.5 compliance is not claimed; bus transport, command execution, device profiles, PMBus 1.5 security extensions and Part IV are out of scope. This manifest is the machine-readable provenance source for third-party specification PDFs; the PDFs themselves are not tracked in the Git tree and must be fetched on demand from the official URLs below.",
+    "validatedReference": "PMBus 1.3/1.3.1 public archive",
+    "currentPublishedRevision": "PMBus 1.5",
+    "productScope": "numeric-format subset only",
+    "fullRevisionCompliance": "not claimed"
   },
   "documents": [
     {

@@ -203,18 +203,32 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               <span
                 className="text-xs"
                 style={{
-                  color: vm.voutModeInfo?.isLinear
-                    ? 'var(--color-text-muted)'
-                    : 'var(--color-warning)',
+                  color:
+                    vm.voutModeInfo?.status === 'ok'
+                      ? 'var(--color-text-muted)'
+                      : 'var(--color-warning)',
                 }}
               >
-                {vm.voutModeInfo?.isLinear
+                {vm.voutModeInfo?.status === 'ok'
                   ? `${vm.voutModeInfo.modeName}, N=${state.l16.n}`
-                  : `${vm.voutModeInfo?.modeName ?? '未知'} (非LINEAR)`}
+                  : vm.voutModeInfo?.isRelative
+                    ? '相对 LINEAR（需参考值）'
+                    : `${vm.voutModeInfo?.modeName ?? '未知'} (非LINEAR)`}
               </span>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* VOUT_MODE bit-field breakdown per Part II §8.3 */}
+            {vm.voutModeInfo && (
+              <div className="workspace-vout-bits rounded-lg px-3 py-2 text-xs">
+                bit7 = {vm.voutModeInfo.isRelative ? 'relative (1)' : 'absolute (0)'} · bits[6:5]
+                mode = {vm.voutModeInfo.modeName} ({vm.voutModeInfo.mode}) · bits[4:0] param ={' '}
+                {vm.voutModeInfo.param}
+                {vm.voutModeInfo.status !== 'ok' &&
+                  ' · 本页不计算绝对电压（需要参考值或器件 Profile）'}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3">
               <label className="w-24 text-sm" style={{ color: 'var(--color-text-muted)' }}>
                 字节序
               </label>
@@ -235,39 +249,54 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 <option value="be">BE（高字节在前）</option>
               </select>
               <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                Hex 输入/显示按所选字节序解释
+                PMBus/SMBus word 默认低字节在前；BE 仅用于寄存器显示或复制
               </span>
             </div>
 
-            {/* V raw input — direct LINEAR16 word value */}
-            <div>
-              <label
-                className="mb-1 block text-xs font-medium"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                V（16 位无符号，0～65535）
-              </label>
-              <DecimalInput
-                id="l16-v-input"
-                value={state.raw}
-                ariaLabel="V（16 位无符号，0～65535）"
-                onCommit={(text) => dispatch({ type: 'raw/set', raw: text })}
-                className="w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
-                style={{
-                  background: 'var(--color-surface-muted)',
-                  color: 'var(--color-text-primary)',
-                  border: '1px solid var(--color-border)',
-                  fontFamily: 'var(--font-mono)',
-                }}
-              />
-            </div>
+            {vm.voutModeInfo?.status === 'ok' ? (
+              <>
+                {/* V raw input — direct LINEAR16 word value */}
+                <div>
+                  <label
+                    className="mb-1 block text-xs font-medium"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    V（16 位无符号，0～65535）
+                  </label>
+                  <DecimalInput
+                    id="l16-v-input"
+                    value={state.raw}
+                    ariaLabel="V（16 位无符号，0～65535）"
+                    onCommit={(text) => dispatch({ type: 'raw/set', raw: text })}
+                    className="input-surface w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
+                  />
+                </div>
 
-            {/* Physical value input — encodes via value / 2^N */}
-            <ValueInput vm={vm} dispatch={dispatch} />
+                {/* Physical value input — encodes via value / 2^N */}
+                <ValueInput vm={vm} dispatch={dispatch} />
 
-            <div className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              {vm.nRangeText ? `可表示范围: ${vm.nRangeText}` : 'V 范围: 0 ~ 65535'}
-            </div>
+                <div className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  {vm.nRangeText ? `可表示范围: ${vm.nRangeText}` : 'V 范围: 0 ~ 65535'}
+                </div>
+              </>
+            ) : (
+              <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
+                <p className="mb-2">
+                  VOUT_MODE 为{' '}
+                  {vm.voutModeInfo?.isRelative ? '相对 LINEAR' : vm.voutModeInfo?.modeName}
+                  ，本页仅支持 absolute LINEAR；不给出伪造的 LINEAR16 电压结果。
+                </p>
+                {vm.voutModeInfo?.modeName.includes('IEEE Half') && (
+                  <button
+                    type="button"
+                    onClick={() => dispatch({ type: 'mode/set', mode: 'HALF' })}
+                    className="workspace-half-switch min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+                  >
+                    切换到 HALF 模式
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 

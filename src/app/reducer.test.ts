@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { appReducer } from './reducer'
 import { INITIAL_STATE, type AppState } from './state'
+import { PMBusMath } from '../legacy/pmbus-math'
 
 describe('appReducer — state transitions', () => {
   const base: AppState = { ...INITIAL_STATE }
@@ -53,47 +54,6 @@ describe('appReducer — state transitions', () => {
       const s = appReducer(base, { type: 'command/set', commandKey: 'READ_EIN' })
       expect(s.commandKey).toBe('READ_EIN')
       expect(s.mode).toBe('L11')
-    })
-  })
-
-  describe('command/apply-preset', () => {
-    it('applies VOUT_COMMAND project-demo preset: mode, VOUT_MODE, N, and raw', () => {
-      const s = appReducer(base, { type: 'command/apply-preset', commandKey: 'VOUT_COMMAND' })
-      expect(s.commandKey).toBe('VOUT_COMMAND')
-      expect(s.mode).toBe('L16')
-      expect(s.l16.voutMode).toBe(0x18)
-      expect(s.l16.n).toBe(-8)
-      // 12 / 2^-8 = 3072 = 0x0C00
-      expect(s.raw).toBe(0x0c00)
-    })
-
-    it('applies FAN_COMMAND_1 project-demo preset and re-encodes raw', () => {
-      const s = appReducer(base, { type: 'command/apply-preset', commandKey: 'FAN_COMMAND_1' })
-      expect(s.commandKey).toBe('FAN_COMMAND_1')
-      expect(s.mode).toBe('L11')
-      expect(s.l11.valueInput).toBe(5000)
-      expect(s.raw).toBe(0x1a71) // 5000 = 625 × 2^3 (N=3, Y=625)
-    })
-
-    it('does not apply anything for STATUS_WORD (no preset)', () => {
-      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const s = appReducer(l16, { type: 'command/apply-preset', commandKey: 'STATUS_WORD' })
-      expect(s.commandKey).toBe('STATUS_WORD')
-      expect(s.mode).toBe('L16')
-      expect(s.raw).toBe(l16.raw)
-    })
-
-    it('does not apply anything for READ_EIN (no preset)', () => {
-      const s = appReducer(base, { type: 'command/apply-preset', commandKey: 'READ_EIN' })
-      expect(s.commandKey).toBe('READ_EIN')
-      expect(s.mode).toBe('L11')
-      expect(s.raw).toBe(base.raw)
-    })
-
-    it('clears commandKey with null', () => {
-      const withCmd = appReducer(base, { type: 'command/apply-preset', commandKey: 'VOUT_COMMAND' })
-      const s = appReducer(withCmd, { type: 'command/apply-preset', commandKey: null })
-      expect(s.commandKey).toBeNull()
     })
   })
 
@@ -295,6 +255,77 @@ describe('appReducer — state transitions', () => {
       expect(hi.raw).toBe(0xffff)
       const lo = appReducer(l16, { type: 'value/set', value: '-1' })
       expect(lo.raw).toBe(0)
+    })
+  })
+
+  describe('L16 value/set rejected for non-absolute-LINEAR VOUT_MODE (L16 状态约束)', () => {
+    // reducer/domain 层必须拒绝在 relative/VID/DIRECT/IEEE Half VOUT_MODE 下
+    // 通过 value/set 生成 LINEAR16 编码——不能只靠隐藏 UI 输入。
+    const rejectedVoutModes = [
+      { hex: '98', label: 'relative LINEAR' },
+      { hex: '20', label: 'VID' },
+      { hex: '40', label: 'DIRECT' },
+      { hex: '60', label: 'IEEE Half' },
+      { hex: 'e0', label: 'relative IEEE Half' },
+    ] as const
+
+    for (const { hex, label } of rejectedVoutModes) {
+      it(`${label} (0x${hex}) 拒绝 value/set，raw 不变`, () => {
+        const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+        const withMode = appReducer(l16, { type: 'l16/set-vout-mode', hex })
+        const before = withMode.raw
+        const s = appReducer(withMode, { type: 'value/set', value: '12' })
+        expect(s.raw, label).toBe(before)
+        expect(s.l16.voutMode, label).toBe(withMode.l16.voutMode)
+      })
+    }
+
+    it('absolute LINEAR (0x18) 仍然编码', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s = appReducer(l16, { type: 'value/set', value: '12' })
+      expect(s.raw).toBe(0x0c00)
+    })
+  })
+
+  describe('L11 手动 N（autoN=false）饱和语义', () => {
+    it('N=0 时正上界 1023 与负下界 -1024 是合法边界编码，不触发 clamp', () => {
+      const manual: AppState = {
+        ...base,
+        l11: { ...base.l11, autoN: false, n: 0 },
+      }
+      const hi = appReducer(manual, { type: 'value/set', value: '1023' })
+      expect(hi.raw).toBe(0x03ff) // N=0, Y=1023
+      expect(hi.l11.y).toBe(1023)
+      const lo = appReducer(manual, { type: 'value/set', value: '-1024' })
+      expect(lo.raw).toBe(0x0400) // N=0, Y=-1024
+      expect(lo.l11.y).toBe(-1024)
+    })
+
+    it('N=0 时超出 Y=-1024..1023 的值被 clamp 到边界并保持锁定 N', () => {
+      const manual: AppState = {
+        ...base,
+        l11: { ...base.l11, autoN: false, n: 0 },
+      }
+      const hi = appReducer(manual, { type: 'value/set', value: '2000' })
+      expect(hi.raw).toBe(0x03ff)
+      expect(hi.l11.n).toBe(0)
+      expect(hi.l11.y).toBe(1023)
+      const lo = appReducer(manual, { type: 'value/set', value: '-2000' })
+      expect(lo.raw).toBe(0x0400)
+      expect(lo.l11.n).toBe(0)
+      expect(lo.l11.y).toBe(-1024)
+    })
+
+    it('N=-4 时按该 N 的 Y 范围饱和（-64 ~ 63.9375）', () => {
+      const manual: AppState = {
+        ...base,
+        l11: { ...base.l11, autoN: false, n: -4 },
+      }
+      const hi = appReducer(manual, { type: 'value/set', value: '100' })
+      // 100 / 2^-4 = 1600 → clamp 1023 → 63.9375（raw = 0xF3FF? N=-4 编码）
+      expect(hi.l11.n).toBe(-4)
+      expect(hi.l11.y).toBe(1023)
+      expect(PMBusMath.decodeLinear11(hi.raw).value).toBe(1023 * Math.pow(2, -4))
     })
   })
 

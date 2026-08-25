@@ -5,6 +5,8 @@ import { getCommandConfig } from '../legacy/command-metadata'
 import { buildCMacro } from './copy-utils'
 import { getFormulaPresentation } from './formula-presentation'
 import type { FormulaDetailLine } from './formula-presentation'
+import { buildCalculationSteps } from './calculation-steps'
+import type { CalculationStepVM } from './calculation-steps'
 
 export interface BitGroupVM {
   nibbleIndex: number
@@ -23,6 +25,13 @@ export interface VoutModeInfoVM {
   modeName: string
   linearExponent: number | 'IEEE Half' | null
   isLinear: boolean
+  isRelative: boolean
+  /** Mode bits [6:5] per Part II §8.3. */
+  mode: number
+  /** Parameter bits [4:0]. */
+  param: number
+  /** Whether the LINEAR16 page may compute an absolute voltage. */
+  status: 'ok' | 'reference-required' | 'unsupported'
 }
 
 export interface CalculatorViewModel {
@@ -38,6 +47,8 @@ export interface CalculatorViewModel {
   formulaLatex: string
   formulaGenericLatex: string
   formulaDetailLines: FormulaDetailLine[]
+  /** Unified four-mode calculation steps (fields -> formula -> intermediates -> result). */
+  steps: CalculationStepVM[]
   deltaText?: string
   deltaKind?: 'ok' | 'warn' | 'error'
   warnings: WarningVM[]
@@ -108,6 +119,9 @@ function computeValueText(state: AppState): string {
         return formatNumber(r.value)
       }
       case 'L16': {
+        const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+        const canCompute = parsed.mode === 0 && parsed.isRelative === false
+        if (canCompute === false) return '—'
         const r = PMBusMath.decodeLinear16(state.raw, state.l16.n)
         return formatNumber(r.value)
       }
@@ -132,24 +146,42 @@ function computeValueText(state: AppState): string {
 
 function buildWarnings(state: AppState): WarningVM[] {
   const warnings: WarningVM[] = []
-  const special = PMBusMath.checkSpecial(state.raw, state.mode)
-  if (special) {
-    warnings.push({
-      id: 'special-' + special.type,
-      level: special.type === 'overflow' ? 'warning' : 'info',
-      text: special.msg,
-    })
-  }
   // DIRECT coefficient errors (including m=0) live in state.direct.errors and
   // are rendered inline next to the corresponding input; the InfoPanel must
   // not announce the same error a second time.
+  if (
+    state.mode === 'L11' &&
+    state.l11.valueInput != null &&
+    Number.isFinite(state.l11.valueInput)
+  ) {
+    const requested = state.l11.valueInput
+    // Saturation range depends on the encoding mode: auto-N searches the full
+    // format (N=15 extremes); a locked N clamps Y to -1024..1023 at that N.
+    const { min, max } = state.l11.autoN
+      ? { min: PMBusMath.minLinear11(), max: PMBusMath.maxLinear11() }
+      : PMBusMath.linear11RangeForN(state.l11.n)
+    if (requested > max || requested < min) {
+      warnings.push({
+        id: 'l11-saturation',
+        level: 'warning',
+        text: `输入值超出 LINEAR11 可表示范围（${formatNumber(min)} ~ ${formatNumber(max)}），编码器已饱和到极值；量化误差见误差面板。`,
+      })
+    }
+  }
   if (state.mode === 'L16') {
     const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
-    if (!parsed || parsed.modeName !== 'LINEAR') {
+    const hex = `0x${state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')}`
+    if (parsed.mode !== 0) {
       warnings.push({
         id: 'l16-vout-mode-nonlinear',
         level: 'warning',
-        text: `VOUT_MODE 0x${state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')} 为 ${parsed.modeName} 模式；当前按 LINEAR16 显示，N=${state.l16.n} 保持不变`,
+        text: `VOUT_MODE ${hex} 为 ${parsed.modeName} 模式；LINEAR16 页面不能给出有效电压结果，需要器件 Profile 或切换到对应格式。`,
+      })
+    } else if (parsed.isRelative) {
+      warnings.push({
+        id: 'l16-vout-mode-relative',
+        level: 'info',
+        text: `VOUT_MODE ${hex} 为相对 LINEAR；需要参考值，当前不计算绝对电压。`,
       })
     }
   }
@@ -201,18 +233,33 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     const p = PMBusMath.pow2(decodedL11.n)
     nRangeText = `${formatNumber(-1024 * p)} ~ ${formatNumber(1023 * p)}`
   } else if (state.mode === 'L16') {
-    const p = PMBusMath.pow2(state.l16.n)
-    nRangeText = `0 ~ ${formatNumber(65535 * p)}`
+    // Only absolute LINEAR VOUT_MODE has a LINEAR16 V×2^N range; relative
+    // LINEAR is a ratio and VID/DIRECT/IEEE Half are not LINEAR16 at all.
+    const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+    if (parsed.mode === 0 && parsed.isRelative === false) {
+      const p = PMBusMath.pow2(state.l16.n)
+      nRangeText = '0 ~ ' + formatNumber(65535 * p)
+    }
   }
 
   let voutModeInfo: VoutModeInfoVM | undefined
   if (state.mode === 'L16') {
     const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+    const status =
+      parsed.mode === 0 && parsed.isRelative === false
+        ? 'ok'
+        : parsed.mode === 0
+          ? 'reference-required'
+          : 'unsupported'
     voutModeInfo = {
       hex: '0x' + state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0'),
       modeName: parsed.modeName,
       linearExponent: parsed.linearExponent,
-      isLinear: parsed.modeName === 'LINEAR',
+      isLinear: parsed.mode === 0,
+      isRelative: parsed.isRelative,
+      mode: parsed.mode,
+      param: parsed.param,
+      status,
     }
   }
 
@@ -223,6 +270,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   return {
     mode: state.mode,
+    steps: buildCalculationSteps(state),
     valueText: computeValueText(state),
     rawHex: formatRawHex(displayedRaw),
     rawWordHex: formatRawHex(raw),

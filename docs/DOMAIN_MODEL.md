@@ -21,10 +21,20 @@
   - $val \le -1024 \times 2^{15}$ → `N=15, Y=-1024`。
 - 不得返回 `N=0,Y=0` 使 `0x0000` 被错误编码。
 - 饱和时 `delta` 保留原始差值，UI 必须显示误差警告。
+- `Y=1023` 与 `Y=-1024` 是合法的 LINEAR11 边界编码，不是天然的溢出/饱和标记；
+  仅当用户输入的物理值超出可表示范围且编码器实际饱和时才显示 saturation warning。
+- 饱和判断范围：`autoN=true` 时用全格式全局可表示范围（`maxLinear11`/`minLinear11`，即
+  N=15 极值）判断；`autoN=false` 时按当前锁定 N 对应的 `Y=-1024..1023` 范围
+  （`linear11RangeForN(n)`）判断。边界值（Y=1023 / Y=-1024）本身不报警。
 
 ### 2.2 LINEAR16
 
 - 手动 V 输入和 `raw/set` 必须 clamp 到 `0..65535`，不得使用 `raw & 0xffff` 回绕。
+- reducer/domain 层必须拒绝在 relative LINEAR、VID、DIRECT、IEEE Half VOUT_MODE 下通过
+  `value/set` 生成 LINEAR16 编码——不能只靠隐藏 UI 输入阻止错误状态。
+- 只有 **absolute LINEAR** 才显示绝对电压结果、V、N、2^N 与可表示电压范围；
+  relative LINEAR 可以解释 VOUT_MODE 参数位的 exponent/ratio 语义，但不得把 raw 标成
+  绝对电压；VID/DIRECT/IEEE Half 不得生成虚假的 LINEAR16 V/N/range/result。
 - `raw/set-from-hex` 使用严格十六进制解析：可选 `0x`/`0X` 前缀与首尾空白；必须整串匹配，最多 4 位十六进制数字；非法、只有 `0x`、超长输入均报错且不修改 `state.raw`；空输入按 0 处理。不再通过 `& 0xffff` 静默截断超长输入。
 
 ### 2.3 DIRECT
@@ -50,10 +60,17 @@
 
 ## 3. VOUT_MODE
 
-- `parseVoutMode(byte)`：mode bits `[7:5]`，param bits `[4:0]`，规范引用为 PMBus Part II §8.3。
-- `000` = LINEAR，N 取 param bits 的 5-bit signed。
-- `011` = IEEE Half，其余为 VID/DIRECT/保留。
+- `parseVoutMode(byte)` 按 PMBus Part II §8.3 解析：
+  - bit7 = absolute/relative（1 为 relative，需要参考值）；
+  - bits[6:5] = mode（`00` LINEAR、`01` VID、`10` DIRECT、`11` IEEE Half Float）；
+  - bits[4:0] = parameter。
+  - 旧实现用 `(byte >> 5) & 0x07` 把 bit7 混入 mode，是位域解析错误；mode 只有 2 位。
+- LINEAR（mode=00）时 N 取 param bits 的 5-bit signed；IEEE Half 时 `linearExponent` 为 `'IEEE Half'`。
 - 非 LINEAR 模式不得静默修改 `state.l16.n`。
+- L16 页面只在 **absolute LINEAR** 时计算并显示 `X = V \times 2^N`：
+  - relative LINEAR：显示“需要参考值，当前不计算绝对电压”；
+  - VID / DIRECT / IEEE Half：不得伪装成 LINEAR16 结果，显示 unsupported/profile-required 状态，
+    可提供切换到 HALF 或查阅器件手册的入口。
 
 ## 4. 字节序
 
@@ -73,10 +90,13 @@
   - `units`：物理单位或位字段标记；标准定义不固定 FAN_COMMAND_1 为 RPM（依 FAN_CONFIG_1_2）
   - `spec`：规范章节（Part II 命令章节 + Appendix I Table 31）
   - `encodingRule`：`follows_vout_mode` | `device_defined` | `status` | `block`
-- 可选 `preset` 与标准定义分离；当前只允许 `sourceKind: project-demo`。
-- `command/set` 只记录选择并显示命令信息，不得切换模式、加载参数或重编码 raw。
-- 只有 `command/apply-preset` 显式触发时才应用预设；UI 必须标注“应用 project-demo 预设”。
-- DIRECT 系数必须以具体器件数据手册为准；没有真实来源的 `device-datasheet` 预设禁止内置。
+- 命令参考面板是只读的：只显示命令码、事务、数据类型、单位、格式来源与规范章节；
+  选择命令不能可靠推导数据格式（器件数据手册或 VOUT_MODE 决定），因此参考面板不参与
+  模式切换、参数注入或结果计算，也不提供任何 preset 应用入口。
+- `command/set` 仅为状态层兼容保留，不得切换模式、加载参数或重编码 raw；
+  `command/apply-preset` 已从产品面移除。
+- DIRECT 系数必须以具体器件数据手册为准；没有真实来源时禁止内置虚构系数。
 - `STATUS_WORD` 是状态位摘要（`encodingRule: status`），`READ_EIN` 是 block read（`encodingRule: block`），均不分配数值转换模式。
+- `STATUS_WORD` 通常为 Read Word；特殊写入仅用于清除 UNKNOWN 位（写 0x0100），其他状态位通过底层状态寄存器或 `CLEAR_FAULTS` 处理；不得写成“写入可清除所有状态位”。
 - `READ_EIN` 存在规范内部冲突：Part II §18.13 描述 6 个数据字节（accumulator 2 + rollover 1 + sample count 3），Appendix I Table 31 列为 5。实现使用 `dataBytesConflict` 显式记录两个来源，不在 UI 中提供单一权威数字；计算器不是 READ_EIN packet-length authority。
 - 当前实现基线为 PMBus Rev 1.3（官方来源与校验信息见 `document/specifications.json`；规范 PDF 不再随源码树分发）。官方 Rev 1.3.1 仍保留上述冲突；官方当前版本为 1.5，但本仓库不评估或声明 1.5 兼容性，未来规范升级列为独立 backlog。

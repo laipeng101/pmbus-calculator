@@ -4,9 +4,11 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-25
+
 ### Changed
 
-- 发布链路简化与开发流程纠偏：`release:prepare-assets` 恢复为可重新执行的打包步骤——每次运行
+- 发布链路简化（自 v1.1.11 以来的未发布变更）：`release:prepare-assets` 恢复为可重新执行的打包步骤——每次运行
   使用唯一临时 staging 目录，生成/checksum/ZIP verifier 全部成功后才把结果移入 `release-output/`；
   删除长期 release lock、transaction journal、`--recover`/`--recover-lock`/`--audit-lock`、
   child-state sidecar、detached process-group supervisor、SIGINT/SIGTERM 生命周期状态机、
@@ -19,6 +21,53 @@
 - 文档纠偏：AGENTS.md 只保留长期产品约束/目录边界/标准验证入口；ROADMAP 只保留当前产品基线、
   下一产品目标与简短已完成索引（M25–M34 详细历史由 Git/PR 保存）；RELEASING 只描述正常发布步骤
   与失败后清理重跑。
+- 产品定位正式确立为 **PMBus 数值格式计算器**：不再自称“PMBus 协议实现”，也不声明完整
+  PMBus 1.5 一致性；明确不覆盖总线传输、命令执行、设备 Profile、PMBus 1.5 安全扩展与 Part IV。
+  `document/specifications.json` 的 `validatedReference`/`currentPublishedRevision`/
+  `productScope`/`fullRevisionCompliance` 声明保持一致。
+- VOUT_MODE 位域按 PMBus Part II §8.3 修正：bit7=absolute/relative、bits[6:5]=mode、
+  bits[4:0]=parameter；不再用 `(byte >> 5) & 0x07` 把 bit7 混入模式。全仓库 VOUT_MODE
+  章节引用统一为 Part II §8.3。
+- L16 状态约束：reducer/domain 层拒绝在 relative LINEAR、VID、DIRECT、IEEE Half
+  VOUT_MODE 下通过 `value/set` 生成 LINEAR16 编码——不能只靠隐藏 UI 输入阻止错误状态。
+  只有 absolute LINEAR 才显示绝对电压结果、V、N、2^N 与可表示电压范围；relative LINEAR
+  仅解释 VOUT_MODE 参数位的指数/比值语义，不把 raw 标成绝对电压；VID/DIRECT/IEEE Half
+  不生成虚假的 LINEAR16 V/N/range/result。
+- L11 饱和语义：autoN=true 用全格式全局可表示范围判断饱和；autoN=false 按当前锁定 N
+  对应的 Y=-1024..1023 范围判断；真实发生 clamp 时才显示 saturation warning；
+  Y=1023/-1024 本身仍是合法边界编码，不因边界值报警。
+- 四模式统一“字段解析 → 通用公式 → 数值代入 → 中间值 → 结果”计算过程展示
+  （新增 `src/app/calculation-steps.ts` 与共享 CalculationSteps 组件），JSX 不再自行计算。
+- 命令参考降级：主流程移除 CommandPicker，改为默认折叠的只读“命令参考”面板；移除
+  `command/apply-preset` action 与全部 project-demo presets。命令参考实际渲染 metadata
+  中的 note：STATUS_WORD 显示“通常为 Read Word；特殊写入 0x0100 仅用于清除 UNKNOWN 位”，
+  READ_EIN 显示 Block Read 与规范字节数/有效载荷冲突（§18.13 6 字节 vs Appendix I Table 31
+  5 字节）；展开/阅读任何命令都不修改 mode、raw、VOUT_MODE 或 DIRECT 参数。
+- 清理本批新增的静态 inline style，迁移到既有 CSS/class 体系（tokens.css 与 legacy HTML
+  class），未放宽 lint、测试或 AGENTS.md 规则。
+- 文档一致性：`docs/MIGRATION_MATRIX.md` 明确 Pages 根路径返回 200（产品入口），仅 legacy
+  `/pmbus-calculator.html` 路径为 404；legacy 文案改为“保留仓库内离线兼容用途，只接受
+  必要纠偏，不再作为当前 Pages 产品入口”；`docs/DEPLOYING.md` 的“命令选择器”改为
+  “只读命令参考”；README、README_zh-CN、DOMAIN_MODEL、specifications manifest、部署与
+  发布文档的产品范围声明和 Part II §8.3 引用保持一致。
+- `pmbus-calculator.html` 明确为仓库内离线历史归档（非 Pages 部署资产，对应路径 404），
+  保留仓库内离线兼容用途，只接受必要纠偏，不再作为当前 Pages 产品入口。
+- 版本升至 **2.0.0**（详见下方破坏性变化与迁移方式）。
+
+### Removed
+
+- 命令选择器（CommandPicker）及其自动修改计算状态的行为；`command/apply-preset` action
+  与全部 project-demo presets 不再存在。
+
+### Breaking changes
+
+- 移除命令选择器与 preset 自动应用：选择命令不再切换模式、不注入参数、不重写 raw，
+  也不会自动填入 VOUT_MODE 或 DIRECT 系数。
+- 命令参考降级为默认折叠的只读面板：任何命令行都没有选中态、没有搜索框、没有预设入口。
+- 迁移方式：需要 preset 的旧工作流改用手动输入（数据格式由器件数据手册或 VOUT_MODE
+  决定）；命令码、事务、数据类型、单位、格式来源与规范章节仍可在只读命令参考中查阅。
+- L16 在 non-absolute-LINEAR VOUT_MODE 下不再产生任何 LINEAR16 电压结果（此前仅 UI
+  隐藏输入、reducer 仍会编码的错误行为已修正）。
 
 ## [1.1.11] - 2026-08-24
 

@@ -764,11 +764,25 @@
         .n-term { transform: translateY(-10px); }
         .formula-footer { padding-right: 0; justify-content: center; }
       }
+
+      /* 历史离线归档横幅（仅仓库内使用，非 Pages 部署资产） */
+      .legacy-banner {
+        margin-bottom: 12px;
+        padding: 8px 10px;
+        font-size: 12.5px;
+        color: var(--text-muted);
+        border: 1px dashed var(--border);
+      }
     </style>
   </head>
   <body>
     <main class="w" role="main">
-      <h1>PMBus 协议计算器</h1>
+      <div class="bo legacy-banner">
+        历史离线兼容文件：本文件仅作为仓库内离线归档，不再是产品入口；新版 Web App 见
+        <a href="https://laipeng101.github.io/pmbus-calculator/">https://laipeng101.github.io/pmbus-calculator/</a>。
+        PMBus 数值格式语义请以 <code>src/legacy/pmbus-math.ts</code> 与 <code>docs/DOMAIN_MODEL.md</code> 为准。
+      </div>
+      <h1>PMBus 协议计算器（历史离线兼容）</h1>
       <button
         id="themeToggle"
         class="toggle-small"
@@ -785,7 +799,7 @@
           role="tab"
           aria-selected="true"
           aria-controls="linearSection"
-          data-tooltip="LINEAR11 格式：X = Y × 2^N (最常用) (Part I §8.2)"
+          data-tooltip="LINEAR11 格式：X = Y × 2^N (最常用) (Part I §7.x / Part II 数据格式)"
         >
           线性11 (LINEAR11)
         </button>
@@ -796,7 +810,7 @@
           role="tab"
           aria-selected="false"
           aria-controls="linearSection"
-          data-tooltip="LINEAR16 格式：主要用于 VOUT 电压命令 (Part I §8.3)"
+          data-tooltip="LINEAR16 格式：主要用于 VOUT 电压命令；VOUT_MODE 位域见 Part II §8.3"
         >
           线性16 (VOUT)
         </button>
@@ -1221,7 +1235,9 @@
           return raw
         },
 
-        // 解析VOUT_MODE字节 (参考PMBus 1.3规范第8.3节)
+        // 解析VOUT_MODE字节 (参考PMBus Part II §8.3)。
+        // 位域：bit7=absolute/relative，bits[6:5]=mode，bits[4:0]=parameter。
+        // 注意：旧实现 (byte>>5)&0x07 把 bit7 混入 mode 是错误；mode 只有 2 位。
         parseVoutMode(byte) {
           byte = byte & 0xff
           const modeBits = (byte >> 5) & 0x07
@@ -1229,7 +1245,7 @@
           const modeNames = { 0: 'LINEAR', 1: 'VID', 2: 'DIRECT', 3: 'IEEE Half Float' }
           let n = null
           if (modeBits === 0) {
-            // LINEAR模式: 参数为5位二进制补码指数 (Part I 8.3)
+            // LINEAR模式: 参数为5位二进制补码指数 (Part II §8.3)
             n = this.toSigned(paramBits, 5)
           } else if (modeBits === 3) {
             n = 'IEEE Half'
@@ -1240,7 +1256,7 @@
             modeName: modeNames[modeBits] || '保留',
             param: paramBits,
             linearExponent: n,
-            description: 'VOUT_MODE per PMBus 1.3 Part I Section 8.3',
+            description: 'VOUT_MODE per PMBus Part II §8.3 (bit7=absolute/relative, bits6:5=mode, bits4:0=parameter)',
           }
         },
 
@@ -2462,7 +2478,7 @@
         const bytesForPEC = [cmdCode, raw & 0xff, (raw >> 8) & 0xff]
         const pec = PMBusMath.calculatePEC(bytesForPEC)
         let comment = `/*
- * PMBus 1.3 ${currentCommand || currentMode} (参照 Part I §8 & Part II 命令定义)
+ * PMBus 数值格式 ${currentCommand || currentMode} (参照 Part II §8.3 与命令定义)
  * 物理值 = ${value.toFixed(4)}
  * 原始值 = 0x${hex4(raw)}
  * SMBus PEC = 0x${hex2(pec)} (per SMBus 3.0 §5.4, poly=0x07)
@@ -2790,7 +2806,7 @@
             return 'pow2(±40) 与 Math.pow 一致'
           })
 
-          test('LINEAR16 / VOUT_MODE 解析符合 Part I 8.3', () => {
+          test('LINEAR16 / VOUT_MODE 解析符合 Part II §8.3', () => {
             const parsed = PMBusMath.parseVoutMode(0x18)
             assert(
               parsed.modeName === 'LINEAR',
@@ -3135,7 +3151,7 @@
           html += `<span style="color:${color}">[${r.status}]</span> ${r.title}: ${r.details}<br>`
         })
         html +=
-          '<br><small style="color:var(--text-muted)">依据：PMBus 1.3 Part I 的 LINEAR/VOUT_MODE/IEEE Half 定义，Part II 的命令类型与 STATUS_WORD / READ_EIN 语义，以及 SMBus 3.0 PEC CRC-8 规则。</small></div>'
+          '<br><small style="color:var(--text-muted)">依据：PMBus Part II §8.3 的 VOUT_MODE 位域与数据格式语义、Part II 的命令类型与 STATUS_WORD / READ_EIN 语义，以及 SMBus 3.0 PEC CRC-8 规则。本文件为历史离线兼容。</small></div>'
 
         setDebugOutput(html)
 

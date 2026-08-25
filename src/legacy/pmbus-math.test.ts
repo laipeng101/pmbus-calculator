@@ -115,12 +115,94 @@ describe('PMBusMath — smoke tests (mechanical migration)', () => {
     })
   })
 
-  describe('parseVoutMode', () => {
-    it('parses 0x18 as LINEAR with N=-8', () => {
+  describe('parseVoutMode (PMBus Part II §8.3 bit layout)', () => {
+    it('parses 0x18 as absolute LINEAR with N=-8', () => {
       const r = PMBusMath.parseVoutMode(0x18)
       expect(r.mode).toBe(0)
       expect(r.modeName).toBe('LINEAR')
+      expect(r.isRelative).toBe(false)
+      expect(r.param).toBe(0x18)
       expect(r.linearExponent).toBe(-8)
+    })
+
+    it('parses 0x98 as relative LINEAR with N=-8 (bit7=relative, bits6:5=00)', () => {
+      const r = PMBusMath.parseVoutMode(0x98)
+      expect(r.mode).toBe(0)
+      expect(r.modeName).toBe('LINEAR')
+      expect(r.isRelative).toBe(true)
+      expect(r.param).toBe(0x18)
+      expect(r.linearExponent).toBe(-8)
+    })
+
+    it('parses 0x20 as VID (mode=01, param=0, no linear exponent)', () => {
+      const r = PMBusMath.parseVoutMode(0x20)
+      expect(r.mode).toBe(1)
+      expect(r.modeName).toBe('VID')
+      expect(r.isRelative).toBe(false)
+      expect(r.param).toBe(0)
+      expect(r.linearExponent).toBeNull()
+    })
+
+    it('parses 0x40 as DIRECT (mode=10, param=0)', () => {
+      const r = PMBusMath.parseVoutMode(0x40)
+      expect(r.mode).toBe(2)
+      expect(r.modeName).toBe('DIRECT')
+      expect(r.isRelative).toBe(false)
+      expect(r.param).toBe(0)
+      expect(r.linearExponent).toBeNull()
+    })
+
+    it('parses 0x60 as IEEE Half Float (mode=11, param=0)', () => {
+      const r = PMBusMath.parseVoutMode(0x60)
+      expect(r.mode).toBe(3)
+      expect(r.modeName).toBe('IEEE Half Float')
+      expect(r.isRelative).toBe(false)
+      expect(r.param).toBe(0)
+      expect(r.linearExponent).toBe('IEEE Half')
+    })
+
+    it('parses 0xE0 as relative IEEE Half Float (bit7=relative, bits6:5=11)', () => {
+      const r = PMBusMath.parseVoutMode(0xe0)
+      expect(r.mode).toBe(3)
+      expect(r.modeName).toBe('IEEE Half Float')
+      expect(r.isRelative).toBe(true)
+      expect(r.param).toBe(0)
+      expect(r.linearExponent).toBe('IEEE Half')
+    })
+
+    it('does not confuse bit7 with the mode field', () => {
+      // Old bug: (byte >> 5) & 0x07 would turn 0x98 into mode 4 (保留).
+      const abs = PMBusMath.parseVoutMode(0x18)
+      const rel = PMBusMath.parseVoutMode(0x98)
+      expect(abs.mode).toBe(rel.mode)
+      expect(rel.mode).toBe(0)
+    })
+  })
+
+  describe('checkSpecial', () => {
+    it('does not flag Y=1023 or Y=-1024 as overflow (legal boundary codes)', () => {
+      expect(PMBusMath.checkSpecial(0x7fff, 'L11')).toBeNull() // N=15, Y=1023
+      expect(PMBusMath.checkSpecial(0x0000, 'L11')).toBeNull()
+      // N=15, Y=-1024 -> raw 0xFFFF
+      expect(PMBusMath.checkSpecial(0xffff, 'L11')).toBeNull()
+    })
+  })
+
+  describe('linear11RangeForN (手动 N 饱和判断范围)', () => {
+    it('N=0 时范围是 -1024..1023（Y=-1024..1023 × 2^0）', () => {
+      expect(PMBusMath.linear11RangeForN(0)).toEqual({ min: -1024, max: 1023 })
+    })
+
+    it('N=-4 时范围是 -64..63.9375', () => {
+      expect(PMBusMath.linear11RangeForN(-4)).toEqual({
+        min: -1024 * Math.pow(2, -4),
+        max: 1023 * Math.pow(2, -4),
+      })
+    })
+
+    it('N=15 时与全格式全局极值一致（auto-N 饱和基准）', () => {
+      expect(PMBusMath.linear11RangeForN(15).min).toBe(PMBusMath.minLinear11())
+      expect(PMBusMath.linear11RangeForN(15).max).toBe(PMBusMath.maxLinear11())
     })
   })
 

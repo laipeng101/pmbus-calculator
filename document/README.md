@@ -11,11 +11,21 @@ metadata, and SHA-256 checksums, but does not redistribute third-party
 specification PDFs. The historical files remain in old commits/tags; this task
 does not rewrite history.
 
-## Current domain baseline
+## Product scope and revision baseline
 
-The project baseline remains **PMBus 1.3 / SMBus 3.0**. This is not a
-specification upgrade. PMBus 1.5 and other versions are not evaluated or claimed
-as compatible.
+The product is a **PMBus numeric-format calculator** (LINEAR11 / VOUT-LINEAR16 /
+DIRECT / IEEE 754 binary16 bidirectional conversion), not a PMBus/SMBus
+controller or a conformance implementation.
+
+- `validatedReference`: PMBus 1.3 / 1.3.1 public archive and SMBus 3.0.
+- `currentPublishedRevision`: PMBus 1.5 (per the official PMBus site), noted for
+  awareness only.
+- `productScope`: numeric-format subset only.
+- `fullRevisionCompliance`: not claimed — bus transport, command execution,
+  device profiles, PMBus 1.5 security extensions and Part IV are out of scope.
+
+PMBus 1.5 is not evaluated as the domain baseline and the manifest is not
+rewritten to a 1.5 baseline without a full revision-diff audit.
 
 ## Official landing pages
 
