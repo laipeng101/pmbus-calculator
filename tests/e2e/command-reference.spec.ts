@@ -62,6 +62,52 @@ test.describe('命令参考（只读，无副作用）', () => {
     await expect(statusRow).toContainText('bit field')
   })
 
+  test('STATUS_WORD 行渲染 metadata note：通常 Read Word，写 0x0100 仅清除 UNKNOWN 位', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    await page.locator('#command-reference-toggle').click()
+    const statusRow = page.getByRole('row', { name: /STATUS_WORD/ })
+    await expect(statusRow).toContainText('通常为 Read Word')
+    await expect(statusRow).toContainText('特殊写入仅用于清除 UNKNOWN 位')
+    await expect(statusRow).toContainText('0x0100')
+  })
+
+  test('READ_EIN 行渲染 Block Read 与规范字节数/有效载荷冲突说明', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('#command-reference-toggle').click()
+    const einRow = page.getByRole('row', { name: /READ_EIN/ })
+    await expect(einRow).toContainText('读 Block Read')
+    await expect(einRow).toContainText('规范内部冲突')
+    await expect(einRow).toContainText('§18.13 描述 6 个数据字节')
+    await expect(einRow).toContainText('Appendix I Table 31 列为 5')
+    await expect(einRow).toContainText('计算器不是 READ_EIN packet-length authority')
+  })
+
+  test('所有带 note 的命令行都实际渲染 metadata 的说明文本', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('#command-reference-toggle').click()
+    const noted = await page.locator('tr[data-command-note]:not([data-command-note=""])').count()
+    expect(noted).toBeGreaterThan(0)
+    for (const key of ['VOUT_COMMAND', 'STATUS_WORD', 'READ_EIN']) {
+      await expect(page.locator(`tr[data-command-key="${key}"] td:last-child`)).not.toHaveText('—')
+    }
+  })
+
+  test('阅读命令行不修改 DIRECT 系数', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    const mInput = page.getByLabel('DIRECT 系数 m')
+    await mInput.fill('5')
+    await mInput.press('Tab')
+
+    await page.locator('#command-reference-toggle').click()
+    await page.getByRole('row', { name: /READ_VIN/ }).click()
+    await page.getByRole('row', { name: /STATUS_WORD/ }).click()
+
+    await expect(mInput).toHaveValue('5')
+  })
+
   test('不提供任何预设应用入口', async ({ page }) => {
     await page.goto('/')
     await page.locator('#command-reference-toggle').click()
@@ -94,5 +140,24 @@ test.describe('命令参考（只读，无副作用）', () => {
 
     await expect(voutModeInput).toHaveValue('0x18')
     await expect(page.locator('#value-input')).toHaveValue('0')
+  })
+
+  test('390px 视口展开命令参考：表格在容器内横向滚动，body 无横向溢出', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/')
+    await page.locator('#command-reference-toggle').click()
+    await expect(page.getByRole('row', { name: /READ_EIN/ })).toBeVisible()
+
+    const body = page.locator('body')
+    const scrollWidth = await body.evaluate((el) => el.scrollWidth)
+    const clientWidth = await body.evaluate((el) => el.clientWidth)
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
+
+    const shell = page.locator('.command-ref-table-shell')
+    expect(await shell.evaluate((el) => getComputedStyle(el).overflowX)).toBe('auto')
+    const table = page.locator('.command-ref-table-shell table')
+    expect(await table.evaluate((el) => el.scrollWidth)).toBeGreaterThan(
+      await shell.evaluate((el) => el.clientWidth),
+    )
   })
 })

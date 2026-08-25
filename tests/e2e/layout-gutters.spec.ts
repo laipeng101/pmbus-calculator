@@ -38,6 +38,7 @@ async function assertGutters(page: Page) {
 
 test.describe('gutter alignment', () => {
   for (const viewport of [
+    { width: 1440, height: 900 },
     { width: 1280, height: 900 },
     { width: 1036, height: 1025 },
     { width: 768, height: 1024 },

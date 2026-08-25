@@ -219,14 +219,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
             {/* VOUT_MODE bit-field breakdown per Part II §8.3 */}
             {vm.voutModeInfo && (
-              <div
-                className="rounded-lg px-3 py-2 text-xs"
-                style={{
-                  background: 'var(--color-surface-muted)',
-                  color: 'var(--color-text-secondary)',
-                  border: '1px solid var(--color-border)',
-                }}
-              >
+              <div className="workspace-vout-bits rounded-lg px-3 py-2 text-xs">
                 bit7 = {vm.voutModeInfo.isRelative ? 'relative (1)' : 'absolute (0)'} · bits[6:5]
                 mode = {vm.voutModeInfo.modeName} ({vm.voutModeInfo.mode}) · bits[4:0] param ={' '}
                 {vm.voutModeInfo.param}
@@ -275,13 +268,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                     value={state.raw}
                     ariaLabel="V（16 位无符号，0～65535）"
                     onCommit={(text) => dispatch({ type: 'raw/set', raw: text })}
-                    className="w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
-                    style={{
-                      background: 'var(--color-surface-muted)',
-                      color: 'var(--color-text-primary)',
-                      border: '1px solid var(--color-border)',
-                      fontFamily: 'var(--font-mono)',
-                    }}
+                    className="input-surface w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
                   />
                 </div>
 
@@ -293,14 +280,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 </div>
               </>
             ) : (
-              <div
-                className="rounded-lg px-4 py-3 text-sm"
-                style={{
-                  background: 'var(--color-warning-surface)',
-                  color: 'var(--color-text-primary)',
-                  border: '1px solid var(--color-border)',
-                }}
-              >
+              <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
                 <p className="mb-2">
                   VOUT_MODE 为{' '}
                   {vm.voutModeInfo?.isRelative ? '相对 LINEAR' : vm.voutModeInfo?.modeName}
@@ -310,12 +290,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                   <button
                     type="button"
                     onClick={() => dispatch({ type: 'mode/set', mode: 'HALF' })}
-                    className="min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-                    style={{
-                      background: 'var(--color-accent)',
-                      color: '#fff',
-                      border: '1px solid var(--color-accent)',
-                    }}
+                    className="workspace-half-switch min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
                   >
                     切换到 HALF 模式
                   </button>

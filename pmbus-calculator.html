@@ -764,11 +764,20 @@
         .n-term { transform: translateY(-10px); }
         .formula-footer { padding-right: 0; justify-content: center; }
       }
+
+      /* 历史离线归档横幅（仅仓库内使用，非 Pages 部署资产） */
+      .legacy-banner {
+        margin-bottom: 12px;
+        padding: 8px 10px;
+        font-size: 12.5px;
+        color: var(--text-muted);
+        border: 1px dashed var(--border);
+      }
     </style>
   </head>
   <body>
     <main class="w" role="main">
-      <div class="bo" style="margin-bottom: 12px; padding: 8px 10px; font-size: 12.5px; color: var(--text-muted); border: 1px dashed var(--border)">
+      <div class="bo legacy-banner">
         历史离线兼容文件：本文件仅作为仓库内离线归档，不再是产品入口；新版 Web App 见
         <a href="https://laipeng101.github.io/pmbus-calculator/">https://laipeng101.github.io/pmbus-calculator/</a>。
         PMBus 数值格式语义请以 <code>src/legacy/pmbus-math.ts</code> 与 <code>docs/DOMAIN_MODEL.md</code> 为准。

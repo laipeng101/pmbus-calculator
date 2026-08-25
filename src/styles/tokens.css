@@ -644,3 +644,116 @@ select:disabled,
 .popup-list::-webkit-scrollbar-thumb:hover {
   background: var(--color-control-hover);
 }
+
+/* =========================================================
+   Shared surfaces — migrated from this batch's inline styles
+   ========================================================= */
+
+.input-surface {
+  background: var(--color-surface-muted);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+}
+
+.workspace-vout-bits {
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.workspace-l16-block {
+  background: var(--color-warning-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-warning-border);
+}
+
+.workspace-half-switch {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  border: 1px solid var(--color-accent);
+}
+
+/* =========================================================
+   Command reference (read-only panel)
+   ========================================================= */
+
+.command-ref-button {
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.command-ref-hint {
+  color: var(--color-text-muted);
+}
+
+.command-ref-table-shell {
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+}
+
+.command-ref-th {
+  color: var(--color-text-secondary);
+}
+
+.command-ref-row {
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.command-ref-note {
+  color: var(--color-text-secondary);
+  max-width: 28rem;
+  white-space: normal;
+}
+
+/* =========================================================
+   Calculation steps (unified four-mode walkthrough)
+   ========================================================= */
+
+.calc-steps-panel {
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+}
+
+.calc-steps-heading {
+  color: var(--color-text-secondary);
+}
+
+.calc-steps-row {
+  color: var(--color-text-primary);
+}
+
+.calc-steps-kind {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+[data-step-kind='warning'] .calc-steps-kind {
+  background: var(--color-warning-surface);
+  color: var(--color-warning);
+}
+
+[data-step-kind='result'] .calc-steps-kind {
+  background: var(--color-accent-solid);
+  color: var(--color-on-accent);
+}
+
+.calc-steps-label {
+  color: var(--color-text-secondary);
+}
+
+.calc-steps-plain {
+  color: var(--color-text-primary);
+}
+
+[data-step-kind='warning'] .calc-steps-plain {
+  color: var(--color-warning);
+}
+
+[data-step-kind='result'] .calc-steps-plain {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+}

@@ -12,8 +12,8 @@ import { ChevronDownIcon, ChevronUpIcon } from '../icons/Icon'
  * Deliberately has NO selection state and NO side effects: choosing a command
  * cannot reliably derive the payload format (device datasheet or VOUT_MODE
  * decides), so this panel only displays command code, transactions, data type,
- * units, encoding-rule source and spec section. It never switches mode,
- * injects parameters, or rewrites raw.
+ * units, encoding-rule source, spec section and the metadata note. It never
+ * switches mode, injects parameters, or rewrites raw.
  */
 export default function CommandReference() {
   const [open, setOpen] = useState(false)
@@ -26,12 +26,7 @@ export default function CommandReference() {
         id="command-reference-toggle"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-10 w-full items-center justify-between rounded-lg px-4 text-left text-sm transition-colors"
-        style={{
-          background: 'var(--color-surface-muted)',
-          border: '1px solid var(--color-border)',
-          color: 'var(--color-text-primary)',
-        }}
+        className="command-ref-button flex h-10 w-full items-center justify-between rounded-lg px-4 text-left text-sm transition-colors"
       >
         <span className="font-medium">命令参考（只读）</span>
         <span className="inline-flex" aria-hidden="true">
@@ -39,23 +34,17 @@ export default function CommandReference() {
         </span>
       </button>
 
-      <p className="mt-1.5 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+      <p className="command-ref-hint mt-1.5 text-xs">
         纯计算器不依赖命令选择：命令选择不能可靠推导数据格式——器件数据手册或 VOUT_MODE
-        决定格式。此面板只显示命令码、事务、数据类型、单位与格式来源，不参与模式切换、
+        决定格式。此面板只显示命令码、事务、数据类型、单位、格式来源与说明，不参与模式切换、
         参数注入或结果计算。
       </p>
 
       {open && (
-        <div
-          className="mt-2 overflow-x-auto rounded-lg"
-          style={{
-            background: 'var(--color-surface-muted)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          <table className="w-full min-w-[680px] text-left text-xs">
+        <div className="command-ref-table-shell mt-2 overflow-x-auto rounded-lg">
+          <table className="w-full min-w-[880px] text-left text-xs">
             <thead>
-              <tr style={{ color: 'var(--color-text-secondary)' }}>
+              <tr className="command-ref-th">
                 <th className="px-3 py-2 font-semibold">命令</th>
                 <th className="px-3 py-2 font-semibold">命令码</th>
                 <th className="px-3 py-2 font-semibold">事务</th>
@@ -63,6 +52,7 @@ export default function CommandReference() {
                 <th className="px-3 py-2 font-semibold">单位</th>
                 <th className="px-3 py-2 font-semibold">格式来源</th>
                 <th className="px-3 py-2 font-semibold">规范章节</th>
+                <th className="px-3 py-2 font-semibold">说明</th>
               </tr>
             </thead>
             <tbody>
@@ -70,10 +60,8 @@ export default function CommandReference() {
                 <tr
                   key={cmd.key}
                   data-command-key={cmd.key}
-                  style={{
-                    borderTop: '1px solid var(--color-border)',
-                    color: 'var(--color-text-primary)',
-                  }}
+                  data-command-note={cmd.note ?? ''}
+                  className="command-ref-row"
                 >
                   <td className="px-3 py-2 font-medium">{cmd.label}</td>
                   <td className="px-3 py-2 font-mono">
@@ -90,6 +78,7 @@ export default function CommandReference() {
                   <td className="px-3 py-2">{cmd.units}</td>
                   <td className="px-3 py-2">{describeEncodingRule(cmd.encodingRule)}</td>
                   <td className="px-3 py-2">{cmd.spec}</td>
+                  <td className="command-ref-note px-3 py-2">{cmd.note ? cmd.note : '—'}</td>
                 </tr>
               ))}
             </tbody>
