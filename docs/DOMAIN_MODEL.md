@@ -82,10 +82,12 @@
   - `units`：物理单位或位字段标记；标准定义不固定 FAN_COMMAND_1 为 RPM（依 FAN_CONFIG_1_2）
   - `spec`：规范章节（Part II 命令章节 + Appendix I Table 31）
   - `encodingRule`：`follows_vout_mode` | `device_defined` | `status` | `block`
-- 可选 `preset` 与标准定义分离；当前只允许 `sourceKind: project-demo`。
-- `command/set` 只记录选择并显示命令信息，不得切换模式、加载参数或重编码 raw。
-- 只有 `command/apply-preset` 显式触发时才应用预设；UI 必须标注“应用 project-demo 预设”。
-- DIRECT 系数必须以具体器件数据手册为准；没有真实来源的 `device-datasheet` 预设禁止内置。
+- 命令参考面板是只读的：只显示命令码、事务、数据类型、单位、格式来源与规范章节；
+  选择命令不能可靠推导数据格式（器件数据手册或 VOUT_MODE 决定），因此参考面板不参与
+  模式切换、参数注入或结果计算，也不提供任何 preset 应用入口。
+- `command/set` 仅为状态层兼容保留，不得切换模式、加载参数或重编码 raw；
+  `command/apply-preset` 已从产品面移除。
+- DIRECT 系数必须以具体器件数据手册为准；没有真实来源时禁止内置虚构系数。
 - `STATUS_WORD` 是状态位摘要（`encodingRule: status`），`READ_EIN` 是 block read（`encodingRule: block`），均不分配数值转换模式。
 - `STATUS_WORD` 通常为 Read Word；特殊写入仅用于清除 UNKNOWN 位（写 0x0100），其他状态位通过底层状态寄存器或 `CLEAR_FAULTS` 处理；不得写成“写入可清除所有状态位”。
 - `READ_EIN` 存在规范内部冲突：Part II §18.13 描述 6 个数据字节（accumulator 2 + rollover 1 + sample count 3），Appendix I Table 31 列为 5。实现使用 `dataBytesConflict` 显式记录两个来源，不在 UI 中提供单一权威数字；计算器不是 READ_EIN packet-length authority。

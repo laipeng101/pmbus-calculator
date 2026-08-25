@@ -19,6 +19,10 @@
 https://laipeng101.github.io/pmbus-calculator/
 ```
 
+> 仓库根目录的 `pmbus-calculator.html` 是**仓库内离线历史归档**，不是 Pages 部署资产；
+> Pages 上的 `/pmbus-calculator.html` 路径实际返回 404。产品入口只有 Pages 根页面
+> （React Web App）。
+
 ## Pages workflow
 
 工作流文件：`.github/workflows/pages.yml`

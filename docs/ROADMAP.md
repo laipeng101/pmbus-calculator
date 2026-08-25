@@ -7,14 +7,19 @@
 
 ## 当前产品基线
 
+- 产品定位：**PMBus 数值格式计算器**（L11/L16/DIRECT/HALF 双向换算），不是 PMBus/SMBus
+  控制器或一致性实现；不覆盖总线传输、命令执行、设备 Profile、PMBus 1.5 安全扩展与 Part IV。
 - Web-first PMBus Calculator 是主线；技术栈为 Vite + React 19 + TypeScript + Tailwind CSS + Vitest + Playwright。
-- L11 / L16 / DIRECT / HALF 四种模式均已双向闭环，并有 Vitest + Playwright 回归覆盖。
-- PMBus 规范基线：PMBus 1.3。Rev 1.3.1 冲突仍以显式 conflict 模型呈现；1.5 不评估、不声明兼容。
+- L11 / L16 / DIRECT / HALF 四种模式均已双向闭环，并统一“字段解析 → 公式 → 计算过程 → 结果”展示，有 Vitest + Playwright 回归覆盖。
+- PMBus 规范基线：PMBus 1.3（validated reference）。Rev 1.3.1 冲突仍以显式 conflict 模型呈现；
+  官方当前发布版本为 1.5，但本仓库不评估、不声明 1.5 兼容性，`document/specifications.json`
+  仅记录 1.5 为 currentPublishedRevision，不伪装成完整 1.5 基线。
 - 维护基线：第三方规范 PDF 不进入当前 Git tree；官方来源、字节数和 SHA-256 统一维护在
   `document/specifications.json`，开发者按需从官方 URL 下载到 ignored `.cache/specifications/`。
   这是分发边界维护，不是规范升级，不创建新的产品版本里程碑，也不把 PMBus 1.5 升级标成已开始。
-- `pmbus-calculator.html` 保留为 read-only legacy fallback，不删除、不移动、不重写。
-- 命令元数据唯一数据源：`src/legacy/command-metadata.ts`。
+- `pmbus-calculator.html` 保留为仓库内离线历史归档（read-only），不删除、不移动、不重写；
+  不在 Pages 上提供服务（该路径 404），不是产品入口。
+- 命令元数据唯一数据源：`src/legacy/command-metadata.ts`；只读命令参考，无 preset、无选择副作用。
 - 发布资产生成（`scripts/prepare-release-assets.mjs`）是小型静态 Web 项目的可重新执行打包步骤：
   从 `dist/` 确定性生成 ZIP + SHA256SUMS，临时生成物可丢弃，失败后清理临时输出并重新执行即可；
   不使用长期锁、journal、恢复协议或进程监督。

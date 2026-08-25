@@ -6,13 +6,33 @@
 
 ### Changed
 
-- 发布链路简化与开发流程纠偏：`release:prepare-assets` 恢复为可重新执行的打包步骤——每次运行
-  使用唯一临时 staging 目录，生成/checksum/ZIP verifier 全部成功后才把结果移入 `release-output/`；
-  删除长期 release lock、transaction journal、`--recover`/`--recover-lock`/`--audit-lock`、
-  child-state sidecar、detached process-group supervisor、SIGINT/SIGTERM 生命周期状态机、
-  crash/failpoint matrix、repeated-signal/orphan/PGID/stress evidence runner 与 zero-skip
-  release-security 聚合 runner；对应专项测试退役，发布生成器测试纳入普通单测。
-  失败时正式输出保持旧值或不存在，恢复方式为清理临时输出并重新执行；并发生成不作为受支持场景。
+- 产品定位改为 **PMBus 数值格式计算器**：不再自称“PMBus 1.3 协议实现”，也不声明
+  完整 PMBus 1.5 一致性；明确不覆盖总线传输、命令执行、设备 Profile、PMBus 1.5 安全
+  扩展与 Part IV。`document/specifications.json` 增加
+  `validatedReference`/`currentPublishedRevision`/`productScope`/`fullRevisionCompliance` 声明。
+- VOUT_MODE 位域按 PMBus Part II §8.3 修正：bit7=absolute/relative、bits[6:5]=mode、
+  bits[4:0]=parameter；不再用 `(byte >> 5) & 0x07` 把 bit7 混入模式。L16 页面仅在
+  absolute LINEAR 时给出电压结果，relative/VID/DIRECT/IEEE Half 显示
+  reference-required/unsupported 状态，不再伪造 LINEAR16 结果。
+- L11 的 Y=1023/-1024 恢复为合法边界编码，不再被标记为溢出；仅当用户输入超出可表示
+  范围并发生饱和时显示 saturation warning。
+- 四模式统一“字段解析 → 通用公式 → 数值代入 → 中间值 → 结果”计算过程展示
+  （新增 `src/app/calculation-steps.ts` 与共享 CalculationSteps 组件），JSX 不再自行计算。
+- 命令下拉框降级：主流程移除 CommandPicker，改为默认折叠的只读“命令参考”面板；
+  移除 `command/apply-preset` action 与全部 project-demo presets；STATUS_WORD 说明修正为
+  “通常 Read Word；特殊写入仅清除 UNKNOWN 位，其余经底层寄存器/CLEAR_FAULTS”。
+- `pmbus-calculator.html` 明确为仓库内离线历史归档（非 Pages 部署资产，对应路径 404）；
+  章节引用统一为 Part II §8.3。
+
+## [1.1.11] - 2026-08-24`release:prepare-assets` 恢复为可重新执行的打包步骤——每次运行
+
+使用唯一临时 staging 目录，生成/checksum/ZIP verifier 全部成功后才把结果移入 `release-output/`；
+删除长期 release lock、transaction journal、`--recover`/`--recover-lock`/`--audit-lock`、
+child-state sidecar、detached process-group supervisor、SIGINT/SIGTERM 生命周期状态机、
+crash/failpoint matrix、repeated-signal/orphan/PGID/stress evidence runner 与 zero-skip
+release-security 聚合 runner；对应专项测试退役，发布生成器测试纳入普通单测。
+失败时正式输出保持旧值或不存在，恢复方式为清理临时输出并重新执行；并发生成不作为受支持场景。
+
 - CI 并行化：单一串行 `check` job 拆为 `quality`（format/typecheck/lint/coverage/build/基础合同）、
   `e2e`（Playwright 安装、用户流程、release smoke）、`compatibility`（Node 22 typecheck + unit）、
   轻量 `check` 聚合 job（继续作为 branch protection required check）。
