@@ -81,13 +81,14 @@
   light/dark 下公式与 focus ring 可读。
 - Release/Pages smoke：KaTeX CSS 与全部字体加载，资源为 Pages 同源。
 
-## 7. Popup containment
+## 7. Popover containment（通用规则）
 
-- 命令下拉框使用 `@floating-ui/react-dom`，portal 渲染，默认 `bottom-start`。
-- 必须配置 `flip`、`shift`（viewport padding 8–12px）、`size`（availableHeight/availableWidth）和 `autoUpdate`。
-- popup 宽度与 trigger 一致；搜索框始终可见；可用高度不足时只让 options list 内部滚动。
-- 不得调用会滚动整个页面的 `scrollIntoView`；active option 由 list 内部滚动逻辑管理。
-- popup 打开时 resize、页面滚动、触发器靠近顶部/底部都必须保持 viewport 内完整可见。
+当前产品面没有命令下拉弹层（命令参考为页内折叠表格）；以下规则保留给未来任何 portal popover：
+
+- popover 使用 `@floating-ui/react-dom`（或等价的 flip/shift/size/autoUpdate 组合），portal 渲染。
+- 必须配置 `flip`、`shift`（viewport padding 8–12px）、`size` 和 `autoUpdate`。
+- popup 打开时 resize、页面滚动、触发器靠近顶部/底部都必须保持 viewport 内完整可见；
+  可用高度不足时只让内部列表滚动，不得滚动整个页面。
 
 ## 8. 输入编辑与错误合同（M21 起长期稳定）
 
