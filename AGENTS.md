@@ -93,7 +93,7 @@ tests/e2e/        Playwright 真实用户流程
 ## 7. 测试规则
 
 - 算法测试至少覆盖 L11 / L16 / DIRECT / HALF / PEC。
-- UI E2E 至少覆盖：模式切换、Hex 输入、Value 输入、bit toggle、命令选择、复制、主题、移动端布局。
+- UI E2E 至少覆盖：模式切换、Hex 输入、Value 输入、bit toggle、只读命令参考、复制、主题、移动端布局。
 - 修改算法必须同时补 golden case。
 - `npm run test:coverage` 必须达到 `vite.config.ts` 中声明的阈值。
 - 分层覆盖策略：`src/app` 与 `src/legacy` 由 Vitest + v8 coverage 覆盖；
