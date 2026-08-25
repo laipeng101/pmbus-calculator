@@ -88,11 +88,7 @@ export default function ValueInput({ vm, dispatch }: Props) {
 
   return (
     <div>
-      <label
-        className="mb-1 block text-xs font-medium"
-        style={{ color: 'var(--color-text-muted)' }}
-        htmlFor="value-input"
-      >
+      <label className="mb-1 block text-xs font-medium color-text-muted" htmlFor="value-input">
         物理值
       </label>
       <input
@@ -110,23 +106,12 @@ export default function ValueInput({ vm, dispatch }: Props) {
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
         }}
-        className="w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
-        style={{
-          background: 'var(--color-surface-muted)',
-          color: 'var(--color-accent)',
-          border: '1px solid var(--color-border)',
-          fontFamily: 'var(--font-mono)',
-        }}
+        className="input-surface color-accent w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
         placeholder="0"
         aria-label="物理值"
       />
       {error && (
-        <p
-          id="value-input-error"
-          role="alert"
-          className="mt-1 text-xs"
-          style={{ color: 'var(--color-danger)' }}
-        >
+        <p id="value-input-error" role="alert" className="mt-1 text-xs color-danger">
           {error}
         </p>
       )}

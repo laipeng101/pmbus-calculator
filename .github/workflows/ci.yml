@@ -78,6 +78,10 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm run lint
 
+      - name: Inline style gate
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run check:inline-style
+
       - name: Specification manifest check
         if: steps.scope.outputs.run_full != 'false'
         run: npm run specs:check

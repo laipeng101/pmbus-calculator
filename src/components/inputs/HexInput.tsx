@@ -8,7 +8,6 @@ interface Props {
   placeholder?: string
   ariaLabel: string
   className?: string
-  style?: React.CSSProperties
   onCommit: (text: string) => void
 }
 
@@ -28,7 +27,6 @@ export default function HexInput({
   placeholder,
   ariaLabel,
   className,
-  style,
   onCommit,
 }: Props) {
   const [draft, setDraft] = useState(value)
@@ -79,7 +77,6 @@ export default function HexInput({
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : undefined}
         className={className}
-        style={style}
         onFocus={(e) => {
           setEditing(true)
           e.target.select()
@@ -91,12 +88,7 @@ export default function HexInput({
         }}
       />
       {error && (
-        <p
-          id={`${id}-error`}
-          role="alert"
-          className="mt-1 text-xs"
-          style={{ color: 'var(--color-danger)' }}
-        >
+        <p id={`${id}-error`} role="alert" className="mt-1 text-xs color-danger">
           {error}
         </p>
       )}

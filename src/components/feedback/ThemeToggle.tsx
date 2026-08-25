@@ -22,12 +22,7 @@ export default function ThemeToggle({ theme, onChange }: Props) {
       onClick={cycle}
       aria-label={`当前主题: ${label}，点击切换`}
       title={`主题: ${label}`}
-      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
-      style={{
-        background: 'var(--color-surface-muted)',
-        color: 'var(--color-text-primary)',
-        border: '1px solid var(--color-border)',
-      }}
+      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors surface-muted border-default color-text-primary"
     >
       <span className="inline-flex" aria-hidden="true">
         {theme === 'light' ? (

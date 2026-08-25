@@ -75,18 +75,8 @@ function App() {
   }, [])
 
   return (
-    <div
-      className="flex min-h-screen flex-col items-center sm:px-4 sm:py-6"
-      style={{ background: 'var(--color-bg)' }}
-    >
-      <div
-        className="w-full max-w-[1120px] sm:rounded-2xl sm:p-6 md:p-8"
-        style={{
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
-          boxShadow: 'var(--shadow-panel)',
-        }}
-      >
+    <div className="flex min-h-screen flex-col items-center sm:px-4 sm:py-6">
+      <div className="app-panel sm:rounded-2xl sm:p-6 md:p-8">
         <AppHeader
           theme={state.ui.theme}
           onThemeChange={(theme) => dispatch({ type: 'ui/set-theme', theme })}
