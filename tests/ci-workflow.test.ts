@@ -1,14 +1,14 @@
-// Regression tests for .github/workflows/ci.yml structure (M19-A/M19-B/M20).
+// Regression tests for .github/workflows/ci.yml structure.
 //
 // These assertions pin the CI contract that GitHub expressions cannot check
-// for themselves: stable step ids for the Playwright steps, per-step report
-// upload gating, the shared full-tier condition, the single `check` job, no
-// workflow-level path filters, the M18 concurrency semantics, the M19-B
+// for themselves: the parallel job layout (quality / e2e / compatibility /
+// check), the shared full-tier condition, the light-only classifier, stable
+// step ids for the Playwright steps, per-step report upload gating, the
 // protected-main trigger model (PR + workflow_dispatch only, minimal token
-// permissions, credential-free checkout of the PR merge ref, and recorded
-// revision/tree evidence), and the M20/M23 secondary-LTS compatibility check
-// (Node 22 primary verification plus a full-tier-gated Node 24 typecheck and
-// unit run in the same job). Parsing is deliberately dependency-free
+// permissions, credential-free checkout of the PR merge ref), the recorded
+// revision/tree evidence in the aggregator, the fail-closed aggregator gate
+// (always() + strict success on every needs result), and the compatibility
+// Node 22.20.0 typecheck+unit job. Parsing is deliberately dependency-free
 // text-structure matching over step blocks — good enough to pin these
 // invariants without adding a YAML dependency.
 
@@ -72,7 +72,6 @@ const FULL_TIER_RUN_COMMANDS = [
   'npm run typecheck',
   'npm run lint',
   'npm run test:coverage',
-  'npm run test:release-security',
   'npx playwright install --with-deps chromium',
   'npm run test:e2e',
   'npm run build',
@@ -83,10 +82,15 @@ const FULL_TIER_RUN_COMMANDS = [
 ]
 
 describe('ci.yml structure', () => {
-  it('keeps a single job with id check', () => {
+  it('keeps the four parallel jobs with the aggregator named check', () => {
     const jobsSection = workflow.split(/^jobs:\s*$/m)[1] ?? ''
     const jobIds = [...jobsSection.matchAll(/^ {2}([\w-]+):/gm)].map((match) => match[1])
-    expect(jobIds).toEqual(['check'])
+    expect(jobIds).toEqual(['quality', 'e2e', 'compatibility', 'check'])
+  })
+
+  it('the check aggregator depends on all three parallel jobs', () => {
+    const checkSection = workflow.split(/^ {2}check:/m)[1] ?? ''
+    expect(checkSection).toMatch(/^ {4}needs: \[quality, e2e, compatibility\]\s*$/m)
   })
 
   it('never uses workflow-level paths or paths-ignore filters', () => {
@@ -94,22 +98,76 @@ describe('ci.yml structure', () => {
     expect(workflow).not.toMatch(/^\s*paths-ignore:/m)
   })
 
-  it('keeps the M18 concurrency semantics: PR-only cancellation, manual runs never cancelled', () => {
-    // Per-PR groups keep different PRs independent; a workflow_dispatch run
-    // groups by ref (never a PR number) and cancel-in-progress is PR-only.
+  it('keeps the PR-only cancellation and manual runs never cancelled', () => {
     expect(workflow).toContain(
       'group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
     )
     expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}")
   })
 
-  it('keeps the Classify CI scope step as the single run_full source', () => {
-    expect(workflow).toMatch(/^ {8}id: scope\s*$/m)
-    expect(workflow).toMatch(/^ {8}run: node scripts\/classify-ci-scope\.mjs /m)
+  it('keeps the Classify CI scope step as the single run_full source in every gated job', () => {
+    const scopeSteps = stepBlocks(workflow).filter((block) => stepId(block) === 'scope')
+    expect(scopeSteps.length).toBe(3) // quality, e2e, compatibility
+    for (const block of scopeSteps) {
+      expect(block).toMatch(/^ {8}run: node scripts\/classify-ci-scope\.mjs /m)
+    }
+  })
+
+  it('no longer contains the release-security runner step', () => {
+    expect(workflow).not.toMatch(/test:release-security/)
+    expect(workflow).not.toMatch(/security-diagnostics/)
   })
 })
 
-describe('ci.yml trigger and permission model (M19-B)', () => {
+describe('ci.yml fail-closed aggregator gate', () => {
+  function checkSection(): string {
+    return workflow.split(/^ {2}check:/m)[1] ?? ''
+  }
+
+  function gateStep(): string {
+    return findStepByName('Require successful parallel verification results')
+  }
+
+  it('runs the check aggregator even when an upstream job fails', () => {
+    // Without job-level always(), GitHub skips the whole job when a needs
+    // dependency fails and treats the skipped required check as green.
+    expect(checkSection()).toMatch(/^ {4}if: \$\{\{ always\(\) \}\}\s*$/m)
+  })
+
+  it('keeps the aggregator dependent on all three verification jobs', () => {
+    expect(checkSection()).toMatch(/^ {4}needs: \[quality, e2e, compatibility\]\s*$/m)
+  })
+
+  it('reads the result of every dependency into the gate environment', () => {
+    const normalized = normalize(gateStep())
+    expect(normalized).toContain('QUALITY_RESULT: ${{ needs.quality.result }}')
+    expect(normalized).toContain('E2E_RESULT: ${{ needs.e2e.result }}')
+    expect(normalized).toContain('COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}')
+  })
+
+  it('requires every result to equal success exactly', () => {
+    const normalized = normalize(gateStep())
+    expect(normalized).toContain('for result in')
+    expect(normalized).toContain('"$QUALITY_RESULT"')
+    expect(normalized).toContain('"$E2E_RESULT"')
+    expect(normalized).toContain('"$COMPATIBILITY_RESULT"')
+    expect(normalized).toContain('if [[ "$result" != "success" ]]; then')
+  })
+
+  it('fails hard with a non-zero exit when any result is not success', () => {
+    const normalized = normalize(gateStep())
+    expect(normalized).toContain('set -euo pipefail')
+    expect(normalized).toContain('A required verification job did not succeed.')
+    expect(normalized).toContain('exit 1')
+    expect(normalized).not.toContain('continue-on-error')
+  })
+
+  it('does not regress to a print-only summary step', () => {
+    expect(() => findStepByName('Summarize parallel verification results')).toThrow()
+  })
+})
+
+describe('ci.yml trigger and permission model', () => {
   it('auto-triggers only on pull requests targeting main', () => {
     expect(workflow).toMatch(/^on:\n {2}pull_request:\n {4}branches: \[main\]\n/m)
   })
@@ -131,7 +189,7 @@ describe('ci.yml trigger and permission model (M19-B)', () => {
   })
 })
 
-describe('ci.yml checkout and revision evidence (M19-B)', () => {
+describe('ci.yml checkout and revision evidence', () => {
   function checkoutStep(): string {
     const match = stepBlocks(workflow).find((block) => block.includes('actions/checkout'))
     if (!match) throw new Error('actions/checkout step not found')
@@ -160,7 +218,6 @@ describe('ci.yml checkout and revision evidence (M19-B)', () => {
     expect(normalized).toContain('set -euo pipefail')
     expect(normalized).toContain('^[0-9a-f]{40}$')
     expect(normalized).toContain('exit 1')
-    // Outputs are written only after the SHA validation guard.
     expect(normalized.indexOf('^[0-9a-f]{40}$')).toBeLessThan(
       normalized.indexOf('>> "$GITHUB_OUTPUT"'),
     )
@@ -175,20 +232,15 @@ describe('ci.yml checkout and revision evidence (M19-B)', () => {
   })
 })
 
-describe('ci.yml whitespace gates (M19-B)', () => {
-  it('keeps the full PR base-to-head whitespace gate', () => {
+describe('ci.yml whitespace gates', () => {
+  it('keeps the full PR base-to-head whitespace gate in the aggregator job', () => {
     const normalized = normalize(findStepByName('Check full PR diff for whitespace errors'))
     expect(normalized).toContain('git diff --check "$BASE_SHA" "$HEAD_SHA"')
     expect(normalized).toContain('github.event.pull_request.base.sha')
     expect(normalized).toContain('github.event.pull_request.head.sha')
-  })
-
-  it('no longer contains the unreachable push whitespace step', () => {
-    const stepPresent = stepBlocks(workflow).some((block) =>
-      normalize(block).startsWith('name: Check full pushed range'),
-    )
-    expect(stepPresent).toBe(false)
-    expect(workflow).not.toContain('BEFORE_SHA')
+    // The gate lives inside the `check` job section, not a parallel job.
+    const checkSection = workflow.split(/^ {2}check:/m)[1] ?? ''
+    expect(checkSection).toContain('Check full PR diff for whitespace errors')
   })
 })
 
@@ -202,29 +254,7 @@ describe('ci.yml full-tier gating', () => {
   )
 })
 
-describe('ci.yml release generator/security specialisation (M27)', () => {
-  it('runs the zero-skip generator/security suite on the full tier without Playwright', () => {
-    const block = normalize(findStepByName('Release generator and security tests (zero-skip)'))
-    expect(block).toContain(`if: ${FULL_TIER_CONDITION}`)
-    expect(block).toContain('run: npm run test:release-security')
-    // The specialisation must not depend on Playwright browsers.
-    expect(block).not.toContain('playwright')
-  })
-
-  it('places the security step after unit coverage and before Playwright installation', () => {
-    const order = stepBlocks(workflow).map((block) => normalize(block))
-    const coverageIdx = order.findIndex((b) => b.includes('run: npm run test:coverage'))
-    const securityIdx = order.findIndex((b) => b.includes('run: npm run test:release-security'))
-    const playwrightInstallIdx = order.findIndex((b) =>
-      b.includes('npx playwright install --with-deps chromium'),
-    )
-    expect(coverageIdx).toBeGreaterThan(-1)
-    expect(securityIdx).toBeGreaterThan(coverageIdx)
-    expect(playwrightInstallIdx).toBeGreaterThan(securityIdx)
-  })
-})
-
-describe('ci.yml canonical/compatibility runtimes (M20/M30)', () => {
+describe('ci.yml canonical/compatibility runtimes', () => {
   function setupNodeSteps(): string[] {
     return stepBlocks(workflow).filter((block) => block.includes('actions/setup-node'))
   }
@@ -242,47 +272,40 @@ describe('ci.yml canonical/compatibility runtimes (M20/M30)', () => {
     expect(primary).toMatch(/node-version-file:\s*['"]?\.node-version['"]?/)
   })
 
-  it('adds the exact 22.20.0 compatibility setup behind the shared full-tier condition', () => {
-    const normalized = normalize(findSetupStepByNodeVersion('22.20.0'))
-    expect(normalized).toContain(`if: ${FULL_TIER_CONDITION}`)
-  })
-
-  it('keeps the compatibility setup cache-free (no second npm cache, no node_modules cache; M31 WP-D)', () => {
+  it('adds the exact 22.20.0 compatibility setup (job-level, no second npm cache)', () => {
     const block = findSetupStepByNodeVersion('22.20.0')
     expect(block).toContain('package-manager-cache: false')
     expect(block).not.toMatch(/^\s*cache: 'npm'\s*$/m)
     expect(block).not.toMatch(/^\s*cache-dependency-path:/m)
   })
 
-  it('pins both setup-node steps to the same reviewed SHA', () => {
+  it('pins all setup-node steps to the same reviewed SHA', () => {
     const shas = setupNodeSteps().map(
       (block) => block.match(/actions\/setup-node@([0-9a-f]{40})/)?.[1],
     )
-    expect(shas).toHaveLength(2)
+    expect(shas).toHaveLength(3) // quality, e2e, compatibility
     expect(new Set(shas).size).toBe(1)
   })
 
-  it('runs the real typecheck and unit suite under Node 22.20.0 in the same single check job', () => {
-    // The combined command is unique: the primary "Install dependencies"
-    // step runs a bare `npm ci` and must stay available on the light tier.
+  it('runs the real typecheck and unit suite under Node 22.20.0 in the compatibility job', () => {
     const normalized = normalize(findStepByRun('npm ci && npm run typecheck && npm run test:run'))
     expect(normalized).toContain(`if: ${FULL_TIER_CONDITION}`)
     expect(
       normalize(findStepByName('Typecheck and unit tests on compatibility LTS (Node 22.20.0)')),
     ).toBe(normalized)
+    const compatSection = workflow.split(/^ {2}compatibility:/m)[1] ?? ''
+    expect(compatSection).toContain('Typecheck and unit tests on compatibility LTS')
   })
 
-  it('activates the exact canonical npm 11.17.0 for the compatibility runtime (M30 WP-E)', () => {
+  it('activates the exact canonical npm 11.17.0 for the compatibility runtime', () => {
     const activate = findStepByName('Activate canonical npm 11.17.0 on compatibility runtime')
     expect(normalize(activate)).toContain(`if: ${FULL_TIER_CONDITION}`)
     expect(normalize(activate)).toMatch(/npm install -g npm@11\.17\.0/)
-    // The upgrade must run OUTSIDE the repo so the bundled npm 10.9.3 never
-    // trips the repo's devEngines fail-closed check while upgrading itself.
     expect(normalize(activate)).toMatch(/cd \/tmp/)
   })
 })
 
-describe('ci.yml Playwright report upload gating (M19-A)', () => {
+describe('ci.yml Playwright report upload gating', () => {
   it('gives the Playwright E2E step the stable id e2e', () => {
     expect(stepId(findStepByName('Run Playwright E2E'))).toBe('e2e')
     expect(stepId(findStepByRun('npm run test:e2e'))).toBe('e2e')
@@ -293,13 +316,18 @@ describe('ci.yml Playwright report upload gating (M19-A)', () => {
     expect(stepId(findStepByRun('npm run test:e2e:release'))).toBe('release_smoke')
   })
 
+  it('keeps Playwright steps in the e2e job', () => {
+    const e2eSection = workflow.split(/^ {2}e2e:/m)[1] ?? ''
+    expect(e2eSection).toContain('Run Playwright E2E')
+    expect(e2eSection).toContain('Run production release smoke')
+  })
+
   it('uploads the main report only when the E2E step itself ran and failed', () => {
     const normalized = normalize(findUploadStep('playwright-report'))
     expect(normalized).toContain('failure() &&')
     expect(normalized).toContain(`${FULL_TIER_CONDITION} &&`)
     expect(normalized).toContain("steps.e2e.outcome == 'failure'")
     expect(normalized).not.toContain('release_smoke')
-    // Artifact name and report directory stay stable.
     expect(normalized).toContain('name: playwright-report ')
     expect(normalized).toContain('path: tests/e2e/report ')
   })
@@ -310,7 +338,6 @@ describe('ci.yml Playwright report upload gating (M19-A)', () => {
     expect(normalized).toContain(`${FULL_TIER_CONDITION} &&`)
     expect(normalized).toContain("steps.release_smoke.outcome == 'failure'")
     expect(normalized).not.toContain('steps.e2e.outcome')
-    // Artifact name and report directory stay stable.
     expect(normalized).toContain('name: playwright-report-release ')
     expect(normalized).toContain('path: tests/e2e/report-release ')
   })
