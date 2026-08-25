@@ -107,6 +107,17 @@ export const PMBusMath = {
     return -1024 * this.pow2(15)
   },
 
+  /**
+   * LINEAR11 representable range for a fixed N: Y ∈ [-1024, 1023] ⇒
+   * X ∈ [-1024 × 2^N, 1023 × 2^N].  Used to judge saturation when the
+   * exponent is locked (autoN=false); the auto-N encoder saturates at the
+   * global N=15 extremes instead (maxLinear11/minLinear11).
+   */
+  linear11RangeForN(n: number): { min: number; max: number } {
+    const p = this.pow2(n)
+    return { min: -1024 * p, max: 1023 * p }
+  },
+
   /** Find best N/Y for a given physical value */
   findBestLinear11(val: number): BestLinear11Result {
     // Saturation: a hardware calculator must never encode an out-of-range

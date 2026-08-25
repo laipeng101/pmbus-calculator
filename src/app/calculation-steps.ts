@@ -71,18 +71,20 @@ function buildL11Steps(state: AppState): CalculationStepVM[] {
     resultStep(formatNumber(decoded.value)),
   ]
 
-  if (
-    state.l11.valueInput != null &&
-    Number.isFinite(state.l11.valueInput) &&
-    (state.l11.valueInput > PMBusMath.maxLinear11() ||
-      state.l11.valueInput < PMBusMath.minLinear11())
-  ) {
-    steps.push(
-      warningStep(
-        'l11-saturation',
-        `输入值超出 LINEAR11 可表示范围（${formatNumber(PMBusMath.minLinear11())} ~ ${formatNumber(PMBusMath.maxLinear11())}），编码器已饱和到极值`,
-      ),
-    )
+  if (state.l11.valueInput != null && Number.isFinite(state.l11.valueInput)) {
+    // auto-N 用全格式全局范围（N=15 极值）判断饱和；锁定 N 用该 N 的
+    // Y=-1024..1023 范围判断（Y=1023/-1024 本身是合法边界编码）。
+    const { min, max } = state.l11.autoN
+      ? { min: PMBusMath.minLinear11(), max: PMBusMath.maxLinear11() }
+      : PMBusMath.linear11RangeForN(state.l11.n)
+    if (state.l11.valueInput > max || state.l11.valueInput < min) {
+      steps.push(
+        warningStep(
+          'l11-saturation',
+          `输入值超出 LINEAR11 可表示范围（${formatNumber(min)} ~ ${formatNumber(max)}），编码器已饱和到极值`,
+        ),
+      )
+    }
   }
 
   if (state.l11.valueInput != null && Number.isFinite(state.l11.valueInput)) {
@@ -105,19 +107,37 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
     ),
     field('l16-vout-mode-mode', 'bits[6:5] mode', `${parsed.modeName} (${parsed.mode})`),
     field('l16-vout-mode-param', 'bits[4:0] parameter', String(parsed.param)),
-    field('l16-v', 'V（16-bit 无符号）', String(state.raw)),
-    field('l16-n', 'N（来自 VOUT_MODE）', String(state.l16.n)),
   ]
 
-  const canCompute = parsed.mode === 0 && parsed.isRelative === false
-  if (canCompute === false) {
-    const note = parsed.isRelative
-      ? '相对 LINEAR：需要参考值，当前不计算绝对电压'
-      : `${parsed.modeName}：需要器件 Profile，当前不计算绝对电压`
-    steps.push(warningStep('l16-unsupported', note))
+  // Non-LINEAR VOUT_MODE (VID / DIRECT / IEEE Half): the raw word is NOT a
+  // LINEAR16 V×2^N payload — no V/N fields, no range, no result.
+  if (parsed.mode !== 0) {
+    steps.push(
+      warningStep(
+        'l16-unsupported',
+        `${parsed.modeName}：需要器件 Profile，当前不计算 LINEAR16 电压；raw 不是 LINEAR16 V/N 编码。`,
+      ),
+    )
     return steps
   }
 
+  if (parsed.isRelative) {
+    // relative LINEAR：VOUT_MODE 参数位携带指数 N，可解释为比值缩放语义；
+    // 但绝对电压需要参考值，不把 raw 标成绝对电压。
+    steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(state.l16.n)))
+    steps.push(intermediate('l16-2n', '2^N（比值缩放）', formatNumber(PMBusMath.pow2(state.l16.n))))
+    steps.push(
+      warningStep(
+        'l16-unsupported',
+        '相对 LINEAR：VOUT_MODE 给出指数/比值语义，但绝对电压需要参考值；当前不把 raw 标为绝对电压。',
+      ),
+    )
+    return steps
+  }
+
+  // absolute LINEAR: full V → X = V × 2^N chain.
+  steps.push(field('l16-v', 'V（16-bit 无符号）', String(state.raw)))
+  steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(state.l16.n)))
   const p = PMBusMath.pow2(state.l16.n)
   steps.push(
     formula('l16-formula', '通用公式', 'X = V × 2^N', 'X = V \\times 2^N'),

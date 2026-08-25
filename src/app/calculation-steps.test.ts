@@ -60,13 +60,18 @@ describe('buildCalculationSteps — unified four-mode skeleton', () => {
     expect(steps.some((s) => s.kind === 'result' && s.value === '12')).toBe(true)
   })
 
-  it('L16 relative LINEAR stops at a warning, never fakes a result', () => {
+  it('L16 relative LINEAR explains exponent/ratio but never fakes an absolute result', () => {
     const steps = buildCalculationSteps(
       state({ mode: 'L16', raw: 0x0c00, l16: { n: -8, voutMode: 0x98 } }),
     )
     expect(steps.some((s) => s.kind === 'result')).toBe(false)
     expect(steps.some((s) => s.kind === 'warning' && s.id === 'l16-unsupported')).toBe(true)
     expect(steps.some((s) => s.plainText.includes('需要参考值'))).toBe(true)
+    // 相对 LINEAR 可解释 VOUT_MODE 参数位的指数/比值语义……
+    expect(steps.some((s) => s.id === 'l16-n')).toBe(true)
+    expect(steps.some((s) => s.id === 'l16-2n')).toBe(true)
+    // ……但不得把 raw 标成绝对电压（无 V 字段、无结果）。
+    expect(steps.some((s) => s.id === 'l16-v')).toBe(false)
   })
 
   it('L16 non-LINEAR modes stop at a warning without a fake result', () => {
@@ -80,7 +85,33 @@ describe('buildCalculationSteps — unified four-mode skeleton', () => {
         steps.some((s) => s.kind === 'warning' && s.id === 'l16-unsupported'),
         `0x${voutMode.toString(16)}`,
       ).toBe(true)
+      // VID/DIRECT/IEEE Half 不得生成虚假的 LINEAR16 V/N/range/result。
+      expect(
+        steps.some((s) => s.id === 'l16-v'),
+        `0x${voutMode.toString(16)}`,
+      ).toBe(false)
+      expect(
+        steps.some((s) => s.id === 'l16-n'),
+        `0x${voutMode.toString(16)}`,
+      ).toBe(false)
     }
+  })
+
+  it('L11 手动 N 饱和：超出锁定 N 的 Y 范围时出现饱和提示', () => {
+    const manual = state({
+      mode: 'L11',
+      raw: 0x03ff,
+      l11: { ...INITIAL_STATE.l11, autoN: false, n: 0, valueInput: 2000 },
+    })
+    const steps = buildCalculationSteps(manual)
+    expect(steps.some((s) => s.id === 'l11-saturation')).toBe(true)
+
+    const boundary = state({
+      mode: 'L11',
+      raw: 0x03ff,
+      l11: { ...INITIAL_STATE.l11, autoN: false, n: 0, valueInput: 1023 },
+    })
+    expect(buildCalculationSteps(boundary).some((s) => s.id === 'l11-saturation')).toBe(false)
   })
 
   it('DIRECT exposes fields, formula, intermediates, and result', () => {

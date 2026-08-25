@@ -60,8 +60,16 @@ function encodeL11FromValue(state: AppState, value: number): AppState {
 /**
  * Encode a physical value into LINEAR16 raw (V), mirroring legacy
  * updateAll('val') for L16: V = clamp(round(value / 2^N), 0, 65535).
+ *
+ * Domain constraint (Part II §8.3): LINEAR16 encoding is only meaningful for
+ * absolute LINEAR VOUT_MODE.  Under relative LINEAR the value is a ratio that
+ * needs a reference, and under VID/DIRECT/IEEE Half the raw word is not a
+ * LINEAR16 V×2^N payload at all — the reducer must refuse to fabricate a
+ * LINEAR16 encoding instead of relying on hidden UI inputs.
  */
 function encodeL16FromValue(state: AppState, value: number): AppState {
+  const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+  if (parsed.mode !== 0 || parsed.isRelative) return state
   const n = PMBusMath.clamp(state.l16.n, -16, 15)
   const p = PMBusMath.pow2(n)
   const v = PMBusMath.clamp(Math.round(value / p), 0, 65535)

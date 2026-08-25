@@ -181,6 +181,31 @@ test.describe('计算器真实用户流程', () => {
     )
   })
 
+  test('L16 VID（0x20）下隐藏物理值输入且不显示伪造电压结果', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    const voutModeInput = page.locator('#vout-mode-input')
+    await voutModeInput.fill('20')
+    await voutModeInput.press('Tab')
+
+    await expect(page.locator('#value-input')).toHaveCount(0)
+    await expect(page.getByTestId('result-value')).toHaveText('—')
+    await expect(page.getByText(/本页仅支持 absolute LINEAR/)).toBeVisible()
+  })
+
+  test('L16 relative LINEAR（0x98）显示需要参考值且不给出绝对电压', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    const voutModeInput = page.locator('#vout-mode-input')
+    await voutModeInput.fill('98')
+    await voutModeInput.press('Tab')
+
+    await expect(page.locator('#value-input')).toHaveCount(0)
+    await expect(page.getByTestId('result-value')).toHaveText('—')
+    await expect(page.getByText(/相对 LINEAR/).first()).toBeVisible()
+    await expect(page.getByText(/需要参考值/).first()).toBeVisible()
+  })
+
   test('复制 Hex 使用当前偏好格式', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.goto('/')

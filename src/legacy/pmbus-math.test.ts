@@ -188,6 +188,24 @@ describe('PMBusMath — smoke tests (mechanical migration)', () => {
     })
   })
 
+  describe('linear11RangeForN (手动 N 饱和判断范围)', () => {
+    it('N=0 时范围是 -1024..1023（Y=-1024..1023 × 2^0）', () => {
+      expect(PMBusMath.linear11RangeForN(0)).toEqual({ min: -1024, max: 1023 })
+    })
+
+    it('N=-4 时范围是 -64..63.9375', () => {
+      expect(PMBusMath.linear11RangeForN(-4)).toEqual({
+        min: -1024 * Math.pow(2, -4),
+        max: 1023 * Math.pow(2, -4),
+      })
+    })
+
+    it('N=15 时与全格式全局极值一致（auto-N 饱和基准）', () => {
+      expect(PMBusMath.linear11RangeForN(15).min).toBe(PMBusMath.minLinear11())
+      expect(PMBusMath.linear11RangeForN(15).max).toBe(PMBusMath.maxLinear11())
+    })
+  })
+
   describe('calculatePEC', () => {
     it('calculates consistent CRC for known byte arrays', () => {
       const crc1 = PMBusMath.calculatePEC([0x5a, 0xa5])

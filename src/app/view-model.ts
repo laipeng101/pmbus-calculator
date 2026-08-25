@@ -155,8 +155,11 @@ function buildWarnings(state: AppState): WarningVM[] {
     Number.isFinite(state.l11.valueInput)
   ) {
     const requested = state.l11.valueInput
-    const min = PMBusMath.minLinear11()
-    const max = PMBusMath.maxLinear11()
+    // Saturation range depends on the encoding mode: auto-N searches the full
+    // format (N=15 extremes); a locked N clamps Y to -1024..1023 at that N.
+    const { min, max } = state.l11.autoN
+      ? { min: PMBusMath.minLinear11(), max: PMBusMath.maxLinear11() }
+      : PMBusMath.linear11RangeForN(state.l11.n)
     if (requested > max || requested < min) {
       warnings.push({
         id: 'l11-saturation',
@@ -230,8 +233,13 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     const p = PMBusMath.pow2(decodedL11.n)
     nRangeText = `${formatNumber(-1024 * p)} ~ ${formatNumber(1023 * p)}`
   } else if (state.mode === 'L16') {
-    const p = PMBusMath.pow2(state.l16.n)
-    nRangeText = `0 ~ ${formatNumber(65535 * p)}`
+    // Only absolute LINEAR VOUT_MODE has a LINEAR16 V×2^N range; relative
+    // LINEAR is a ratio and VID/DIRECT/IEEE Half are not LINEAR16 at all.
+    const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+    if (parsed.mode === 0 && parsed.isRelative === false) {
+      const p = PMBusMath.pow2(state.l16.n)
+      nRangeText = '0 ~ ' + formatNumber(65535 * p)
+    }
   }
 
   let voutModeInfo: VoutModeInfoVM | undefined

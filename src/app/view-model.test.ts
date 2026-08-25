@@ -427,6 +427,89 @@ describe('toCalculatorViewModel', () => {
       )
       expect(negative.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
     })
+
+    test('autoN=true 用全格式全局可表示范围判断饱和', () => {
+      // autoN 编码器在全局极值（N=15）饱和；全局范围内不报警。
+      const auto = { ...BASE.l11, autoN: true, valueInput: PMBusMath.maxLinear11() }
+      expect(
+        toCalculatorViewModel(make({ raw: 0x7fff, l11: auto })).warnings.some(
+          (w) => w.id === 'l11-saturation',
+        ),
+      ).toBe(false)
+      // 全局范围之外才报警（即使该值对某个锁定 N 仍在 Y 范围内）。
+      const overGlobal = {
+        ...BASE.l11,
+        autoN: true,
+        valueInput: PMBusMath.maxLinear11() + 1,
+      }
+      expect(
+        toCalculatorViewModel(make({ raw: 0x7fff, l11: overGlobal })).warnings.some(
+          (w) => w.id === 'l11-saturation',
+        ),
+      ).toBe(true)
+    })
+
+    test('autoN=false 按锁定 N 的 Y=-1024..1023 范围判断饱和', () => {
+      const n0 = PMBusMath.linear11RangeForN(0)
+      // 边界值（Y=1023 / Y=-1024）不报警。
+      const atMax = toCalculatorViewModel(
+        make({ raw: 0x03ff, l11: { ...BASE.l11, autoN: false, n: 0, valueInput: n0.max } }),
+      )
+      expect(atMax.warnings.some((w) => w.id === 'l11-saturation')).toBe(false)
+      const atMin = toCalculatorViewModel(
+        make({ raw: 0x0400, l11: { ...BASE.l11, autoN: false, n: 0, valueInput: n0.min } }),
+      )
+      expect(atMin.warnings.some((w) => w.id === 'l11-saturation')).toBe(false)
+
+      // 超出该 N 范围（但仍在全格式全局范围内）必须报警。
+      const over = toCalculatorViewModel(
+        make({ raw: 0x03ff, l11: { ...BASE.l11, autoN: false, n: 0, valueInput: n0.max + 1 } }),
+      )
+      expect(over.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
+      const under = toCalculatorViewModel(
+        make({ raw: 0x0400, l11: { ...BASE.l11, autoN: false, n: 0, valueInput: n0.min - 1 } }),
+      )
+      expect(under.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
+    })
+
+    test('L16 非 absolute LINEAR 不提供 nRangeText（不生成虚假 LINEAR16 范围）', () => {
+      for (const voutMode of [0x98, 0x20, 0x40, 0x60, 0xe0]) {
+        const vm = toCalculatorViewModel(
+          make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode } }),
+        )
+        expect(vm.nRangeText, `0x${voutMode.toString(16)}`).toBeUndefined()
+      }
+    })
+
+    test('L16 relative LINEAR 步骤解释指数/比值语义但不展示 V 字段与结果', () => {
+      const vm = toCalculatorViewModel(
+        make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode: 0x98 } }),
+      )
+      expect(vm.steps.some((s) => s.id === 'l16-n')).toBe(true)
+      expect(vm.steps.some((s) => s.id === 'l16-2n')).toBe(true)
+      expect(vm.steps.some((s) => s.id === 'l16-v')).toBe(false)
+      expect(vm.steps.some((s) => s.kind === 'result')).toBe(false)
+    })
+
+    test('L16 VID/DIRECT/IEEE Half 步骤不展示 LINEAR16 V/N 字段与结果', () => {
+      for (const voutMode of [0x20, 0x40, 0x60, 0xe0]) {
+        const vm = toCalculatorViewModel(
+          make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode } }),
+        )
+        expect(
+          vm.steps.some((s) => s.id === 'l16-v'),
+          `0x${voutMode.toString(16)}`,
+        ).toBe(false)
+        expect(
+          vm.steps.some((s) => s.id === 'l16-n'),
+          `0x${voutMode.toString(16)}`,
+        ).toBe(false)
+        expect(
+          vm.steps.some((s) => s.kind === 'result'),
+          `0x${voutMode.toString(16)}`,
+        ).toBe(false)
+      }
+    })
   })
 })
 
