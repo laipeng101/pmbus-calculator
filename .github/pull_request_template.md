@@ -6,61 +6,35 @@
 
 <!-- 例如：Closes #12。单人维护模式下无 Issue 可写 N/A。 -->
 
-## Core evidence（所有任务必填；统计必须来自最终 committed HEAD，不用 working tree/中间 commit 结果）
+## 验收记录
 
-- Base SHA / Base tree:
-- Final head SHA / head tree:
-- Changed files（数量）/ additions / deletions（与 `git show --stat`、evidence 脚本一致）:
+- Base SHA / Final head SHA:
+- Changed files（数量）/ additions / deletions（与 `git show --stat` 一致）:
 - Affected modes:
   <!-- 例如：L11/L16/DIRECT/HALF；本 PR 若为卫生/工具类改动可写 N/A -->
 - `npm run verify` exit code（light tier 任务用 `npm run verify:light` 并注明）:
 - 单测文件数与测试数（light tier 填 policy-skipped）:
-- `npm run check:repo-hygiene`: tracked file count / policy allowlisted（snapshots/legacy fallbacks）/ final HEAD tree size（bytes）:
+- `npm run check:repo-hygiene`: tracked file count / policy allowlisted / final HEAD tree size（bytes）:
 - `git diff --check origin/main...HEAD` exit code:
 - 禁止制品扫描结果（dist/build/out/coverage/report/output/DSH JSONL 等）:
-- 残留检查（temp residue：runner 私有目录、系统临时目录、release-output/staging/backup/journal、孤儿进程、`/tmp/<milestone>-*`）:
+- 残留检查（临时目录、release-output/staging、孤儿进程）:
 - CI tier: light / full（由 `scripts/classify-ci-scope.mjs` 判定，fail closed；`workflow_dispatch` 始终 full）
-- push 次数（每次 push 的 head SHA；第二次 push 后必须立即更新 Final head SHA，不得保留第一次提交 SHA）:
-- 每次 CI URL / head SHA / conclusion:
-- 最终成功 CI head_sha:
-- PR CI `checked_sha` / `checked_tree`（`Record checked revision` 步骤输出）:
-- 证据采集摘要：`node scripts/collect-verification-evidence.mjs --json --results <test-summary.json>` 的 head/tree/changed/hygiene/security/toolchain 输出:
+- 最终成功 CI 的 head_sha 与 URL:
 
-## Release-security evidence（release/进程树相关任务必填；非 release 任务一律明确填 N/A，减少无关证据填写成本）
-
-- 验证去重：`test:coverage` 测试文件数/测试数、`test:release-security` 文件数/测试数（文件列表一律来自共享 `SECURITY_TEST_FILES`，数量以 `node scripts/collect-verification-evidence.mjs` 输出为准，不写死“N 个文件”）、security suite 在 coverage 中的重复执行数（必须为 0）:
-- release-security passed / failed / skipped / todo（zero-skip 合同要求 skipped+todo 为 0；M34 起由分阶段 runner 输出 merged summary：`release-security: merged summary: {...}`）:
-- release-security 分阶段调度（M34：并行批文件数 / 串行批文件数 fileParallelism=false；merged summary 中 missing/extra/duplicates 必须为空）:
-- release-security 失败诊断 artifact（M34：`RELEASE_SECURITY_REPORT_DIR` 下的 merged-summary.json + per-batch JSON；本地失败保留的明确路径）:
-- 进程树/child ownership 证据（按任务要求列出）：
-  - child-state 状态机与 crash window（SPAWN_INTENT/ACTIVE/QUIESCENCE_PROVEN/MANUAL_AUDIT_REQUIRED）:
-  - journal crash matrix failpoint 数量（每个 mutation boundary 的 crash 注入覆盖）:
-  - recovery 正负向矩阵（owner 死+组存活拒绝、SPAWN_INTENT 拒绝、ESRCH+metadata 匹配显式恢复成功、v1 lock/EPERM/nonce 不匹配拒绝）:
-  - fail-closed natural exit（CLI 非零自然退出、锁保留、helper 存活时 recovery 拒绝、清理后显式恢复成功）:
-  - 四 SIGTERM 组合与 post-spawn error、timer created/cleared 与 live-timer 断言:
-- signal gate 证据（INT+INT/TERM+TERM/INT+TERM/TERM+INT/triple/no-Done 轮次；0 raw signal death、0 stale lock、0 orphan、watchdog 触发次数）:
-- 压力验证（M34 起 versioned schema v2 + truthful counters；`all N` 语义 = N 为总轮数、类别间确定性分配；每类别轮次与 bad/unsafeRecovery/orphanAtSafeCompletion/cleanupResidual/staleLockAfterSafeCompletion/residualWriter/liveTimer/rawSignalDeath/doneSeen/recoveredSuccessClaimSeen/watchdogTriggered/timeout 计数；skipped/todo 已删除字段不再伪造 0；`--self-test` 结果）:
-
-## UI/visual evidence（UI 任务必填；否则 N/A）
-
-- `npm run test:e2e:visual` snapshot 新增/修改/删除数量与字节变化（预期 +0/~0/-0 时如实填写）:
-- 关键 viewport 截图与逐图检查说明（无图像读取能力时用几何/对比度/overflow/computed-style 断言说明）:
-
-## Toolchain evidence（涉及 Node/npm/依赖/CI/Pages 任务必填；否则 N/A）
-
-- `npm run doctor` / `check:toolchain` exit code:
-- canonical/compatibility 双运行时（Node 版本 × npm 版本）验证摘要:
-
-## Release publish evidence（仅发布任务必填；否则 N/A）
+## 发布相关（仅发布任务必填；否则 N/A）
 
 - 两次 `release:prepare-assets`（含 `--force`）逐字节一致性与已发布资产 hash 核对:
 - tag / GitHub Release / Pages 状态（本轮是否创建/修改）:
 
-## Post-merge evidence（merge 后由**唯一一次 PR comment** 记录；不在 merge 后反复编辑 PR body）
+## UI/visual evidence（UI 任务必填；否则 N/A）
+
+- `npm run test:e2e:visual` snapshot 新增/修改/删除数量与字节变化:
+- 关键 viewport 截图与逐图检查说明:
+
+## Post-merge evidence（merge 后由**唯一一次 PR comment** 记录）
 
 - merge SHA / merge tree:
-- tree equality（merge HEAD^{tree} 与 PR CI checked_tree 必须完全相同；main 不再有 push CI，必要时用 `workflow_dispatch` 手工执行 full 验证）:
-- 本地/远端任务分支删除与 main 同步状态、open PR=0:
+- tree equality（merge HEAD^{tree} 与 PR CI `Record checked revision` 的 checked_tree 必须完全相同；不一致用 `workflow_dispatch` 对最终 main 执行 full CI）:
 
 ## Fresh environment 初始化
 
@@ -81,8 +55,7 @@ npm run test:e2e:install
 - [ ] 没有修改版本号、tag、GitHub Release 或 Pages 配置
 - [ ] CI tier 已标注；policy-skipped 门禁如实说明，未虚构测试数
 - [ ] 里程碑 Done 已在实现 PR 最终提交中翻转，未创建第二个 bookkeeping PR
-- [ ] 统计数字来自最终 committed HEAD，并经 `git ls-tree -r -l HEAD` 交叉核对
-- [ ] post-merge evidence 走 PR comment，未在 merge 后编辑 PR body
+- [ ] 统计数字来自最终 committed HEAD
 
 ## 剩余缺口
 

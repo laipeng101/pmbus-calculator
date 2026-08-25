@@ -69,7 +69,6 @@ npm run specs:check
 npm run check:release-contract
 npm run check:toolchain
 npm run test:coverage
-npm run test:release-security
 npm run test:e2e
 npm run build
 npm run check:tailwind-scope

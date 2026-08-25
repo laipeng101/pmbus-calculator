@@ -113,10 +113,10 @@ tests/e2e/        Playwright 真实用户流程
    ```
 
    `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`check:markdown-math`、`specs:check`、
-   `check:release-contract`、`check:toolchain`、`test:coverage`、`test:release-security`、`test:e2e`、`build`、
+   `check:release-contract`、`check:toolchain`、`test:coverage`、`test:e2e`、`build`、
    `check:tailwind-scope`、`test:e2e:release`、`check:repo-hygiene`、`git diff --check`（未暂存工作区）、
    `git diff --cached --check`（暂存区）、`npm audit --audit-level=high`。
-   CI 的 whitespace gate 检查完整 PR base→head 范围（M19-B 起 main 不再有 push CI）。
+   CI 的 whitespace gate 检查完整 PR base→head 范围（main 不再有 push CI）。
    CI 仅由目标为 main 的 PR 与手动 `workflow_dispatch` 触发，manual run 始终 full；
    按 `scripts/classify-ci-scope.mjs` 分级（fail closed）：纯 light-only 变更在 CI 中跳过
    coverage/E2E/build/audit，本地对应入口是 `npm run verify:light`；mixed/unknown 或
@@ -125,16 +125,9 @@ tests/e2e/        Playwright 真实用户流程
 
 6. 输出：changed files、affected modes、实际测试命令与结果、剩余缺口。
    验收记录必须包含每条命令、exit code、实际测试数、coverage 和 CI URL。
-7. 里程碑 Done 采用单 PR 闭环：`docs/ROADMAP.md` 只有 main 上的版本是正式事实来源；
-   实现分支在最终提交中同时包含对应里程碑的 `Done` 状态与完成日期。本地验证通过、
-   最终 PR head CI 全绿后才 merge；合入前分支中的 Done 只是未合入提案。main 由
-   ruleset `protect-main` 严格保护：必须 PR、required `check`（GitHub Actions）、
-   strict up-to-date、管理员无绕过、禁止 force push 与删除。merge 后拉取最新 main，
-   比较 PR CI `Record checked revision` 步骤记录的 `checked_tree` 与最终 merge SHA 的
-   `HEAD^{tree}`：完全相同即验证完成，不再执行第二次完整 CI；不一致属于真实阻塞，
-   立即用 `workflow_dispatch` 对最终 main 执行 full CI 并定位原因。CI URL、SHA 与
-   tree 属于 PR、Actions 与最终执行报告的审计证据，不写入 ROADMAP，也不为此创建
-   第二个纯文档 PR。
+7. 里程碑状态与合并流程遵循 `docs/ROADMAP.md` 与 `CONTRIBUTING.md`：ROADMAP 只有 main 上的
+   版本是正式事实来源；里程碑 `Done` 在实现 PR 的最终提交中一并翻转；main 由 ruleset
+   `protect-main` 严格保护（必须 PR、required `check`、strict up-to-date、禁止 force push）。
 8. 器件数据不明确时不得猜测：保持禁用/留空，并在 UI 与文档中注明“需要器件数据手册”。
    只有仓库内规范与官方规范存在无法保守处理的直接冲突时才停止。
 

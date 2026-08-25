@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 发布链路简化与开发流程纠偏：`release:prepare-assets` 恢复为可重新执行的打包步骤——每次运行
+  使用唯一临时 staging 目录，生成/checksum/ZIP verifier 全部成功后才把结果移入 `release-output/`；
+  删除长期 release lock、transaction journal、`--recover`/`--recover-lock`/`--audit-lock`、
+  child-state sidecar、detached process-group supervisor、SIGINT/SIGTERM 生命周期状态机、
+  crash/failpoint matrix、repeated-signal/orphan/PGID/stress evidence runner 与 zero-skip
+  release-security 聚合 runner；对应专项测试退役，发布生成器测试纳入普通单测。
+  失败时正式输出保持旧值或不存在，恢复方式为清理临时输出并重新执行；并发生成不作为受支持场景。
+- CI 并行化：单一串行 `check` job 拆为 `quality`（format/typecheck/lint/coverage/build/基础合同）、
+  `e2e`（Playwright 安装、用户流程、release smoke）、`compatibility`（Node 22 typecheck + unit）、
+  轻量 `check` 聚合 job（继续作为 branch protection required check）。
+- 文档纠偏：AGENTS.md 只保留长期产品约束/目录边界/标准验证入口；ROADMAP 只保留当前产品基线、
+  下一产品目标与简短已完成索引（M25–M34 详细历史由 Git/PR 保存）；RELEASING 只描述正常发布步骤
+  与失败后清理重跑。
+
 ## [1.1.11] - 2026-08-24
 
 ### Fixed
