@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest'
 import { toCalculatorViewModel } from './view-model'
+import { PMBusMath } from '../legacy/pmbus-math'
 import type { AppState } from './state'
 
 const BASE: AppState = {
@@ -77,13 +78,42 @@ describe('toCalculatorViewModel', () => {
       expect(vm.valueText).toBe('12')
     })
 
-    test('voutModeInfo reports LINEAR and exponent for 0x18', () => {
+    test('voutModeInfo reports absolute LINEAR and exponent for 0x18', () => {
       const vm = toCalculatorViewModel(
         make({ mode: 'L16', l16: { ...BASE.l16, voutMode: 0x18, n: -8 } }),
       )
       expect(vm.voutModeInfo?.hex).toBe('0x18')
       expect(vm.voutModeInfo?.isLinear).toBe(true)
+      expect(vm.voutModeInfo?.isRelative).toBe(false)
+      expect(vm.voutModeInfo?.mode).toBe(0)
+      expect(vm.voutModeInfo?.param).toBe(0x18)
+      expect(vm.voutModeInfo?.status).toBe('ok')
       expect(vm.voutModeInfo?.linearExponent).toBe(-8)
+    })
+
+    test('relative LINEAR VOUT_MODE 0x98 is not computed as an absolute voltage', () => {
+      const vm = toCalculatorViewModel(
+        make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode: 0x98, n: -8 } }),
+      )
+      expect(vm.voutModeInfo?.isLinear).toBe(true)
+      expect(vm.voutModeInfo?.isRelative).toBe(true)
+      expect(vm.voutModeInfo?.status).toBe('reference-required')
+      expect(vm.valueText).toBe('—')
+      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-relative')).toBe(true)
+      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear')).toBe(false)
+    })
+
+    test('non-LINEAR VOUT_MODE never fakes a LINEAR16 result', () => {
+      for (const voutMode of [0x20, 0x40, 0x60, 0xe0]) {
+        const vm = toCalculatorViewModel(
+          make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode, n: -8 } }),
+        )
+        expect(vm.valueText, `0x${voutMode.toString(16)}`).toBe('—')
+        expect(
+          vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear'),
+          `0x${voutMode.toString(16)}`,
+        ).toBe(true)
+      }
     })
 
     test('non-LINEAR VOUT_MODE produces a warning', () => {
@@ -324,6 +354,29 @@ describe('toCalculatorViewModel', () => {
     test('default L11 state has no Y=0 info warning', () => {
       const vm = toCalculatorViewModel(BASE)
       expect(vm.warnings).toHaveLength(0)
+    })
+
+    test('Y=1023/-1024 boundary codes are not flagged as overflow', () => {
+      // N=15, Y=1023 -> 0x7FFF ; N=15, Y=-1024 -> 0xFFFF
+      expect(toCalculatorViewModel(make({ raw: 0x7fff })).warnings).toHaveLength(0)
+      expect(toCalculatorViewModel(make({ raw: 0xffff })).warnings).toHaveLength(0)
+    })
+
+    test('L11 saturation warning appears only when the requested value is out of range', () => {
+      const inRange = toCalculatorViewModel(
+        make({ raw: 0x7fff, l11: { ...BASE.l11, valueInput: PMBusMath.maxLinear11() } }),
+      )
+      expect(inRange.warnings.some((w) => w.id === 'l11-saturation')).toBe(false)
+
+      const saturated = toCalculatorViewModel(
+        make({ raw: 0x7fff, l11: { ...BASE.l11, valueInput: PMBusMath.maxLinear11() + 1 } }),
+      )
+      expect(saturated.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
+
+      const negative = toCalculatorViewModel(
+        make({ raw: 0xffff, l11: { ...BASE.l11, valueInput: PMBusMath.minLinear11() - 1 } }),
+      )
+      expect(negative.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
     })
   })
 })

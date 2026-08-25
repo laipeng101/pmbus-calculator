@@ -51,15 +51,11 @@ export const L11_ROUNDTRIP_CASES: L11RoundTripCase[] = [
 ]
 
 /**
- * Special / boundary cases that must produce warnings.
+ * Boundary codes are legal LINEAR11 encodings, not overflow markers.
+ * Saturation is reported by the view-model only when a user-entered physical
+ * value falls outside the representable range (see tests/linear11.test.ts).
  */
-export interface L11SpecialCase {
-  name: string
-  raw: number
-  expectedWarningType: 'overflow' | 'info'
-}
-
-export const L11_SPECIAL_CASES: L11SpecialCase[] = [
-  { name: 'Y=1023 overflow', raw: 0x03ff, expectedWarningType: 'overflow' },
-  { name: 'Y=-1024 overflow', raw: 0x0400, expectedWarningType: 'overflow' },
+export const L11_BOUNDARY_CODES: Array<{ name: string; raw: number }> = [
+  { name: 'Y=1023', raw: 0x03ff },
+  { name: 'Y=-1024', raw: 0x0400 },
 ]

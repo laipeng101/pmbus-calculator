@@ -358,7 +358,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: 'bit field',
     spec: 'PMBus Part II §17.2 Table 16, Appendix I Table 31',
     encodingRule: 'status',
-    note: 'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。写入 STATUS_WORD 用于清除可清除的状态位；读取返回状态摘要。计算器不为其分配 L11/L16/DIRECT/HALF 转换模式。',
+    note: 'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。通常为 Read Word；特殊写入仅用于清除 UNKNOWN 位（写 0x0100），其他状态位通过底层状态寄存器或 CLEAR_FAULTS 处理。计算器不为其分配 L11/L16/DIRECT/HALF 转换模式。',
   },
   READ_EIN: {
     key: 'READ_EIN',

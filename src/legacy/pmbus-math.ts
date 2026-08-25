@@ -27,8 +27,12 @@ export interface HalfResult {
 
 export interface VoutModeResult {
   byte: number
+  /** Mode bits [6:5]: 0=LINEAR, 1=VID, 2=DIRECT, 3=IEEE Half Float. */
   mode: number
   modeName: string
+  /** Bit 7: true = relative (needs a reference value), false = absolute. */
+  isRelative: boolean
+  /** Parameter bits [4:0]. */
   param: number
   linearExponent: number | 'IEEE Half' | null
   description: string
@@ -217,10 +221,17 @@ export const PMBusMath = {
     return sign | (exp << 10) | (mant & 0x03ff)
   },
 
-  /** Parse VOUT_MODE byte per PMBus 1.3 Part II Section 8.3. */
+  /**
+   * Parse VOUT_MODE byte per PMBus Part II §8.3.
+   *
+   * Bit layout: bit7 = absolute/relative, bits[6:5] = mode,
+   * bits[4:0] = parameter.  Earlier code mixed bit7 into the mode field
+   * ((byte >> 5) & 0x07); the mode is only two bits wide.
+   */
   parseVoutMode(byte: number): VoutModeResult {
     byte = byte & 0xff
-    const modeBits = (byte >> 5) & 0x07
+    const isRelative = (byte & 0x80) !== 0
+    const modeBits = (byte >> 5) & 0x03
     const paramBits = byte & 0x1f
     const modeNames: Record<number, string> = {
       0: 'LINEAR',
@@ -238,22 +249,23 @@ export const PMBusMath = {
       byte,
       mode: modeBits,
       modeName: modeNames[modeBits] || '保留',
+      isRelative,
       param: paramBits,
       linearExponent: n,
-      description: 'VOUT_MODE per PMBus 1.3 Part II Section 8.3',
+      description:
+        'VOUT_MODE per PMBus Part II §8.3 (bit7=absolute/relative, bits6:5=mode, bits4:0=parameter)',
     }
   },
 
-  /** Check special values (overflow, zero, etc.) */
-  checkSpecial(raw: number, mode: string): SpecialCheck | null {
-    if (mode === 'L11') {
-      const y = this.toSigned(raw & 0x7ff, 11)
-      if (y === 1023 || y === -1024)
-        return {
-          type: 'overflow',
-          msg: 'Y 接近极值 (±1023/±1024)，可能是饱和/溢出标记',
-        }
-    }
+  /**
+   * Check special values (overflow, zero, etc.).
+   *
+   * Y=1023 and Y=-1024 are legal LINEAR11 boundary codes, not natural
+   * saturation markers.  Saturation is only reported by the view-model when a
+   * user-entered physical value falls outside the representable range and the
+   * encoder actually saturated; the raw code itself is never flagged here.
+   */
+  checkSpecial(_raw: number, _mode: string): SpecialCheck | null {
     return null
   },
 

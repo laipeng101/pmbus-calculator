@@ -237,13 +237,18 @@ describe('command metadata — standard definitions vs presets', () => {
     }
   })
 
-  it('documents STATUS_WORD write behavior as clearing status bits', () => {
+  it('documents STATUS_WORD as a read word whose special write only clears UNKNOWN bits', () => {
     expect(COMMAND_METADATA.STATUS_WORD.transactions.write).toEqual({
       type: 'write_word',
       dataBytes: 2,
     })
-    expect(COMMAND_METADATA.STATUS_WORD.note).toContain('写入 STATUS_WORD')
-    expect(COMMAND_METADATA.STATUS_WORD.note).toContain('清除')
+    expect(COMMAND_METADATA.STATUS_WORD.note).toContain('通常为 Read Word')
+    expect(COMMAND_METADATA.STATUS_WORD.note).toContain('特殊写入仅用于清除 UNKNOWN 位')
+    expect(COMMAND_METADATA.STATUS_WORD.note).toContain('CLEAR_FAULTS')
+    // 不得写成“写入可清除所有状态位”
+    expect(COMMAND_METADATA.STATUS_WORD.note).not.toContain(
+      '写入 STATUS_WORD 用于清除可清除的状态位',
+    )
   })
 
   it('marks READ_EIN as block read with no single authoritative dataBytes', () => {

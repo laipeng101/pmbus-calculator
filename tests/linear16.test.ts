@@ -57,3 +57,61 @@ describe('L16 golden encode cases', () => {
     expect(PMBusMath.parseVoutMode(0x17).linearExponent).toBe(-9)
   })
 })
+
+describe('VOUT_MODE bit layout (PMBus Part II §8.3)', () => {
+  const cases = [
+    { byte: 0x18, mode: 0, modeName: 'LINEAR', isRelative: false, param: 0x18, n: -8 },
+    { byte: 0x98, mode: 0, modeName: 'LINEAR', isRelative: true, param: 0x18, n: -8 },
+    { byte: 0x20, mode: 1, modeName: 'VID', isRelative: false, param: 0, n: null },
+    { byte: 0x40, mode: 2, modeName: 'DIRECT', isRelative: false, param: 0, n: null },
+    {
+      byte: 0x60,
+      mode: 3,
+      modeName: 'IEEE Half Float',
+      isRelative: false,
+      param: 0,
+      n: 'IEEE Half',
+    },
+    {
+      byte: 0xe0,
+      mode: 3,
+      modeName: 'IEEE Half Float',
+      isRelative: true,
+      param: 0,
+      n: 'IEEE Half',
+    },
+  ] as const
+
+  for (const c of cases) {
+    it(`0x${c.byte.toString(16).toUpperCase().padStart(2, '0')} -> mode=${c.mode} relative=${c.isRelative}`, () => {
+      const parsed = PMBusMath.parseVoutMode(c.byte)
+      expect(parsed.mode).toBe(c.mode)
+      expect(parsed.modeName).toBe(c.modeName)
+      expect(parsed.isRelative).toBe(c.isRelative)
+      expect(parsed.param).toBe(c.param)
+      expect(parsed.linearExponent).toBe(c.n)
+    })
+  }
+
+  it('non-absolute-LINEAR VOUT_MODE must not produce a fake LINEAR16 value in the view model', () => {
+    for (const voutMode of [0x98, 0x20, 0x40, 0x60, 0xe0]) {
+      const vm = toCalculatorViewModel({
+        ...INITIAL_STATE,
+        mode: 'L16',
+        raw: 0x0c00,
+        l16: { n: -8, voutMode },
+      })
+      expect(vm.valueText, `0x${voutMode.toString(16)}`).toBe('—')
+    }
+  })
+
+  it('0x18 (absolute LINEAR) still computes a voltage', () => {
+    const vm = toCalculatorViewModel({
+      ...INITIAL_STATE,
+      mode: 'L16',
+      raw: 0x0c00,
+      l16: { n: -8, voutMode: 0x18 },
+    })
+    expect(vm.valueText).toBe('12')
+  })
+})
