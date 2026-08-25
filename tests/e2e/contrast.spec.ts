@@ -69,6 +69,8 @@ test.describe('contrast', () => {
     for (const theme of ['light', 'dark'] as const) {
       await setTheme(page, theme)
       await page.goto('/')
+      // 等待 React 效果把 data-theme 写到根元素，避免在默认主题帧读取样式
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
       const toggle = page.getByRole('button', { name: /当前主题/ })
       const styles = await readContrast(toggle)
       expect(await contrastOf(styles)).toBeGreaterThanOrEqual(4.5)
