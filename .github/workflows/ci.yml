@@ -141,6 +141,13 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm run test:e2e
 
+      # The release smoke serves the production build via `vite preview`, so
+      # the e2e job must build dist/ before running it (build is fast and the
+      # artifact is disposable).
+      - name: Build for release smoke
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run build
+
       - name: Run production release smoke
         id: release_smoke
         if: steps.scope.outputs.run_full != 'false'
