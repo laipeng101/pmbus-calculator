@@ -221,6 +221,11 @@ jobs:
         run: npm ci && npm run typecheck && npm run test:run
 
   check:
+    # The aggregator is the branch-protection required check, so it must run
+    # (and fail closed) even when an upstream verification job fails, is
+    # cancelled, or is skipped. Without always(), GitHub would skip the whole
+    # job on upstream failure and treat the skipped required check as green.
+    if: ${{ always() }}
     needs: [quality, e2e, compatibility]
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -256,11 +261,28 @@ jobs:
             echo "- tree \`${checked_tree}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Summarize parallel verification results
+      - name: Require successful parallel verification results
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
         run: |
-          echo "quality=${{ needs.quality.result }}"
-          echo "e2e=${{ needs.e2e.result }}"
-          echo "compatibility=${{ needs.compatibility.result }}"
+          set -euo pipefail
+
+          echo "quality=${QUALITY_RESULT}"
+          echo "e2e=${E2E_RESULT}"
+          echo "compatibility=${COMPATIBILITY_RESULT}"
+
+          for result in \
+            "$QUALITY_RESULT" \
+            "$E2E_RESULT" \
+            "$COMPATIBILITY_RESULT"
+          do
+            if [[ "$result" != "success" ]]; then
+              echo "A required verification job did not succeed." >&2
+              exit 1
+            fi
+          done
 
       - name: Check full PR diff for whitespace errors
         if: github.event_name == 'pull_request'

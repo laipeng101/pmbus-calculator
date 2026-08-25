@@ -6,8 +6,9 @@
 // step ids for the Playwright steps, per-step report upload gating, the
 // protected-main trigger model (PR + workflow_dispatch only, minimal token
 // permissions, credential-free checkout of the PR merge ref), the recorded
-// revision/tree evidence in the aggregator, and the compatibility Node
-// 22.20.0 typecheck+unit job. Parsing is deliberately dependency-free
+// revision/tree evidence in the aggregator, the fail-closed aggregator gate
+// (always() + strict success on every needs result), and the compatibility
+// Node 22.20.0 typecheck+unit job. Parsing is deliberately dependency-free
 // text-structure matching over step blocks — good enough to pin these
 // invariants without adding a YAML dependency.
 
@@ -115,6 +116,54 @@ describe('ci.yml structure', () => {
   it('no longer contains the release-security runner step', () => {
     expect(workflow).not.toMatch(/test:release-security/)
     expect(workflow).not.toMatch(/security-diagnostics/)
+  })
+})
+
+describe('ci.yml fail-closed aggregator gate', () => {
+  function checkSection(): string {
+    return workflow.split(/^ {2}check:/m)[1] ?? ''
+  }
+
+  function gateStep(): string {
+    return findStepByName('Require successful parallel verification results')
+  }
+
+  it('runs the check aggregator even when an upstream job fails', () => {
+    // Without job-level always(), GitHub skips the whole job when a needs
+    // dependency fails and treats the skipped required check as green.
+    expect(checkSection()).toMatch(/^ {4}if: \$\{\{ always\(\) \}\}\s*$/m)
+  })
+
+  it('keeps the aggregator dependent on all three verification jobs', () => {
+    expect(checkSection()).toMatch(/^ {4}needs: \[quality, e2e, compatibility\]\s*$/m)
+  })
+
+  it('reads the result of every dependency into the gate environment', () => {
+    const normalized = normalize(gateStep())
+    expect(normalized).toContain('QUALITY_RESULT: ${{ needs.quality.result }}')
+    expect(normalized).toContain('E2E_RESULT: ${{ needs.e2e.result }}')
+    expect(normalized).toContain('COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}')
+  })
+
+  it('requires every result to equal success exactly', () => {
+    const normalized = normalize(gateStep())
+    expect(normalized).toContain('for result in')
+    expect(normalized).toContain('"$QUALITY_RESULT"')
+    expect(normalized).toContain('"$E2E_RESULT"')
+    expect(normalized).toContain('"$COMPATIBILITY_RESULT"')
+    expect(normalized).toContain('if [[ "$result" != "success" ]]; then')
+  })
+
+  it('fails hard with a non-zero exit when any result is not success', () => {
+    const normalized = normalize(gateStep())
+    expect(normalized).toContain('set -euo pipefail')
+    expect(normalized).toContain('A required verification job did not succeed.')
+    expect(normalized).toContain('exit 1')
+    expect(normalized).not.toContain('continue-on-error')
+  })
+
+  it('does not regress to a print-only summary step', () => {
+    expect(() => findStepByName('Summarize parallel verification results')).toThrow()
   })
 })
 
