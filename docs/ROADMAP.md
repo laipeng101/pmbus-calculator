@@ -18,7 +18,8 @@
   `document/specifications.json`，开发者按需从官方 URL 下载到 ignored `.cache/specifications/`。
   这是分发边界维护，不是规范升级，不创建新的产品版本里程碑，也不把 PMBus 1.5 升级标成已开始。
 - `pmbus-calculator.html` 保留为仓库内离线历史归档（read-only），不删除、不移动、不重写；
-  不在 Pages 上提供服务（该路径 404），不是产品入口。
+  保留仓库内离线兼容用途，只接受必要纠偏，不再作为当前 Pages 产品入口。Pages 根路径为
+  产品入口（返回 200），仅 legacy `/pmbus-calculator.html` 路径返回 404。
 - 命令元数据唯一数据源：`src/legacy/command-metadata.ts`；只读命令参考，无 preset、无选择副作用。
 - 发布资产生成（`scripts/prepare-release-assets.mjs`）是小型静态 Web 项目的可重新执行打包步骤：
   从 `dist/` 确定性生成 ZIP + SHA256SUMS，临时生成物可丢弃，失败后清理临时输出并重新执行即可；
@@ -27,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M34 complete；stable release v1.1.11；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M34 complete；stable release v2.0.0；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -36,7 +37,7 @@ M0–M34 complete；stable release v1.1.11；production distribution: GitHub Pag
 - M11–M24：领域模型、命令元数据、规范分发边界与发布合同建立。
 - M25–M34：发布链路事务化与加固（v1.1.11 工程基线；2026-08-25 完成发布链路简化后，
   事务锁/journal/恢复/进程监督机制已退役，详见 Git 历史与本任务 PR）。
-- 当前：v1.1.11 已发布；无进行中的功能里程碑。
+- 当前：v2.0.0 已发布；无进行中的功能里程碑。
 
 ## 下一产品目标
 

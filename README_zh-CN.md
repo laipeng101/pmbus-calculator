@@ -8,9 +8,9 @@
 
 > **范围声明：** 本工具只做数值格式换算；它**不是** PMBus/SMBus 控制器、总线传输实现、命令执行器、设备 Profile 引擎或一致性测试套件。它覆盖 PMBus 多个修订版本中通用的数值格式语义，且**不声明**完整 PMBus 1.5 协议一致性（含 1.5 安全扩展）。
 >
-> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （当前部署版本 `v1.1.11`）
+> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （当前部署版本 `v2.0.0`）
 >
-> **Stable version：** [`v1.1.11`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v1.1.11) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v1.1.11/SHA256SUMS.txt)
+> **Stable version：** [`v2.0.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v2.0.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v2.0.0/SHA256SUMS.txt)
 
 ---
 
@@ -65,7 +65,7 @@
 ### 旧版单文件（仓库内离线历史归档）
 
 `pmbus-calculator.html` 是独立的单 HTML 文件，无需构建步骤，无需服务器。
-它保留在仓库根目录，作为**历史离线兼容归档**。该文件**不在 GitHub Pages 上提供服务**（对应路径实际返回 404），也不是产品入口；新版 Web App 是主要工具。
+它保留在仓库根目录，用于**仓库内离线兼容用途**：只接受必要纠偏，不再作为当前 Pages 产品入口。Pages 根路径为产品入口（HTTP 200），仅 legacy `/pmbus-calculator.html` 路径返回 404；新版 Web App 是主要工具。
 
 **本地打开：**
 
@@ -85,7 +85,7 @@ npm test         # 运行 Vitest 测试
 
 **静态构建包：** `dist/` 是静态构建产物，必须通过 HTTP 静态服务器使用（例如 `npm run preview` 或任意静态托管服务），不承诺直接双击 `dist/index.html` 以 `file://` 方式打开。
 
-**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 部署的是不可变的 `v1.1.11` Release 资产。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
+**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 部署的是不可变的 `v2.0.0` Release 资产。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
 
 **操作流程：**
 
@@ -147,7 +147,7 @@ npm test         # 运行 Vitest 测试
 - **Playwright** — 桌面与移动 Chromium 项目的真实用户 E2E 流程。
 - 实时路线图：[docs/ROADMAP.md](docs/ROADMAP.md) · 领域规则：[docs/DOMAIN_MODEL.md](docs/DOMAIN_MODEL.md) · 架构决策：[docs/adr/](docs/adr/) · 冻结的完整历史计划：[docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md](docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md)。
 
-> **当前状态：** 新版 Web App 已具备 L11 / L16 / DIRECT / HALF 完整双向闭环，是主要工具。旧版 `pmbus-calculator.html` 仅作为仓库内历史离线归档保留。
+> **当前状态：** 新版 Web App 已具备 L11 / L16 / DIRECT / HALF 完整双向闭环，是主要工具。旧版 `pmbus-calculator.html` 仅保留仓库内离线兼容用途（只接受必要纠偏），不再作为当前 Pages 产品入口。
 
 ---
 

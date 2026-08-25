@@ -8,9 +8,9 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 > **Scope:** this tool converts numeric formats; it is **not** a PMBus/SMBus controller, bus-transport implementation, command executor, device-profile engine, or conformance test suite. It covers the common numeric-format semantics across multiple PMBus revisions and does **not** claim full PMBus 1.5 protocol compliance (including the 1.5 security extensions).
 >
-> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v1.1.11`)
+> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v2.0.0`)
 >
-> **Stable version:** [`v1.1.11`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v1.1.11) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v1.1.11/SHA256SUMS.txt)
+> **Stable version:** [`v2.0.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v2.0.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v2.0.0/SHA256SUMS.txt)
 
 ---
 
@@ -63,7 +63,7 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 ### Legacy single-file (repository-internal offline archive)
 
 `pmbus-calculator.html` is a self-contained single HTML file — no build step, no server required.
-It remains in the repository root as a **historical offline compatibility archive**. It is **not** served on GitHub Pages (that path returns 404) and is not the product entry point; the React web app is the primary tool.
+It remains in the repository root for **repository-internal offline compatibility purposes**: only necessary corrections are accepted, and it is no longer the Pages product entry point. GitHub Pages serves the React web app at the root (HTTP 200); only the legacy `/pmbus-calculator.html` path returns 404.
 
 **Open locally:**
 
@@ -83,7 +83,7 @@ npm test         # runs Vitest
 
 **Static build package:** the production build in `dist/` is a static bundle and must be used through an HTTP static server (for example `npm run preview` or any static hosting service). Directly double-clicking `dist/index.html` via `file://` is not supported.
 
-**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys the immutable `v1.1.11` Release asset. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
+**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys the immutable `v2.0.0` Release asset. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
 
 **Workflow:**
 
@@ -145,7 +145,7 @@ The built-in reference records what PMBus specifies for 13 standard commands (co
 - **Playwright** — real-user E2E flows across desktop and mobile Chromium projects.
 - Live roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md) · domain rules: [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) · architecture decisions: [`docs/adr/`](docs/adr/) · frozen full plan: [`docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md`](docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md).
 
-> **Current status:** The new web app has L11 / L16 / DIRECT / HALF fully bidirectional and is the primary tool. The legacy `pmbus-calculator.html` remains at the repository root as a historical offline archive only.
+> **Current status:** The new web app has L11 / L16 / DIRECT / HALF fully bidirectional and is the primary tool. The legacy `pmbus-calculator.html` is retained for repository-internal offline compatibility only (necessary corrections only); it is no longer the Pages product entry point.
 
 ---
 

@@ -23,10 +23,18 @@
 - 饱和时 `delta` 保留原始差值，UI 必须显示误差警告。
 - `Y=1023` 与 `Y=-1024` 是合法的 LINEAR11 边界编码，不是天然的溢出/饱和标记；
   仅当用户输入的物理值超出可表示范围且编码器实际饱和时才显示 saturation warning。
+- 饱和判断范围：`autoN=true` 时用全格式全局可表示范围（`maxLinear11`/`minLinear11`，即
+  N=15 极值）判断；`autoN=false` 时按当前锁定 N 对应的 `Y=-1024..1023` 范围
+  （`linear11RangeForN(n)`）判断。边界值（Y=1023 / Y=-1024）本身不报警。
 
 ### 2.2 LINEAR16
 
 - 手动 V 输入和 `raw/set` 必须 clamp 到 `0..65535`，不得使用 `raw & 0xffff` 回绕。
+- reducer/domain 层必须拒绝在 relative LINEAR、VID、DIRECT、IEEE Half VOUT_MODE 下通过
+  `value/set` 生成 LINEAR16 编码——不能只靠隐藏 UI 输入阻止错误状态。
+- 只有 **absolute LINEAR** 才显示绝对电压结果、V、N、2^N 与可表示电压范围；
+  relative LINEAR 可以解释 VOUT_MODE 参数位的 exponent/ratio 语义，但不得把 raw 标成
+  绝对电压；VID/DIRECT/IEEE Half 不得生成虚假的 LINEAR16 V/N/range/result。
 - `raw/set-from-hex` 使用严格十六进制解析：可选 `0x`/`0X` 前缀与首尾空白；必须整串匹配，最多 4 位十六进制数字；非法、只有 `0x`、超长输入均报错且不修改 `state.raw`；空输入按 0 处理。不再通过 `& 0xffff` 静默截断超长输入。
 
 ### 2.3 DIRECT
