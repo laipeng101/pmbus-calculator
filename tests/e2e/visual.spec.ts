@@ -182,14 +182,14 @@ test.describe('visual regression (stable scenes)', () => {
     await expect(page).toHaveScreenshot('mobile-360-half.png', { animations: 'disabled' })
   })
 
-  test('950x304 command popup expanded', async ({ page }) => {
+  test('950x304 command reference expanded', async ({ page }) => {
     await page.setViewportSize({ width: 950, height: 304 })
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
-    await page.locator('#command-picker').click()
-    await expect(page.locator('#command-picker-listbox')).toBeVisible()
+    await page.locator('#command-reference-toggle').click()
+    await expect(page.getByRole('row', { name: /STATUS_WORD/ })).toBeVisible()
     await page.waitForTimeout(120)
-    await expect(page).toHaveScreenshot('popup-950x304.png', { animations: 'disabled' })
+    await expect(page).toHaveScreenshot('command-reference-950x304.png', { animations: 'disabled' })
   })
 
   test('desktop dark L11 stress', async ({ page }) => {
@@ -252,13 +252,15 @@ test.describe('visual regression (stable scenes)', () => {
     await expect(page).toHaveScreenshot('mobile-390-half-stress.png', { animations: 'disabled' })
   })
 
-  test('950x304 dark command popup expanded', async ({ page }) => {
+  test('950x304 dark command reference expanded', async ({ page }) => {
     await page.setViewportSize({ width: 950, height: 304 })
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
     await settle(page)
-    await page.locator('#command-picker').click()
-    await expect(page.locator('#command-picker-listbox')).toBeVisible()
+    await page.locator('#command-reference-toggle').click()
+    await expect(page.getByRole('row', { name: /STATUS_WORD/ })).toBeVisible()
     await page.waitForTimeout(120)
-    await expect(page).toHaveScreenshot('popup-950x304-dark.png', { animations: 'disabled' })
+    await expect(page).toHaveScreenshot('command-reference-950x304-dark.png', {
+      animations: 'disabled',
+    })
   })
 })

@@ -14,14 +14,13 @@ interface ExpectedCommand {
   units: string
   spec: string
   encodingRule: string
-  hasPreset: boolean
 }
 
 /**
  * Golden table derived from PMBus 1.3 Part II Appendix I Table 31 and the
- * command sections referenced by each row.  Standard definitions and
- * project-demo presets must stay separated: presets are never part of the
- * standard definition asserted here.
+ * command sections referenced by each row.  Standard definitions are
+ * read-only reference data: they carry no presets and never drive mode,
+ * parameters or raw.
  */
 const GOLDEN: Record<string, ExpectedCommand> = {
   VOUT_COMMAND: {
@@ -31,7 +30,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: 'V',
     spec: 'PMBus Part II §13.2, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
-    hasPreset: true,
   },
   VOUT_OV_FAULT_LIMIT: {
     cmd: 0x40,
@@ -40,7 +38,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: 'V',
     spec: 'PMBus Part II §15.2, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
-    hasPreset: true,
   },
   READ_VOUT: {
     cmd: 0x8b,
@@ -48,7 +45,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: 'V',
     spec: 'PMBus Part II §18.4, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
-    hasPreset: true,
   },
   READ_VIN: {
     cmd: 0x88,
@@ -56,7 +52,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: 'V',
     spec: 'PMBus Part II §18.1, Appendix I Table 31',
     encodingRule: 'device_defined',
-    hasPreset: true,
   },
   READ_IOUT: {
     cmd: 0x8c,
@@ -64,7 +59,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: 'A',
     spec: 'PMBus Part II §18.5, Appendix I Table 31',
     encodingRule: 'device_defined',
-    hasPreset: true,
   },
   READ_TEMPERATURE_1: {
     cmd: 0x8d,
@@ -72,7 +66,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: '°C',
     spec: 'PMBus Part II §18.6, Appendix I Table 31',
     encodingRule: 'device_defined',
-    hasPreset: true,
   },
   VIN_OV_FAULT_LIMIT: {
     cmd: 0x55,
@@ -81,7 +74,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: 'V',
     spec: 'PMBus Part II §15.23, Appendix I Table 31',
     encodingRule: 'device_defined',
-    hasPreset: true,
   },
   OT_FAULT_LIMIT: {
     cmd: 0x4f,
@@ -90,7 +82,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: '°C',
     spec: 'PMBus Part II §15.17, Appendix I Table 31',
     encodingRule: 'device_defined',
-    hasPreset: true,
   },
   FAN_COMMAND_1: {
     cmd: 0x3b,
@@ -99,7 +90,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: 'RPM or duty cycle (FAN_CONFIG_1_2)',
     spec: 'PMBus Part II §14.12, Appendix I Table 31',
     encodingRule: 'device_defined',
-    hasPreset: true,
   },
   READ_POUT: {
     cmd: 0x96,
@@ -107,7 +97,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: 'W',
     spec: 'PMBus Part II §18.11, Appendix I Table 31',
     encodingRule: 'device_defined',
-    hasPreset: true,
   },
   READ_FAN_SPEED_1: {
     cmd: 0x90,
@@ -115,7 +104,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: 'RPM',
     spec: 'PMBus Part II §18.7, Appendix I Table 31',
     encodingRule: 'device_defined',
-    hasPreset: true,
   },
   STATUS_WORD: {
     cmd: 0x79,
@@ -124,7 +112,6 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: 'bit field',
     spec: 'PMBus Part II §17.2 Table 16, Appendix I Table 31',
     encodingRule: 'status',
-    hasPreset: false,
   },
   READ_EIN: {
     cmd: 0x86,
@@ -132,11 +119,10 @@ const GOLDEN: Record<string, ExpectedCommand> = {
     units: '—',
     spec: 'PMBus Part II §18.13, Appendix I Table 31',
     encodingRule: 'block',
-    hasPreset: false,
   },
 }
 
-describe('command metadata — standard definitions vs presets', () => {
+describe('command metadata — read-only standard definitions (no presets)', () => {
   const all = Object.values(COMMAND_METADATA)
 
   it('defines every command with code, transactions, value type, units, spec, and encoding rule', () => {
@@ -163,7 +149,6 @@ describe('command metadata — standard definitions vs presets', () => {
       expect(cmd.units, key).toBe(expected.units)
       expect(cmd.spec, key).toBe(expected.spec)
       expect(cmd.encodingRule, key).toBe(expected.encodingRule)
-      expect(cmd.preset !== undefined, key).toBe(expected.hasPreset)
     }
   })
 
@@ -195,10 +180,9 @@ describe('command metadata — standard definitions vs presets', () => {
     }
   })
 
-  it('does not pin FAN_COMMAND_1 standard units to RPM; project-demo preset may say RPM', () => {
+  it('does not pin FAN_COMMAND_1 standard units to RPM', () => {
     expect(COMMAND_METADATA.FAN_COMMAND_1.units).not.toBe('RPM')
     expect(COMMAND_METADATA.FAN_COMMAND_1.units).toContain('FAN_CONFIG_1_2')
-    expect(COMMAND_METADATA.FAN_COMMAND_1.preset?.units).toBe('RPM')
   })
 
   it('gives telemetry commands read transactions only', () => {
@@ -257,7 +241,6 @@ describe('command metadata — standard definitions vs presets', () => {
       read: { type: 'block_read' },
     })
     expect(COMMAND_METADATA.READ_EIN.transactions.read?.dataBytes).toBeUndefined()
-    expect(COMMAND_METADATA.READ_EIN.preset).toBeUndefined()
   })
 
   it('records both READ_EIN data-byte sources in the explicit conflict model', () => {
@@ -297,22 +280,20 @@ describe('command metadata — standard definitions vs presets', () => {
     expect(text).not.toContain('Appendix I Table 31')
   })
 
-  it('marks STATUS_WORD as status without a numeric preset', () => {
+  it('marks STATUS_WORD as status without any numeric conversion preset', () => {
     expect(COMMAND_METADATA.STATUS_WORD.encodingRule).toBe('status')
-    expect(COMMAND_METADATA.STATUS_WORD.preset).toBeUndefined()
+    expect('preset' in COMMAND_METADATA.STATUS_WORD).toBe(false)
   })
 
-  it('only ships project-demo presets; none claim to be spec-example or datasheet defaults', () => {
+  it('ships no presets at all: metadata is read-only reference data', () => {
     for (const cmd of all) {
-      if (cmd.preset) {
-        expect(cmd.preset.sourceKind).toBe('project-demo')
-        expect(cmd.preset.direction).toMatch(/^(read|write)$/)
-      }
+      expect('preset' in cmd, cmd.key).toBe(false)
     }
   })
 
-  it('does not keep the removed PMBus Part II typical-example source strings', () => {
+  it('does not keep project-demo or typical-example source strings', () => {
     const text = JSON.stringify(all)
+    expect(text).not.toContain('project-demo')
     expect(text).not.toContain('PMBus Part II typical example')
     expect(text).not.toContain('PMBus Part II 18.1 typical example')
   })

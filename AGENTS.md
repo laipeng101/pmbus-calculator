@@ -73,10 +73,10 @@ tests/e2e/        Playwright 真实用户流程
 ## 5. 状态与组件规则
 
 - 状态入口：`src/app/state.ts` 的 `AppState`；使用 `useReducer`。
-- Action 命名使用命名空间：`mode/set`、`command/set`、`command/apply-preset`、
-  `raw/set-from-hex`、`bit/toggle`、`value/set`、`l11/set-n`、`l11/set-y`、
-  `l11/toggle-auto-n`、`l16/set-vout-mode`、`direct/set-y`、`direct/set-coeff`、
-  `copy/toggle-prefix`、`copy/toggle-space`、`copy/set-endian`、`ui/set-theme`。
+- Action 命名使用命名空间：`mode/set`、`command/set`、`raw/set-from-hex`、
+  `bit/toggle`、`value/set`、`l11/set-n`、`l11/set-y`、`l11/toggle-auto-n`、
+  `l16/set-vout-mode`、`direct/set-y`、`direct/set-coeff`、`copy/toggle-prefix`、
+  `copy/toggle-space`、`copy/set-endian`、`ui/set-theme`。
 - UI 统一使用 `toCalculatorViewModel(state)`；格式化结果不要在 JSX 中重复计算。
 - 组件只能：接收 props、显示 viewModel、dispatch(action)、维护局部 UI 状态（如 popover open）。
 - 主题由 `state.ui.theme` 驱动；`App.tsx` 负责把主题写到 `document.documentElement.dataset.theme`。
@@ -84,12 +84,11 @@ tests/e2e/        Playwright 真实用户流程
 
 ## 6. 命令字典与领域模型
 
-- 命令字典唯一数据源：`src/legacy/command-metadata.ts`。
+- 命令字典唯一数据源：`src/legacy/command-metadata.ts`，且只作只读命令参考。
 - 标准命令定义包含：命令码、`transactions`（可同时表达 write/read）、`valueType`、`units`、`spec`、`encodingRule`。
 - `encodingRule` 只能是：`follows_vout_mode`、`device_defined`、`status`、`block`。
-- 可选 `preset` 不随 `command/set` 自动应用；只有 `command/apply-preset` 才能切换模式、
-  加载参数并重编码 raw。预设必须标 `sourceKind`（当前仅 `project-demo`）、`source`、
-  `appliesTo`、`direction`。没有真实器件数据手册就禁止内置 `device-datasheet` 预设。
+- 命令参考完全无副作用：不选择、不切换模式、不注入参数、不重编码 raw。产品面不再内置任何
+  preset（`command/apply-preset` 已移除）；没有真实器件数据手册就禁止内置 `device-datasheet` 预设。
 
 ## 7. 测试规则
 

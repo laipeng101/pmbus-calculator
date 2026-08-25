@@ -10,7 +10,7 @@ test.describe('首页可见性', () => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'PMBus' })).toBeVisible()
     await expect(page.getByLabel('模式切换')).toBeVisible()
-    await expect(page.getByLabel('PMBus 命令')).toBeVisible()
+    await expect(page.getByLabel('命令参考')).toBeVisible()
     await expect(page.getByLabel('结果面板')).toBeVisible()
   })
 
@@ -48,7 +48,7 @@ test.describe('响应式 viewport 轻量检查', () => {
 
       await expect(page.locator('input[placeholder="0x0000"]')).toBeVisible()
       await expect(page.getByRole('tab', { name: /LINEAR11/ })).toBeVisible()
-      await expect(page.locator('#command-picker')).toBeVisible()
+      await expect(page.locator('#command-reference-toggle')).toBeVisible()
 
       const copyHex = page.getByRole('button', { name: 'Hex（LE）' })
       await copyHex.scrollIntoViewIfNeeded()

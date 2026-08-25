@@ -14,7 +14,7 @@ import AppHeader from './components/layout/AppHeader'
 import WorkspaceLayout from './components/layout/WorkspaceLayout'
 import ModeSwitcher from './components/mode/ModeSwitcher'
 import ModeWorkspace from './components/mode/ModeWorkspace'
-import CommandPicker from './components/command/CommandPicker'
+import CommandReference from './components/command/CommandReference'
 import ResultInspector from './components/result/ResultInspector'
 import InfoPanel from './components/result/InfoPanel'
 import DebugDrawer from './components/debug/DebugDrawer'
@@ -94,11 +94,8 @@ function App() {
 
         <ModeSwitcher mode={state.mode} onChange={(mode) => dispatch({ type: 'mode/set', mode })} />
 
-        <CommandPicker
-          commandKey={state.commandKey}
-          onChange={(key) => dispatch({ type: 'command/set', commandKey: key })}
-          onApplyPreset={(key) => dispatch({ type: 'command/apply-preset', commandKey: key })}
-        />
+        {/* Read-only command reference: no selection, no mode/raw side effects. */}
+        <CommandReference />
 
         <WorkspaceLayout
           primary={<ModeWorkspace mode={state.mode} state={state} vm={vm} dispatch={dispatch} />}

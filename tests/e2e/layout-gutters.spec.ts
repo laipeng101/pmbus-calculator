@@ -3,7 +3,7 @@ import { test, expect, type Page } from '@playwright/test'
 async function assertGutters(page: Page) {
   const title = page.getByRole('heading', { name: 'PMBus' })
   const header = page.locator('header').first()
-  const trigger = page.locator('#command-picker')
+  const trigger = page.locator('#command-reference-toggle')
 
   const triggerContainer = trigger.locator('..')
   const workspace = page.locator('.workspace-layout')
@@ -43,7 +43,9 @@ test.describe('gutter alignment', () => {
     { width: 768, height: 1024 },
     { width: 390, height: 844 },
   ]) {
-    test(`${viewport.width}px gutter aligns header, picker and primary panel`, async ({ page }) => {
+    test(`${viewport.width}px gutter aligns header, command reference and primary panel`, async ({
+      page,
+    }) => {
       await page.setViewportSize(viewport)
       await page.goto('/')
       await assertGutters(page)

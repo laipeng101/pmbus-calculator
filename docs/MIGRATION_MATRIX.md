@@ -9,13 +9,13 @@
 
 ## 当前 parity
 
-| 旧功能              | 当前状态                                                  |
-| ------------------- | --------------------------------------------------------- |
-| PMBusMath 核心      | Done：已迁移到 `src/legacy/pmbus-math.ts`，带 golden case |
-| 命令字典数据        | Done：`src/legacy/command-metadata.ts` 是唯一数据源       |
-| L11/L16/DIRECT/HALF | Done：四种模式双向闭环，E2E 覆盖桌面 + 移动 Chromium      |
-| 复制/主题/偏好      | Done：复制工具、主题与偏好持久化已接入新应用              |
-| legacy HTML         | 明确保留为 read-only fallback：`pmbus-calculator.html`    |
+| 旧功能              | 当前状态                                                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| PMBusMath 核心      | Done：已迁移到 `src/legacy/pmbus-math.ts`，带 golden case                                 |
+| 命令字典数据        | Done：`src/legacy/command-metadata.ts` 是唯一数据源；只读命令参考，无 preset/无选择副作用 |
+| L11/L16/DIRECT/HALF | Done：四种模式双向闭环，E2E 覆盖桌面 + 移动 Chromium                                      |
+| 复制/主题/偏好      | Done：复制工具、主题与偏好持久化已接入新应用                                              |
+| legacy HTML         | 明确保留为 read-only fallback：`pmbus-calculator.html`                                    |
 
 ## Deferred / Blocked items
 
@@ -23,10 +23,10 @@
 
 - **DIRECT `device-datasheet` profiles**：Blocked——缺少真实数据手册；UI 保持手动系数输入并提示需要器件数据手册。
 - **独立 FormulaEditor**：Deferred（optional）——不是缺陷。
-- **legacy HTML fallback**：Deferred（明确保留）——`pmbus-calculator.html` 作为 read-only fallback 保留，不删除、不移动、不重写。
+- **legacy HTML fallback**：Deferred（明确保留）——`pmbus-calculator.html` 作为仓库内离线历史兼容文件保留，不删除、不移动、不重写；不在 GitHub Pages 上作为产品入口提供（Pages 根路径 404）。
 - **PMBus 新版规范升级**：Deferred（独立工作）——当前不得自动开展。
 
-> 「更全面 viewport 业务矩阵」Deferred 项已于 M21 关闭：四模式 + CommandPicker +
+> 「更全面 viewport 业务矩阵」Deferred 项已于 M21 关闭：四模式 + 命令参考 +
 > 全局快捷键的 pairwise 业务矩阵已交付（`tests/e2e/input-interaction.spec.ts`）。
 
 ## 变更审计来源

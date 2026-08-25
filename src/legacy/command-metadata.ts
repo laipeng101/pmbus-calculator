@@ -1,5 +1,6 @@
 /**
- * Command Metadata — single data source of truth for all PMBus commands.
+ * Command Metadata — single data source of truth for the read-only PMBus
+ * command reference.
  *
  * UI components must read from here; never hardcode command lists in JSX.
  *
@@ -13,12 +14,10 @@
  *   format is chosen by the device datasheet; for `follows_vout_mode` it is
  *   chosen by VOUT_MODE.  Claiming a fixed L11/L16 format for those commands
  *   would be a false specification.
- * - An optional `preset` may exist.  Presets are never auto-applied by
- *   `command/set`; the user must explicitly apply them via
- *   `command/apply-preset`.  Every preset declares `sourceKind`
- *   (`spec-example` | `device-datasheet` | `project-demo`), `source`,
- *   `appliesTo`, and `direction` so a demo value can never be mistaken for a
- *   standard or universal default.
+ * - The command reference is read-only: selecting a command cannot reliably
+ *   derive the payload format, so it never switches mode, injects parameters
+ *   or rewrites raw.  project-demo presets were removed from the product
+ *   surface (2026) — demo values must not be mistaken for standard defaults.
  */
 
 export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF'
@@ -61,8 +60,8 @@ export interface CommandDataBytesConflict {
  * Render a `CommandDataBytesConflict` as human-readable Chinese text.
  *
  * The numbers and sources are read from the conflict argument; nothing is
- * hardcoded here.  This keeps the metadata `note` and the CommandPicker UI
- * from drifting into two copies of the same READ_EIN explanation.
+ * hardcoded here.  This keeps the metadata `note` and the command-reference
+ * UI from drifting into two copies of the same READ_EIN explanation.
  */
 export function describeDataBytesConflict(conflict: CommandDataBytesConflict): string {
   return `规范内部冲突：${conflict.detailedSection.source} 描述 ${conflict.detailedSection.value} 个数据字节；${conflict.appendixTable.source} 列为 ${conflict.appendixTable.value}。请以目标器件资料及适用规范修订为准。计算器不是 READ_EIN packet-length authority。`
@@ -72,42 +71,6 @@ export type CommandValueType = 'scalar' | 'status' | 'block'
 
 /** How the PMBus specification tells an implementer to resolve the payload format. */
 export type CommandEncodingRule = 'follows_vout_mode' | 'device_defined' | 'status' | 'block'
-
-export type PresetSourceKind = 'spec-example' | 'device-datasheet' | 'project-demo'
-export type PresetDirection = 'read' | 'write'
-
-/**
- * Optional pre-filled parameters for a command.
- *
- * A preset is only applied when the user explicitly chooses
- * “应用演示预设” (command/apply-preset).  It never auto-applies on selection.
- */
-export interface CommandPreset {
-  /** Calculator mode/format to apply. */
-  mode: AppMode
-
-  /** Physical value used to re-encode raw when the preset is applied. */
-  value: number
-
-  /** LINEAR11 suggested exponent (when mode is L11). */
-  n?: number
-
-  /** LINEAR16 VOUT_MODE byte (when mode is L16). */
-  voutMode?: number
-
-  /** DIRECT coefficients (when mode is DIRECT). */
-  m?: number
-  b?: number
-  R?: number
-
-  /** Optional demo unit, e.g. FAN_COMMAND_1 project-demo uses RPM. */
-  units?: string
-
-  sourceKind: PresetSourceKind
-  source: string
-  appliesTo: string
-  direction: PresetDirection
-}
 
 export interface CommandMeta {
   key: string
@@ -129,9 +92,6 @@ export interface CommandMeta {
   dataBytesConflict?: CommandDataBytesConflict
 
   note?: string
-
-  /** Optional demo/preset parameters.  Never applied by `command/set`. */
-  preset?: CommandPreset
 }
 
 /** Single source of truth for the READ_EIN data-bytes specification conflict. */
@@ -146,12 +106,6 @@ const READ_EIN_DATA_BYTES_CONFLICT: CommandDataBytesConflict = {
   },
 }
 
-const PROJECT_DEMO = {
-  sourceKind: 'project-demo',
-  source: 'Project demo preset',
-  appliesTo: 'Demo only — not a standard or universal PMBus default',
-} as const
-
 const WORD_WRITE: CommandTransaction = { type: 'write_word', dataBytes: 2 }
 const WORD_READ: CommandTransaction = { type: 'read_word', dataBytes: 2 }
 
@@ -165,14 +119,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: 'V',
     spec: 'PMBus Part II §13.2, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
-    note: 'VOUT_COMMAND 的数据格式跟随 VOUT_MODE；选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L16',
-      value: 12,
-      voutMode: 0x18,
-      direction: 'write',
-      ...PROJECT_DEMO,
-    },
+    note: 'VOUT_COMMAND 的数据格式跟随 VOUT_MODE；参考面板不自动应用任何参数。',
   },
   VOUT_OV_FAULT_LIMIT: {
     key: 'VOUT_OV_FAULT_LIMIT',
@@ -183,14 +130,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: 'V',
     spec: 'PMBus Part II §15.2, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
-    note: 'VOUT_OV_FAULT_LIMIT 的数据格式跟随 VOUT_MODE；选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L16',
-      value: 13.2,
-      voutMode: 0x18,
-      direction: 'write',
-      ...PROJECT_DEMO,
-    },
+    note: 'VOUT_OV_FAULT_LIMIT 的数据格式跟随 VOUT_MODE；参考面板不自动应用任何参数。',
   },
   READ_VOUT: {
     key: 'READ_VOUT',
@@ -201,14 +141,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: 'V',
     spec: 'PMBus Part II §18.4, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
-    note: 'READ_VOUT 的数据格式跟随 VOUT_MODE；选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L16',
-      value: 12,
-      voutMode: 0x18,
-      direction: 'read',
-      ...PROJECT_DEMO,
-    },
+    note: 'READ_VOUT 的数据格式跟随 VOUT_MODE；参考面板不自动应用任何参数。',
   },
   READ_VIN: {
     key: 'READ_VIN',
@@ -219,13 +152,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: 'V',
     spec: 'PMBus Part II §18.1, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'READ_VIN 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L11',
-      value: 48,
-      direction: 'read',
-      ...PROJECT_DEMO,
-    },
+    note: 'READ_VIN 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   READ_IOUT: {
     key: 'READ_IOUT',
@@ -236,13 +163,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: 'A',
     spec: 'PMBus Part II §18.5, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'READ_IOUT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L11',
-      value: 20,
-      direction: 'read',
-      ...PROJECT_DEMO,
-    },
+    note: 'READ_IOUT 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   READ_TEMPERATURE_1: {
     key: 'READ_TEMPERATURE_1',
@@ -253,13 +174,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: '°C',
     spec: 'PMBus Part II §18.6, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'READ_TEMPERATURE_1 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L11',
-      value: 45,
-      direction: 'read',
-      ...PROJECT_DEMO,
-    },
+    note: 'READ_TEMPERATURE_1 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   VIN_OV_FAULT_LIMIT: {
     key: 'VIN_OV_FAULT_LIMIT',
@@ -270,13 +185,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: 'V',
     spec: 'PMBus Part II §15.23, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'VIN_OV_FAULT_LIMIT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L11',
-      value: 60,
-      direction: 'write',
-      ...PROJECT_DEMO,
-    },
+    note: 'VIN_OV_FAULT_LIMIT 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   OT_FAULT_LIMIT: {
     key: 'OT_FAULT_LIMIT',
@@ -287,13 +196,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: '°C',
     spec: 'PMBus Part II §15.17, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'OT_FAULT_LIMIT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L11',
-      value: 125,
-      direction: 'write',
-      ...PROJECT_DEMO,
-    },
+    note: 'OT_FAULT_LIMIT 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   FAN_COMMAND_1: {
     key: 'FAN_COMMAND_1',
@@ -304,15 +207,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: 'RPM or duty cycle (FAN_CONFIG_1_2)',
     spec: 'PMBus Part II §14.12, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'FAN_COMMAND_1 的数据格式由器件资料决定；单位依 FAN_CONFIG_1_2，可为 RPM 或 duty cycle。需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L11',
-      value: 5000,
-      n: 3,
-      units: 'RPM',
-      direction: 'write',
-      ...PROJECT_DEMO,
-    },
+    note: 'FAN_COMMAND_1 的数据格式由器件资料决定；单位依 FAN_CONFIG_1_2，可为 RPM 或 duty cycle。需要器件数据手册。参考面板不自动应用任何参数。',
   },
   READ_POUT: {
     key: 'READ_POUT',
@@ -323,13 +218,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: 'W',
     spec: 'PMBus Part II §18.11, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'READ_POUT 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L11',
-      value: 120,
-      direction: 'read',
-      ...PROJECT_DEMO,
-    },
+    note: 'READ_POUT 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   READ_FAN_SPEED_1: {
     key: 'READ_FAN_SPEED_1',
@@ -340,14 +229,7 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     units: 'RPM',
     spec: 'PMBus Part II §18.7, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'READ_FAN_SPEED_1 的数据格式由器件资料决定；需要器件数据手册。选择命令只显示命令信息，不会自动应用参数。',
-    preset: {
-      mode: 'L11',
-      value: 3200,
-      n: 2,
-      direction: 'read',
-      ...PROJECT_DEMO,
-    },
+    note: 'READ_FAN_SPEED_1 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   STATUS_WORD: {
     key: 'STATUS_WORD',
@@ -420,15 +302,4 @@ export function describeTransactions(transactions: CommandTransactions): string 
   if (transactions.write) parts.push(`写 ${describeTransactionType(transactions.write.type)}`)
   if (transactions.read) parts.push(`读 ${describeTransactionType(transactions.read.type)}`)
   return parts.length > 0 ? parts.join(' · ') : '—'
-}
-
-export function describePresetSource(preset: CommandPreset): string {
-  switch (preset.sourceKind) {
-    case 'spec-example':
-      return '规范示例'
-    case 'device-datasheet':
-      return '器件数据手册'
-    case 'project-demo':
-      return 'project-demo'
-  }
 }

@@ -32,21 +32,28 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
   test('修改输入后公式同步更新', async ({ page }) => {
     await page.goto('/')
     const hexInput = page.locator('input[placeholder="0x0000"]')
-    const resultFormula = page.locator('section[aria-label="结果面板"] .katex').first()
 
     await hexInput.fill('F819')
     await hexInput.press('Tab')
 
     await expect(page.locator('#value-input')).toHaveValue('12.5')
-    await expect(resultFormula).toContainText('25')
+    // 计算过程里的数值代入公式包含实际 N/Y 值（25 × 2^-1）
+    const substitution = page
+      .locator('section[aria-label="结果面板"] [data-step-kind="formula"]')
+      .filter({ hasText: '25' })
+      .first()
+    await expect(substitution).toBeVisible()
+    await expect(substitution).toContainText('2')
   })
 
   test('cursor 语义：按钮 pointer、输入 text、禁用 N 为 not-allowed', async ({ page }) => {
     await page.goto('/')
 
-    const commandPicker = page.locator('#command-picker')
-    await expect(commandPicker).toBeVisible()
-    expect(await commandPicker.evaluate((el) => getComputedStyle(el).cursor)).toBe('pointer')
+    const commandReferenceToggle = page.locator('#command-reference-toggle')
+    await expect(commandReferenceToggle).toBeVisible()
+    expect(await commandReferenceToggle.evaluate((el) => getComputedStyle(el).cursor)).toBe(
+      'pointer',
+    )
 
     const hexInput = page.locator('input[placeholder="0x0000"]')
     expect(await hexInput.evaluate((el) => getComputedStyle(el).cursor)).toBe('text')
@@ -59,23 +66,27 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
   test('hover、active 与 focus-visible 有可观察反馈', async ({ page }) => {
     await page.goto('/')
 
-    const commandPicker = page.locator('#command-picker')
+    const commandReferenceToggle = page.locator('#command-reference-toggle')
     const hoverCapable = await page.evaluate(
       () => window.matchMedia('(hover: hover) and (pointer: fine)').matches,
     )
 
     if (hoverCapable) {
-      const shadowBefore = await commandPicker.evaluate((el) => getComputedStyle(el).boxShadow)
-      await commandPicker.hover()
-      const shadowAfter = await commandPicker.evaluate((el) => getComputedStyle(el).boxShadow)
+      const shadowBefore = await commandReferenceToggle.evaluate(
+        (el) => getComputedStyle(el).boxShadow,
+      )
+      await commandReferenceToggle.hover()
+      const shadowAfter = await commandReferenceToggle.evaluate(
+        (el) => getComputedStyle(el).boxShadow,
+      )
       expect(shadowAfter).not.toBe(shadowBefore)
       expect(shadowAfter).toContain('rgb')
 
-      const box = await commandPicker.boundingBox()
-      if (box == null) throw new Error('command picker bounding box missing')
+      const box = await commandReferenceToggle.boundingBox()
+      if (box == null) throw new Error('command reference toggle bounding box missing')
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
       await page.mouse.down()
-      const transformDuringActive = await commandPicker.evaluate(
+      const transformDuringActive = await commandReferenceToggle.evaluate(
         (el) => getComputedStyle(el).transform,
       )
       await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 + 40)
@@ -162,12 +173,14 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     expect(focusInfo.outlineWidth).not.toBe('0px')
 
     // active 按压反馈保留。
-    const commandPicker = page.locator('#command-picker')
-    const box = await commandPicker.boundingBox()
-    if (box == null) throw new Error('command picker bounding box missing')
+    const commandReferenceToggle = page.locator('#command-reference-toggle')
+    const box = await commandReferenceToggle.boundingBox()
+    if (box == null) throw new Error('command reference toggle bounding box missing')
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down()
-    const activeTransform = await commandPicker.evaluate((el) => getComputedStyle(el).transform)
+    const activeTransform = await commandReferenceToggle.evaluate(
+      (el) => getComputedStyle(el).transform,
+    )
     await page.mouse.up()
     expect(activeTransform).not.toBe('none')
 
