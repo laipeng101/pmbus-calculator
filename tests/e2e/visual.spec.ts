@@ -182,14 +182,24 @@ test.describe('visual regression (stable scenes)', () => {
     await expect(page).toHaveScreenshot('mobile-360-half.png', { animations: 'disabled' })
   })
 
-  test('950x304 command reference expanded', async ({ page }) => {
+  test('command reference table (light) — 覆盖表格与 note 列', async ({ page }) => {
     await page.setViewportSize({ width: 950, height: 304 })
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
     await page.locator('#command-reference-toggle').click()
     await expect(page.getByRole('row', { name: /STATUS_WORD/ })).toBeVisible()
+    const shell = page.locator('.command-ref-table-shell')
+    await shell.scrollIntoViewIfNeeded()
+    // 展开容器以便元素截图覆盖整张表格（含说明列），而不是被 viewport 裁剪。
+    await shell.evaluate((el: HTMLElement) => {
+      el.style.overflow = 'visible'
+      el.style.width = 'max-content'
+      el.style.maxWidth = 'none'
+    })
     await page.waitForTimeout(120)
-    await expect(page).toHaveScreenshot('command-reference-950x304.png', { animations: 'disabled' })
+    await expect(shell).toHaveScreenshot('command-reference-table-light.png', {
+      animations: 'disabled',
+    })
   })
 
   test('desktop dark L11 stress', async ({ page }) => {
@@ -252,14 +262,21 @@ test.describe('visual regression (stable scenes)', () => {
     await expect(page).toHaveScreenshot('mobile-390-half-stress.png', { animations: 'disabled' })
   })
 
-  test('950x304 dark command reference expanded', async ({ page }) => {
+  test('command reference table (dark) — 覆盖表格与 note 列', async ({ page }) => {
     await page.setViewportSize({ width: 950, height: 304 })
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
     await settle(page)
     await page.locator('#command-reference-toggle').click()
     await expect(page.getByRole('row', { name: /STATUS_WORD/ })).toBeVisible()
+    const shell = page.locator('.command-ref-table-shell')
+    await shell.scrollIntoViewIfNeeded()
+    await shell.evaluate((el: HTMLElement) => {
+      el.style.overflow = 'visible'
+      el.style.width = 'max-content'
+      el.style.maxWidth = 'none'
+    })
     await page.waitForTimeout(120)
-    await expect(page).toHaveScreenshot('command-reference-950x304-dark.png', {
+    await expect(shell).toHaveScreenshot('command-reference-table-dark.png', {
       animations: 'disabled',
     })
   })
