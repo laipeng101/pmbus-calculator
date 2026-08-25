@@ -3,6 +3,7 @@ import {
   COMMAND_METADATA,
   describeDataBytesConflict,
   describeEncodingRule,
+  describeTransactionType,
   describeTransactions,
   getCommandConfig,
 } from './command-metadata'
@@ -317,6 +318,15 @@ describe('command metadata — read-only standard definitions (no presets)', () 
     )
     expect(describeTransactions(COMMAND_METADATA.READ_VIN.transactions)).toBe('读 Read Word')
     expect(describeTransactions(COMMAND_METADATA.READ_EIN.transactions)).toBe('读 Block Read')
+  })
+  it('describeTransactionType covers every PMBus/SMBus transaction label', () => {
+    expect(describeTransactionType('send_byte')).toBe('Send Byte')
+    expect(describeTransactionType('write_byte')).toBe('Write Byte')
+    expect(describeTransactionType('write_word')).toBe('Write Word')
+    expect(describeTransactionType('block_write')).toBe('Block Write')
+    expect(describeTransactionType('read_byte')).toBe('Read Byte')
+    expect(describeTransactionType('read_word')).toBe('Read Word')
+    expect(describeTransactionType('block_read')).toBe('Block Read')
   })
 
   it('getCommandConfig returns null for missing keys', () => {

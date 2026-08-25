@@ -13,27 +13,11 @@ export default function InfoPanel({ warnings }: Props) {
       {warnings.map((w) => (
         <div
           key={w.id}
-          className="flex items-start gap-2 rounded-lg px-4 py-3 text-sm"
+          className="alert-panel flex items-start gap-2 rounded-lg px-4 py-3 text-sm"
+          data-level={w.level}
           role="alert"
-          style={{
-            background:
-              w.level === 'error'
-                ? 'var(--color-danger-surface)'
-                : w.level === 'warning'
-                  ? 'var(--color-warning-surface)'
-                  : 'var(--color-info-surface)',
-            border: '1px solid var(--color-border)',
-            borderLeft: `3px solid ${
-              w.level === 'error'
-                ? 'var(--color-danger)'
-                : w.level === 'warning'
-                  ? 'var(--color-warning)'
-                  : 'var(--color-info)'
-            }`,
-            color: 'var(--color-text-primary)',
-          }}
         >
-          <span className="mt-0.5 inline-flex" aria-hidden="true" style={{ color: 'currentColor' }}>
+          <span className="mt-0.5 inline-flex" aria-hidden="true">
             {w.level === 'error' ? (
               <ErrorIcon size={16} />
             ) : w.level === 'warning' ? (

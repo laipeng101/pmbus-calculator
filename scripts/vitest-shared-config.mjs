@@ -18,10 +18,10 @@ export const COVERAGE_SCOPE_INCLUDE = Object.freeze([
 ])
 
 export const COVERAGE_THRESHOLDS = Object.freeze({
-  lines: 80,
-  functions: 80,
-  branches: 70,
-  statements: 80,
+  lines: 90,
+  functions: 90,
+  branches: 85,
+  statements: 90,
 })
 
 export const COVERAGE_EXCLUDE = Object.freeze([

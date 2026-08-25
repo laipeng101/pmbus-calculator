@@ -93,14 +93,7 @@ export default function CopyToolbar({
         />
       </div>
 
-      <div
-        className="copy-prefs space-y-2 rounded-lg px-3 py-2 text-xs"
-        style={{
-          background: 'var(--color-surface-muted)',
-          border: '1px solid var(--color-border)',
-          color: 'var(--color-text-secondary)',
-        }}
-      >
+      <div className="copy-prefs space-y-2 rounded-lg px-3 py-2 text-xs panel-surface-muted color-text-secondary">
         <div
           role="group"
           aria-labelledby="copy-hex-format-label"
@@ -124,13 +117,7 @@ export default function CopyToolbar({
           <span id="copy-hex-order-label" className="copy-pref-group-label">
             Hex 复制顺序
           </span>
-          <div
-            className="inline-flex rounded-md p-0.5"
-            style={{
-              background: 'var(--color-surface-muted)',
-              border: '1px solid var(--color-border)',
-            }}
-          >
+          <div className="inline-flex rounded-md p-0.5 surface-muted border-default">
             <EndianButton
               pressed={copyPrefs.endian === 'le'}
               onClick={() => onCopyEndianChange('le')}
@@ -148,20 +135,7 @@ export default function CopyToolbar({
       {feedback && (
         <div
           className="copy-feedback rounded-md px-3 py-1.5 text-xs font-medium"
-          style={{
-            background:
-              feedback.kind === 'success'
-                ? 'var(--color-success-surface)'
-                : 'var(--color-danger-surface)',
-            color:
-              feedback.kind === 'success'
-                ? 'var(--color-success-text)'
-                : 'var(--color-danger-text)',
-            border:
-              feedback.kind === 'success'
-                ? '1px solid var(--color-success-border)'
-                : '1px solid var(--color-danger-border)',
-          }}
+          data-kind={feedback.kind}
           role="status"
           aria-live="polite"
         >
@@ -185,13 +159,7 @@ function CopyButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium ${className}`}
-      style={{
-        background: 'var(--color-surface-muted)',
-        color: 'var(--color-text-primary)',
-        border: '1px solid var(--color-border)',
-        whiteSpace: 'nowrap',
-      }}
+      className={`surface-muted border-default color-text-primary flex min-h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-xs font-medium ${className}`}
     >
       <CopyIcon size={14} />
       <span>{label}</span>
@@ -213,13 +181,7 @@ function PreferenceButton({
       type="button"
       onClick={onClick}
       aria-pressed={pressed}
-      className="min-h-9 rounded-md px-2.5 py-1 font-medium"
-      style={{
-        background: pressed ? 'var(--color-accent-solid)' : 'var(--color-surface)',
-        color: pressed ? 'var(--color-on-accent)' : 'var(--color-text-secondary)',
-        border: `1px solid ${pressed ? 'var(--color-accent-solid)' : 'var(--color-border)'}`,
-        whiteSpace: 'nowrap',
-      }}
+      className="preference-button min-h-9 rounded-md px-2.5 py-1 font-medium"
     >
       {label}
     </button>
@@ -240,13 +202,7 @@ function EndianButton({
       type="button"
       onClick={onClick}
       aria-pressed={pressed}
-      className="min-h-8 rounded px-2.5 py-1 text-xs font-semibold"
-      style={{
-        background: pressed ? 'var(--color-accent-solid)' : 'transparent',
-        color: pressed ? 'var(--color-on-accent)' : 'var(--color-text-secondary)',
-        border: '1px solid transparent',
-        whiteSpace: 'nowrap',
-      }}
+      className="endian-button min-h-8 rounded px-2.5 py-1 text-xs font-semibold"
     >
       {label}
     </button>

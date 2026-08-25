@@ -71,13 +71,7 @@ export default function ModeSwitcher({ mode, onChange }: Props) {
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(m.key)}
             onKeyDown={(e) => onKeyDown(e, m.key)}
-            className="relative rounded-full px-3 py-2 text-xs font-semibold transition-colors md:px-5 md:text-sm"
-            style={{
-              background: active ? 'var(--color-accent-solid)' : 'var(--color-surface)',
-              color: active ? 'var(--color-on-accent)' : 'var(--color-text-primary)',
-              border: `2px solid ${active ? 'var(--color-accent-solid)' : 'var(--color-border)'}`,
-              boxShadow: active ? '0 4px 6px -1px rgb(30 64 175 / 0.2)' : 'none',
-            }}
+            className={`mode-tab relative rounded-full px-3 py-2 text-xs font-semibold transition-colors md:px-5 md:text-sm`}
           >
             {m.label}
             <span className="ml-1 hidden text-[10px] opacity-60 md:inline" aria-hidden="true">

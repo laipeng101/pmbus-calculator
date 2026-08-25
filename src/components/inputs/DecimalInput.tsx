@@ -7,7 +7,6 @@ interface Props {
   placeholder?: string
   ariaLabel: string
   className?: string
-  style?: React.CSSProperties
   onCommit: (text: string) => void
 }
 
@@ -25,7 +24,6 @@ export default function DecimalInput({
   placeholder,
   ariaLabel,
   className,
-  style,
   onCommit,
 }: Props) {
   const [draft, setDraft] = useState(String(value))
@@ -81,7 +79,6 @@ export default function DecimalInput({
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : undefined}
         className={className}
-        style={style}
         onFocus={() => setEditing(true)}
         onChange={(e) => handleChange(e.target.value)}
         onBlur={handleBlur}
@@ -90,12 +87,7 @@ export default function DecimalInput({
         }}
       />
       {error && (
-        <p
-          id={`${id}-error`}
-          role="alert"
-          className="mt-1 text-xs"
-          style={{ color: 'var(--color-danger)' }}
-        >
+        <p id={`${id}-error`} role="alert" className="mt-1 text-xs color-danger">
           {error}
         </p>
       )}

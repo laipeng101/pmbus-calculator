@@ -20,24 +20,26 @@ function getBitRegion(index: number, mode: AppMode): BitRegion {
   return 'secondary' // L16 V[15:0] / DIRECT Y[15:0] use a single-value region
 }
 
-function getLegend(mode: AppMode): Array<{ color: string; border?: string; label: string }> {
+type LegendVariant = 'n' | 'y' | 'e' | 'zero'
+
+function getLegend(mode: AppMode): Array<{ variant: LegendVariant; label: string }> {
   if (mode === 'L11') {
     return [
-      { color: 'var(--color-bit-n)', label: 'N [15:11]' },
-      { color: 'var(--color-bit-y)', label: 'Y [10:0]' },
+      { variant: 'n', label: 'N [15:11]' },
+      { variant: 'y', label: 'Y [10:0]' },
     ]
   }
   if (mode === 'HALF') {
     return [
-      { color: 'var(--color-bit-e)', label: 'Sign [15]' },
-      { color: 'var(--color-bit-n)', label: 'Exponent [14:10]' },
-      { color: 'var(--color-bit-y)', label: 'Mantissa [9:0]' },
+      { variant: 'e', label: 'Sign [15]' },
+      { variant: 'n', label: 'Exponent [14:10]' },
+      { variant: 'y', label: 'Mantissa [9:0]' },
     ]
   }
   if (mode === 'DIRECT') {
-    return [{ color: 'var(--color-bit-y)', label: 'Y [15:0]' }]
+    return [{ variant: 'y', label: 'Y [15:0]' }]
   }
-  return [{ color: 'var(--color-bit-y)', label: 'V [15:0]' }]
+  return [{ variant: 'y', label: 'V [15:0]' }]
 }
 
 export default function BitGrid({ mode, groups, dispatch }: Props) {
@@ -48,21 +50,9 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
           {groups.map((group) => (
             <div
               key={group.nibbleIndex}
-              className="flex flex-col items-center rounded-lg p-1"
-              style={{
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border-subtle)',
-              }}
+              className="surface border-subtle flex flex-col items-center rounded-lg p-1"
             >
-              <div
-                className="mb-1 rounded px-2 py-0.5 text-xs font-bold"
-                style={{
-                  background: 'var(--color-surface-muted)',
-                  color: 'var(--color-accent)',
-                  fontFamily: 'var(--font-mono)',
-                  border: '1px dashed var(--color-border)',
-                }}
-              >
+              <div className="bit-label mb-1 rounded px-2 py-0.5 text-xs font-bold">
                 {group.hex}
               </div>
               <div className="flex gap-0.5">
@@ -76,12 +66,6 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
                       : region === 'sign'
                         ? 'e'
                         : 'y'
-                  const regionBg = `var(--color-bit-${tokenPrefix}-bg)`
-                  const regionBorder = `var(--color-bit-${tokenPrefix}-border)`
-                  const regionText = `var(--color-bit-${tokenPrefix}-text)`
-                  const bgColor = isOn ? regionBg : 'var(--color-surface-muted)'
-                  const borderColor = isOn ? regionBorder : 'var(--color-border)'
-                  const textColor = isOn ? regionText : 'var(--color-text-muted)'
 
                   return (
                     <button
@@ -94,22 +78,13 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
                       title={`Bit ${bit.index}`}
                     >
                       <div
-                        className="flex h-8 w-7 items-center justify-center rounded text-sm font-bold transition-colors"
-                        style={{
-                          background: bgColor,
-                          color: textColor,
-                          border: `2px solid ${borderColor}`,
-                          boxShadow: 'none',
-                        }}
+                        className="bit-cell flex h-8 w-7 items-center justify-center rounded text-sm font-bold transition-colors"
+                        data-region={tokenPrefix}
+                        data-on={isOn}
                       >
                         {bit.value}
                       </div>
-                      <span
-                        className="text-[10px] font-medium"
-                        style={{ color: 'var(--color-text-muted)' }}
-                      >
-                        {bit.index}
-                      </span>
+                      <span className="text-[10px] font-medium color-text-muted">{bit.index}</span>
                     </button>
                   )
                 })}
@@ -124,23 +99,17 @@ export default function BitGrid({ mode, groups, dispatch }: Props) {
         {getLegend(mode).map((item) => (
           <LegendItem key={item.label} {...item} />
         ))}
-        <LegendItem color="var(--color-surface-muted)" border="var(--color-border)" label="0" />
+        <LegendItem variant="zero" label="0" />
       </div>
     </div>
   )
 }
 
-function LegendItem({ color, border, label }: { color: string; border?: string; label: string }) {
+function LegendItem({ variant, label }: { variant: LegendVariant; label: string }) {
   return (
     <div className="flex items-center gap-1">
-      <span
-        className="inline-block h-2.5 w-2.5 rounded-sm"
-        style={{
-          background: color,
-          border: `1px solid ${border || color}`,
-        }}
-      />
-      <span style={{ color: 'var(--color-text-muted)' }}>{label}</span>
+      <span className={`legend-swatch legend-${variant} inline-block h-2.5 w-2.5 rounded-sm`} />
+      <span className="color-text-muted">{label}</span>
     </div>
   )
 }

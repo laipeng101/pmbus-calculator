@@ -53,6 +53,26 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   plugins: [tailwindcss(), react(), productionCspPlugin()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split stable third-party code out of the application bundle. This
+        // keeps the initial app chunk below Vite's 500 kB advisory limit and
+        // gives dependency-only changes long-lived cache entries.
+        manualChunks(id) {
+          if (id.includes('node_modules/katex')) return 'katex'
+          if (
+            id.includes('node_modules/react') ||
+            id.includes('node_modules/react-dom') ||
+            id.includes('node_modules/scheduler') ||
+            id.includes('node_modules/@floating-ui')
+          ) {
+            return 'react-vendor'
+          }
+        },
+      },
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',

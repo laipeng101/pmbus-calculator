@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-08-26
+
+### Changed
+
+- 工程质量加固（M35）：Vite 构建拆分为 `katex` / `react-vendor` / 应用三块，消除主 JS chunk
+  超过 500 kB 的构建警告，并改善依赖缓存。
+- 覆盖率门槛从 `lines/functions/statements 80 / branches 70` 上调至
+  `lines/functions/statements 90 / branches 85`，并补充 `pow2` 回退、`encodeLinear16`、
+  HALF 次正规数进位、命令事务标签等边界用例；当前实际覆盖率约
+  statements 95.86% / branches 93.82% / functions 97.84% / lines 98.13%。
+- 清理全部 React inline `style` prop，迁移到 `src/styles/tokens.css` 语义 class / data
+  属性；新增 `npm run check:inline-style` 防回归门禁并接入 `npm run verify`、`npm run check`
+  与 CI quality job。
+- `HexInput` / `IntegerInput` / `DecimalInput` 移除已无调用方的 `style` prop 通道。
+
 ## [2.0.1] - 2026-08-25
 
 ### Fixed

@@ -26,6 +26,13 @@ describe('PMBusMath — smoke tests (mechanical migration)', () => {
       expect(r.value).toBe(0)
     })
   })
+  describe('pow2', () => {
+    it('uses Math.pow fallback for exponents outside the 32-bit shift range', () => {
+      expect(PMBusMath.pow2(31)).toBe(Math.pow(2, 31))
+      expect(PMBusMath.pow2(-31)).toBe(Math.pow(2, -31))
+      expect(PMBusMath.pow2(31.5)).toBe(Math.pow(2, 31.5))
+    })
+  })
 
   describe('findBestLinear11', () => {
     it('finds exact representation for 12.0', () => {
@@ -55,6 +62,15 @@ describe('PMBusMath — smoke tests (mechanical migration)', () => {
     it('decodes 0x0C00 with N=-8 to 12.0', () => {
       const r = PMBusMath.decodeLinear16(0x0c00, -8)
       expect(r.value).toBeCloseTo(12, 10)
+    })
+  })
+
+  describe('encodeLinear16', () => {
+    it('clamps to the unsigned 16-bit range', () => {
+      expect(PMBusMath.encodeLinear16(0, 0)).toBe(0)
+      expect(PMBusMath.encodeLinear16(12, 0)).toBe(12)
+      expect(PMBusMath.encodeLinear16(-1, 0)).toBe(0)
+      expect(PMBusMath.encodeLinear16(70000, 0)).toBe(65535)
     })
   })
 
@@ -112,6 +128,12 @@ describe('PMBusMath — smoke tests (mechanical migration)', () => {
 
     it('encodes a subnormal value above half ulp to 0x0002 (1.5 ulp tie-to-even)', () => {
       expect(PMBusMath.encodeHalf(3 * Math.pow(2, -25))).toBe(0x0002)
+    })
+
+    it('rounds a subnormal value up to the smallest normal 0x0400', () => {
+      // 1023.5 × 2^-24 is just below 2^-14, but rounds to 1024 subnormal
+      // ulps, which carries into the smallest normal exponent (0x0400).
+      expect(PMBusMath.encodeHalf(1023.5 * Math.pow(2, -24))).toBe(0x0400)
     })
   })
 

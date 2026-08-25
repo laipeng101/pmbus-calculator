@@ -17,7 +17,6 @@ interface Props {
   /** Reducer 拥有的按字段错误（reject 模式），如 DIRECT 系数错误。 */
   stateError?: string | null
   className?: string
-  style?: React.CSSProperties
   onCommit: (text: string) => void
 }
 
@@ -41,7 +40,6 @@ export default function IntegerInput({
   rangeBehavior = 'clamp',
   stateError = null,
   className,
-  style,
   onCommit,
 }: Props) {
   const [draft, setDraft] = useState(String(value))
@@ -116,7 +114,6 @@ export default function IntegerInput({
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : undefined}
         className={className}
-        style={style}
         onFocus={() => setEditing(true)}
         onChange={(e) => handleChange(e.target.value)}
         onBlur={handleBlur}
@@ -125,12 +122,7 @@ export default function IntegerInput({
         }}
       />
       {error && (
-        <p
-          id={`${id}-error`}
-          role="alert"
-          className="mt-1 text-xs"
-          style={{ color: 'var(--color-danger)' }}
-        >
+        <p id={`${id}-error`} role="alert" className="mt-1 text-xs color-danger">
           {error}
         </p>
       )}
