@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -42,8 +43,15 @@ function productionCspPlugin(): Plugin {
   }
 }
 
+// Build-time version badge source: package.json is the single version of
+// truth; the app never maintains a hand-edited copy of the version string.
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+
 export default defineConfig({
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [tailwindcss(), react(), productionCspPlugin()],
   test: {
     globals: true,

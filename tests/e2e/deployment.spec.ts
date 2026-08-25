@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs'
 import { test, expect } from '@playwright/test'
 
 const deploymentUrl = process.env.DEPLOYMENT_URL
+
+const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+  version: string
+}
 
 test.skip(!deploymentUrl, 'DEPLOYMENT_URL is required for remote deployment smoke')
 
@@ -22,6 +27,8 @@ test.describe('GitHub Pages production deployment', () => {
 
     await expect(page).toHaveTitle(/PMBus/)
     await expect(page.getByRole('heading', { name: 'PMBus' })).toBeVisible()
+    // 线上页面必须显示与部署包一致的版本（构建时注入，非手工维护）。
+    await expect(page.getByTestId('version-badge')).toHaveText(`v${pkg.version}`)
     await expect(page.getByLabel('模式切换')).toBeVisible()
     await expect(page.getByLabel('命令参考')).toBeVisible()
     await expect(page.getByLabel('结果面板')).toBeVisible()
