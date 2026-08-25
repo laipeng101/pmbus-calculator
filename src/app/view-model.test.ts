@@ -216,6 +216,55 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
+  describe('calculation steps (unified four-mode skeleton)', () => {
+    test('L11 steps include fields, formula, intermediate, result', () => {
+      const vm = toCalculatorViewModel(make({ raw: 0xf819 }))
+      expect(vm.steps.some((s) => s.kind === 'field' && s.label.includes('N'))).toBe(true)
+      expect(vm.steps.some((s) => s.kind === 'field' && s.label.includes('Y'))).toBe(true)
+      expect(vm.steps.some((s) => s.kind === 'formula' && s.plainText.includes('2^N'))).toBe(true)
+      expect(vm.steps.some((s) => s.kind === 'intermediate' && s.label === '2^N')).toBe(true)
+      expect(vm.steps.some((s) => s.kind === 'result' && s.value === '12.5')).toBe(true)
+    })
+
+    test('L16 steps expose VOUT_MODE fields and result for absolute LINEAR', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16 } }))
+      expect(vm.steps.some((s) => s.label === 'VOUT_MODE')).toBe(true)
+      expect(vm.steps.some((s) => s.label.includes('mode'))).toBe(true)
+      expect(vm.steps.some((s) => s.kind === 'result' && s.value === '12')).toBe(true)
+    })
+
+    test('L16 non-absolute steps contain no result', () => {
+      for (const voutMode of [0x98, 0x20, 0x40, 0x60, 0xe0]) {
+        const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode } }))
+        expect(
+          vm.steps.some((s) => s.kind === 'result'),
+          `0x${voutMode.toString(16)}`,
+        ).toBe(false)
+      }
+    })
+
+    test('DIRECT steps expose M/B/R/Y fields and result', () => {
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'DIRECT',
+          raw: 10,
+          direct: { m: 2, b: 0, r: 0, errors: { m: null, b: null, r: null } },
+        }),
+      )
+      expect(vm.steps.some((s) => s.label === 'Y（16-bit signed）')).toBe(true)
+      expect(vm.steps.some((s) => s.label === 'M（斜率）')).toBe(true)
+      expect(vm.steps.some((s) => s.kind === 'result' && s.value === '5')).toBe(true)
+    })
+
+    test('HALF steps expose S/E/F fields and classification', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x3c00 }))
+      expect(vm.steps.some((s) => s.label.includes('S'))).toBe(true)
+      expect(vm.steps.some((s) => s.label.includes('E'))).toBe(true)
+      expect(vm.steps.some((s) => s.label.includes('F'))).toBe(true)
+      expect(vm.steps.some((s) => s.plainText.includes('normal'))).toBe(true)
+    })
+  })
+
   describe('bit groups', () => {
     test('raw=0xABCD produces 4 nibbles', () => {
       const vm = toCalculatorViewModel(make({ raw: 0xabcd }))

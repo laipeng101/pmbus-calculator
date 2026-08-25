@@ -4,6 +4,7 @@ import { getResultValueSizeClass } from '../../app/result-presentation'
 import CopyToolbar from './CopyToolbar'
 import ErrorDelta from './ErrorDelta'
 import MathFormula from '../math/MathFormula'
+import CalculationSteps from './CalculationSteps'
 
 interface Props {
   vm: CalculatorViewModel
@@ -39,6 +40,9 @@ export default function ResultInspector({
       >
         计算结果
       </h2>
+
+      {/* Unified calculation process: fields -> formula -> intermediates -> result */}
+      <CalculationSteps steps={vm.steps} />
 
       {/* Primary Value — adaptive mono headline, never truncated or scaled. */}
       <div

@@ -5,6 +5,8 @@ import { getCommandConfig } from '../legacy/command-metadata'
 import { buildCMacro } from './copy-utils'
 import { getFormulaPresentation } from './formula-presentation'
 import type { FormulaDetailLine } from './formula-presentation'
+import { buildCalculationSteps } from './calculation-steps'
+import type { CalculationStepVM } from './calculation-steps'
 
 export interface BitGroupVM {
   nibbleIndex: number
@@ -45,6 +47,8 @@ export interface CalculatorViewModel {
   formulaLatex: string
   formulaGenericLatex: string
   formulaDetailLines: FormulaDetailLine[]
+  /** Unified four-mode calculation steps (fields -> formula -> intermediates -> result). */
+  steps: CalculationStepVM[]
   deltaText?: string
   deltaKind?: 'ok' | 'warn' | 'error'
   warnings: WarningVM[]
@@ -258,6 +262,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   return {
     mode: state.mode,
+    steps: buildCalculationSteps(state),
     valueText: computeValueText(state),
     rawHex: formatRawHex(displayedRaw),
     rawWordHex: formatRawHex(raw),
