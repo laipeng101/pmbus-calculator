@@ -2,13 +2,16 @@ import { useMemo } from 'react'
 import type { AppState, AppMode } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
-import type { VoutModeStatus } from '../legacy/vout-mode'
+import type { VoutModeFormat, VoutModeStatus } from '../legacy/vout-mode'
 import { getCommandConfig } from '../legacy/command-metadata'
 import { buildCMacro } from './copy-utils'
 import { getFormulaPresentation } from './formula-presentation'
 import type { FormulaDetailLine } from './formula-presentation'
 import { buildCalculationSteps } from './calculation-steps'
 import type { CalculationStepVM } from './calculation-steps'
+import { buildVoutModeExplanations } from './vout-mode-explanation'
+import type { BilingualText, VoutModeExplanation } from './vout-mode-explanation'
+import { effectiveL16VoutMode } from './vout-mode-selector'
 
 export interface BitGroupVM {
   nibbleIndex: number
@@ -22,16 +25,34 @@ export interface WarningVM {
   text: string
 }
 
-export interface VoutModeInfoVM {
+export interface VoutModeBitVM {
+  index: number
+  value: number
+  region: 'ar' | 'format' | 'parameter'
+  semantic: BilingualText
+}
+
+export interface VoutModeNibbleVM {
+  nibbleIndex: number
   hex: string
+  bits: VoutModeBitVM[]
+}
+
+export interface VoutModeInfoVM {
+  byte: number
+  hex: string
+  hexDigits: string
   modeName: string
+  formatName: string
   linearExponent: number | null
   isLinear: boolean
   isRelative: boolean
-  /** Mode bits [6:5] per Part II §8.3. */
+  /** Format bits [6:5] per Part II §8.3. */
   mode: number
+  format: VoutModeFormat
   /** Parameter bits [4:0]. */
   param: number
+  parameter: number
   /** Whether the LINEAR16 page may compute an absolute voltage. */
   status: 'ok' | 'reference-required' | 'unsupported'
   /** Domain validity classification (M37). */
@@ -42,14 +63,24 @@ export interface VoutModeInfoVM {
   vidCodeKind?: 'not-used' | 'reserved' | 'profile-required'
   /** Short UI classification text derived from the domain analysis. */
   statusText: string
-  /** 8-bit binary rendering of the canonical byte. */
+  /** 8-bit binary rendering of the byte. */
   binary: string
+  /** True only when the byte is a legal PMBus VOUT_MODE configuration. */
+  structureLegal: boolean
+  /** True only when the current calculator can produce a value for the byte. */
+  calculable: boolean
+  source?: 'linked' | 'fallback-default'
+  explanations: VoutModeExplanation[]
+  nibbles: VoutModeNibbleVM[]
 }
 
 export interface CalculatorViewModel {
   mode: AppMode
   valueText: string
+  valueLabel: string
   rawHex: string
+  /** Digit-only raw hex (no 0x prefix) for fixed-prefix inputs. */
+  rawHexDigits: string
   /** Internal 16-bit raw word, never byte-swapped for display. */
   rawWordHex: string
   rawBytesLE: string
@@ -59,7 +90,7 @@ export interface CalculatorViewModel {
   formulaLatex: string
   formulaGenericLatex: string
   formulaDetailLines: FormulaDetailLine[]
-  /** Unified four-mode calculation steps (fields -> formula -> intermediates -> result). */
+  /** Unified calculation steps (fields -> formula -> intermediates -> result). */
   steps: CalculationStepVM[]
   deltaText?: string
   deltaKind?: 'ok' | 'warn' | 'error'
@@ -68,6 +99,7 @@ export interface CalculatorViewModel {
   commandNote?: string
   nRangeText?: string
   voutModeInfo?: VoutModeInfoVM
+  voutModePage?: VoutModeInfoVM
   /** DIRECT mode: signed Y derived from raw via toSigned(raw, 16). */
   directY?: number
   visible: {
@@ -75,11 +107,20 @@ export interface CalculatorViewModel {
     directCoefficients: boolean
     halfNote: boolean
     nRange: boolean
+    byteCalculator: boolean
   }
 }
 
 function formatRawHex(raw: number): string {
   return '0x' + (raw & 0xffff).toString(16).toUpperCase().padStart(4, '0')
+}
+
+function formatByteHex(byte: number): string {
+  return '0x' + (byte & 0xff).toString(16).toUpperCase().padStart(2, '0')
+}
+
+function byteDigits(byte: number): string {
+  return (byte & 0xff).toString(16).toUpperCase().padStart(2, '0')
 }
 
 /** Number formatting mirroring legacy formatNumber (12 significant digits). */
@@ -123,8 +164,12 @@ function buildBitGroups(raw: number): BitGroupVM[] {
   return groups
 }
 
-function voutModeStatusText(state: AppState): string {
-  const a = analyzeVoutMode(state.l16.voutMode)
+function bt(zh: string, en: string): BilingualText {
+  return { zh, en }
+}
+
+function voutModeStatusText(byte: number): string {
+  const a = analyzeVoutMode(byte)
   switch (a.status) {
     case 'valid':
       if (a.format === 0) return a.isRelative ? '相对 LINEAR（需参考值）' : '绝对 LINEAR'
@@ -146,6 +191,87 @@ function voutModeStatusText(state: AppState): string {
   }
 }
 
+function buildVoutModeNibbles(byte: number): VoutModeNibbleVM[] {
+  const semantic = (index: number): BilingualText => {
+    if (index === 7) return bt('Absolute/Relative', 'Absolute/Relative')
+    if (index === 5 || index === 6) return bt('Format', 'Format')
+    return bt('Parameter / N / VID code', 'Parameter / N / VID code')
+  }
+
+  const highBits: VoutModeBitVM[] = []
+  for (const index of [7, 6, 5, 4]) {
+    highBits.push({
+      index,
+      value: (byte >> index) & 1,
+      region: index === 7 ? 'ar' : index === 5 || index === 6 ? 'format' : 'parameter',
+      semantic: semantic(index),
+    })
+  }
+  const lowBits: VoutModeBitVM[] = []
+  for (const index of [3, 2, 1, 0]) {
+    lowBits.push({
+      index,
+      value: (byte >> index) & 1,
+      region: 'parameter',
+      semantic: semantic(index),
+    })
+  }
+  return [
+    { nibbleIndex: 0, hex: ((byte >> 4) & 0xf).toString(16).toUpperCase(), bits: highBits },
+    { nibbleIndex: 1, hex: (byte & 0xf).toString(16).toUpperCase(), bits: lowBits },
+  ]
+}
+
+function buildVoutModeVM(byte: number, source?: 'linked' | 'fallback-default'): VoutModeInfoVM {
+  const a = analyzeVoutMode(byte)
+  const isLinear = a.format === 0
+  const status: VoutModeInfoVM['status'] = !isLinear
+    ? 'unsupported'
+    : a.isRelative
+      ? 'reference-required'
+      : 'ok'
+
+  const explanations = buildVoutModeExplanations(a)
+  if (source === 'fallback-default') {
+    explanations.unshift({
+      id: 'l16-fallback',
+      severity: 'warning',
+      title: bt('L16 使用默认 LINEAR 0x18', 'L16 is using default LINEAR 0x18'),
+      detail: bt(
+        `当前共享 VOUT_MODE ${formatByteHex(byte)} 非 LINEAR；本页暂用默认 0x18 计算，未改写共享字节。`,
+        `Shared VOUT_MODE ${formatByteHex(byte)} is not LINEAR; this page is using fallback 0x18 without rewriting the shared byte.`,
+      ),
+      specRef: 'Part II §8.3',
+    })
+  }
+
+  return {
+    byte,
+    hex: formatByteHex(byte),
+    hexDigits: byteDigits(byte),
+    modeName: a.formatName,
+    formatName: a.formatName,
+    linearExponent: a.linearExponent,
+    isLinear,
+    isRelative: a.isRelative,
+    mode: a.format,
+    format: a.format,
+    param: a.parameter,
+    parameter: a.parameter,
+    status,
+    domainStatus: a.status,
+    reason: a.reason,
+    ...(a.vidCode ? { vidCodeKind: a.vidCode.kind } : {}),
+    statusText: voutModeStatusText(byte),
+    binary: (byte & 0xff).toString(2).padStart(8, '0'),
+    structureLegal: a.isLegal,
+    calculable: isLinear && a.isRelative === false,
+    ...(source ? { source } : {}),
+    explanations,
+    nibbles: buildVoutModeNibbles(byte),
+  }
+}
+
 function computeValueText(state: AppState): string {
   try {
     switch (state.mode) {
@@ -154,12 +280,21 @@ function computeValueText(state: AppState): string {
         return formatNumber(r.value)
       }
       case 'L16': {
-        const a = analyzeVoutMode(state.l16.voutMode)
-        const canCompute = a.format === 0 && a.isRelative === false
-        if (canCompute === false) return '—'
-        const r = PMBusMath.decodeLinear16(state.raw, a.linearExponent ?? 0)
-        return formatNumber(r.value)
+        const eff = effectiveL16VoutMode(state)
+        const a = analyzeVoutMode(eff.byte)
+        const n = a.linearExponent ?? 0
+        if (state.l16.payloadKind === 'slinear16-offset') {
+          return formatNumber(PMBusMath.decodeSlinear16(state.raw, n).value)
+        }
+        if (a.isRelative) {
+          if (state.l16.nominalVout == null) return '—'
+          const ratio = PMBusMath.decodeUlinear16(state.raw, n).value
+          return formatNumber(state.l16.nominalVout * ratio)
+        }
+        return formatNumber(PMBusMath.decodeUlinear16(state.raw, n).value)
       }
+      case 'VOUT_MODE':
+        return formatByteHex(state.voutMode.byte)
       case 'DIRECT': {
         const y = PMBusMath.toSigned(state.raw, 16)
         const r = PMBusMath.decodeDirect(y, state.direct.m, state.direct.b, state.direct.r)
@@ -203,53 +338,69 @@ function buildWarnings(state: AppState): WarningVM[] {
       })
     }
   }
-  if (state.mode === 'L16') {
-    const a = analyzeVoutMode(state.l16.voutMode)
-    const hex = `0x${state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')}`
+
+  if (state.mode === 'L16' || state.mode === 'VOUT_MODE') {
+    const eff =
+      state.mode === 'L16'
+        ? effectiveL16VoutMode(state)
+        : { byte: state.voutMode.byte, source: undefined }
+    const byte = eff.byte
+    const a = analyzeVoutMode(byte)
+    const hex = formatByteHex(byte)
+
+    if (state.mode === 'L16' && eff.source === 'fallback-default') {
+      warnings.push({
+        id: 'l16-vout-mode-fallback',
+        level: 'warning',
+        text: `当前共享 VOUT_MODE ${formatByteHex(state.voutMode.byte)} 非 LINEAR；本页暂用默认 0x18（Part II §8.3）。`,
+      })
+    }
+
     if (a.format === 0 && a.isRelative) {
       warnings.push({
-        id: 'l16-vout-mode-relative',
+        id: 'vout-mode-relative',
         level: 'info',
-        text: `VOUT_MODE ${hex} 为相对 LINEAR；需要参考值（VOUT_COMMAND nominal reference），当前不计算绝对电压。`,
+        text: `VOUT_MODE ${hex} 为相对 LINEAR；需要参考值（VOUT_COMMAND nominal reference）才能计算最终电压。`,
       })
     } else if (a.status === 'invalid-combination') {
       warnings.push({
-        id: 'l16-vout-mode-invalid-combination',
+        id: 'vout-mode-invalid-combination',
         level: 'error',
         text: `VOUT_MODE ${hex} 为相对 + VID 非法组合（Part II §8.5.3：Relative 不适用于 VID）。`,
       })
     } else if (a.status === 'invalid-parameter') {
       warnings.push({
-        id: 'l16-vout-mode-invalid-parameter',
+        id: 'vout-mode-invalid-parameter',
         level: 'error',
         text: `VOUT_MODE ${hex} 的 ${a.formatName} 参数必须为 00000b（Part II §8.3 Table 2），当前参数 ${a.parameter} 非法。`,
       })
     } else if (a.status === 'not-used') {
       warnings.push({
-        id: 'l16-vout-mode-vid-not-used',
+        id: 'vout-mode-vid-not-used',
         level: 'warning',
-        text: `VOUT_MODE ${hex} 为 VID code 00h（Not Used），不构成有效 VID profile；LINEAR16 页面不给出电压结果。`,
+        text: `VOUT_MODE ${hex} 为 VID code 00h（Not Used），不构成有效 VID profile。`,
       })
     } else if (a.status === 'reserved') {
       warnings.push({
-        id: 'l16-vout-mode-vid-reserved',
+        id: 'vout-mode-vid-reserved',
         level: 'warning',
-        text: `VOUT_MODE ${hex} 的 VID code ${a.parameter.toString(16).toUpperCase().padStart(2, '0')}h 为保留值（Part II §8.4.2 Table 3 未列出）；不构成有效 VID profile。`,
+        text: `VOUT_MODE ${hex} 的 VID code ${a.parameter.toString(16).toUpperCase().padStart(2, '0')}h 为保留值（Part II §8.4.2 Table 3 未列出）。`,
       })
     } else if (a.status === 'profile-required') {
       warnings.push({
-        id: 'l16-vout-mode-vid-profile',
+        id: 'vout-mode-vid-profile',
         level: 'warning',
-        text: `VOUT_MODE ${hex} 的 VID code 为制造商自定义；需要器件资料确定电压映射，本页不猜测。`,
+        text: `VOUT_MODE ${hex} 的 VID code 为制造商自定义；需要器件资料确定电压映射。`,
       })
     } else if (a.format === 2 || a.format === 3) {
       warnings.push({
-        id: 'l16-vout-mode-nonlinear',
+        id: 'vout-mode-nonlinear',
         level: 'warning',
-        text: `VOUT_MODE ${hex} 为 ${a.formatName} 格式；LINEAR16 页面不给出 V×2^N 电压结果，需要器件 Profile（DIRECT 系数/设备数据）或切换到对应格式。`,
+        text: `VOUT_MODE ${hex} 为 ${a.formatName} 格式；需要器件 Profile（DIRECT 系数/设备数据）。`,
       })
     }
   }
+
   if (state.commandKey) {
     const cmd = getCommandConfig(state.commandKey)
     if (cmd?.note) {
@@ -271,6 +422,10 @@ function buildWarnings(state: AppState): WarningVM[] {
     }
   }
   return warnings
+}
+
+function getValueLabel(mode: AppMode): string {
+  return mode === 'VOUT_MODE' ? 'VOUT_MODE 字节' : '物理值'
 }
 
 export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
@@ -300,37 +455,41 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   } else if (state.mode === 'L16') {
     // Only absolute LINEAR VOUT_MODE has a LINEAR16 V×2^N range; relative
     // LINEAR is a ratio and VID/DIRECT/IEEE Half are not LINEAR16 at all.
-    const a = analyzeVoutMode(state.l16.voutMode)
-    if (a.format === 0 && a.isRelative === false) {
+    const eff = effectiveL16VoutMode(state)
+    const a = analyzeVoutMode(eff.byte)
+    if (a.format === 0 && a.isRelative === false && state.l16.payloadKind === 'ulinear16') {
       const p = PMBusMath.pow2(a.linearExponent ?? 0)
       nRangeText = '0 ~ ' + formatNumber(65535 * p)
+    } else if (
+      a.format === 0 &&
+      a.isRelative === false &&
+      state.l16.payloadKind === 'slinear16-offset'
+    ) {
+      const p = PMBusMath.pow2(a.linearExponent ?? 0)
+      nRangeText = `${formatNumber(-32768 * p)} ~ ${formatNumber(32767 * p)}`
     }
   }
 
   let voutModeInfo: VoutModeInfoVM | undefined
+  let voutModePage: VoutModeInfoVM | undefined
   if (state.mode === 'L16') {
-    const a = analyzeVoutMode(state.l16.voutMode)
-    const status =
-      a.format === 0 && a.isRelative === false
-        ? 'ok'
-        : a.format === 0
-          ? 'reference-required'
-          : 'unsupported'
-    voutModeInfo = {
-      hex: '0x' + state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0'),
-      modeName: a.formatName,
-      linearExponent: a.linearExponent,
-      isLinear: a.format === 0,
-      isRelative: a.isRelative,
-      mode: a.format,
-      param: a.parameter,
-      status,
-      domainStatus: a.status,
-      reason: a.reason,
-      ...(a.vidCode ? { vidCodeKind: a.vidCode.kind } : {}),
-      statusText: voutModeStatusText(state),
-      binary: state.l16.voutMode.toString(2).padStart(8, '0'),
+    const eff = effectiveL16VoutMode(state)
+    voutModeInfo = buildVoutModeVM(eff.byte, eff.source)
+    if (state.l16.payloadKind === 'slinear16-offset') {
+      voutModeInfo.explanations.unshift({
+        id: 'slinear16-bit7-na',
+        severity: 'info',
+        title: bt('bit7 对本 payload 不适用', 'bit7 does not apply to this payload'),
+        detail: bt(
+          'SLINEAR16 offset 使用 16-bit 二补码 payload，bit7 只作用于 §8.5 的 8 个输出电压相关命令，不参与 X_offset = Y_s × 2^N；选择 offset 语义不会把公式切成“有符号比例”。',
+          'The SLINEAR16 offset uses a 16-bit two\'s-complement payload. bit7 only applies to the eight output-voltage commands in §8.5 and is not part of X_offset = Y_s × 2^N; choosing offset semantics never switches the formula into a "signed ratio".',
+        ),
+        specRef: 'Part II §13.3 / §13.4 / §8.5',
+      })
     }
+  } else if (state.mode === 'VOUT_MODE') {
+    voutModePage = buildVoutModeVM(state.voutMode.byte)
+    voutModeInfo = voutModePage
   }
 
   const displayedRaw =
@@ -338,12 +497,21 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   const formula = getFormulaPresentation(state)
   const formulaText = formula.plainText
 
+  const rawHex =
+    state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(displayedRaw)
+  const rawHexDigits =
+    state.mode === 'VOUT_MODE'
+      ? byteDigits(state.voutMode.byte)
+      : (displayedRaw & 0xffff).toString(16).toUpperCase().padStart(4, '0')
+
   return {
     mode: state.mode,
     steps: buildCalculationSteps(state),
     valueText: computeValueText(state),
-    rawHex: formatRawHex(displayedRaw),
-    rawWordHex: formatRawHex(raw),
+    valueLabel: getValueLabel(state.mode),
+    rawHex,
+    rawHexDigits,
+    rawWordHex: state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(raw),
     rawBytesLE: formatBytes(le, {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
@@ -365,11 +533,13 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     commandNote: getCommandConfig(state.commandKey)?.note,
     nRangeText,
     voutModeInfo,
+    voutModePage,
     visible: {
       voutMode: state.mode === 'L16',
       directCoefficients: state.mode === 'DIRECT',
       halfNote: state.mode === 'HALF',
       nRange: state.mode === 'L11' || state.mode === 'L16',
+      byteCalculator: state.mode === 'VOUT_MODE',
     },
   }
 }

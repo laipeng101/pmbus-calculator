@@ -1,7 +1,7 @@
 import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
-import type { VoutModeAnalysis } from '../legacy/vout-mode'
+import { effectiveL16VoutMode } from './vout-mode-selector'
 
 export interface FormulaPresentation {
   /** Plain-text formula used for copy output and C macro comments. */
@@ -165,20 +165,6 @@ function singleExpansionLine(plainText: string, latex: string): FormulaDetailLin
   return [{ kind: 'expansion', plainText, latex }]
 }
 
-/** Precise non-computable label for the L16 formula fallback (never "相对 LINEAR" for VID/DIRECT/Half). */
-function l16FormulaLabel(a: VoutModeAnalysis): string {
-  const rel = a.isRelative ? '相对 ' : '绝对 '
-  if (a.format === 0) return a.isRelative ? '相对 LINEAR' : '绝对 LINEAR'
-  if (a.format === 1) {
-    if (a.isRelative) return '相对 VID（非法组合）'
-    if (a.status === 'not-used') return 'VID（code 00h Not Used）'
-    if (a.status === 'profile-required') return 'VID（制造商自定义）'
-    return 'VID（保留 code）'
-  }
-  const suffix = a.status === 'invalid-parameter' ? '（参数必须为 0）' : ''
-  return rel + (a.format === 2 ? 'DIRECT' : 'IEEE Half') + suffix
-}
-
 /**
  * Single source of truth for on-screen formulas.
  *
@@ -201,21 +187,58 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
     }
 
     case 'L16': {
-      const a = analyzeVoutMode(state.l16.voutMode)
+      // L16 always derives from the effective VOUT_MODE byte: the shared byte
+      // when LINEAR, otherwise the explicit fallback 0x18.
+      const eff = effectiveL16VoutMode(state)
+      const a = analyzeVoutMode(eff.byte)
       const n = a.linearExponent ?? 0
-      const canCompute = a.format === 0 && a.isRelative === false
-      if (canCompute === false) {
-        const label = l16FormulaLabel(a)
-        const hex = state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')
-        const plainText = `VOUT_MODE 0x${hex} 为 ${label}；需要参考值或器件 Profile，当前不计算绝对电压`
-        const latex = `\\text{VOUT_MODE \\#0x${hex}: ${label} — 需要参考值/器件 Profile}`
+
+      // SLINEAR16 offset is a command-payload semantic (VOUT_TRIM /
+      // VOUT_CAL_OFFSET); bit7 of VOUT_MODE is NOT part of its math and must
+      // not switch the signed offset formula into a "signed ratio".
+      if (state.l16.payloadKind === 'slinear16-offset') {
+        const y = PMBusMath.toSigned(state.raw, 16)
+        const value = PMBusMath.decodeSlinear16(state.raw, n).value
+        const plainText = `Y_s=${y} × 2^${n} = ${formatNumber(value)} V`
+        const latex = `X_{offset} = Y_s \\times 2^N = ${y} \\times 2^{${n}} = ${formatLatexNumber(value)}`
         return {
           plainText,
           latex,
-          genericLatex: 'X = V \\times 2^N',
+          genericLatex: 'X_{offset} = Y_s \\times 2^N',
+          detailLines: singleExpansionLine(
+            `Y_s=${y} × 2^${n}（bit7 N/A for signed offset payload）`,
+            `Y_s = ${y} \\times 2^{${n}} \\quad (\\text{bit7 N/A for signed offset payload})`,
+          ),
+        }
+      }
+
+      // ULINEAR16 Relative: ratio R = Y_u × 2^N; final X = V_NOM × R when the
+      // nominal reference is available, otherwise the ratio is still shown.
+      if (a.isRelative) {
+        const ratio = PMBusMath.decodeUlinear16(state.raw, n).value
+        const ratioText = formatNumber(ratio)
+        const percentText = formatNumber(ratio * 100)
+        if (state.l16.nominalVout == null) {
+          const plainText = `R=${state.raw} × 2^${n}=${ratioText}（需要 VOUT_COMMAND nominal）`
+          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatLatexNumber(ratio)}\\ \\left(\\text{需要 } V_{NOM}\\right)`
+          return {
+            plainText,
+            latex,
+            genericLatex: 'R = Y_u \\times 2^N',
+            detailLines: singleExpansionLine(plainText, latex),
+          }
+        }
+        const final = state.l16.nominalVout * ratio
+        const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatNumber(state.l16.nominalVout)}×R=${formatNumber(final)} V`
+        const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatLatexNumber(ratio)}\\ (${formatLatexNumber(ratio * 100)}\\%) \\quad X = V_{NOM} \\times R = ${formatLatexNumber(state.l16.nominalVout)} \\times ${formatLatexNumber(ratio)} = ${formatLatexNumber(final)}`
+        return {
+          plainText,
+          latex,
+          genericLatex: 'R = Y_u \\times 2^N;\\ X = V_{NOM} \\times R',
           detailLines: singleExpansionLine(plainText, latex),
         }
       }
+
       const plainText = `V=${state.raw} × 2^${n}`
       const latex = `X = V \\times 2^N = ${state.raw} \\times 2^{${n}}`
       return {
@@ -260,6 +283,21 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       return {
         ...getHalfPresentation(state.raw),
         genericLatex: 'X = \\text{IEEE 754 binary16 分段解码}',
+      }
+    }
+
+    case 'VOUT_MODE': {
+      const a = analyzeVoutMode(state.voutMode.byte)
+      const hex = state.voutMode.byte.toString(16).toUpperCase().padStart(2, '0')
+      const plainText = `VOUT_MODE 0x${hex} — ${a.formatName} / ${a.isRelative ? 'Relative' : 'Absolute'}`
+      const status = `${a.formatName} / ${a.isRelative ? 'Relative' : 'Absolute'}`
+      const latex = `\\text{VOUT\\_MODE} = 0x${hex}\\quad\\text{${status}}`
+      return {
+        plainText,
+        latex,
+        genericLatex:
+          '\\text{VOUT\\_MODE} = \\text{bit7}\\ \\mid\\ \\text{format}[6:5]\\ \\mid\\ \\text{parameter}[4:0]',
+        detailLines: singleExpansionLine(plainText, latex),
       }
     }
 

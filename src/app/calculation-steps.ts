@@ -11,6 +11,7 @@
 import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
+import { effectiveL16VoutMode } from './vout-mode-selector'
 
 export interface CalculationStepVM {
   id: string
@@ -97,11 +98,12 @@ function buildL11Steps(state: AppState): CalculationStepVM[] {
 }
 
 function buildL16Steps(state: AppState): CalculationStepVM[] {
-  const a = analyzeVoutMode(state.l16.voutMode)
+  const eff = effectiveL16VoutMode(state)
+  const a = analyzeVoutMode(eff.byte)
   const n = a.linearExponent ?? 0
-  const hex = `0x${state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')}`
+  const hex = `0x${eff.byte.toString(16).toUpperCase().padStart(2, '0')}`
   const steps: CalculationStepVM[] = [
-    field('l16-vout-mode', 'VOUT_MODE', hex),
+    field('l16-vout-mode', 'VOUT_MODE（有效）', hex),
     field(
       'l16-vout-mode-bit7',
       'bit7 absolute/relative',
@@ -111,59 +113,72 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
     field('l16-vout-mode-param', 'bits[4:0] parameter', String(a.parameter)),
   ]
 
-  if (a.status === 'invalid-combination') {
+  if (eff.source === 'fallback-default') {
     steps.push(
       warningStep(
-        'l16-invalid-combination',
-        '相对 + VID 是非法组合（Part II §8.5.3：Relative 不适用于 VID）；当前不计算电压。',
+        'l16-fallback',
+        `共享 VOUT_MODE 0x${state.voutMode.byte.toString(16).toUpperCase().padStart(2, '0')} 非 LINEAR；本页显式使用默认 0x18。`,
       ),
     )
-    return steps
   }
 
-  if (a.status === 'invalid-parameter') {
-    steps.push(
-      warningStep(
-        'l16-invalid-parameter',
-        `${a.formatName} 的 Parameter 必须为 00000b（Part II §8.3 Table 2）；当前参数 ${a.parameter} 非法，不计算电压。`,
-      ),
-    )
-    return steps
-  }
-
-  if (a.format === 1) {
-    steps.push(
-      warningStep(
-        'l16-vid',
-        `${a.vidCode?.label ?? 'VID code ' + a.parameter}；需要器件资料确定电压映射，当前不计算 LINEAR16 电压。`,
-      ),
-    )
-    return steps
-  }
-
-  // Non-LINEAR VOUT_MODE (DIRECT / IEEE Half) with parameter 0: the raw word
-  // is NOT a LINEAR16 V×2^N payload — no V/N fields, no range, no result.
+  // The effective byte is always LINEAR on this page; keep these guards as a
+  // fail-closed contract in case the selector invariant is ever broken.
   if (a.format !== 0) {
+    steps.push(warningStep('l16-unsupported', '有效 VOUT_MODE 非 LINEAR；不计算 LINEAR16 结果。'))
+    return steps
+  }
+
+  // SLINEAR16 offset: bit7 belongs to another command group and must not
+  // switch the signed offset formula or its unit.
+  if (state.l16.payloadKind === 'slinear16-offset') {
+    const y = PMBusMath.toSigned(state.raw, 16)
+    const p = PMBusMath.pow2(n)
+    steps.push(field('l16-vout-mode-bit7-na', 'bit7 对本 payload', 'N/A（signed offset）'))
+    steps.push(field('l16-ys', 'Y_s（16-bit signed）', String(y)))
+    steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(n)))
     steps.push(
-      warningStep(
-        'l16-unsupported',
-        `${a.formatName}：需要器件 Profile（DIRECT 系数/设备数据），当前不计算 LINEAR16 电压；raw 不是 LINEAR16 V/N 编码。`,
+      formula('l16-formula', '通用公式', 'X_offset = Y_s × 2^N', 'X_{offset} = Y_s \\times 2^N'),
+      intermediate('l16-2n', '2^N', formatNumber(p)),
+      formula(
+        'l16-substitution',
+        '数值代入',
+        `X_offset = ${y} × 2^${n}`,
+        `X_{offset} = ${y} \\times 2^{${n}}`,
       ),
+      resultStep(formatNumber(PMBusMath.decodeSlinear16(state.raw, n).value)),
     )
     return steps
   }
 
   if (a.isRelative) {
-    // relative LINEAR：VOUT_MODE 参数位携带指数 N，可解释为比值缩放语义；
-    // 但绝对电压需要 VOUT_COMMAND nominal reference，不把 raw 标成绝对电压。
+    const ratio = PMBusMath.decodeUlinear16(state.raw, n).value
     steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(n)))
     steps.push(intermediate('l16-2n', '2^N（比值缩放）', formatNumber(PMBusMath.pow2(n))))
-    steps.push(
-      warningStep(
-        'l16-unsupported',
-        '相对 LINEAR：VOUT_MODE 给出指数/比值语义，但绝对电压需要 VOUT_COMMAND nominal reference；当前不把 raw 标为绝对电压。',
-      ),
-    )
+    steps.push(intermediate('l16-ratio', 'R = Y_u × 2^N（比值）', formatNumber(ratio)))
+    if (state.l16.nominalVout == null) {
+      steps.push(
+        warningStep(
+          'l16-relative-nominal-missing',
+          '缺少 VOUT_COMMAND nominal reference；已解出比值 R，但最终电压 X = V_NOM × R 不显示伪值。',
+        ),
+      )
+    } else {
+      const final = state.l16.nominalVout * ratio
+      steps.push(
+        intermediate(
+          'l16-nominal',
+          'V_NOM（VOUT_COMMAND 标称值）',
+          formatNumber(state.l16.nominalVout),
+        ),
+        formula(
+          'l16-final',
+          '最终电压',
+          `X = ${formatNumber(state.l16.nominalVout)} × ${formatNumber(ratio)} = ${formatNumber(final)} V`,
+        ),
+        resultStep(formatNumber(final)),
+      )
+    }
     return steps
   }
 
@@ -294,6 +309,65 @@ function buildHalfSteps(state: AppState): CalculationStepVM[] {
   return steps
 }
 
+function buildVoutModeSteps(state: AppState): CalculationStepVM[] {
+  const byte = state.voutMode.byte
+  const a = analyzeVoutMode(byte)
+  const hex = `0x${byte.toString(16).toUpperCase().padStart(2, '0')}`
+  const steps: CalculationStepVM[] = [
+    field('vout-mode-byte', 'VOUT_MODE', hex),
+    field(
+      'vout-mode-bit7',
+      'bit7 absolute/relative',
+      a.isRelative ? 'relative (1)' : 'absolute (0)',
+    ),
+    field('vout-mode-format', 'bits[6:5] format', `${a.formatName} (${a.format})`),
+    field('vout-mode-param', 'bits[4:0] parameter', String(a.parameter)),
+  ]
+
+  if (a.status === 'valid') {
+    if (a.format === 0) {
+      steps.push(
+        field('vout-mode-n', 'N（5-bit signed）', String(a.linearExponent ?? 0)),
+        formula(
+          'vout-mode-linear',
+          'LINEAR 语义',
+          'X = Y × 2^N（ULINEAR16 / SLINEAR16 offset）',
+          'X = Y \\times 2^N',
+        ),
+      )
+      steps.push(
+        warningStep(
+          a.isRelative ? 'vout-mode-relative-note' : 'vout-mode-absolute-note',
+          a.isRelative
+            ? '结构合法；相对 LINEAR 需 VOUT_COMMAND nominal reference 才能计算最终电压。'
+            : '结构合法；absolute LINEAR 可在 L16 页计算绝对电压。',
+        ),
+      )
+    } else if (a.format === 1) {
+      steps.push(
+        warningStep('vout-mode-vid', `${a.vidCode?.label ?? 'VID code'}；需器件资料确定电压映射。`),
+      )
+    } else {
+      steps.push(
+        warningStep(
+          'vout-mode-nonlinear',
+          `${a.formatName} 参数为 0，结构合法；本计算器需要器件系数/数据才能计算。`,
+        ),
+      )
+    }
+  } else {
+    steps.push(warningStep('vout-mode-invalid', voutModeInvalidText(a)))
+  }
+  return steps
+}
+
+function voutModeInvalidText(a: ReturnType<typeof analyzeVoutMode>): string {
+  if (a.status === 'invalid-combination') return '相对 + VID 非法组合（§8.5.3）。'
+  if (a.status === 'invalid-parameter') return `${a.formatName} 参数必须为 00000b（§8.3 Table 2）。`
+  if (a.status === 'invalid-input') return '无效 VOUT_MODE 输入。'
+  return `${a.vidCode?.label ?? a.status}；需器件资料。`
+}
+
 export function buildCalculationSteps(state: AppState): CalculationStepVM[] {
   switch (state.mode) {
     case 'L11':
@@ -304,6 +378,8 @@ export function buildCalculationSteps(state: AppState): CalculationStepVM[] {
       return buildDirectSteps(state)
     case 'HALF':
       return buildHalfSteps(state)
+    case 'VOUT_MODE':
+      return buildVoutModeSteps(state)
     default:
       return []
   }
