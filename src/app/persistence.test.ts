@@ -86,6 +86,12 @@ describe('persistence', () => {
       expect(second.copy.endian).toBe('be')
     })
 
+    it('restores the VOUT_MODE mode key', () => {
+      store.store.set(KEYS.mode, 'VOUT_MODE')
+      const s = loadPersistedState(baseState())
+      expect(s.mode).toBe('VOUT_MODE')
+    })
+
     it('ignores invalid JSON for the copy preference', () => {
       store.store.set(KEYS.copy, '{not-json')
       store.store.set(KEYS.mode, 'L16')

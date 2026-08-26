@@ -22,7 +22,7 @@ describe('appReducer — state transitions', () => {
       expect(s.commandKey).toBe('VOUT_COMMAND')
       expect(s.mode).toBe('L16')
       expect(s.raw).toBe(0x1234)
-      expect(s.l16.voutMode).toBe(withRaw.l16.voutMode)
+      expect(s.voutMode.byte).toBe(withRaw.voutMode.byte)
     })
 
     it('does not auto-apply device_defined presets', () => {
@@ -258,27 +258,25 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('L16 value/set rejected for non-absolute-LINEAR VOUT_MODE (L16 状态约束)', () => {
-    // reducer/domain 层必须拒绝在 relative/VID/DIRECT/IEEE Half VOUT_MODE 下
-    // 通过 value/set 生成 LINEAR16 编码——不能只靠隐藏 UI 输入。
-    const rejectedVoutModes = [
-      { hex: '98', label: 'relative LINEAR' },
-      { hex: '20', label: 'VID' },
-      { hex: '40', label: 'DIRECT' },
-      { hex: '60', label: 'IEEE Half' },
-      { hex: 'e0', label: 'relative IEEE Half' },
-    ] as const
+  describe('L16 value/set semantics with shared VOUT_MODE', () => {
+    it('relative LINEAR 0x98 拒绝 value/set，raw 不变', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const withMode = appReducer(l16, { type: 'vout-mode/set-byte', hex: '98' })
+      const before = withMode.raw
+      const s = appReducer(withMode, { type: 'value/set', value: '12' })
+      expect(s.raw).toBe(before)
+      expect(s.voutMode.byte).toBe(withMode.voutMode.byte)
+    })
 
-    for (const { hex, label } of rejectedVoutModes) {
-      it(`${label} (0x${hex}) 拒绝 value/set，raw 不变`, () => {
+    it('非 LINEAR 共享字节 fallback 到 0x18，value/set 仍然编码且不改写共享字节', () => {
+      for (const hex of ['20', '40', '60', 'e0']) {
         const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-        const withMode = appReducer(l16, { type: 'l16/set-vout-mode', hex })
-        const before = withMode.raw
+        const withMode = appReducer(l16, { type: 'vout-mode/set-byte', hex })
         const s = appReducer(withMode, { type: 'value/set', value: '12' })
-        expect(s.raw, label).toBe(before)
-        expect(s.l16.voutMode, label).toBe(withMode.l16.voutMode)
-      })
-    }
+        expect(s.raw, `0x${hex}`).toBe(0x0c00)
+        expect(s.voutMode.byte, `0x${hex}`).toBe(withMode.voutMode.byte)
+      }
+    })
 
     it('absolute LINEAR (0x18) 仍然编码', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
@@ -373,118 +371,122 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('l16/set-vout-mode', () => {
+  describe('vout-mode/set-byte', () => {
     it('parses hex vout mode', () => {
-      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x18' })
-      expect(s.l16.voutMode).toBe(0x18)
+      const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x18' })
+      expect(s.voutMode.byte).toBe(0x18)
     })
 
     it('derives N for LINEAR VOUT_MODE (0x18 -> N=-8)', () => {
-      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x18' })
-      expect(analyzeVoutMode(s.l16.voutMode).linearExponent).toBe(-8)
+      const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x18' })
+      expect(analyzeVoutMode(s.voutMode.byte).linearExponent).toBe(-8)
     })
 
     it('derives N for LINEAR VOUT_MODE (0x17 -> N=-9)', () => {
-      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x17' })
-      expect(analyzeVoutMode(s.l16.voutMode).linearExponent).toBe(-9)
+      const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x17' })
+      expect(analyzeVoutMode(s.voutMode.byte).linearExponent).toBe(-9)
     })
 
     it('non-LINEAR VOUT_MODE keeps the byte without a stored N', () => {
-      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x20' })
-      expect(s.l16.voutMode).toBe(0x20)
-      expect(analyzeVoutMode(s.l16.voutMode).linearExponent).toBeNull()
+      const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x20' })
+      expect(s.voutMode.byte).toBe(0x20)
+      expect(analyzeVoutMode(s.voutMode.byte).linearExponent).toBeNull()
     })
 
     it('rejects over-long VOUT_MODE instead of masking', () => {
-      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x1ff' })
-      expect(s.l16.voutMode).toBe(base.l16.voutMode)
+      const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x1ff' })
+      expect(s.voutMode.byte).toBe(base.voutMode.byte)
     })
 
     it('falls back on empty string (explicit reset-to-zero)', () => {
-      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '' })
-      expect(s.l16.voutMode).toBe(0)
+      const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '' })
+      expect(s.voutMode.byte).toBe(0)
     })
 
     it('ignores invalid hex', () => {
-      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: 'gg' })
-      expect(s.l16.voutMode).toBe(base.l16.voutMode)
+      const s = appReducer(base, { type: 'vout-mode/set-byte', hex: 'gg' })
+      expect(s.voutMode.byte).toBe(base.voutMode.byte)
     })
   })
 
   describe('structured VOUT_MODE actions (M37)', () => {
     it('set-vout-relative only flips bit7 for non-VID formats and keeps raw', () => {
-      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x18' })
-      const rel = appReducer(s, { type: 'l16/set-vout-relative', relative: true })
-      expect(rel.l16.voutMode).toBe(0x98)
-      expect(analyzeVoutMode(rel.l16.voutMode).linearExponent).toBe(-8)
+      const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x18' })
+      const rel = appReducer(s, { type: 'vout-mode/set-relative', relative: true })
+      expect(rel.voutMode.byte).toBe(0x98)
+      expect(analyzeVoutMode(rel.voutMode.byte).linearExponent).toBe(-8)
       expect(rel.raw).toBe(s.raw)
     })
 
     it('set-vout-relative refuses relative VID', () => {
-      const vid = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x20' })
-      const s = appReducer(vid, { type: 'l16/set-vout-relative', relative: true })
-      expect(s.l16.voutMode).toBe(0x20)
+      const vid = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x20' })
+      const s = appReducer(vid, { type: 'vout-mode/set-relative', relative: true })
+      expect(s.voutMode.byte).toBe(0x20)
     })
 
     it('set-vout-relative clears an invalid relative-VID byte back to absolute', () => {
-      const relVid = appReducer(base, { type: 'l16/set-vout-mode', hex: '0xa0' })
-      const s = appReducer(relVid, { type: 'l16/set-vout-relative', relative: false })
-      expect(s.l16.voutMode).toBe(0x20)
-      expect(analyzeVoutMode(s.l16.voutMode).status).toBe('not-used')
+      const relVid = appReducer(base, { type: 'vout-mode/set-byte', hex: '0xa0' })
+      const s = appReducer(relVid, { type: 'vout-mode/set-relative', relative: false })
+      expect(s.voutMode.byte).toBe(0x20)
+      expect(analyzeVoutMode(s.voutMode.byte).status).toBe('not-used')
     })
 
     it('set-vout-relative only flips bit7 and preserves parameter bits', () => {
-      const direct = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x41' })
-      const s = appReducer(direct, { type: 'l16/set-vout-relative', relative: true })
-      expect(s.l16.voutMode).toBe(0xc1) // relative DIRECT, parameter still 1 (invalid-parameter)
-      expect(analyzeVoutMode(s.l16.voutMode).status).toBe('invalid-parameter')
+      const direct = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x41' })
+      const s = appReducer(direct, { type: 'vout-mode/set-relative', relative: true })
+      expect(s.voutMode.byte).toBe(0xc1) // relative DIRECT, parameter still 1 (invalid-parameter)
+      expect(analyzeVoutMode(s.voutMode.byte).status).toBe('invalid-parameter')
     })
 
     it('set-vout-format canonicalizes DIRECT/Half parameter and VID bit7', () => {
-      const relLinear = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x98' })
-      const direct = appReducer(relLinear, { type: 'l16/set-vout-format', format: 2 })
-      expect(direct.l16.voutMode).toBe(0xc0) // relative DIRECT, param forced 0
-      const vid = appReducer(relLinear, { type: 'l16/set-vout-format', format: 1 })
-      expect(vid.l16.voutMode).toBe(0x38) // absolute VID code 24, bit7 cleared
+      const relLinear = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x98' })
+      const direct = appReducer(relLinear, { type: 'vout-mode/set-format', format: 2 })
+      expect(direct.voutMode.byte).toBe(0xc0) // relative DIRECT, param forced 0
+      const vid = appReducer(relLinear, { type: 'vout-mode/set-format', format: 1 })
+      expect(vid.voutMode.byte).toBe(0x38) // absolute VID code 24, bit7 cleared
     })
 
     it('set-vout-format to LINEAR preserves the parameter bits', () => {
-      const half = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x60' })
-      const linear = appReducer(half, { type: 'l16/set-vout-format', format: 0 })
-      expect(linear.l16.voutMode).toBe(0x00)
+      const half = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x60' })
+      const linear = appReducer(half, { type: 'vout-mode/set-format', format: 0 })
+      expect(linear.voutMode.byte).toBe(0x00)
     })
 
     it('set-vout-linear-n edits only bits[4:0] and clamps to -16..15', () => {
-      const rel = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x98' })
-      const hi = appReducer(rel, { type: 'l16/set-vout-linear-n', n: '15' })
-      expect(hi.l16.voutMode).toBe(0x8f) // relative LINEAR, N=15
-      const clamped = appReducer(rel, { type: 'l16/set-vout-linear-n', n: '99' })
-      expect(clamped.l16.voutMode).toBe(0x8f) // clamped to 15
-      const lo = appReducer(rel, { type: 'l16/set-vout-linear-n', n: '-17' })
-      expect(lo.l16.voutMode).toBe(0x90) // clamped to -16
+      const rel = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x98' })
+      const hi = appReducer(rel, { type: 'vout-mode/set-linear-n', n: '15' })
+      expect(hi.voutMode.byte).toBe(0x8f) // relative LINEAR, N=15
+      const clamped = appReducer(rel, { type: 'vout-mode/set-linear-n', n: '99' })
+      expect(clamped.voutMode.byte).toBe(0x8f) // clamped to 15
+      const lo = appReducer(rel, { type: 'vout-mode/set-linear-n', n: '-17' })
+      expect(lo.voutMode.byte).toBe(0x90) // clamped to -16
     })
 
     it('set-vout-linear-n is a no-op for non-LINEAR', () => {
-      const vid = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x20' })
-      const s = appReducer(vid, { type: 'l16/set-vout-linear-n', n: '5' })
-      expect(s.l16.voutMode).toBe(0x20)
+      const vid = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x20' })
+      const s = appReducer(vid, { type: 'vout-mode/set-linear-n', n: '5' })
+      expect(s.voutMode.byte).toBe(0x20)
     })
 
-    it('set-vout-vid-code edits bits[4:0] for VID only', () => {
-      const vid = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x20' })
-      const s = appReducer(vid, { type: 'l16/set-vout-vid-code', code: 0x1e })
-      expect(s.l16.voutMode).toBe(0x3e)
-      expect(analyzeVoutMode(s.l16.voutMode).status).toBe('profile-required')
-      const linear = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x18' })
-      expect(appReducer(linear, { type: 'l16/set-vout-vid-code', code: 1 }).l16.voutMode).toBe(0x18)
+    it('vout-mode/set-parameter edits LINEAR exponent and VID code', () => {
+      const vid = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x20' })
+      const s = appReducer(vid, { type: 'vout-mode/set-parameter', parameter: 0x1e })
+      expect(s.voutMode.byte).toBe(0x3e)
+      expect(analyzeVoutMode(s.voutMode.byte).status).toBe('profile-required')
+
+      const linear = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x18' })
+      // LINEAR parameter is a signed 5-bit exponent: 1 -> N=1 -> byte 0x01.
+      expect(
+        appReducer(linear, { type: 'vout-mode/set-parameter', parameter: 1 }).voutMode.byte,
+      ).toBe(0x01)
     })
 
     it('structured actions never touch raw or top-level mode', () => {
       const s0 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const s1 = appReducer(s0, { type: 'l16/set-vout-relative', relative: true })
+      const s1 = appReducer(s0, { type: 'vout-mode/set-relative', relative: true })
       expect(s1.raw).toBe(s0.raw)
       expect(s1.mode).toBe('L16')
-      const s2 = appReducer(s1, { type: 'l16/set-vout-linear-n', n: '-16' })
+      const s2 = appReducer(s1, { type: 'vout-mode/set-linear-n', n: '-16' })
       expect(s2.raw).toBe(s0.raw)
       expect(s2.mode).toBe('L16')
     })
@@ -825,6 +827,66 @@ describe('appReducer — state transitions', () => {
     it('toggles debugOpen', () => {
       const s = appReducer(base, { type: 'ui/toggle-debug' })
       expect(s.ui.debugOpen).toBe(!base.ui.debugOpen)
+    })
+  })
+
+  describe('M38 shared VOUT_MODE byte + L16 payload actions', () => {
+    it('vout-mode/set-byte is lossless for any 0x00..0xFF including non-canonical bytes', () => {
+      for (const byte of [0x00, 0x18, 0x20, 0x40, 0xa0, 0x41, 0xc1, 0xe1, 0xff]) {
+        const s = appReducer(base, { type: 'vout-mode/set-byte', hex: byte.toString(16) })
+        expect(s.voutMode.byte, `0x${byte.toString(16)}`).toBe(byte)
+      }
+    })
+
+    it('vout-mode/toggle-bit locks bits[6:5] only on the L16 page', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      expect(appReducer(l16, { type: 'vout-mode/toggle-bit', bit: 5 }).voutMode.byte).toBe(0x18)
+      expect(appReducer(l16, { type: 'vout-mode/toggle-bit', bit: 6 }).voutMode.byte).toBe(0x18)
+      expect(appReducer(l16, { type: 'vout-mode/toggle-bit', bit: 7 }).voutMode.byte).toBe(0x98)
+      expect(appReducer(l16, { type: 'vout-mode/toggle-bit', bit: 0 }).voutMode.byte).toBe(0x19)
+
+      const standalone = appReducer(base, { type: 'mode/set', mode: 'VOUT_MODE' })
+      expect(appReducer(standalone, { type: 'vout-mode/toggle-bit', bit: 5 }).voutMode.byte).toBe(
+        0x38,
+      )
+      expect(appReducer(standalone, { type: 'vout-mode/toggle-bit', bit: 6 }).voutMode.byte).toBe(
+        0x58,
+      )
+    })
+
+    it('l16/set-payload-kind switches ULINEAR16 / SLINEAR16 offset', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s = appReducer(l16, { type: 'l16/set-payload-kind', payloadKind: 'slinear16-offset' })
+      expect(s.l16.payloadKind).toBe('slinear16-offset')
+    })
+
+    it("l16/set-slinear-y encodes two's complement into raw", () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const kind = appReducer(l16, {
+        type: 'l16/set-payload-kind',
+        payloadKind: 'slinear16-offset',
+      })
+      expect(appReducer(kind, { type: 'l16/set-slinear-y', y: '-1' }).raw).toBe(0xffff)
+      expect(appReducer(kind, { type: 'l16/set-slinear-y', y: '-32768' }).raw).toBe(0x8000)
+      expect(appReducer(kind, { type: 'l16/set-slinear-y', y: '32767' }).raw).toBe(0x7fff)
+    })
+
+    it('l16/set-nominal-vout accepts finite non-negative decimals only', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      expect(
+        appReducer(l16, { type: 'l16/set-nominal-vout', nominalVout: '3.3' }).l16.nominalVout,
+      ).toBe(3.3)
+      expect(
+        appReducer(l16, { type: 'l16/set-nominal-vout', nominalVout: '-1' }).l16.nominalVout,
+      ).toBeNull()
+      expect(
+        appReducer(l16, { type: 'l16/set-nominal-vout', nominalVout: 'abc' }).l16.nominalVout,
+      ).toBeNull()
+    })
+
+    it('l16/apply-default-vout-mode writes 0x18 to the shared byte', () => {
+      const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '40' })
+      expect(appReducer(s, { type: 'l16/apply-default-vout-mode' }).voutMode.byte).toBe(0x18)
     })
   })
 

@@ -22,7 +22,7 @@ describe('L16 golden decode cases', () => {
         ...INITIAL_STATE,
         mode: 'L16',
         raw: c.raw,
-        l16: { voutMode: 0x18 },
+        voutMode: { byte: 0x18 },
       })
       expect(vm.valueText).toBe(c.valueText)
     })
@@ -32,7 +32,7 @@ describe('L16 golden decode cases', () => {
 describe('L16 golden encode cases', () => {
   it('Value -> raw with N=-8', () => {
     const s = appReducer(
-      { ...INITIAL_STATE, mode: 'L16', l16: { voutMode: 0x18 } },
+      { ...INITIAL_STATE, mode: 'L16', voutMode: { byte: 0x18 } },
       { type: 'value/set', value: '12' },
     )
     expect(s.raw).toBe(0x0c00)
@@ -40,14 +40,14 @@ describe('L16 golden encode cases', () => {
 
   it('fractional Value -> raw with N=-8', () => {
     const s = appReducer(
-      { ...INITIAL_STATE, mode: 'L16', l16: { voutMode: 0x18 } },
+      { ...INITIAL_STATE, mode: 'L16', voutMode: { byte: 0x18 } },
       { type: 'value/set', value: '12.5' },
     )
     expect(s.raw).toBe(0x0c80)
   })
 
   it('clamps Value to 0..65535 range', () => {
-    const base = { ...INITIAL_STATE, mode: 'L16' as const, l16: { voutMode: 0x18 } }
+    const base = { ...INITIAL_STATE, mode: 'L16' as const, voutMode: { byte: 0x18 } }
     expect(appReducer(base, { type: 'value/set', value: '-1' }).raw).toBe(0)
     expect(appReducer(base, { type: 'value/set', value: '999999' }).raw).toBe(0xffff)
   })
@@ -93,15 +93,23 @@ describe('VOUT_MODE bit layout (PMBus Part II §8.3)', () => {
     })
   }
 
-  it('non-absolute-LINEAR VOUT_MODE must not produce a fake LINEAR16 value in the view model', () => {
-    for (const voutMode of [0x98, 0x20, 0x40, 0x60, 0xe0]) {
+  it('relative LINEAR VOUT_MODE shows no absolute result; non-LINEAR falls back to 0x18', () => {
+    const relative = toCalculatorViewModel({
+      ...INITIAL_STATE,
+      mode: 'L16',
+      raw: 0x0c00,
+      voutMode: { byte: 0x98 },
+    })
+    expect(relative.valueText).toBe('—')
+
+    for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
       const vm = toCalculatorViewModel({
         ...INITIAL_STATE,
         mode: 'L16',
         raw: 0x0c00,
-        l16: { voutMode },
+        voutMode: { byte },
       })
-      expect(vm.valueText, `0x${voutMode.toString(16)}`).toBe('—')
+      expect(vm.valueText, `0x${byte.toString(16)}`).toBe('12')
     }
   })
 
@@ -110,7 +118,7 @@ describe('VOUT_MODE bit layout (PMBus Part II §8.3)', () => {
       ...INITIAL_STATE,
       mode: 'L16',
       raw: 0x0c00,
-      l16: { voutMode: 0x18 },
+      voutMode: { byte: 0x18 },
     })
     expect(vm.valueText).toBe('12')
   })

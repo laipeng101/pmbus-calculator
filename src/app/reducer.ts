@@ -2,11 +2,12 @@ import { INITIAL_STATE } from './state'
 import type { AppState } from './state'
 import type { AppAction } from './actions'
 import { PMBusMath } from '../legacy/pmbus-math'
-import { analyzeVoutMode } from '../legacy/vout-mode'
+import { analyzeVoutMode, composeVoutMode, DEFAULT_LINEAR_VOUT_MODE } from '../legacy/vout-mode'
 import { getCommandConfig } from '../legacy/command-metadata'
 import { parseHexStrict } from './hex-parse'
 import { parseIntegerStrict } from './int-parse'
 import { parseFloatSafe } from './float-parse'
+import { effectiveL16VoutMode } from './vout-mode-selector'
 
 /**
  * Strict integer parser for reducer-managed numeric fields (L11 N/Y, DIRECT
@@ -59,22 +60,24 @@ function encodeL11FromValue(state: AppState, value: number): AppState {
 }
 
 /**
- * Encode a physical value into LINEAR16 raw (V), mirroring legacy
- * updateAll('val') for L16: V = clamp(round(value / 2^N), 0, 65535).
+ * Encode a physical value into the LINEAR16 payload word.
  *
- * Domain constraint (Part II §8.3): LINEAR16 encoding is only meaningful for
- * absolute LINEAR VOUT_MODE.  Under relative LINEAR the value is a ratio that
- * needs a reference, and under VID/DIRECT/IEEE Half the raw word is not a
- * LINEAR16 V×2^N payload at all — the reducer must refuse to fabricate a
- * LINEAR16 encoding instead of relying on hidden UI inputs.
+ * - ULINEAR16 + Absolute LINEAR: Y_u = round(X / 2^N), clamp 0..65535.
+ * - SLINEAR16 offset: Y_s = round(X_offset / 2^N), clamp -32768..32767.
+ *
+ * Relative LINEAR is a ratio (not a physical voltage), and non-LINEAR
+ * VOUT_MODE is not a LINEAR16 payload at all — both are refused here so the
+ * reducer cannot fabricate an encoding behind a hidden input.
  */
 function encodeL16FromValue(state: AppState, value: number): AppState {
-  const analysis = analyzeVoutMode(state.l16.voutMode)
-  if (analysis.format !== 0 || analysis.isRelative) return state
-  const n = analysis.linearExponent ?? 0
-  const p = PMBusMath.pow2(n)
-  const v = PMBusMath.clamp(Math.round(value / p), 0, 65535)
-  return { ...state, raw: v }
+  const eff = effectiveL16VoutMode(state)
+  const a = analyzeVoutMode(eff.byte)
+  if (a.format !== 0 || a.isRelative) return state
+  const n = a.linearExponent ?? 0
+  if (state.l16.payloadKind === 'slinear16-offset') {
+    return { ...state, raw: PMBusMath.encodeSlinear16(value, n) }
+  }
+  return { ...state, raw: PMBusMath.encodeUlinear16(value, n) }
 }
 
 /** Set raw and, when in L11 mode, re-sync N/Y from the raw bits. */
@@ -87,6 +90,20 @@ function withRaw(state: AppState, raw: number): AppState {
     raw: nextRaw,
     l11: { ...state.l11, n: decoded.n, y: decoded.y, valueInput: null },
   }
+}
+
+function setVoutModeByte(state: AppState, byte: number): AppState {
+  return { ...state, voutMode: { byte: byte & 0xff } }
+}
+
+/**
+ * The byte that semantic VOUT_MODE controls operate on. On the L16 page this is
+ * the effective byte (shared byte when LINEAR, otherwise the explicit 0x18
+ * fallback); editing it writes a canonical LINEAR byte back to the shared
+ * source and therefore flips the page into the linked state.
+ */
+function voutSemanticBase(state: AppState): number {
+  return state.mode === 'L16' ? effectiveL16VoutMode(state).byte : state.voutMode.byte
 }
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -160,6 +177,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         // HALF supports NaN and ±Infinity as first-class values.
         return { ...state, raw: PMBusMath.encodeHalf(value) }
       }
+      // VOUT_MODE is a byte configuration, not a physical value.
       return state
     }
 
@@ -198,53 +216,126 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return encodeL11FromValue({ ...state, l11: { ...state.l11, autoN } }, value)
     }
 
-    case 'l16/set-vout-mode': {
-      const parsedHex = parseHexStrict(action.hex, 2)
-      if (parsedHex.ok === false) return state
-      // VOUT_MODE byte is the single source of truth for the L16 exponent;
-      // the view-model derives N from it via analyzeVoutMode.
-      return { ...state, l16: { voutMode: parsedHex.value } }
+    // ---- Shared VOUT_MODE byte ----
+
+    case 'vout-mode/set-byte': {
+      // Lossless raw byte edit: the user can intentionally produce any
+      // 0x00..0xFF (including invalid/non-canonical combinations).
+      const parsed = parseHexStrict(action.hex, 2)
+      if (parsed.ok === false) return state
+      return setVoutModeByte(state, parsed.value)
     }
 
-    case 'l16/set-vout-relative': {
-      const analysis = analyzeVoutMode(state.l16.voutMode)
-      if (analysis.status === 'invalid-input') return state
+    case 'vout-mode/toggle-bit': {
+      if (!Number.isInteger(action.bit) || action.bit < 0 || action.bit > 7) return state
+      // The L16 embedded editor locks bits[6:5] to 00b (LINEAR).
+      if (state.mode === 'L16' && (action.bit === 5 || action.bit === 6)) return state
+      const base = voutSemanticBase(state)
+      return setVoutModeByte(state, base ^ (1 << action.bit))
+    }
+
+    case 'vout-mode/set-relative': {
+      const base = voutSemanticBase(state)
+      const a = analyzeVoutMode(base)
+      if (a.status === 'invalid-input') return state
       // Relative is not available for VID (§8.5.3); refuse setting it, but
       // still allow clearing an invalid relative-VID byte back to absolute.
-      if (analysis.format === 1 && action.relative) return state
-      const next = (state.l16.voutMode & 0x7f) | (action.relative ? 0x80 : 0x00)
-      return { ...state, l16: { voutMode: next } }
+      if (a.format === 1 && action.relative) return state
+      const next = (base & 0x7f) | (action.relative ? 0x80 : 0x00)
+      return setVoutModeByte(state, next)
     }
 
-    case 'l16/set-vout-format': {
-      const analysis = analyzeVoutMode(state.l16.voutMode)
-      if (analysis.status === 'invalid-input') return state
+    case 'vout-mode/set-format': {
+      const base = voutSemanticBase(state)
+      const a = analyzeVoutMode(base)
+      if (a.status === 'invalid-input') return state
       const format = action.format
+      if (!Number.isInteger(format) || format < 0 || format > 3) return state
       // Canonicalization: DIRECT / IEEE Half force parameter to 0; selecting
       // VID forces absolute (Relative is not available for VID, §8.5.3).
-      const parameter = format === 2 || format === 3 ? 0 : analysis.parameter
-      const relative = format === 1 ? false : analysis.isRelative
+      const parameter = format === 2 || format === 3 ? 0 : a.parameter
+      const relative = format === 1 ? false : a.isRelative
       const next = ((format & 0x03) << 5) | (parameter & 0x1f) | (relative ? 0x80 : 0x00)
-      return { ...state, l16: { voutMode: next } }
+      return setVoutModeByte(state, next)
     }
 
-    case 'l16/set-vout-linear-n': {
-      const analysis = analyzeVoutMode(state.l16.voutMode)
-      if (analysis.format !== 0) return state
+    case 'vout-mode/set-linear-n': {
+      const base = voutSemanticBase(state)
+      const a = analyzeVoutMode(base)
+      if (a.format !== 0) return state
       const n = parseIntegerSafe(action.n)
       if (n === null) return state
       const clamped = PMBusMath.clamp(n, -16, 15)
-      const next = (state.l16.voutMode & 0xe0) | (clamped & 0x1f)
-      return { ...state, l16: { voutMode: next } }
+      const next = (base & 0xe0) | (clamped & 0x1f)
+      return setVoutModeByte(state, next)
     }
 
-    case 'l16/set-vout-vid-code': {
-      const analysis = analyzeVoutMode(state.l16.voutMode)
-      if (analysis.format !== 1) return state
-      if (!Number.isInteger(action.code) || action.code < 0 || action.code > 31) return state
-      const next = (state.l16.voutMode & 0xe0) | (action.code & 0x1f)
-      return { ...state, l16: { voutMode: next } }
+    case 'vout-mode/set-parameter': {
+      const base = voutSemanticBase(state)
+      const a = analyzeVoutMode(base)
+      if (a.status === 'invalid-input') return state
+      const p = action.parameter
+      if (!Number.isInteger(p)) return state
+      if (a.format === 0) {
+        // LINEAR parameter is a signed 5-bit exponent.
+        if (p < -16 || p > 15) return state
+        return setVoutModeByte(state, (base & 0xe0) | (p & 0x1f))
+      }
+      if (a.format === 1) {
+        // VID parameter is an unsigned code (Relative is already excluded).
+        if (p < 0 || p > 31) return state
+        return setVoutModeByte(state, (base & 0xe0) | (p & 0x1f))
+      }
+      // DIRECT / IEEE Half parameter is fixed at 00000b.
+      return state
     }
+
+    case 'vout-mode/normalize': {
+      const byte = state.voutMode.byte
+      const a = analyzeVoutMode(byte)
+      if (a.status === 'invalid-input') return state
+      let next: number | null = null
+      if (a.status === 'invalid-combination') {
+        next = composeVoutMode({ relative: false, format: 1, parameter: a.parameter })
+      } else if (a.status === 'invalid-parameter') {
+        next = composeVoutMode({ relative: a.isRelative, format: a.format, parameter: 0 })
+      } else {
+        next = composeVoutMode({ relative: a.isRelative, format: a.format, parameter: a.parameter })
+      }
+      return next === null ? state : setVoutModeByte(state, next)
+    }
+
+    // ---- LINEAR16 payload semantics ----
+
+    case 'l16/set-payload-kind': {
+      if (action.payloadKind !== 'ulinear16' && action.payloadKind !== 'slinear16-offset') {
+        return state
+      }
+      return { ...state, l16: { ...state.l16, payloadKind: action.payloadKind } }
+    }
+
+    case 'l16/set-slinear-y': {
+      if (state.mode !== 'L16' || state.l16.payloadKind !== 'slinear16-offset') return state
+      const y = parseIntegerSafe(action.y)
+      if (y === null) return state
+      const clamped = PMBusMath.clamp(y, -32768, 32767)
+      return { ...state, raw: PMBusMath.fromSigned(clamped, 16) }
+    }
+
+    case 'l16/set-nominal-vout': {
+      const value = parseFloatSafe(action.nominalVout)
+      if (value === null) return state
+      // Decode accepts finite non-negative nominal references. Reverse encode
+      // from a final voltage would require a strict divisor > 0, but this
+      // slice is decode-only, so 0 is still accepted as a displayed nominal.
+      if (!Number.isFinite(value) || value < 0) return state
+      return { ...state, l16: { ...state.l16, nominalVout: value } }
+    }
+
+    case 'l16/apply-default-vout-mode':
+      return setVoutModeByte(state, DEFAULT_LINEAR_VOUT_MODE)
+
+    // ---- DIRECT ----
 
     case 'direct/set-y': {
       const y = parseIntegerSafe(action.y)

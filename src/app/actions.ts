@@ -1,4 +1,4 @@
-import type { AppMode, Endian, Theme } from './state'
+import type { AppMode, Endian, Linear16PayloadKind, Theme } from './state'
 import type { VoutModeFormat } from '../legacy/vout-mode'
 
 export type AppAction =
@@ -11,11 +11,19 @@ export type AppAction =
   | { type: 'l11/set-n'; n: string }
   | { type: 'l11/set-y'; y: string }
   | { type: 'l11/toggle-auto-n' }
-  | { type: 'l16/set-vout-mode'; hex: string }
-  | { type: 'l16/set-vout-relative'; relative: boolean }
-  | { type: 'l16/set-vout-format'; format: VoutModeFormat }
-  | { type: 'l16/set-vout-linear-n'; n: string }
-  | { type: 'l16/set-vout-vid-code'; code: number }
+  // Shared VOUT_MODE byte (standalone page + LINEAR16 page)
+  | { type: 'vout-mode/set-byte'; hex: string }
+  | { type: 'vout-mode/toggle-bit'; bit: number }
+  | { type: 'vout-mode/set-relative'; relative: boolean }
+  | { type: 'vout-mode/set-format'; format: VoutModeFormat }
+  | { type: 'vout-mode/set-linear-n'; n: string }
+  | { type: 'vout-mode/set-parameter'; parameter: number }
+  | { type: 'vout-mode/normalize' }
+  // LINEAR16 payload semantics (not VOUT_MODE bits)
+  | { type: 'l16/set-payload-kind'; payloadKind: Linear16PayloadKind }
+  | { type: 'l16/set-slinear-y'; y: string }
+  | { type: 'l16/set-nominal-vout'; nominalVout: string }
+  | { type: 'l16/apply-default-vout-mode' }
   | { type: 'direct/set-y'; y: string }
   | { type: 'direct/set-coeff'; name: 'm' | 'b' | 'r'; value: string }
   | { type: 'byte-order/set'; endian: Endian }
