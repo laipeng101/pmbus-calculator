@@ -158,6 +158,9 @@
 - 没有图像输入能力的 agent 不得自行接受或更新视觉基线，只能增加几何/overflow/换行/对比度/computed-style 断言并报告变化。
 - UI 任务如必须更新基线，应使用具备图像输入能力的复核模型，或停在等待视觉审批的状态。
 - 截图变化必须在 PR 中单独列出：新增/修改/删除数量、总字节变化、每张变化原因。
+- 视觉重构 PR 更新基线时必须附**新旧基线 diff 审查记录**（先记录失败场景为预期影响面、
+  更新后新旧 PNG 成对对比、核对更新集合与影响面吻合）；完整条款见
+  [`docs/REPOSITORY_HYGIENE.md`](REPOSITORY_HYGIENE.md) 第 3 节第 10 条。
 - 不使用 snapshot 替代数值、行为、无障碍或几何断言；不为了减小仓库而使用有损压缩。
 - visual scene 中的 volatile metadata（例如由 package.json 注入的版本徽标）必须在截图前先断言真实值，
   再规范化为明确的测试占位值；不 mask，且该规范化只存在于 E2E helper，不得进入 `src/` 或生产 bundle。

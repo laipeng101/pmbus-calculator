@@ -30,6 +30,10 @@
 
 - `npm run test:e2e:visual` snapshot 新增/修改/删除数量与字节变化:
 - 关键 viewport 截图与逐图检查说明:
+- 视觉重构（组件/CSS 重构、类名统一、布局调整）更新基线时的新旧基线 diff 审查记录:
+  <!-- 更新前失败场景清单（预期影响面）→ 新旧 PNG 成对对比结论 → 实际更新集合与影响面核对；
+  预期受影响却未更新的基线需说明原因。非视觉重构或未更新基线填 N/A。完整条款:
+  docs/REPOSITORY_HYGIENE.md 第 3 节第 10 条。 -->
 
 ## Post-merge evidence（merge 后由**唯一一次 PR comment** 记录）
 

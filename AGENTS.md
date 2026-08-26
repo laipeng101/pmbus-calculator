@@ -196,6 +196,7 @@ tests/e2e/        Playwright 真实用户流程
 - [ ] 公式变更已确认单一数据源（`formulaText` 与 `formulaLatex` 来自同一层）
 - [ ] 已检查键盘焦点（focus-visible）、移动端布局与 `prefers-reduced-motion`
 - [ ] UI 任务已生成关键 viewport 截图；dropdown/popover 已测试 viewport 边界与不跳动；无图像读取能力时用几何/对比度/overflow/computed-style 断言代替目检
+- [ ] 视觉重构 PR 已附新旧基线 diff 审查记录：更新集合与预期影响面吻合，逐图（或成对）说明变化原因；未更新的相邻基线已核对不受影响
 - [ ] Markdown 数学变更已通过本地检查，并已用 GitHub 实际渲染页面验证
 - [ ] 发布前已确认 `github-pages` environment 允许对应稳定 tag（branch/tag policy）
 - [ ] CI tier（light/full）已标注；policy-skipped 门禁如实说明，未虚构测试数
