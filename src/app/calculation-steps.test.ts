@@ -57,7 +57,7 @@ describe('buildCalculationSteps — unified four-mode skeleton', () => {
       'formula',
       'result',
     ])
-    expect(steps[2]?.plainText).toBe('bits[6:5] mode = LINEAR (0)')
+    expect(steps[2]?.plainText).toBe('bits[6:5] 格式 = LINEAR (0)')
     expect(steps.some((s) => s.kind === 'result' && s.value === '12')).toBe(true)
   })
 
@@ -69,7 +69,7 @@ describe('buildCalculationSteps — unified four-mode skeleton', () => {
     expect(steps.some((s) => s.kind === 'warning' && s.id === 'l16-relative-nominal-missing')).toBe(
       true,
     )
-    expect(steps.some((s) => s.plainText.includes('nominal reference'))).toBe(true)
+    expect(steps.some((s) => s.plainText.includes('标称参考值'))).toBe(true)
     // 相对 LINEAR 可解释 VOUT_MODE 参数位的指数/比值语义……
     expect(steps.some((s) => s.id === 'l16-n')).toBe(true)
     expect(steps.some((s) => s.id === 'l16-2n')).toBe(true)
@@ -151,7 +151,7 @@ describe('buildCalculationSteps — unified four-mode skeleton', () => {
     expect(normal[0]?.label).toContain('S')
     expect(normal[1]?.label).toContain('E')
     expect(normal[2]?.label).toContain('F')
-    expect(normal.some((s) => s.plainText.includes('normal'))).toBe(true)
+    expect(normal.some((s) => s.plainText.includes('正规数'))).toBe(true)
     expect(normal.some((s) => s.kind === 'result' && s.value === '1')).toBe(true)
 
     const minusZero = buildCalculationSteps(state({ mode: 'HALF', raw: 0x8000 }))

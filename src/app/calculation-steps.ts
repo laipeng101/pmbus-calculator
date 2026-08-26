@@ -60,8 +60,8 @@ function buildL11Steps(state: AppState): CalculationStepVM[] {
   const decoded = PMBusMath.decodeLinear11(state.raw)
   const p = PMBusMath.pow2(decoded.n)
   const steps: CalculationStepVM[] = [
-    field('l11-n', 'N（5-bit signed）', String(decoded.n)),
-    field('l11-y', 'Y（11-bit signed）', String(decoded.y)),
+    field('l11-n', 'N（5 位二补码指数）', String(decoded.n)),
+    field('l11-y', 'Y（11 位有符号整数）', String(decoded.y)),
     formula('l11-formula', '通用公式', 'X = Y × 2^N', 'X = Y \\times 2^N'),
     intermediate('l11-2n', '2^N', formatNumber(p)),
     formula(
@@ -104,13 +104,9 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
   const hex = `0x${eff.byte.toString(16).toUpperCase().padStart(2, '0')}`
   const steps: CalculationStepVM[] = [
     field('l16-vout-mode', 'VOUT_MODE（有效）', hex),
-    field(
-      'l16-vout-mode-bit7',
-      'bit7 absolute/relative',
-      a.isRelative ? 'relative (1)' : 'absolute (0)',
-    ),
-    field('l16-vout-mode-mode', 'bits[6:5] mode', `${a.formatName} (${a.format})`),
-    field('l16-vout-mode-param', 'bits[4:0] parameter', String(a.parameter)),
+    field('l16-vout-mode-bit7', 'bit7 绝对值/相对值', a.isRelative ? '相对值 (1)' : '绝对值 (0)'),
+    field('l16-vout-mode-mode', 'bits[6:5] 格式', `${a.formatName} (${a.format})`),
+    field('l16-vout-mode-param', 'bits[4:0] 参数', String(a.parameter)),
   ]
 
   if (eff.source === 'fallback-default') {
@@ -134,8 +130,8 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
   if (state.l16.payloadKind === 'slinear16-offset') {
     const y = PMBusMath.toSigned(state.raw, 16)
     const p = PMBusMath.pow2(n)
-    steps.push(field('l16-vout-mode-bit7-na', 'bit7 对本 payload', 'N/A（signed offset）'))
-    steps.push(field('l16-ys', 'Y_s（16-bit signed）', String(y)))
+    steps.push(field('l16-vout-mode-bit7-na', 'bit7 对本 payload', '不适用（有符号偏移量）'))
+    steps.push(field('l16-ys', 'Y_s（16 位有符号整数）', String(y)))
     steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(n)))
     steps.push(
       formula('l16-formula', '通用公式', 'X_offset = Y_s × 2^N', 'X_{offset} = Y_s \\times 2^N'),
@@ -160,7 +156,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
       steps.push(
         warningStep(
           'l16-relative-nominal-missing',
-          '缺少 VOUT_COMMAND nominal reference；已解出比值 R，但最终电压 X = V_NOM × R 不显示伪值。',
+          '缺少 VOUT_COMMAND 标称参考值；已解出比值 R，但最终电压 X = V_NOM × R 不显示伪值。',
         ),
       )
     } else {
@@ -183,7 +179,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
   }
 
   // absolute LINEAR: full V → X = V × 2^N chain.
-  steps.push(field('l16-v', 'V（16-bit 无符号）', String(state.raw)))
+  steps.push(field('l16-v', 'V（16 位无符号整数）', String(state.raw)))
   steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(n)))
   const p = PMBusMath.pow2(n)
   steps.push(
@@ -204,7 +200,7 @@ function buildDirectSteps(state: AppState): CalculationStepVM[] {
   const y = PMBusMath.toSigned(state.raw, 16)
   const { m, b, r } = state.direct
   const steps: CalculationStepVM[] = [
-    field('direct-y', 'Y（16-bit signed）', String(y)),
+    field('direct-y', 'Y（16 位有符号整数）', String(y)),
     field('direct-m', 'M（斜率）', String(m)),
     field('direct-b', 'B（偏移）', String(b)),
     field('direct-r', 'R（指数）', String(r)),
@@ -250,13 +246,13 @@ function buildHalfSteps(state: AppState): CalculationStepVM[] {
 
   const steps: CalculationStepVM[] = [
     field('half-s', 'S（符号位）', String(sign)),
-    field('half-e', 'E（指数 5-bit）', String(exponent)),
-    field('half-f', 'F（尾数 10-bit）', String(fraction)),
+    field('half-e', 'E（指数 5 位）', String(exponent)),
+    field('half-f', 'F（尾数 10 位）', String(fraction)),
   ]
 
   if (exponent === 0 && fraction === 0) {
     steps.push(
-      formula('half-class', '分类', 'zero（±0）'),
+      formula('half-class', '分类', '零（±0）'),
       formula('half-formula', '分段公式', `X = ${signPower} × 0`),
       resultStep(formatNumber(value)),
     )
@@ -264,7 +260,7 @@ function buildHalfSteps(state: AppState): CalculationStepVM[] {
     const p = PMBusMath.pow2(-14)
     const fTerm = fraction / 1024
     steps.push(
-      formula('half-class', '分类', 'subnormal（次正规数）'),
+      formula('half-class', '分类', '次正规数'),
       formula('half-formula', '分段公式', `X = ${signPower} × 2^-14 × F/1024`),
       intermediate('half-2e', '2^-14', formatNumber(p)),
       intermediate('half-fraction', 'F/1024', formatNumber(fTerm)),
@@ -292,7 +288,7 @@ function buildHalfSteps(state: AppState): CalculationStepVM[] {
     const p = PMBusMath.pow2(exp)
     const mant = 1 + fraction / 1024
     steps.push(
-      formula('half-class', '分类', 'normal（正规数）'),
+      formula('half-class', '分类', '正规数'),
       formula('half-formula', '分段公式', `X = ${signPower} × 2^(E−15) × (1 + F/1024)`),
       intermediate('half-e-minus', 'E − 15', String(exp)),
       intermediate('half-2e', '2^(E−15)', formatNumber(p)),
@@ -315,23 +311,19 @@ function buildVoutModeSteps(state: AppState): CalculationStepVM[] {
   const hex = `0x${byte.toString(16).toUpperCase().padStart(2, '0')}`
   const steps: CalculationStepVM[] = [
     field('vout-mode-byte', 'VOUT_MODE', hex),
-    field(
-      'vout-mode-bit7',
-      'bit7 absolute/relative',
-      a.isRelative ? 'relative (1)' : 'absolute (0)',
-    ),
-    field('vout-mode-format', 'bits[6:5] format', `${a.formatName} (${a.format})`),
-    field('vout-mode-param', 'bits[4:0] parameter', String(a.parameter)),
+    field('vout-mode-bit7', 'bit7 绝对值/相对值', a.isRelative ? '相对值 (1)' : '绝对值 (0)'),
+    field('vout-mode-format', 'bits[6:5] 格式', `${a.formatName} (${a.format})`),
+    field('vout-mode-param', 'bits[4:0] 参数', String(a.parameter)),
   ]
 
   if (a.status === 'valid') {
     if (a.format === 0) {
       steps.push(
-        field('vout-mode-n', 'N（5-bit signed）', String(a.linearExponent ?? 0)),
+        field('vout-mode-n', 'N（5 位二补码指数）', String(a.linearExponent ?? 0)),
         formula(
           'vout-mode-linear',
           'LINEAR 语义',
-          'X = Y × 2^N（ULINEAR16 / SLINEAR16 offset）',
+          'X = Y × 2^N（ULINEAR16 / SLINEAR16 偏移量）',
           'X = Y \\times 2^N',
         ),
       )
@@ -339,8 +331,8 @@ function buildVoutModeSteps(state: AppState): CalculationStepVM[] {
         warningStep(
           a.isRelative ? 'vout-mode-relative-note' : 'vout-mode-absolute-note',
           a.isRelative
-            ? '结构合法；相对 LINEAR 需 VOUT_COMMAND nominal reference 才能计算最终电压。'
-            : '结构合法；absolute LINEAR 可在 L16 页计算绝对电压。',
+            ? '结构合法；相对 LINEAR 需 VOUT_COMMAND 标称参考值才能计算最终电压。'
+            : '结构合法；绝对 LINEAR 可在 L16 页计算绝对电压。',
         ),
       )
     } else if (a.format === 1) {

@@ -11,8 +11,9 @@ const SEVERITY_LABEL = {
 } as const
 
 /**
- * Bilingual, structured VOUT_MODE explanation list. zh and en are rendered
- * side by side; the spec reference is shown as a stable machine-readable ref.
+ * Chinese-primary, structured VOUT_MODE explanation list. Each item renders a
+ * single Chinese title and detail (canonical tokens stay verbatim) plus the
+ * stable spec reference. There is no side-by-side English translation.
  */
 export default function VoutModeExplanations({ explanations }: Props) {
   if (explanations.length === 0) return null
@@ -23,16 +24,11 @@ export default function VoutModeExplanations({ explanations }: Props) {
         <li key={e.id} className="vout-explanation" data-severity={e.severity}>
           <div className="vout-explanation-head">
             <span className="vout-explanation-severity">{SEVERITY_LABEL[e.severity]}</span>
-            <span className="vout-explanation-title-zh">{e.title.zh}</span>
-            <span className="vout-explanation-title-en">{e.title.en}</span>
+            <span className="vout-explanation-title">{e.title}</span>
             <span className="vout-explanation-ref">{e.specRef}</span>
           </div>
-          <p className="vout-explanation-detail">
-            <span lang="zh-CN">{e.detail.zh}</span>
-            <span className="vout-explanation-detail-sep" aria-hidden="true">
-              ·
-            </span>
-            <span lang="en">{e.detail.en}</span>
+          <p className="vout-explanation-detail" lang="zh-CN">
+            {e.detail}
           </p>
         </li>
       ))}

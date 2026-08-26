@@ -9,9 +9,10 @@ async function settle(page: Page) {
   await page.waitForTimeout(80)
 }
 
+// VOUT_MODE 结果面板是配置摘要而非公式，因此这里只要求结果面板可见。
 async function switchMode(page: Page, name: RegExp) {
   await page.getByRole('tab', { name }).click()
-  await expect(page.locator('.katex:visible').first()).toBeVisible()
+  await expect(page.getByTestId('result-panel')).toBeVisible()
 }
 
 const MODES = [
@@ -110,14 +111,16 @@ test.describe('M36 result-first geometry', () => {
     expect(order.resultBeforeWorkspace).toBe(true)
   })
 
-  test('1280×900 默认折叠状态下五模式 scrollHeight ≤ 1350', async ({ page }) => {
+  test('1280×900 默认折叠状态下五模式 scrollHeight ≤ 1400（M39：L16 内嵌双 nibble 分组）', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await settle(page)
 
     for (const mode of MODES) {
       await switchMode(page, mode.tab)
       const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
-      expect(scrollHeight, mode.label).toBeLessThanOrEqual(1350)
+      expect(scrollHeight, mode.label).toBeLessThanOrEqual(1400)
     }
   })
 

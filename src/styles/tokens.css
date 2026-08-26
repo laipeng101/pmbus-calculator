@@ -86,6 +86,9 @@
   --color-bit-e-bg: #b45309;
   --color-bit-e-text: #ffffff;
   --color-bit-e-border: #92400e;
+  --color-bit-s-bg: #7c3aed;
+  --color-bit-s-text: #ffffff;
+  --color-bit-s-border: #6d28d9;
 
   /* Motion */
   --motion-duration-fast: 120ms;
@@ -149,6 +152,9 @@
     --color-bit-e-bg: #fbbf24;
     --color-bit-e-text: #0f172a;
     --color-bit-e-border: #fcd34d;
+    --color-bit-s-bg: #a78bfa;
+    --color-bit-s-text: #0f172a;
+    --color-bit-s-border: #c4b5fd;
 
     --color-accent: #60a5fa;
     --color-accent-light: #93c5fd;
@@ -203,6 +209,9 @@
   --color-bit-e-bg: #b45309;
   --color-bit-e-text: #ffffff;
   --color-bit-e-border: #92400e;
+  --color-bit-s-bg: #7c3aed;
+  --color-bit-s-text: #ffffff;
+  --color-bit-s-border: #6d28d9;
 
   --color-accent: #1e40af;
   --color-accent-light: #3b82f6;
@@ -255,6 +264,9 @@
   --color-bit-e-bg: #fbbf24;
   --color-bit-e-text: #0f172a;
   --color-bit-e-border: #fcd34d;
+  --color-bit-s-bg: #a78bfa;
+  --color-bit-s-text: #0f172a;
+  --color-bit-s-border: #c4b5fd;
 
   --color-accent: #60a5fa;
   --color-accent-light: #93c5fd;
@@ -365,6 +377,56 @@ select:disabled,
   to {
     opacity: 1;
   }
+}
+
+/* =========================================================
+   Glossary term trigger + popover (TechnicalTerm)
+   ========================================================= */
+
+.term-trigger {
+  display: inline;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-height: 0;
+  min-width: 0;
+  font: inherit;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.term-popover {
+  position: absolute;
+  max-width: min(22rem, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
+  background: var(--color-panel-elevated);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-panel);
+  overflow-y: auto;
+  overflow-wrap: break-word;
+}
+
+.term-popover-name {
+  font-weight: 700;
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+}
+
+.term-popover-detail {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
 /* Copy feedback fades in place without reserving layout space. */
@@ -511,15 +573,10 @@ select:disabled,
 }
 
 /* =========================================================
-   Bit Grid — nibble layout
+   Bit field grid — shared nibble layout (8-bit and 16-bit)
    ========================================================= */
 
-.bit-grid-container {
-  display: flex;
-  justify-content: center;
-}
-
-.bit-grid-inner {
+.bitfield-grid {
   display: grid;
   grid-template-columns: repeat(1, auto);
   gap: 8px;
@@ -527,14 +584,13 @@ select:disabled,
 }
 
 @media (min-width: 360px) {
-  .bit-grid-inner {
+  .bitfield-grid {
     grid-template-columns: repeat(2, auto);
-    gap: 8px;
   }
 }
 
 @media (min-width: 1024px) {
-  .bit-grid-inner {
+  .bitfield[data-bit-count='16'] .bitfield-grid {
     grid-template-columns: repeat(4, auto);
     gap: 6px;
   }
@@ -700,12 +756,6 @@ select:disabled,
   color: var(--color-text-primary);
   border: 1px solid var(--color-border);
   font-family: var(--font-mono);
-}
-
-.workspace-vout-bits {
-  background: var(--color-surface-muted);
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
 }
 
 .workspace-l16-block {
@@ -874,40 +924,148 @@ select:disabled,
   border-color: var(--color-accent-solid);
 }
 
-/* BitGrid state colors */
-.bit-label {
+/* Shared bit field grid: nibble cards, bit cells, legend (8/16-bit). */
+.bitfield-nibble {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.5rem;
   background: var(--color-surface-muted);
-  color: var(--color-accent);
-  font-family: var(--font-mono);
-  border: 1px dashed var(--color-border);
 }
 
-.bit-cell {
+.bitfield-nibble-hex {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-accent);
+  border: 1px dashed var(--color-border);
+  border-radius: 6px;
+  padding: 0 0.5rem;
+  background: var(--color-surface);
+}
+
+.bitfield-nibble-bits {
+  display: flex;
+  gap: 4px;
+}
+
+.bitfield-bit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 2.25rem;
+  min-height: 2.75rem;
+  padding: 0.125rem;
+  background: transparent;
+  border: none;
+}
+
+.bitfield-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.5rem;
+  border-radius: 6px;
+  border: 2px solid var(--color-border);
   background: var(--color-surface-muted);
   color: var(--color-text-muted);
-  border: 2px solid var(--color-border);
-  box-shadow: none;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.875rem;
 }
 
-.bit-cell[data-region='n'][data-on='true'] {
+.bitfield-cell[data-region='n'][data-on='true'] {
   background: var(--color-bit-n-bg);
   color: var(--color-bit-n-text);
   border-color: var(--color-bit-n-border);
 }
 
-.bit-cell[data-region='e'][data-on='true'] {
-  background: var(--color-bit-e-bg);
-  color: var(--color-bit-e-text);
-  border-color: var(--color-bit-e-border);
-}
-
-.bit-cell[data-region='y'][data-on='true'] {
+.bitfield-cell[data-region='y'][data-on='true'] {
   background: var(--color-bit-y-bg);
   color: var(--color-bit-y-text);
   border-color: var(--color-bit-y-border);
 }
 
+.bitfield-cell[data-region='e'][data-on='true'] {
+  background: var(--color-bit-e-bg);
+  color: var(--color-bit-e-text);
+  border-color: var(--color-bit-e-border);
+}
+
+.bitfield-cell[data-region='s'][data-on='true'] {
+  background: var(--color-bit-s-bg);
+  color: var(--color-bit-s-text);
+  border-color: var(--color-bit-s-border);
+}
+
+.bitfield-index {
+  font-size: 0.625rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Compact density (L16 embedded): smaller cells, same nibble structure. */
+.bitfield[data-density='compact'] .bitfield-nibble {
+  padding: 0.125rem;
+  gap: 1px;
+}
+
+.bitfield[data-density='compact'] .bitfield-nibble-hex {
+  font-size: 0.625rem;
+  padding: 0 0.25rem;
+}
+
+.bitfield[data-density='compact'] .bitfield-nibble-bits {
+  gap: 2px;
+}
+
+.bitfield[data-density='compact'] .bitfield-bit {
+  min-width: 1.375rem;
+  min-height: 1.625rem;
+  gap: 1px;
+}
+
+.bitfield[data-density='compact'] .bitfield-cell {
+  width: 1.125rem;
+  height: 1.125rem;
+  font-size: 0.6875rem;
+}
+
+.bitfield[data-density='compact'] .bitfield-index {
+  font-size: 0.5rem;
+}
+
+.bitfield[data-density='compact'] .bitfield-legend {
+  margin-top: 0.25rem;
+  gap: 4px 8px;
+  font-size: 0.5625rem;
+}
+
+.bitfield-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 12px;
+  margin-top: 0.5rem;
+  font-size: 0.625rem;
+}
+
+.bitfield-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-muted);
+}
+
 .legend-swatch {
+  display: inline-block;
+  height: 0.625rem;
+  width: 0.625rem;
+  border-radius: 2px;
   border: 1px solid var(--color-border);
 }
 
@@ -924,6 +1082,11 @@ select:disabled,
 .legend-swatch.legend-e {
   background: var(--color-bit-e);
   border-color: var(--color-bit-e);
+}
+
+.legend-swatch.legend-s {
+  background: var(--color-bit-s);
+  border-color: var(--color-bit-s);
 }
 
 .legend-swatch.legend-zero {
@@ -1017,11 +1180,57 @@ select:disabled,
    VOUT_MODE structured composer
    ========================================================= */
 
+.vout-config-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.9375rem;
+}
+
+@media (min-width: 768px) {
+  .vout-config-summary {
+    justify-content: flex-start;
+  }
+}
+
+.vout-config-seq {
+  color: var(--color-text-muted);
+}
+
+.vout-config-sep {
+  color: var(--color-text-muted);
+}
+
+.vout-config-byte {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.vout-config-state {
+  color: var(--color-text-secondary);
+}
+
+.vout-config-summary[data-alert='true'] .vout-config-state {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
 .vout-composer-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 16px;
+}
+
+.vout-term-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .vout-seg {
@@ -1135,110 +1344,6 @@ select:disabled,
   font-weight: 700;
 }
 
-.vout-bit-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, auto));
-  gap: 8px;
-  justify-content: center;
-}
-
-.vout-bit-nibble {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 0.5rem;
-  background: var(--color-surface-muted);
-}
-
-.vout-bit-nibble-hex {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--color-accent);
-  border: 1px dashed var(--color-border);
-  border-radius: 6px;
-  padding: 0 0.5rem;
-  background: var(--color-surface);
-}
-
-.vout-bit-nibble-bits {
-  display: flex;
-  gap: 4px;
-}
-
-.vout-bit-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-width: 2.25rem;
-  min-height: 2.75rem;
-  padding: 0.125rem;
-  background: transparent;
-  border: none;
-}
-
-.vout-bit-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.5rem;
-  border-radius: 6px;
-  border: 2px solid var(--color-border);
-  background: var(--color-surface-muted);
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 0.875rem;
-}
-
-.vout-bit-cell[data-on='true'][data-region='ar'] {
-  background: var(--color-bit-s);
-  border-color: var(--color-bit-s);
-  color: #fff;
-}
-
-.vout-bit-cell[data-on='true'][data-region='format'] {
-  background: var(--color-bit-n-bg);
-  border-color: var(--color-bit-n-border);
-  color: var(--color-bit-n-text);
-}
-
-.vout-bit-cell[data-on='true'][data-region='parameter'] {
-  background: var(--color-bit-y-bg);
-  border-color: var(--color-bit-y-border);
-  color: var(--color-bit-y-text);
-}
-
-.vout-bit-index {
-  font-size: 0.625rem;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-}
-
-/* Compact single-row 8-bit editor used by the embedded LINEAR16 composer so
-   the L16 page stays within its bounded first-fold height. */
-.vout-bit-grid-compact {
-  display: flex;
-  flex-wrap: nowrap;
-  justify-content: center;
-  gap: 2px;
-}
-
-.vout-bit-grid-compact .vout-bit-btn {
-  min-width: 1.5rem;
-  min-height: 2rem;
-}
-
-.vout-bit-cell-compact {
-  width: 1.25rem;
-  height: 1.25rem;
-  font-size: 0.75rem;
-}
-
 .vout-explanations-details {
   border: 1px dashed var(--color-border);
   border-radius: 8px;
@@ -1314,13 +1419,9 @@ select:disabled,
   color: var(--color-text-muted);
 }
 
-.vout-explanation-title-zh {
+.vout-explanation-title {
   font-weight: 700;
   color: var(--color-text-primary);
-}
-
-.vout-explanation-title-en {
-  color: var(--color-text-secondary);
 }
 
 .vout-explanation-ref {
@@ -1335,11 +1436,6 @@ select:disabled,
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   line-height: 1.5;
-}
-
-.vout-explanation-detail-sep {
-  margin: 0 0.375rem;
-  color: var(--color-text-muted);
 }
 
 .debug-dot {

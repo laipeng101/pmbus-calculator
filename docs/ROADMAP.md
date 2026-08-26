@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-26（M38 独立 VOUT_MODE 计算器与 LINEAR16 标准语义）
+最后更新：2026-08-26（M39 中文优先界面 + 术语气泡 + 字体角色 + 共享位网格）
 
 ## 当前产品基线
 
@@ -28,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M38 complete；stable release v2.3.0；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.4.0；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -49,7 +49,12 @@ M0–M38 complete；stable release v2.3.0；production distribution: GitHub Page
   交互位网格、raw lossless、Normalize canonicalize）、ULINEAR16（X=Y_u×2^N）与
   SLINEAR16 offset（X_offset=Y_s×2^N）payload 语义、relative ULINEAR16 比值
   X=V_NOM×R、L16 共享 VOUT_MODE 非 LINEAR 回退 0x18、固定 0x 前缀 HexInput 合同。
-- 当前：v2.3.0 已发布；M38 complete；无进行中的功能里程碑。
+- M39：中文优先界面 + 可访问术语气泡 + 字体角色统一 + 共享位字段网格——单一术语数据源
+  `terminology.ts` 与 `TechnicalTerm` 浮层（点击/键盘/触屏、防裁切）、双语 explanation
+  model 重构为中文主文案、VOUT_MODE 配置摘要移出 KaTeX（UI/数据/数学三字体角色）、
+  `BitFieldGrid` 统一 16 位与 8 位（含 L16 compact 双 nibble）与中文图例、
+  页面 `<title>` 补全 VOUT_MODE。
+- 当前：v2.4.0 已发布；M39 complete；无进行中的功能里程碑。
 
 ## 下一产品目标
 

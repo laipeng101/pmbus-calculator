@@ -1,7 +1,7 @@
 import type { AppMode, AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
-import BitGrid from '../bits/BitGrid'
+import BitFieldGrid from '../bits/BitFieldGrid'
 import HexInput from '../inputs/HexInput'
 import IntegerInput from '../inputs/IntegerInput'
 import ValueInput from '../inputs/ValueInput'
@@ -12,6 +12,7 @@ import VoutModeComposer from './VoutModeComposer'
 import { MODE_PANEL_ID, modeTabId } from './modeTabs'
 import { LockIcon, UnlockIcon } from '../icons/Icon'
 import MathFormula from '../math/MathFormula'
+import { getBitRegions } from '../../app/bit-regions'
 
 function formatSignedRange(value: number): string {
   return String(value).replace('-', '−')
@@ -47,7 +48,13 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
             />
           </div>
 
-          <BitGrid mode={mode} groups={vm.bitGroups} dispatch={dispatch} />
+          <BitFieldGrid
+            bitCount={16}
+            groups={vm.bitGroups}
+            regions={getBitRegions(mode, state.l16.payloadKind)}
+            onToggle={(index) => dispatch({ type: 'bit/toggle', bit: 15 - index })}
+            groupLabel="16 位编辑器"
+          />
         </section>
       )}
 
@@ -70,13 +77,13 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
             {/* Continuous formula: Y × 2^N with N anchored to the exponent slot */}
             <LinearFormulaEditor
               ariaLabel="LINEAR11 公式编辑器"
-              valueCaption="Y（11-bit）"
+              valueCaption="Y（11 位有符号整数）"
               valueEditor={
                 <div className="w-24">
                   <IntegerInput
                     id="l11-y-input"
                     value={state.l11.y}
-                    ariaLabel="Y (11-bit)"
+                    ariaLabel="Y（11 位有符号整数）"
                     onCommit={(text) => dispatch({ type: 'l11/set-y', y: text })}
                     className="surface border-default color-text-primary font-mono w-full rounded-lg px-2 py-2 text-center text-lg font-bold outline-none"
                   />
@@ -136,7 +143,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 className="flex items-center gap-2 text-sm color-text-muted"
                 htmlFor="l16-payload-kind"
               >
-                <span>Payload</span>
+                <span>数据解释</span>
                 <select
                   id="l16-payload-kind"
                   value={state.l16.payloadKind}
@@ -147,7 +154,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                     })
                   }
                   className="panel-surface-muted max-w-full min-w-0 rounded-lg px-3 py-2 text-sm outline-none"
-                  aria-label="L16 payload 类型"
+                  aria-label="L16 数据解释类型"
                 >
                   <option value="ulinear16">ULINEAR16（无符号）</option>
                   <option value="slinear16-offset">SLINEAR16（二补码偏移）</option>
@@ -182,7 +189,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               <NominalVoutInput
                 id="l16-nominal-vout"
                 value={state.l16.nominalVout}
-                ariaLabel="VOUT_COMMAND nominal（V）"
+                ariaLabel="VOUT_COMMAND 标称参考值（V）"
                 onCommit={(text) => dispatch({ type: 'l16/set-nominal-vout', nominalVout: text })}
               />
             )}
@@ -193,15 +200,15 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 <ValueInput vm={vm} dispatch={dispatch} />
 
                 <div className="text-center text-xs color-text-muted">
-                  {vm.nRangeText ? `可表示范围: ${vm.nRangeText}` : '范围由 payload 类型决定'}
+                  {vm.nRangeText ? `可表示范围: ${vm.nRangeText}` : '范围由数据解释类型决定'}
                 </div>
               </>
             ) : (
               <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
                 <p className="mb-2">
                   VOUT_MODE {vm.voutModeInfo?.hex} 为 {vm.voutModeInfo?.statusText}
-                  ；本页在 relative LINEAR 下解出比值并需 nominal reference，在非 absolute LINEAR
-                  下不给出伪造的 LINEAR16 电压结果。
+                  ；本页在相对 LINEAR 下解出比值并需 VOUT_COMMAND 标称参考值，非绝对 LINEAR
+                  不给出伪造的 LINEAR16 电压结果。
                 </p>
               </div>
             )}
@@ -277,7 +284,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
             </div>
 
             <div className="text-center text-xs color-text-muted">
-              m、b 为 16-bit signed 整数；R 为 8-bit signed 整数；m ≠ 0。系数非法时不会静默接受。
+              m、b 为 16 位有符号整数；R 为 8 位有符号整数；m ≠ 0。系数非法时不会静默接受。
             </div>
           </div>
         )}

@@ -9,7 +9,10 @@ import IntegerInput from '../inputs/IntegerInput'
 import HexInput from '../inputs/HexInput'
 import ExponentEditor from '../formula/ExponentEditor'
 import LinearFormulaEditor from '../formula/LinearFormulaEditor'
-import VoutModeBitGrid from './VoutModeBitGrid'
+import TechnicalTerm from '../term/TechnicalTerm'
+import type { TermId } from '../../app/terminology'
+import { getBitRegions } from '../../app/bit-regions'
+import BitFieldGrid from '../bits/BitFieldGrid'
 import VoutModeExplanations from './VoutModeExplanations'
 
 interface Props {
@@ -29,11 +32,18 @@ const FORMATS: Array<{ value: VoutModeFormat; label: string }> = [
   { value: 3, label: 'IEEE Half' },
 ]
 
+const FORMAT_TERM_ID: Record<VoutModeFormat, TermId> = {
+  0: 'linear',
+  1: 'vid',
+  2: 'direct',
+  3: 'binary16',
+}
+
 function vidOptionLabel(code: number, kind: string): string {
   const hex = code.toString(16).toUpperCase().padStart(2, '0')
-  if (kind === 'not-used') return hex + 'h · Not Used'
+  if (kind === 'not-used') return hex + 'h · 未使用'
   if (kind === 'profile-required') return hex + 'h · 制造商自定义'
-  return hex + 'h · Reserved'
+  return hex + 'h · 保留'
 }
 
 const byteDigits = (byte: number) => (byte & 0xff).toString(16).toUpperCase().padStart(2, '0')
@@ -56,16 +66,20 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
   return (
     <div className="vout-composer min-w-0 space-y-1">
       {/* 8-bit interactive editor */}
-      <VoutModeBitGrid
-        nibbles={info.nibbles}
-        onToggle={(bit) => dispatch({ type: 'vout-mode/toggle-bit', bit })}
+      <BitFieldGrid
+        bitCount={8}
+        groups={info.nibbles}
+        regions={getBitRegions('VOUT_MODE')}
         disabledBits={disabledBits}
-        compact={embedded}
+        disabledHint={embedded ? '格式位固定为 LINEAR' : undefined}
+        density={embedded ? 'compact' : 'regular'}
+        onToggle={(bit) => dispatch({ type: 'vout-mode/toggle-bit', bit })}
+        groupLabel="VOUT_MODE 8 位编辑器"
       />
 
       {/* bit7 + bits[6:5] semantic controls */}
       <div className="vout-composer-controls">
-        <div role="radiogroup" aria-label="Absolute / Relative（bit7）" className="vout-seg">
+        <div role="radiogroup" aria-label="绝对值 / 相对值（bit7）" className="vout-seg">
           <button
             type="button"
             role="radio"
@@ -73,7 +87,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             onClick={() => dispatch({ type: 'vout-mode/set-relative', relative: false })}
             className="vout-seg-btn"
           >
-            Absolute
+            绝对值
           </button>
           <button
             type="button"
@@ -81,11 +95,11 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             aria-checked={info.isRelative}
             aria-disabled={isVid}
             disabled={isVid}
-            title={isVid ? 'Relative 不适用于 VID（Part II §8.5.3）' : undefined}
+            title={isVid ? '相对值不适用于 VID（Part II §8.5.3）' : undefined}
             onClick={() => dispatch({ type: 'vout-mode/set-relative', relative: true })}
             className="vout-seg-btn"
           >
-            Relative
+            相对值
           </button>
         </div>
 
@@ -110,6 +124,15 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           </div>
         )}
       </div>
+
+      {!embedded && (
+        <div className="vout-term-row" data-testid="vout-term-row">
+          <span className="text-xs color-text-muted">配置字节：</span>
+          <TechnicalTerm termId="vout-mode" />
+          <span className="text-xs color-text-muted">当前格式：</span>
+          <TechnicalTerm termId={FORMAT_TERM_ID[info.format]} />
+        </div>
+      )}
 
       {/* bits[4:0] parameter */}
       {info.format === 0 ? (
@@ -155,7 +178,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           ) : (
             <div className="vout-param-n-only">
               <label className="text-xs color-text-muted" htmlFor="vout-mode-n-input">
-                N（5-bit signed，−16～15）
+                N（5 位二补码，−16～15）
               </label>
               <ExponentEditor
                 id="vout-mode-n-input"
@@ -167,19 +190,19 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           )}
           {info.isRelative && (
             <p className="vout-param-note text-xs">
-              相对 LINEAR：payload 与 VOUT_COMMAND 同格式，解出比值 R；最终电压需要 nominal
-              reference。
+              相对 LINEAR：payload 与 VOUT_COMMAND 同格式，解出比值 R；最终电压需要 VOUT_COMMAND
+              标称参考值。
             </p>
           )}
         </div>
       ) : info.format === 1 ? (
         <div className="vout-param-vid">
           <label className="text-xs color-text-muted" htmlFor="vout-vid-code-select">
-            VID Code Type（unsigned，0～31）
+            VID 代码类型（无符号，0～31）
           </label>
           <select
             id="vout-vid-code-select"
-            aria-label="VID Code Type"
+            aria-label="VID 代码类型"
             value={info.param}
             onChange={(e) =>
               dispatch({ type: 'vout-mode/set-parameter', parameter: Number(e.target.value) })
@@ -196,7 +219,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         </div>
       ) : (
         <div className="vout-param-fixed text-xs color-text-muted">
-          bits[4:0] parameter = 00000b（Part II §8.3 Table 2 要求 {info.formatName} 参数恒为 0）
+          bits[4:0] 参数 = 00000b（Part II §8.3 Table 2 要求 {info.formatName} 参数恒为 0）
         </div>
       )}
 
@@ -218,7 +241,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         </span>
         {info.source && (
           <span className="vout-canonical-source" data-testid="vout-mode-source">
-            {info.source === 'linked' ? 'linked' : 'fallback-default'}
+            {info.source === 'linked' ? '已关联' : '默认回退'}
           </span>
         )}
       </div>
@@ -248,7 +271,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             onClick={() => dispatch({ type: 'l16/apply-default-vout-mode' })}
             className="vout-apply-default min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
           >
-            应用默认 LINEAR VOUT_MODE / Apply default
+            应用默认 VOUT_MODE
           </button>
         ) : null
       ) : (
@@ -257,12 +280,12 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           onClick={() => dispatch({ type: 'vout-mode/normalize' })}
           className="vout-normalize min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
         >
-          规范化 / Normalize
+          规范化
         </button>
       )}
 
       <details className="vout-explanations-details">
-        <summary>说明 / Details（{info.explanations.length}）</summary>
+        <summary>说明（{info.explanations.length}）</summary>
         <VoutModeExplanations explanations={info.explanations} />
       </details>
     </div>

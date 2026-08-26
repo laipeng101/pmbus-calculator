@@ -311,7 +311,7 @@ describe('toCalculatorViewModel', () => {
     test('L16 steps expose VOUT_MODE fields and result for absolute LINEAR', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00 }))
       expect(vm.steps.some((s) => s.label.includes('VOUT_MODE'))).toBe(true)
-      expect(vm.steps.some((s) => s.label.includes('mode'))).toBe(true)
+      expect(vm.steps.some((s) => s.label.includes('格式'))).toBe(true)
       expect(vm.steps.some((s) => s.kind === 'result' && s.value === '12')).toBe(true)
     })
 
@@ -338,7 +338,7 @@ describe('toCalculatorViewModel', () => {
           direct: { m: 2, b: 0, r: 0, errors: { m: null, b: null, r: null } },
         }),
       )
-      expect(vm.steps.some((s) => s.label === 'Y（16-bit signed）')).toBe(true)
+      expect(vm.steps.some((s) => s.label === 'Y（16 位有符号整数）')).toBe(true)
       expect(vm.steps.some((s) => s.label === 'M（斜率）')).toBe(true)
       expect(vm.steps.some((s) => s.kind === 'result' && s.value === '5')).toBe(true)
     })
@@ -348,7 +348,7 @@ describe('toCalculatorViewModel', () => {
       expect(vm.steps.some((s) => s.label.includes('S'))).toBe(true)
       expect(vm.steps.some((s) => s.label.includes('E'))).toBe(true)
       expect(vm.steps.some((s) => s.label.includes('F'))).toBe(true)
-      expect(vm.steps.some((s) => s.plainText.includes('normal'))).toBe(true)
+      expect(vm.steps.some((s) => s.plainText.includes('正规数'))).toBe(true)
     })
   })
 

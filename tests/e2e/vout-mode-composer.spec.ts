@@ -111,11 +111,11 @@ test.describe('M38 VOUT_MODE 结构化配置器（L16 embedded）', () => {
     await expect(page.locator(L16_N)).toHaveValue('-8')
   })
 
-  test('bit7 切换不破坏 N；N 编辑不破坏 bit7/format', async ({ page }) => {
+  test('bit7 切换不破坏 N；N 编辑不破坏 bit7/格式', async ({ page }) => {
     await settle(page)
     await switchToL16(page)
 
-    await page.getByRole('radio', { name: 'Relative' }).click()
+    await page.getByRole('radio', { name: '相对值' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x98')
     await expect(page.locator(L16_N)).toHaveValue('-8')
     await expect(page.locator(STATUS)).toContainText('相对 LINEAR')
@@ -124,7 +124,7 @@ test.describe('M38 VOUT_MODE 结构化配置器（L16 embedded）', () => {
     await page.locator(L16_N).press('Tab')
     await expect(page.locator(CANONICAL)).toContainText('0x8F') // relative LINEAR, N=15
 
-    await page.getByRole('radio', { name: 'Absolute' }).click()
+    await page.getByRole('radio', { name: '绝对值' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x0F') // N 保持 15
   })
 
@@ -133,11 +133,11 @@ test.describe('M38 VOUT_MODE 结构化配置器（L16 embedded）', () => {
     await switchToL16(page)
 
     await expect(page.getByRole('radio', { name: 'VID' })).toHaveCount(0)
-    const bit5 = page.getByRole('button', { name: /Bit 5, Format/ })
-    const bit6 = page.getByRole('button', { name: /Bit 6, Format/ })
+    const bit5 = page.getByRole('button', { name: /第 5 位，格式位固定为 LINEAR/ })
+    const bit6 = page.getByRole('button', { name: /第 6 位，格式位固定为 LINEAR/ })
     await expect(bit5).toBeDisabled()
     await expect(bit6).toBeDisabled()
-    await expect(page.getByRole('button', { name: /Bit 7, Absolute\/Relative/ })).toBeEnabled()
+    await expect(page.getByRole('button', { name: /第 7 位，绝对值\/相对值/ })).toBeEnabled()
   })
 })
 
@@ -152,8 +152,8 @@ test.describe('M38 standalone VOUT_MODE calculator', () => {
     )
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
     await expect(page.getByTestId('vout-mode-binary')).toHaveText('0b00011000')
-    await expect(page.getByRole('button', { name: /Bit 7, Absolute\/Relative/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Bit 0, Parameter/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /第 7 位，绝对值\/相对值/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /第 0 位，参数/ })).toBeVisible()
   })
 
   test('raw bit toggle 是 lossless 的：可构造 0xA0/0x41/0xE1 且不被吞掉', async ({ page }) => {
@@ -187,23 +187,23 @@ test.describe('M38 standalone VOUT_MODE calculator', () => {
     await expect(page.locator(STATUS)).toContainText('相对 VID — 非法组合')
     await expect(page.locator(STATUS)).not.toContainText('相对 LINEAR')
 
-    await page.getByRole('radio', { name: 'Absolute' }).click()
+    await page.getByRole('radio', { name: '绝对值' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x20')
-    await expect(page.locator(STATUS)).toContainText('Not Used')
+    await expect(page.locator(STATUS)).toContainText('未使用')
   })
 
   test('选择 VID 时 Relative 被禁用；DIRECT/Half 参数固定为 0', async ({ page }) => {
     await settle(page)
     await switchToVoutMode(page)
 
-    await page.getByRole('radio', { name: 'Relative' }).click()
+    await page.getByRole('radio', { name: '相对值' }).click()
     await page.getByRole('radio', { name: 'VID' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x38')
-    await expect(page.getByRole('radio', { name: 'Relative' })).toBeDisabled()
+    await expect(page.getByRole('radio', { name: '相对值' })).toBeDisabled()
 
     await page.getByRole('radio', { name: 'DIRECT' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x40')
-    await expect(page.getByText(/parameter = 00000b/)).toBeVisible()
+    await expect(page.getByText(/参数 = 00000b/)).toBeVisible()
 
     await page.getByRole('radio', { name: 'IEEE Half' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x60')
@@ -270,11 +270,13 @@ test.describe('M37 公式/配置器布局与溢出', () => {
     })
   }
 
-  test('1280×900 L16 默认折叠下 scrollHeight ≤ 1350', async ({ page }) => {
+  test('1280×900 L16 默认折叠下 scrollHeight ≤ 1400（M39：内嵌 VOUT_MODE 保留双 nibble 分组与图例）', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await settle(page)
     await switchToL16(page)
     const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
-    expect(scrollHeight).toBeLessThanOrEqual(1350)
+    expect(scrollHeight).toBeLessThanOrEqual(1400)
   })
 })
