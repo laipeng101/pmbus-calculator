@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('LaTeX 公式展示与交互反馈', () => {
-  test('五个模式均出现 KaTeX 容器且无 .katex-error', async ({ page }) => {
+  test('四个计算模式均出现 KaTeX 容器且无 .katex-error', async ({ page }) => {
     const pageErrors: string[] = []
     const consoleErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
@@ -11,13 +11,9 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
 
     await page.goto('/')
 
-    const tabs = [
-      { name: /LINEAR11/, mode: 'L11' },
-      { name: /LINEAR16/, mode: 'L16' },
-      { name: /DIRECT/, mode: 'DIRECT' },
-      { name: /HALF/, mode: 'HALF' },
-      { name: /VOUT_MODE/, mode: 'VOUT_MODE' },
-    ]
+    // VOUT_MODE 是结构化配置字节而非数学公式（M39 字体角色合同），其结果面板
+    // 不经 KaTeX 排版；只有四个数值换算模式仍渲染真实公式。
+    const tabs = [{ name: /LINEAR11/ }, { name: /LINEAR16/ }, { name: /DIRECT/ }, { name: /HALF/ }]
 
     for (const tab of tabs) {
       await page.getByRole('tab', { name: tab.name }).click()
@@ -28,6 +24,28 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
 
     expect(pageErrors).toEqual([])
     expect(consoleErrors).toEqual([])
+  })
+
+  test('VOUT_MODE 结果面板使用配置摘要而非 KaTeX', async ({ page }) => {
+    const summary = page.getByTestId('vout-mode-config-summary')
+    await page.goto('/')
+    await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+    await expect(summary).toBeVisible()
+    await expect(summary).toContainText('VOUT_MODE')
+    await expect(summary).toContainText('0x18')
+    // 配置摘要自身不经 KaTeX 排版；页面其他位置的真实公式（如计算过程）保留 KaTeX。
+    await expect(summary.locator('.katex')).toHaveCount(0)
+    await expect(page.locator('.katex-error')).toHaveCount(0)
+
+    const byteFont = await summary
+      .locator('.vout-config-byte')
+      .evaluate((el) => getComputedStyle(el).fontFamily)
+    expect(byteFont).toContain('mono')
+    const summaryFont = await summary.evaluate((el) => getComputedStyle(el).fontFamily)
+    // UI 字体角色：系统无衬线；不得回退到 KaTeX/Times serif。
+    expect(summaryFont).toContain('sans-serif')
+    expect(summaryFont).not.toContain('KaTeX')
+    expect(summaryFont).not.toContain('Times New Roman')
   })
 
   test('修改输入后公式同步更新', async ({ page }) => {

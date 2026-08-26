@@ -14,9 +14,12 @@ async function switchToVoutMode(page: Page) {
   await expect(page.getByTestId('vout-term-row')).toBeVisible()
 }
 
-const VM_TRIGGER = '[data-testid="term-trigger-vout-mode"]'
+// vout-mode / linear 术语触发器同时存在于结果面板配置摘要与工作区术语行中，
+// 统一作用域到结果面板的配置摘要，保证定位器唯一。
+const SUMMARY = '[data-testid="vout-mode-config-summary"]'
+const VM_TRIGGER = SUMMARY + ' [data-testid="term-trigger-vout-mode"]'
 const VM_POPOVER = '[data-testid="term-popover-vout-mode"]'
-const LINEAR_TRIGGER = '[data-testid="term-trigger-linear"]'
+const LINEAR_TRIGGER = SUMMARY + ' [data-testid="term-trigger-linear"]'
 const LINEAR_POPOVER = '[data-testid="term-popover-linear"]'
 
 test.describe('M39 术语气泡（可访问点击解释）', () => {

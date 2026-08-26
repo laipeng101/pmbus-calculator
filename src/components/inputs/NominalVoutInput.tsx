@@ -67,7 +67,7 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit }: Pro
   return (
     <div>
       <label className="mb-1 block text-xs font-medium color-text-muted" htmlFor={id}>
-        VOUT_COMMAND nominal（V）
+        VOUT_COMMAND 标称参考值（V）
       </label>
       <input
         id={id}

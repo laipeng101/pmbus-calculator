@@ -1186,6 +1186,45 @@ select:disabled,
    VOUT_MODE structured composer
    ========================================================= */
 
+.vout-config-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.9375rem;
+}
+
+@media (min-width: 768px) {
+  .vout-config-summary {
+    justify-content: flex-start;
+  }
+}
+
+.vout-config-seq {
+  color: var(--color-text-muted);
+}
+
+.vout-config-sep {
+  color: var(--color-text-muted);
+}
+
+.vout-config-byte {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.vout-config-state {
+  color: var(--color-text-secondary);
+}
+
+.vout-config-summary[data-alert='true'] .vout-config-state {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
 .vout-composer-controls {
   display: flex;
   flex-wrap: wrap;

@@ -190,8 +190,8 @@ test.describe('计算器真实用户流程', () => {
 
     await expect(page.locator('#value-input')).toHaveCount(1)
     await expect(page.getByTestId('result-value')).toHaveText('0')
-    await expect(page.getByTestId('vout-mode-source')).toHaveText('fallback-default')
-    await expect(page.getByText(/fallback/).first()).toBeVisible()
+    await expect(page.getByTestId('vout-mode-source')).toHaveText('默认回退')
+    await expect(page.getByText(/默认回退/).first()).toBeVisible()
   })
 
   test('L16 relative LINEAR（0x98）显示需要参考值且不给出绝对电压', async ({ page }) => {
@@ -204,7 +204,7 @@ test.describe('计算器真实用户流程', () => {
     await expect(page.locator('#value-input')).toHaveCount(0)
     await expect(page.getByTestId('result-value')).toHaveText('—')
     await expect(page.getByText(/相对 LINEAR/).first()).toBeVisible()
-    await expect(page.getByText(/需要参考值/).first()).toBeVisible()
+    await expect(page.getByText(/标称参考值/).first()).toBeVisible()
   })
 
   test('复制 Hex 使用当前偏好格式', async ({ page, context }) => {

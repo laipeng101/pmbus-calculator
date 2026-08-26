@@ -1,6 +1,7 @@
 import type { CalculatorViewModel } from '../../app/view-model'
 import { getResultValueSizeClass } from '../../app/result-presentation'
 import MathFormula from '../math/MathFormula'
+import VoutModeConfigSummary from '../mode/VoutModeConfigSummary'
 
 interface Props {
   vm: CalculatorViewModel
@@ -12,7 +13,9 @@ interface Props {
  * This is the single result-panel contract holder. It sits between the mode
  * switcher and the workspace so the physical value is visible without
  * scrolling. It only renders view-model values and formula presentation lines;
- * it never computes anything itself.
+ * it never computes anything itself. The VOUT_MODE tab shows its structured
+ * configuration summary (UI/data font roles) instead of a KaTeX equation,
+ * because a config byte is not math.
  */
 export default function ResultSummary({ vm }: Props) {
   const valueSizeClass = getResultValueSizeClass(vm.valueText)
@@ -31,7 +34,7 @@ export default function ResultSummary({ vm }: Props) {
           <div className="text-xs font-medium color-text-muted">{vm.valueLabel}</div>
           <div
             data-testid="result-value"
-            className={`result-value result-value-${valueSizeClass} color-accent`}
+            className={'result-value result-value-' + valueSizeClass + ' color-accent'}
             aria-live="polite"
           >
             {vm.valueText}
@@ -39,12 +42,14 @@ export default function ResultSummary({ vm }: Props) {
         </div>
 
         <div className="result-summary-formula min-w-0">
-          {vm.formulaDetailLines.length > 0 ? (
+          {vm.mode === 'VOUT_MODE' && vm.voutModePage ? (
+            <VoutModeConfigSummary info={vm.voutModePage} />
+          ) : vm.formulaDetailLines.length > 0 ? (
             <div className="space-y-1.5">
               {vm.formulaDetailLines.map((line, index) =>
                 line.kind === 'summary' ? (
                   <div
-                    key={`${line.kind}-${index}`}
+                    key={line.kind + '-' + index}
                     data-testid="formula-summary"
                     className="formula-summary text-center md:text-left"
                   >
@@ -52,7 +57,7 @@ export default function ResultSummary({ vm }: Props) {
                   </div>
                 ) : (
                   <div
-                    key={`${line.kind}-${index}`}
+                    key={line.kind + '-' + index}
                     className="math-scroll flex justify-center text-sm font-medium color-text-secondary md:justify-start"
                     data-testid="formula-line"
                   >

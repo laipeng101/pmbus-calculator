@@ -26,6 +26,8 @@ test.describe('GitHub Pages production deployment', () => {
     expect(page.url().startsWith('https://')).toBeTruthy()
 
     await expect(page).toHaveTitle(/PMBus/)
+    // M39：页面标题包含全部五个模式（含 VOUT_MODE）。
+    await expect(page).toHaveTitle(/VOUT_MODE/)
     await expect(page.getByRole('heading', { name: 'PMBus' })).toBeVisible()
     // 线上页面必须显示与部署包一致的版本（构建时注入，非手工维护）。
     await expect(page.getByTestId('version-badge')).toHaveText(`v${pkg.version}`)

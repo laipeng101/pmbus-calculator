@@ -111,11 +111,11 @@ test.describe('M38 VOUT_MODE 结构化配置器（L16 embedded）', () => {
     await expect(page.locator(L16_N)).toHaveValue('-8')
   })
 
-  test('bit7 切换不破坏 N；N 编辑不破坏 bit7/format', async ({ page }) => {
+  test('bit7 切换不破坏 N；N 编辑不破坏 bit7/格式', async ({ page }) => {
     await settle(page)
     await switchToL16(page)
 
-    await page.getByRole('radio', { name: 'Relative' }).click()
+    await page.getByRole('radio', { name: '相对值' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x98')
     await expect(page.locator(L16_N)).toHaveValue('-8')
     await expect(page.locator(STATUS)).toContainText('相对 LINEAR')
@@ -124,7 +124,7 @@ test.describe('M38 VOUT_MODE 结构化配置器（L16 embedded）', () => {
     await page.locator(L16_N).press('Tab')
     await expect(page.locator(CANONICAL)).toContainText('0x8F') // relative LINEAR, N=15
 
-    await page.getByRole('radio', { name: 'Absolute' }).click()
+    await page.getByRole('radio', { name: '绝对值' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x0F') // N 保持 15
   })
 
@@ -187,23 +187,23 @@ test.describe('M38 standalone VOUT_MODE calculator', () => {
     await expect(page.locator(STATUS)).toContainText('相对 VID — 非法组合')
     await expect(page.locator(STATUS)).not.toContainText('相对 LINEAR')
 
-    await page.getByRole('radio', { name: 'Absolute' }).click()
+    await page.getByRole('radio', { name: '绝对值' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x20')
-    await expect(page.locator(STATUS)).toContainText('Not Used')
+    await expect(page.locator(STATUS)).toContainText('未使用')
   })
 
   test('选择 VID 时 Relative 被禁用；DIRECT/Half 参数固定为 0', async ({ page }) => {
     await settle(page)
     await switchToVoutMode(page)
 
-    await page.getByRole('radio', { name: 'Relative' }).click()
+    await page.getByRole('radio', { name: '相对值' }).click()
     await page.getByRole('radio', { name: 'VID' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x38')
-    await expect(page.getByRole('radio', { name: 'Relative' })).toBeDisabled()
+    await expect(page.getByRole('radio', { name: '相对值' })).toBeDisabled()
 
     await page.getByRole('radio', { name: 'DIRECT' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x40')
-    await expect(page.getByText(/parameter = 00000b/)).toBeVisible()
+    await expect(page.getByText(/参数 = 00000b/)).toBeVisible()
 
     await page.getByRole('radio', { name: 'IEEE Half' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x60')

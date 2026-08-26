@@ -35,6 +35,8 @@ test.describe('production build smoke', () => {
     await page.goto('/')
 
     await expect(page).toHaveTitle(/PMBus/)
+    // M39：页面标题包含全部五个模式（含 VOUT_MODE）。
+    await expect(page).toHaveTitle(/VOUT_MODE/)
     await expect(page.getByRole('heading', { name: 'PMBus' })).toBeVisible()
     // 构建时从 package.json 注入的版本徽标必须与当前包版本一致。
     await expect(page.getByTestId('version-badge')).toHaveText(`v${pkg.version}`)

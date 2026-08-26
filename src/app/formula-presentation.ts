@@ -287,17 +287,16 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
     }
 
     case 'VOUT_MODE': {
-      const a = analyzeVoutMode(state.voutMode.byte)
+      // A VOUT_MODE byte is structured configuration state, not a math
+      // equation: it must never be typeset with KaTeX/serif. The result panel
+      // renders it through VoutModeConfigSummary (UI/data font roles); the
+      // plainText contract below only serves copy tooling.
       const hex = state.voutMode.byte.toString(16).toUpperCase().padStart(2, '0')
-      const plainText = `VOUT_MODE 0x${hex} — ${a.formatName} / ${a.isRelative ? 'Relative' : 'Absolute'}`
-      const status = `${a.formatName} / ${a.isRelative ? 'Relative' : 'Absolute'}`
-      const latex = `\\text{VOUT\\_MODE} = 0x${hex}\\quad\\text{${status}}`
       return {
-        plainText,
-        latex,
-        genericLatex:
-          '\\text{VOUT\\_MODE} = \\text{bit7}\\ \\mid\\ \\text{format}[6:5]\\ \\mid\\ \\text{parameter}[4:0]',
-        detailLines: singleExpansionLine(plainText, latex),
+        plainText: 'VOUT_MODE 0x' + hex,
+        latex: '',
+        genericLatex: '',
+        detailLines: [],
       }
     }
 

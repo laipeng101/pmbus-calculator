@@ -110,7 +110,7 @@ test.describe('L11（360×800 light）：手动 Y/N 非法输入、错误关联�
     await hexInput.fill('0801')
     await hexInput.press('Tab')
 
-    const yInput = page.getByLabel('Y (11-bit)')
+    const yInput = page.getByLabel('Y（11 位有符号整数）')
     await yInput.fill('12abc')
     await expectFieldError(page, 'l11-y-input')
     await expect(hexInput).toHaveValue('0801')
@@ -126,7 +126,7 @@ test.describe('L11（360×800 light）：手动 Y/N 非法输入、错误关联�
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     await page.getByRole('tab', { name: /LINEAR11/ }).click()
     await expectNoFieldError(page, 'l11-y-input')
-    await expect(page.getByLabel('Y (11-bit)')).toHaveValue('25')
+    await expect(page.getByLabel('Y（11 位有符号整数）')).toHaveValue('25')
 
     await expectNoBodyHorizontalOverflow(page)
   })
@@ -399,7 +399,7 @@ test.describe('全局快捷键：编辑区不触发、非编辑区触发', () =>
     await expect(page.getByRole('tab', { name: /DIRECT/ })).toHaveAttribute('aria-selected', 'true')
 
     await page.getByRole('tab', { name: /LINEAR11/ }).click()
-    await page.getByLabel('Y (11-bit)').press('Control+3')
+    await page.getByLabel('Y（11 位有符号整数）').press('Control+3')
     await expect(page.getByRole('tab', { name: /LINEAR11/ })).toHaveAttribute(
       'aria-selected',
       'true',

@@ -177,7 +177,7 @@ function voutModeStatusText(byte: number): string {
     case 'invalid-parameter':
       return a.formatName + ' 参数必须为 0（§8.3 Table 2）'
     case 'not-used':
-      return 'VID code 00h — Not Used（未使用）'
+      return 'VID code 00h — 未使用'
     case 'reserved':
       return 'VID code 保留（规范未列出）'
     case 'profile-required':
@@ -354,13 +354,13 @@ function buildWarnings(state: AppState): WarningVM[] {
       warnings.push({
         id: 'vout-mode-relative',
         level: 'info',
-        text: `VOUT_MODE ${hex} 为相对 LINEAR；需要参考值（VOUT_COMMAND nominal reference）才能计算最终电压。`,
+        text: `VOUT_MODE ${hex} 为相对 LINEAR；需要 VOUT_COMMAND 标称参考值才能计算最终电压。`,
       })
     } else if (a.status === 'invalid-combination') {
       warnings.push({
         id: 'vout-mode-invalid-combination',
         level: 'error',
-        text: `VOUT_MODE ${hex} 为相对 + VID 非法组合（Part II §8.5.3：Relative 不适用于 VID）。`,
+        text: `VOUT_MODE ${hex} 为相对 + VID 非法组合（Part II §8.5.3：相对值不适用于 VID）。`,
       })
     } else if (a.status === 'invalid-parameter') {
       warnings.push({
@@ -372,7 +372,7 @@ function buildWarnings(state: AppState): WarningVM[] {
       warnings.push({
         id: 'vout-mode-vid-not-used',
         level: 'warning',
-        text: `VOUT_MODE ${hex} 为 VID code 00h（Not Used），不构成有效 VID profile。`,
+        text: `VOUT_MODE ${hex} 的 VID code 00h 为未使用，不构成有效 VID profile。`,
       })
     } else if (a.status === 'reserved') {
       warnings.push({
