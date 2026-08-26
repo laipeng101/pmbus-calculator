@@ -30,8 +30,12 @@
 ### 2.2 LINEAR16
 
 - 手动 V 输入和 `raw/set` 必须 clamp 到 `0..65535`，不得使用 `raw & 0xffff` 回绕。
-- reducer/domain 层必须拒绝在 relative LINEAR、VID、DIRECT、IEEE Half VOUT_MODE 下通过
-  `value/set` 生成 LINEAR16 编码——不能只靠隐藏 UI 输入阻止错误状态。
+- reducer/domain 层在 **relative LINEAR** 共享字节下必须拒绝 `value/set` 生成 LINEAR16
+  编码——不能只靠隐藏 UI 输入阻止错误状态。
+- 非 LINEAR 共享字节（VID / DIRECT / IEEE Half 格式）遵循 §3 的 fallback 契约：`value/set`
+  按回退后的 `DEFAULT_LINEAR_VOUT_MODE = 0x18`（N=-8）继续编码，不静默改写共享字节；
+  UI 必须同时显示 fallback 徽标/说明，量化误差读数必须标注「按 fallback 0x18 计算」。
+  因此「拒绝 non-LINEAR `value/set`」不是本仓库行为——拒绝仅发生在 relative LINEAR。
 - 只有 **absolute LINEAR** 才显示绝对电压结果、V、N、2^N 与可表示电压范围；
   relative LINEAR 可以解释 VOUT_MODE 参数位的 exponent/ratio 语义，但不得把 raw 标成
   绝对电压；VID/DIRECT/IEEE Half 不得生成虚假的 LINEAR16 V/N/range/result。
@@ -123,3 +127,48 @@
 - `STATUS_WORD` 通常为 Read Word；特殊写入仅用于清除 UNKNOWN 位（写 0x0100），其他状态位通过底层状态寄存器或 `CLEAR_FAULTS` 处理；不得写成“写入可清除所有状态位”。
 - `READ_EIN` 存在规范内部冲突：Part II §18.13 描述 6 个数据字节（accumulator 2 + rollover 1 + sample count 3），Appendix I Table 31 列为 5。实现使用 `dataBytesConflict` 显式记录两个来源，不在 UI 中提供单一权威数字；计算器不是 READ_EIN packet-length authority。
 - 当前实现基线为 PMBus Rev 1.3（官方来源与校验信息见 `document/specifications.json`；规范 PDF 不再随源码树分发）。官方 Rev 1.3.1 仍保留上述冲突；官方当前版本为 1.5，但本仓库不评估或声明 1.5 兼容性，未来规范升级列为独立 backlog。
+
+## 6. 格式编码量化误差（format-encoding quantization）
+
+实现单一来源：`src/app/quantization-error.ts`（可判别联合 `QuantizationOutcome`），
+展示呈现在 `src/app/view-model.ts` 与共享组件 `src/components/result/ErrorDelta.tsx`。
+本节语义适用于 LINEAR11 / LINEAR16 / DIRECT / IEEE Half 四个数值格式页。
+
+### 6.1 请求来源（provenance）
+
+- 量化误差仅在存在**显式且仍然有效**的编码请求时定义：请求 = 用户通过物理值输入
+  最后一次成功提交的 `value/set`。L11 使用历史通道 `l11.valueInput`；L16/DIRECT/HALF
+  共享模式标签的 `state.valueRequest`（`{ mode, value }`），防止跨页污染。
+- 以下任一动作会使请求失效（provenance 清除，误差变为**未知**）：
+  - 任何不经物理值输入的 raw 变更（Hex 输入、bit toggle、`raw/set`、DIRECT Y）；
+  - 改变编码解释的状态变更（DIRECT m/b/R、L16 payload kind、任何 VOUT_MODE 字节变更）；
+  - 切换到另一个模式。重复选择当前模式是幂等 no-op，**不清除**请求。
+- 没有请求来源时 UI **必须隐藏**误差读数——禁止伪造 `+0.000000 (0.0000%)`。
+  「未输入请求」与「误差为零」是两个不同的领域状态。
+
+### 6.2 结果分类（可判别状态）
+
+| status      | 条件                                                           | UI 严重度 |
+| ----------- | -------------------------------------------------------------- | --------- |
+| `exact`     | 有限请求与表示值相等                                           | ok        |
+| `quantized` | 有限请求，表示值为最接近可编码值且不相等（含 ties-to-even）    | warn      |
+| `saturated` | 请求超出当前指数/系数下的可表示范围，编码器 clamp 到边界有限值 | error     |
+| `overflow`  | 有限请求按 IEEE 754 binary16 舍入为 ±Infinity（HALF 特有）     | error     |
+| `special`   | 请求本身是 NaN / ±Infinity（HALF 一等值），编码为同类特殊值    | warn      |
+
+- 误差方向沿用 legacy 定义：`requested − represented`（UI 必须写明，避免与
+  `represented − requested` 混淆）。
+- 相对误差仅在 `requested ≠ 0` 且两侧均为有限数时定义；零分母显示「—」，
+  禁止显示 0%。±0 与 +0 相等（`=== 0`），同属零分母。
+- 绝对误差格式化必须保证**任何非零差值绝不渲染为文本零**：`|x| ≥ 1e-6` 使用
+  固定 6 位小数（legacy 观感），更小的非零值使用自适应有效数字/科学计数法。
+- 严重度只由结果分类决定，**不存在跨格式的绝对误差阈值**：PMBus 设备准确度由
+  产品资料规定（Part II §7.8/§7.9），LINEAR16 的 LSB 由指数决定、Half 的 ULP 随
+  指数变化、DIRECT 的单位由命令/器件决定。UI 名称统一为「格式编码量化误差」，
+  不得暗示设备测量/设置/调节准确度。
+- HALF 有限值溢出（`|value| ≥ 65520`，见 §2.4）必须以 overflow/error 展示，
+  不得因表示值非有限而隐藏读数。
+- L16 SLINEAR16 offset 的量化计算不受 VOUT_MODE bit7 relative 影响（payload 语义
+  优先，见 §2.2 与 Part II §13.3/§13.4）；L16 fallback 0x18 时读数必须标注。
+- DIRECT 的量化只描述「当前用户给定系数下的编码量化」，不代表器件读/写方向的
+  真实准确度（读写方向系数可能不同）。
