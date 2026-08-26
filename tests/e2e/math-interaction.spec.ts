@@ -37,9 +37,11 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     await hexInput.press('Tab')
 
     await expect(page.locator('#value-input')).toHaveValue('12.5')
-    // 计算过程里的数值代入公式包含实际 N/Y 值（25 × 2^-1）
+    // 计算过程里的数值代入公式包含实际 N/Y 值（25 × 2^-1）。
+    // M36 起计算过程默认折叠，需先展开可访问 disclosure。
+    await page.locator('[data-testid="calculation-steps-summary"]').click()
     const substitution = page
-      .locator('section[aria-label="结果面板"] [data-step-kind="formula"]')
+      .locator('section[aria-label="辅助结果"] [data-step-kind="formula"]')
       .filter({ hasText: '25' })
       .first()
     await expect(substitution).toBeVisible()
@@ -174,6 +176,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
 
     // active 按压反馈保留。
     const commandReferenceToggle = page.locator('#command-reference-toggle')
+    await commandReferenceToggle.scrollIntoViewIfNeeded()
     const box = await commandReferenceToggle.boundingBox()
     if (box == null) throw new Error('command reference toggle bounding box missing')
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)

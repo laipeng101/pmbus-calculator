@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-08-26
+
+### Changed
+
+- 结果优先的响应式布局（M36）：物理值 `ResultSummary` 移至模式切换之后、主 workspace 之前，
+  桌面与移动端首屏内完整可见，无需滚动；详细计算过程默认折叠为可访问 disclosure。
+- `ResultInspector` 按职责拆分为 `ResultSummary`（唯一结果面板与 live region）与
+  `ResultDetails`（原始 Hex / LE / BE / 量化误差 / 复制工具 / warnings / 计算过程），
+  单一结果实例，不复制 view-model。
+- 命令参考移动至主 workspace 之后；默认折叠时只显示按钮，说明移入展开内容顶部。
+- 桌面 workspace 右栏改为 320–380px 自适应，移除整栏 sticky；移动端保持单列。
+- visual scene 在截图前断言真实版本徽标并按 SemVer 形状规范化，隔离每次发布必变的
+  非布局数据；release/deployment smoke 继续断言真实 `v2.1.0`。
+
 ## [2.0.2] - 2026-08-26
 
 ### Changed

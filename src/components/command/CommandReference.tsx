@@ -34,14 +34,14 @@ export default function CommandReference() {
         </span>
       </button>
 
-      <p className="command-ref-hint mt-1.5 text-xs">
-        纯计算器不依赖命令选择：命令选择不能可靠推导数据格式——器件数据手册或 VOUT_MODE
-        决定格式。此面板只显示命令码、事务、数据类型、单位、格式来源与说明，不参与模式切换、
-        参数注入或结果计算。
-      </p>
-
       {open && (
         <div className="command-ref-table-shell mt-2 overflow-x-auto rounded-lg">
+          <p className="command-ref-hint px-3 pt-2 text-xs">
+            纯计算器不依赖命令选择：命令选择不能可靠推导数据格式——器件数据手册或 VOUT_MODE
+            决定格式。此面板只显示命令码、事务、数据类型、单位、格式来源与说明，不参与模式切换、
+            参数注入或结果计算。
+          </p>
+
           <table className="w-full min-w-[880px] text-left text-xs">
             <thead>
               <tr className="command-ref-th">
