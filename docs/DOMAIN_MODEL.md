@@ -35,6 +35,13 @@
 - 只有 **absolute LINEAR** 才显示绝对电压结果、V、N、2^N 与可表示电压范围；
   relative LINEAR 可以解释 VOUT_MODE 参数位的 exponent/ratio 语义，但不得把 raw 标成
   绝对电压；VID/DIRECT/IEEE Half 不得生成虚假的 LINEAR16 V/N/range/result。
+- L16 payload 是独立于 VOUT_MODE 字节的命令 payload 语义，分两种：
+  - `ULINEAR16`：`X = Y_u × 2^N`，`Y_u` 是无符号 16 位整数 `0..65535`；absolute LINEAR
+    直接解出电压，relative LINEAR 解出无量纲正比例 `R = Y_u × 2^N`，最终电压
+    `X = V_NOM × R`（`raw=0` 时 `R=0`，规范要求 relative value 为正，标记为非符合性）。
+  - `SLINEAR16 offset`：`X_offset = Y_s × 2^N`，`Y_s` 是 16 位二补码 `-32768..32767`
+    （Part II §13.3 VOUT_TRIM / §13.4 VOUT_CAL_OFFSET）；bit7 不参与该 payload 的数学，
+    相对 + 有符号比例是伪标准组合，不提供。
 - `raw/set-from-hex` 使用严格十六进制解析：可选 `0x`/`0X` 前缀与首尾空白；必须整串匹配，最多 4 位十六进制数字；非法、只有 `0x`、超长输入均报错且不修改 `state.raw`；空输入按 0 处理。不再通过 `& 0xffff` 静默截断超长输入。
 
 ### 2.3 DIRECT
@@ -76,12 +83,17 @@
   `0x61..0x7F` 及对应 bit7=1 的组合分类为 `invalid-parameter`，可解码但不可作为有效配置。
 - VID 参数是 unsigned VID Code Type（Part II §8.4.2 Table 3）：`00h` = not-used；
   `1Eh/1Fh` = profile-required（制造商自定义）；其余未列 code = reserved。
-- **L16 exponent 单一事实源**：`AppState.l16` 只存 `voutMode` byte；N 一律由
-  `analyzeVoutMode(voutMode).linearExponent` 派生，不存在第二个 exponent 存储。
+- **L16 exponent 单一事实源**：`AppState.voutMode.byte` 是共享字节；N 一律由
+  `analyzeVoutMode(byte).linearExponent` 派生，不存在第二个 exponent 存储。
+- L16 页面使用 `effectiveL16VoutMode`：共享字节为 LINEAR 时直接 linked 使用；
+  非 LINEAR 时回退到 `DEFAULT_LINEAR_VOUT_MODE = 0x18`（`fallback-default`），不静默改写共享字节。
 - L16 页面只在 **absolute LINEAR** 时计算并显示 `X = V \times 2^N`：
-  - relative LINEAR：解释 `V \times 2^N` 的比值语义并说明需要 nominal reference，不计算绝对电压；
-  - VID / DIRECT / IEEE Half：不得伪装成 LINEAR16 结果，显示精确的
-    not-used / reserved / profile-required / invalid-parameter / invalid-combination 状态。
+  - relative ULINEAR16：解出比值 `R`，有 nominal reference 时 `X = V_NOM × R`，否则只显示比值；
+  - SLINEAR16 offset：始终按 `X_offset = Y_s × 2^N` 计算，bit7 不适用；
+  - 非 LINEAR 共享字节：回退到 0x18 计算，并显示 fallback 徽标与双语说明。
+- 独立 VOUT_MODE 计算器（第五个模式）是 8-bit 字节配置器：双 nibble 交互位网格、bit7
+  Absolute/Relative、bits[6:5] format、bits[4:0] parameter；raw 位/Hex 编辑 lossless
+  （可构造 `0xA0`/`0x41`/`0xE1`），语义控件 canonicalize，`Normalize` 显式规范化。
 
 ## 4. 字节序
 

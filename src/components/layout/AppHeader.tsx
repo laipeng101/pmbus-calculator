@@ -18,8 +18,8 @@ export default function AppHeader({ theme, onThemeChange }: Props) {
             v{__APP_VERSION__}
           </span>
         </div>
-        <p className="mt-0.5 text-sm color-text-secondary">
-          LINEAR11 / LINEAR16 / DIRECT / binary16
+        <p className="mt-0.5 break-words text-sm color-text-secondary">
+          LINEAR11 / LINEAR16 / DIRECT / binary16 / VOUT_MODE
         </p>
         <p className="mt-0.5 text-xs color-text-muted">
           数值格式换算，不实现完整 PMBus/SMBus 协议栈

@@ -4,15 +4,26 @@
  * Phase 1: React useReducer only. No external state libraries.
  */
 
-export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF'
+import { DEFAULT_LINEAR_VOUT_MODE } from '../legacy/vout-mode'
+
+export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF' | 'VOUT_MODE'
 export type Endian = 'le' | 'be'
 export type Theme = 'light' | 'dark' | 'system'
+export type Linear16PayloadKind = 'ulinear16' | 'slinear16-offset'
 
 export interface AppState {
   mode: AppMode
   raw: number
   commandKey: string | null
   byteOrder: Endian
+
+  /**
+   * Shared VOUT_MODE data byte (0..255) — the single source of truth for both
+   * the standalone VOUT_MODE calculator and the LINEAR16 page.
+   */
+  voutMode: {
+    byte: number
+  }
 
   l11: {
     n: number
@@ -23,8 +34,18 @@ export interface AppState {
   }
 
   l16: {
-    /** VOUT_MODE data byte (0..255) — the single source of truth for the L16 exponent. */
-    voutMode: number
+    /**
+     * How the 16-bit payload word is interpreted. This is a command-payload
+     * semantic and is NOT encoded into VOUT_MODE; switching it only changes the
+     * signedness/meaning of `raw`, never the VOUT_MODE byte or raw bits.
+     */
+    payloadKind: Linear16PayloadKind
+    /**
+     * Nominal VOUT_COMMAND reference (volts) for ULINEAR16 Relative mode.
+     * null when not provided; the final voltage is blocked until it is finite
+     * and non-negative.
+     */
+    nominalVout: number | null
   }
 
   direct: {
@@ -63,6 +84,10 @@ export const INITIAL_STATE: AppState = {
   commandKey: null,
   byteOrder: 'le',
 
+  voutMode: {
+    byte: DEFAULT_LINEAR_VOUT_MODE,
+  },
+
   l11: {
     n: 0,
     y: 0,
@@ -71,7 +96,8 @@ export const INITIAL_STATE: AppState = {
   },
 
   l16: {
-    voutMode: 0x18,
+    payloadKind: 'ulinear16',
+    nominalVout: null,
   },
 
   direct: {

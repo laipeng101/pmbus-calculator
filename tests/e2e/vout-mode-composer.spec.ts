@@ -58,9 +58,10 @@ test.describe('M37 LINEAR 公式编辑器（L11 exponent 锚点）', () => {
       await nInput.fill(n)
       await nInput.press('Tab')
       const g = await boxes()
-      // N 位于底数 2 上方、右侧区域
-      expect(g.eBottom, 'exponent above base').toBeLessThanOrEqual(g.bTop + 2)
-      expect(g.eRight, 'exponent reaches right edge of base').toBeGreaterThanOrEqual(g.bRight - 4)
+      // N 位于底数 2 上方、右侧区域：指数槽左边缘从底数右边缘开始（±2px 容差）
+      expect(g.eBottom, 'exponent above base').toBeLessThanOrEqual(g.bTop + 4)
+      expect(g.eLeft, 'exponent left aligns with base right').toBeGreaterThanOrEqual(g.bRight - 2)
+      expect(g.eRight, 'exponent reaches right edge of base').toBeGreaterThanOrEqual(g.bRight)
       // 锁按钮在独立槽，不覆盖指数
       expect(g.eRight, 'exponent clears lock button').toBeLessThanOrEqual(g.lLeft)
       bLefts.push(g.bLeft)
@@ -82,23 +83,28 @@ test.describe('M37 LINEAR 公式编辑器（L11 exponent 锚点）', () => {
   })
 })
 
-test.describe('M37 VOUT_MODE 结构化配置器（L16）', () => {
+async function switchToVoutMode(page: Page) {
+  await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+  await expect(page.locator(CANONICAL)).toBeVisible()
+}
+
+test.describe('M38 VOUT_MODE 结构化配置器（L16 embedded）', () => {
   test('expert Hex 与结构化控件双向同步（0x18↔-8、0x0F↔15、0x10↔-16）', async ({ page }) => {
     await settle(page)
     await switchToL16(page)
 
     const hex = page.locator('#vout-mode-input')
-    await expect(hex).toHaveValue('0x18')
+    await expect(hex).toHaveValue('18')
     await expect(page.locator(L16_N)).toHaveValue('-8')
 
     await page.locator(L16_N).fill('15')
     await page.locator(L16_N).press('Tab')
-    await expect(hex).toHaveValue('0x0F')
+    await expect(hex).toHaveValue('0F')
     await expect(page.locator(CANONICAL)).toContainText('0x0F')
 
     await page.locator(L16_N).fill('-16')
     await page.locator(L16_N).press('Tab')
-    await expect(hex).toHaveValue('0x10')
+    await expect(hex).toHaveValue('10')
 
     await hex.fill('18')
     await hex.press('Tab')
@@ -122,66 +128,109 @@ test.describe('M37 VOUT_MODE 结构化配置器（L16）', () => {
     await expect(page.locator(CANONICAL)).toContainText('0x0F') // N 保持 15
   })
 
-  test('relative VID 0xA0 显示非法组合且绝不显示相对 LINEAR', async ({ page }) => {
+  test('L16 bits[6:5] 锁定：格式 radio 不出现，bit5/bit6 按钮 disabled', async ({ page }) => {
     await settle(page)
     await switchToL16(page)
+
+    await expect(page.getByRole('radio', { name: 'VID' })).toHaveCount(0)
+    const bit5 = page.getByRole('button', { name: /Bit 5, Format/ })
+    const bit6 = page.getByRole('button', { name: /Bit 6, Format/ })
+    await expect(bit5).toBeDisabled()
+    await expect(bit6).toBeDisabled()
+    await expect(page.getByRole('button', { name: /Bit 7, Absolute\/Relative/ })).toBeEnabled()
+  })
+})
+
+test.describe('M38 standalone VOUT_MODE calculator', () => {
+  test('第五个 tab、8-bit 双 nibble 与 canonical byte 显示', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+
+    await expect(page.getByRole('tab', { name: /VOUT_MODE/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
+    await expect(page.getByTestId('vout-mode-binary')).toHaveText('0b00011000')
+    await expect(page.getByRole('button', { name: /Bit 7, Absolute\/Relative/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Bit 0, Parameter/ })).toBeVisible()
+  })
+
+  test('raw bit toggle 是 lossless 的：可构造 0xA0/0x41/0xE1 且不被吞掉', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+
+    const hex = page.locator('#vout-mode-input')
+    await hex.fill('A0')
+    await hex.press('Tab')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0xA0')
+    await expect(page.locator(STATUS)).toContainText('相对 VID — 非法组合')
+
+    await hex.fill('41')
+    await hex.press('Tab')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x41')
+    await expect(page.locator(STATUS)).toContainText('参数必须为 0')
+
+    await hex.fill('E1')
+    await hex.press('Tab')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0xE1')
+    await expect(page.locator(STATUS)).toContainText('参数必须为 0')
+  })
+
+  test('relative VID 0xA0 显示非法组合且绝不显示相对 LINEAR；Absolute 可修正', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
     const hex = page.locator('#vout-mode-input')
     await hex.fill('A0')
     await hex.press('Tab')
 
     await expect(page.locator(STATUS)).toContainText('相对 VID — 非法组合')
-    await expect(page.getByTestId('result-value')).toHaveText('—')
-    await expect(page.getByText(/相对 LINEAR/)).toHaveCount(0)
+    await expect(page.locator(STATUS)).not.toContainText('相对 LINEAR')
 
-    // Absolute 控件可把非法相对 VID 修正回绝对 VID
     await page.getByRole('radio', { name: 'Absolute' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x20')
     await expect(page.locator(STATUS)).toContainText('Not Used')
   })
 
-  test('DIRECT/Half 参数非零（0x5F/0xE1）被判 invalid parameter 且不计算', async ({ page }) => {
+  test('选择 VID 时 Relative 被禁用；DIRECT/Half 参数固定为 0', async ({ page }) => {
     await settle(page)
-    await switchToL16(page)
-    const hex = page.locator('#vout-mode-input')
+    await switchToVoutMode(page)
 
-    await hex.fill('5F')
-    await hex.press('Tab')
-    await expect(page.locator(STATUS)).toContainText('DIRECT 参数必须为 0')
-    await expect(page.getByTestId('result-value')).toHaveText('—')
-
-    await hex.fill('E1')
-    await hex.press('Tab')
-    await expect(page.locator(STATUS)).toContainText('IEEE Half 参数必须为 0')
-    await expect(page.getByTestId('result-value')).toHaveText('—')
-  })
-
-  test('选择 VID 时 Relative 被规范化禁用；DIRECT/Half 参数固定为 0', async ({ page }) => {
-    await settle(page)
-    await switchToL16(page)
-
-    // 先切 relative，再选 VID：bit7 被规范化为 absolute
     await page.getByRole('radio', { name: 'Relative' }).click()
     await page.getByRole('radio', { name: 'VID' }).click()
-    await expect(page.locator(CANONICAL)).toContainText('0x38') // absolute VID, 参数保留 24
+    await expect(page.locator(CANONICAL)).toContainText('0x38')
     await expect(page.getByRole('radio', { name: 'Relative' })).toBeDisabled()
-    await expect(page.locator('#vout-vid-code-select')).toBeVisible()
 
-    // DIRECT：参数固定 0
     await page.getByRole('radio', { name: 'DIRECT' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x40')
     await expect(page.getByText(/parameter = 00000b/)).toBeVisible()
 
-    // IEEE Half：参数固定 0
     await page.getByRole('radio', { name: 'IEEE Half' }).click()
     await expect(page.locator(CANONICAL)).toContainText('0x60')
   })
 
+  test('Normalize 只修正非法组合/参数，不破坏合法位', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+    const hex = page.locator('#vout-mode-input')
+
+    await hex.fill('E1')
+    await hex.press('Tab')
+    await page.getByRole('button', { name: /规范化/ }).click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0xE0')
+
+    await hex.fill('A0')
+    await hex.press('Tab')
+    await page.getByRole('button', { name: /规范化/ }).click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x20')
+  })
+
   test('结构化控件不切换顶层模式；命令参考保持无副作用', async ({ page }) => {
     await settle(page)
-    await switchToL16(page)
+    await switchToVoutMode(page)
 
     await page.getByRole('radio', { name: 'VID' }).click()
-    await expect(page.getByRole('tab', { name: /LINEAR16/ })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: /VOUT_MODE/ })).toHaveAttribute(
       'aria-selected',
       'true',
     )

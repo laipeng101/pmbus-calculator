@@ -7,6 +7,7 @@ function state(partial: Partial<AppState>): AppState {
   return {
     ...INITIAL_STATE,
     ...partial,
+    voutMode: { ...INITIAL_STATE.voutMode, ...(partial.voutMode ?? {}) },
     l11: { ...INITIAL_STATE.l11, ...(partial.l11 ?? {}) },
     l16: { ...INITIAL_STATE.l16, ...(partial.l16 ?? {}) },
     direct: { ...INITIAL_STATE.direct, ...(partial.direct ?? {}) },
@@ -42,7 +43,7 @@ describe('buildCalculationSteps — unified four-mode skeleton', () => {
 
   it('L16 absolute LINEAR exposes VOUT_MODE fields and the X = V × 2^N chain', () => {
     const steps = buildCalculationSteps(
-      state({ mode: 'L16', raw: 0x0c00, l16: { voutMode: 0x18 } }),
+      state({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x18 } }),
     )
     expect(kinds(steps)).toEqual([
       'field',
@@ -62,62 +63,32 @@ describe('buildCalculationSteps — unified four-mode skeleton', () => {
 
   it('L16 relative LINEAR explains exponent/ratio but never fakes an absolute result', () => {
     const steps = buildCalculationSteps(
-      state({ mode: 'L16', raw: 0x0c00, l16: { voutMode: 0x98 } }),
+      state({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }),
     )
     expect(steps.some((s) => s.kind === 'result')).toBe(false)
-    expect(steps.some((s) => s.kind === 'warning' && s.id === 'l16-unsupported')).toBe(true)
+    expect(steps.some((s) => s.kind === 'warning' && s.id === 'l16-relative-nominal-missing')).toBe(
+      true,
+    )
     expect(steps.some((s) => s.plainText.includes('nominal reference'))).toBe(true)
     // 相对 LINEAR 可解释 VOUT_MODE 参数位的指数/比值语义……
     expect(steps.some((s) => s.id === 'l16-n')).toBe(true)
     expect(steps.some((s) => s.id === 'l16-2n')).toBe(true)
+    expect(steps.some((s) => s.id === 'l16-ratio')).toBe(true)
     // ……但不得把 raw 标成绝对电压（无 V 字段、无结果）。
     expect(steps.some((s) => s.id === 'l16-v')).toBe(false)
   })
 
-  it('L16 DIRECT/Half (parameter 0) stop at a warning without a fake result', () => {
-    for (const voutMode of [0x40, 0x60, 0xe0]) {
-      const steps = buildCalculationSteps(state({ mode: 'L16', l16: { voutMode } }))
+  it('L16 非 LINEAR 共享字节 fallback 到 0x18 并生成结果', () => {
+    for (const byte of [0x40, 0x60, 0xe0, 0x20, 0xa0, 0x41, 0xc1, 0xe1]) {
+      const steps = buildCalculationSteps(state({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
       expect(
-        steps.some((s) => s.kind === 'result'),
-        `0x${voutMode.toString(16)}`,
-      ).toBe(false)
-      expect(
-        steps.some((s) => s.kind === 'warning' && s.id === 'l16-unsupported'),
-        `0x${voutMode.toString(16)}`,
+        steps.some((s) => s.kind === 'warning' && s.id === 'l16-fallback'),
+        `0x${byte.toString(16)}`,
       ).toBe(true)
-      // DIRECT/IEEE Half 不得生成虚假的 LINEAR16 V/N/range/result。
       expect(
-        steps.some((s) => s.id === 'l16-v'),
-        `0x${voutMode.toString(16)}`,
-      ).toBe(false)
-      expect(
-        steps.some((s) => s.id === 'l16-n'),
-        `0x${voutMode.toString(16)}`,
-      ).toBe(false)
-    }
-  })
-
-  it('L16 VID 0x20 (Not Used) 产生 vid 警告且无结果', () => {
-    const steps = buildCalculationSteps(state({ mode: 'L16', l16: { voutMode: 0x20 } }))
-    expect(steps.some((s) => s.kind === 'result')).toBe(false)
-    expect(steps.some((s) => s.kind === 'warning' && s.id === 'l16-vid')).toBe(true)
-    expect(steps.some((s) => s.id === 'l16-v')).toBe(false)
-  })
-
-  it('L16 relative VID 0xA0 产生 invalid-combination 警告', () => {
-    const steps = buildCalculationSteps(state({ mode: 'L16', l16: { voutMode: 0xa0 } }))
-    expect(steps.some((s) => s.kind === 'warning' && s.id === 'l16-invalid-combination')).toBe(true)
-    expect(steps.some((s) => s.kind === 'result')).toBe(false)
-  })
-
-  it('L16 DIRECT/Half 非零参数产生 invalid-parameter 警告', () => {
-    for (const voutMode of [0x41, 0x5f, 0x61, 0x7f, 0xc1, 0xe1]) {
-      const steps = buildCalculationSteps(state({ mode: 'L16', l16: { voutMode } }))
-      expect(
-        steps.some((s) => s.kind === 'warning' && s.id === 'l16-invalid-parameter'),
-        `0x${voutMode.toString(16)}`,
+        steps.some((s) => s.kind === 'result' && s.value === '12'),
+        `0x${byte.toString(16)}`,
       ).toBe(true)
-      expect(steps.some((s) => s.kind === 'result')).toBe(false)
     }
   })
 

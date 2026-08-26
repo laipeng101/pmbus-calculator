@@ -1,17 +1,25 @@
 import type { AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
-import type { CalculatorViewModel } from '../../app/view-model'
+import type { VoutModeInfoVM } from '../../app/view-model'
 import type { VoutModeFormat } from '../../legacy/vout-mode'
 import { VID_CODE_TABLE } from '../../legacy/vout-mode'
+import { PMBusMath } from '../../legacy/pmbus-math'
 import DecimalInput from '../inputs/DecimalInput'
+import IntegerInput from '../inputs/IntegerInput'
 import HexInput from '../inputs/HexInput'
 import ExponentEditor from '../formula/ExponentEditor'
 import LinearFormulaEditor from '../formula/LinearFormulaEditor'
+import VoutModeBitGrid from './VoutModeBitGrid'
+import VoutModeExplanations from './VoutModeExplanations'
 
 interface Props {
   state: AppState
-  vm: CalculatorViewModel
+  info: VoutModeInfoVM
+  /** Shared byte edited by the expert Hex input (may differ from info on L16 fallback). */
+  byte: number
   dispatch: React.Dispatch<AppAction>
+  /** L16 embedded editor locks bits[6:5] and shows the linked/fallback source. */
+  embedded?: boolean
 }
 
 const FORMATS: Array<{ value: VoutModeFormat; label: string }> = [
@@ -28,28 +36,41 @@ function vidOptionLabel(code: number, kind: string): string {
   return hex + 'h · Reserved'
 }
 
-/**
- * Structured VOUT_MODE composer: bit7 (absolute/relative), bits[6:5] (format),
- * bits[4:0] (parameter) plus a real-time canonical byte / binary / validity
- * readout and the expert Hex input. All controls dispatch reducer actions;
- * this component never computes domain state itself.
- */
-export default function VoutModeComposer({ state, vm, dispatch }: Props) {
-  const info = vm.voutModeInfo
-  if (info == null) return null
+const byteDigits = (byte: number) => (byte & 0xff).toString(16).toUpperCase().padStart(2, '0')
 
-  const isVid = info.mode === 1
+/**
+ * Structured VOUT_MODE composer shared by the standalone VOUT_MODE calculator
+ * and the embedded LINEAR16 editor.
+ *
+ * - raw Hex / raw bit buttons are lossless and can form any 0x00..0xFF;
+ * - semantic controls canonicalize (VID forces Absolute, DIRECT/Half force
+ *   parameter 0);
+ * - on the L16 page the effective byte drives the editor and bits[6:5] are
+ *   locked to 00b (LINEAR); editing bit7/N writes a canonical LINEAR byte back
+ *   to the shared source and flips the page into the linked state.
+ */
+export default function VoutModeComposer({ state, info, byte, dispatch, embedded = false }: Props) {
+  const isVid = info.format === 1
+  const disabledBits = embedded ? new Set([5, 6]) : undefined
 
   return (
-    <div className="vout-composer min-w-0 space-y-3">
-      {/* bit7 + bits[6:5] */}
+    <div className="vout-composer min-w-0 space-y-1">
+      {/* 8-bit interactive editor */}
+      <VoutModeBitGrid
+        nibbles={info.nibbles}
+        onToggle={(bit) => dispatch({ type: 'vout-mode/toggle-bit', bit })}
+        disabledBits={disabledBits}
+        compact={embedded}
+      />
+
+      {/* bit7 + bits[6:5] semantic controls */}
       <div className="vout-composer-controls">
         <div role="radiogroup" aria-label="Absolute / Relative（bit7）" className="vout-seg">
           <button
             type="button"
             role="radio"
             aria-checked={info.isRelative === false}
-            onClick={() => dispatch({ type: 'l16/set-vout-relative', relative: false })}
+            onClick={() => dispatch({ type: 'vout-mode/set-relative', relative: false })}
             className="vout-seg-btn"
           >
             Absolute
@@ -61,62 +82,97 @@ export default function VoutModeComposer({ state, vm, dispatch }: Props) {
             aria-disabled={isVid}
             disabled={isVid}
             title={isVid ? 'Relative 不适用于 VID（Part II §8.5.3）' : undefined}
-            onClick={() => dispatch({ type: 'l16/set-vout-relative', relative: true })}
+            onClick={() => dispatch({ type: 'vout-mode/set-relative', relative: true })}
             className="vout-seg-btn"
           >
             Relative
           </button>
         </div>
 
-        <div role="radiogroup" aria-label="格式（bits[6:5]）" className="vout-seg vout-seg-format">
-          {FORMATS.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              role="radio"
-              aria-checked={info.mode === f.value}
-              onClick={() => dispatch({ type: 'l16/set-vout-format', format: f.value })}
-              className="vout-seg-btn"
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        {!embedded && (
+          <div
+            role="radiogroup"
+            aria-label="格式（bits[6:5]）"
+            className="vout-seg vout-seg-format"
+          >
+            {FORMATS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                role="radio"
+                aria-checked={info.format === f.value}
+                onClick={() => dispatch({ type: 'vout-mode/set-format', format: f.value })}
+                className="vout-seg-btn"
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* bits[4:0] parameter */}
-      {info.mode === 0 ? (
+      {info.format === 0 ? (
         <div className="vout-param-linear">
-          <LinearFormulaEditor
-            ariaLabel="LINEAR16 公式编辑器"
-            valueCaption="V（16 位无符号）"
-            valueEditor={
-              <div className="w-24">
-                <DecimalInput
-                  id="l16-v-input"
-                  value={state.raw}
-                  ariaLabel="V（16 位无符号，0～65535）"
-                  onCommit={(text) => dispatch({ type: 'raw/set', raw: text })}
-                  className="input-surface w-full rounded-lg px-2 py-2 text-center text-base font-semibold outline-none"
+          {embedded ? (
+            <LinearFormulaEditor
+              ariaLabel="LINEAR16 公式编辑器"
+              valueCaption={
+                state.l16.payloadKind === 'slinear16-offset'
+                  ? 'Y_s（16 位有符号）'
+                  : 'V（16 位无符号）'
+              }
+              valueEditor={
+                <div className="w-28">
+                  {state.l16.payloadKind === 'slinear16-offset' ? (
+                    <IntegerInput
+                      id="l16-v-input"
+                      value={PMBusMath.toSigned(state.raw, 16)}
+                      ariaLabel="Y_s（16 位二补码偏移，−32768～32767）"
+                      onCommit={(text) => dispatch({ type: 'l16/set-slinear-y', y: text })}
+                      className="input-surface w-full rounded-lg px-2 py-2 text-center text-base font-semibold outline-none"
+                    />
+                  ) : (
+                    <DecimalInput
+                      id="l16-v-input"
+                      value={state.raw}
+                      ariaLabel="V（16 位无符号，0～65535）"
+                      onCommit={(text) => dispatch({ type: 'raw/set', raw: text })}
+                      className="input-surface w-full rounded-lg px-2 py-2 text-center text-base font-semibold outline-none"
+                    />
+                  )}
+                </div>
+              }
+              exponentEditor={
+                <ExponentEditor
+                  id="l16-n-input"
+                  value={info.linearExponent ?? 0}
+                  ariaLabel="L16 N（指数）"
+                  onCommit={(text) => dispatch({ type: 'vout-mode/set-linear-n', n: text })}
                 />
-              </div>
-            }
-            exponentEditor={
+              }
+            />
+          ) : (
+            <div className="vout-param-n-only">
+              <label className="text-xs color-text-muted" htmlFor="vout-mode-n-input">
+                N（5-bit signed，−16～15）
+              </label>
               <ExponentEditor
-                id="l16-n-input"
+                id="vout-mode-n-input"
                 value={info.linearExponent ?? 0}
-                ariaLabel="L16 N（指数）"
-                onCommit={(text) => dispatch({ type: 'l16/set-vout-linear-n', n: text })}
+                ariaLabel="VOUT_MODE N（指数）"
+                onCommit={(text) => dispatch({ type: 'vout-mode/set-linear-n', n: text })}
               />
-            }
-          />
+            </div>
+          )}
           {info.isRelative && (
             <p className="vout-param-note text-xs">
-              相对 LINEAR：V × 2^N 是比值编码，绝对电压需要 VOUT_COMMAND nominal reference。
+              相对 LINEAR：payload 与 VOUT_COMMAND 同格式，解出比值 R；最终电压需要 nominal
+              reference。
             </p>
           )}
         </div>
-      ) : info.mode === 1 ? (
+      ) : info.format === 1 ? (
         <div className="vout-param-vid">
           <label className="text-xs color-text-muted" htmlFor="vout-vid-code-select">
             VID Code Type（unsigned，0～31）
@@ -126,7 +182,7 @@ export default function VoutModeComposer({ state, vm, dispatch }: Props) {
             aria-label="VID Code Type"
             value={info.param}
             onChange={(e) =>
-              dispatch({ type: 'l16/set-vout-vid-code', code: Number(e.target.value) })
+              dispatch({ type: 'vout-mode/set-parameter', parameter: Number(e.target.value) })
             }
             className="panel-surface-muted rounded-lg px-3 py-2 text-sm outline-none"
           >
@@ -140,41 +196,75 @@ export default function VoutModeComposer({ state, vm, dispatch }: Props) {
         </div>
       ) : (
         <div className="vout-param-fixed text-xs color-text-muted">
-          bits[4:0] parameter = 00000b（Part II §8.3 Table 2 要求 {info.modeName} 参数恒为 0）
+          bits[4:0] parameter = 00000b（Part II §8.3 Table 2 要求 {info.formatName} 参数恒为 0）
         </div>
       )}
 
-      {/* Canonical byte + binary + validity */}
+      {/* Canonical byte + binary + validity + source */}
       <div className="vout-canonical" data-testid="vout-mode-canonical">
-        <span className="vout-canonical-byte">{info.hex}</span>
+        <span className="vout-canonical-byte" data-testid="vout-mode-byte">
+          {info.hex}
+        </span>
         <span className="vout-canonical-binary" data-testid="vout-mode-binary">
           0b{info.binary}
         </span>
         <span
           className={
-            'vout-canonical-status' + (info.status === 'ok' ? '' : ' vout-canonical-status-alert')
+            'vout-canonical-status' + (info.structureLegal ? '' : ' vout-canonical-status-alert')
           }
           data-testid="vout-mode-status"
         >
           {info.statusText}
         </span>
+        {info.source && (
+          <span className="vout-canonical-source" data-testid="vout-mode-source">
+            {info.source === 'linked' ? 'linked' : 'fallback-default'}
+          </span>
+        )}
       </div>
 
-      {/* Expert Hex — bidirectional with the structured controls */}
+      {/* Expert Hex — lossless raw byte edit */}
       <div className="flex items-start gap-2">
         <label className="mt-2 text-sm color-text-muted" htmlFor="vout-mode-input">
           Hex
         </label>
         <HexInput
           id="vout-mode-input"
-          value={info.hex}
+          value={byteDigits(byte)}
+          fixedPrefix="0x"
           maxDigits={2}
           ariaLabel="VOUT_MODE"
-          placeholder="0x18"
+          placeholder="18"
           className="input-surface w-full rounded-lg px-3 py-2 text-sm outline-none"
-          onCommit={(text) => dispatch({ type: 'l16/set-vout-mode', hex: text })}
+          onCommit={(text) => dispatch({ type: 'vout-mode/set-byte', hex: text })}
         />
       </div>
+
+      {/* Explicit canonicalization action */}
+      {embedded ? (
+        info.source === 'fallback-default' ? (
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'l16/apply-default-vout-mode' })}
+            className="vout-apply-default min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
+          >
+            应用默认 LINEAR VOUT_MODE / Apply default
+          </button>
+        ) : null
+      ) : (
+        <button
+          type="button"
+          onClick={() => dispatch({ type: 'vout-mode/normalize' })}
+          className="vout-normalize min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
+        >
+          规范化 / Normalize
+        </button>
+      )}
+
+      <details className="vout-explanations-details">
+        <summary>说明 / Details（{info.explanations.length}）</summary>
+        <VoutModeExplanations explanations={info.explanations} />
+      </details>
     </div>
   )
 }

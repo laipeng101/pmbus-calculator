@@ -31,7 +31,7 @@ async function settle(page: Page) {
 }
 
 async function fillRaw(page: Page, hex: string) {
-  const hexInput = page.locator('input[placeholder="0x0000"]')
+  const hexInput = page.locator('input[placeholder="0000"]')
   await hexInput.fill(hex)
   await hexInput.press('Tab')
   await expect(page.locator('.katex').first()).toBeVisible()
@@ -53,8 +53,8 @@ async function setL11Stress(page: Page) {
 
 async function setL16Stress(page: Page) {
   await page.getByRole('tab', { name: /LINEAR16/ }).click()
-  await page.getByLabel('VOUT_MODE').fill('13')
-  await page.getByLabel('VOUT_MODE').press('Tab')
+  await page.locator('#vout-mode-input').fill('13')
+  await page.locator('#vout-mode-input').press('Tab')
   await fillRaw(page, '8FC3')
 }
 
@@ -63,6 +63,15 @@ async function setDirectStress(page: Page) {
   await page.getByLabel('DIRECT 系数 r').fill('12')
   await page.getByLabel('DIRECT 系数 r').press('Tab')
   await fillRaw(page, '8FC3')
+}
+
+async function switchToVoutMode(page: Page) {
+  await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+  await expect(page.locator('#vout-mode-input')).toBeVisible()
+  await page.evaluate(async () => {
+    await document.fonts.ready
+  })
+  await page.waitForTimeout(120)
 }
 
 test.describe('visual regression (stable scenes)', () => {
@@ -148,6 +157,28 @@ test.describe('visual regression (stable scenes)', () => {
     })
     await page.waitForTimeout(120)
     await expect(page).toHaveScreenshot('desktop-light-half.png', { animations: 'disabled' })
+  })
+
+  test('desktop dark VOUT_MODE', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
+    await settle(page)
+    await switchToVoutMode(page)
+    await expect(page).toHaveScreenshot('desktop-dark-vout-mode.png', { animations: 'disabled' })
+  })
+
+  test('desktop light VOUT_MODE', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
+    await settle(page)
+    await switchToVoutMode(page)
+    await expect(page).toHaveScreenshot('desktop-light-vout-mode.png', { animations: 'disabled' })
+  })
+
+  test('mobile 390 VOUT_MODE', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
+    await settle(page)
+    await switchToVoutMode(page)
+    await expect(page).toHaveScreenshot('mobile-390-vout-mode.png', { animations: 'disabled' })
   })
 
   test('mobile 390 L11', async ({ page }) => {

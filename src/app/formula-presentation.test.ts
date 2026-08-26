@@ -9,6 +9,7 @@ function state(partial: Partial<AppState> & { mode: AppState['mode'] }): AppStat
   return {
     ...INITIAL_STATE,
     ...partial,
+    voutMode: { ...INITIAL_STATE.voutMode, ...(partial.voutMode ?? {}) },
     l11: { ...INITIAL_STATE.l11, ...(partial.l11 ?? {}) },
     l16: { ...INITIAL_STATE.l16, ...(partial.l16 ?? {}) },
     direct: { ...INITIAL_STATE.direct, ...(partial.direct ?? {}) },
@@ -40,7 +41,7 @@ describe('formula presentation model', () => {
   })
 
   it('L16 keeps legacy plainText and adds LaTeX with actual values', () => {
-    const s = state({ mode: 'L16', raw: 0, l16: { voutMode: 0x18 } })
+    const s = state({ mode: 'L16', raw: 0, voutMode: { byte: 0x18 } })
     const f = getFormulaPresentation(s)
 
     expect(f.plainText).toBe('V=0 × 2^-8')
@@ -167,7 +168,7 @@ describe('formula presentation model', () => {
   it('KaTeX templates only use the safe common subset', () => {
     const samples = [
       state({ mode: 'L11', raw: 0xf819 }),
-      state({ mode: 'L16', raw: 0xffff, l16: { voutMode: 0x18 } }),
+      state({ mode: 'L16', raw: 0xffff, voutMode: { byte: 0x18 } }),
       state({
         mode: 'DIRECT',
         raw: 0x8000,

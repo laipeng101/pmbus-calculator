@@ -385,4 +385,21 @@ describe('composeVoutMode — canonical encode and round-trip', () => {
       expect(analyzeVoutMode(byte!).linearExponent).toBe(n)
     }
   })
+
+  test('every byte 0x00..0xFF is losslessly analyzable (format from bits[6:5] only)', () => {
+    for (let byte = 0; byte <= 0xff; byte++) {
+      const a = analyzeVoutMode(byte)
+      expect(a.byte, `0x${byte.toString(16)}`).toBe(byte)
+      expect(a.format, `0x${byte.toString(16)}`).toBe((byte >> 5) & 0x03)
+      expect(a.isRelative, `0x${byte.toString(16)}`).toBe(((byte >> 7) & 1) === 1)
+      expect(a.parameter, `0x${byte.toString(16)}`).toBe(byte & 0x1f)
+    }
+  })
+
+  test('official Relative example 0x96: R = 1.099609375 = 109.9609375%', () => {
+    const a = analyzeVoutMode(0x96)
+    expect(a.isRelative).toBe(true)
+    expect(a.format).toBe(0)
+    expect(a.linearExponent).toBe(-10)
+  })
 })

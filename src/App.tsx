@@ -43,7 +43,7 @@ function App() {
   useEffect(() => persistByteOrder(state.byteOrder), [state.byteOrder])
   useEffect(() => persistCopy(state.copy), [state.copy])
 
-  // Keyboard shortcuts for mode switching: Ctrl+1..4 only outside editing
+  // Keyboard shortcuts for mode switching: Ctrl+1..5 only outside editing
   // contexts (input/textarea/select/contenteditable/role=textbox/combobox)
   // and only as a bare Ctrl combo — Meta/Alt/Shift variants stay with the
   // browser/OS.
@@ -66,6 +66,10 @@ function App() {
           break
         case '4':
           dispatch({ type: 'mode/set', mode: 'HALF' })
+          e.preventDefault()
+          break
+        case '5':
+          dispatch({ type: 'mode/set', mode: 'VOUT_MODE' })
           e.preventDefault()
           break
       }

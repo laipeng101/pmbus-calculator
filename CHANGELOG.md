@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-08-26
+
+### Added
+
+- M38：独立 VOUT_MODE 计算器（第五个模式）——8-bit 交互位网格（bit7 Absolute/Relative、
+  bits[6:5] format、bits[4:0] parameter 双 4-bit nibble 卡），raw 位/Hex 编辑 lossless
+  （可构造 `0xA0`/`0x41`/`0xE1`），语义控件 canonicalize（VID 强制 Absolute、DIRECT/Half
+  参数强制 0），`Normalize` 显式规范化非法组合/参数。
+- M38：标准 LINEAR16 payload 语义——`ULINEAR16`（`X = Y_u × 2^N`，`Y_u` 无符号 0..65535）
+  与 `SLINEAR16 offset`（`X_offset = Y_s × 2^N`，`Y_s` 二补码 -32768..32767）；相对
+  ULINEAR16 解出正比例 `R = Y_u × 2^N`，提供 nominal reference 时 `X = V_NOM × R`；
+  SLINEAR16 相对 + 有符号比例被拒绝（bit7 不参与 offset payload）。
+- L16 共享 `VOUT_MODE` 字节单一事实源 + `effectiveL16VoutMode` 选择器：非 LINEAR 共享字节
+  回退到 `DEFAULT_LINEAR_VOUT_MODE = 0x18` 而不静默改写共享字节，linked/fallback 双语徽标。
+
+### Fixed
+
+- `HexInput` 固定 `0x` 前缀：前缀渲染在 `<input>` 之外，输入值只含十六进制数字；粘贴
+  `18`/`0x18`/`0X18` 归一化为 `18`，裸 `0x` 过渡为空 digits（blur 归零）而非报错。
+- VOUT_MODE 公式不再输出 KaTeX 非法转义 `\#`（结果面板 fallback 为纯文本的问题）。
+- 修正 `format` 只取 `(byte >> 5) & 0x03` 的全字节 0x00..0xFF 遍历 golden 覆盖。
+
 ## [2.2.0] - 2026-08-26
 
 ### Added

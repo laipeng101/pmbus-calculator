@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-26（M37 LINEAR 指数编辑器与 VOUT_MODE 结构化配置器）
+最后更新：2026-08-26（M38 独立 VOUT_MODE 计算器与 LINEAR16 标准语义）
 
 ## 当前产品基线
 
@@ -28,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M37 complete；stable release v2.2.0；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M38 complete；stable release v2.3.0；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -45,7 +45,11 @@ M0–M37 complete；stable release v2.2.0；production distribution: GitHub Page
   指数槽）、L16 VOUT_MODE composer（bit7/format/parameter 双向同步 + canonical byte）、
   VOUT_MODE analyzer/composer 单一领域来源、精确 validity 分类（relative-VID 非法组合、
   DIRECT/Half 非零参数非法）、Hex 过渡态合同修正、L16 exponent 单事实源。
-- 当前：v2.2.0 已发布；M37 complete；无进行中的功能里程碑。
+- M38：独立 VOUT_MODE 计算器 + 标准 LINEAR16 语义——第五个 VOUT_MODE 模式（8-bit 双 nibble
+  交互位网格、raw lossless、Normalize canonicalize）、ULINEAR16（X=Y_u×2^N）与
+  SLINEAR16 offset（X_offset=Y_s×2^N）payload 语义、relative ULINEAR16 比值
+  X=V_NOM×R、L16 共享 VOUT_MODE 非 LINEAR 回退 0x18、固定 0x 前缀 HexInput 合同。
+- 当前：v2.3.0 已发布；M38 complete；无进行中的功能里程碑。
 
 ## 下一产品目标
 

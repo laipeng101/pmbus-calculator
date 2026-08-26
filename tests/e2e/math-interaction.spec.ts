@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('LaTeX 公式展示与交互反馈', () => {
-  test('四个模式均出现 KaTeX 容器且无 .katex-error', async ({ page }) => {
+  test('五个模式均出现 KaTeX 容器且无 .katex-error', async ({ page }) => {
     const pageErrors: string[] = []
     const consoleErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
@@ -16,11 +16,12 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
       { name: /LINEAR16/, mode: 'L16' },
       { name: /DIRECT/, mode: 'DIRECT' },
       { name: /HALF/, mode: 'HALF' },
+      { name: /VOUT_MODE/, mode: 'VOUT_MODE' },
     ]
 
     for (const tab of tabs) {
       await page.getByRole('tab', { name: tab.name }).click()
-      await expect(page.locator('.katex').first()).toBeVisible()
+      await expect(page.locator('.katex:visible').first()).toBeVisible()
       await expect(page.locator('.katex-error')).toHaveCount(0)
       await expect(page.locator('.katex math').first()).toBeAttached()
     }
@@ -31,7 +32,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
 
   test('修改输入后公式同步更新', async ({ page }) => {
     await page.goto('/')
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
 
     await hexInput.fill('F819')
     await hexInput.press('Tab')
@@ -57,7 +58,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
       'pointer',
     )
 
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     expect(await hexInput.evaluate((el) => getComputedStyle(el).cursor)).toBe('text')
 
     const nInput = page.getByLabel('N 值 (指数)')
@@ -188,7 +189,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     expect(activeTransform).not.toBe('none')
 
     // 功能行为不受影响。
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('F819')
     await hexInput.press('Tab')
     await expect(page.locator('#value-input')).toHaveValue('12.5')

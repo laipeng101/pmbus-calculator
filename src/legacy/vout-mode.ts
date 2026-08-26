@@ -69,6 +69,16 @@ export const VOUT_MODE_FORMAT_NAMES: Record<VoutModeFormat, VoutModeFormatName> 
   3: 'IEEE Half',
 }
 
+/**
+ * Fallback LINEAR VOUT_MODE used by the LINEAR16 page when the shared byte is
+ * not LINEAR (Part II §8.3: bits[6:5] must be 00b for LINEAR16 semantics).
+ *
+ * 0x18 = absolute LINEAR, N = -8 (5-bit two's complement 0b11000).
+ * This is the single definition; state initialization and the fallback selector
+ * both consume it and no other copy exists.
+ */
+export const DEFAULT_LINEAR_VOUT_MODE = 0x18
+
 function toSigned5(bits: number): number {
   return bits >= 16 ? bits - 32 : bits
 }

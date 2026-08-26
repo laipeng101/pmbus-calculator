@@ -75,7 +75,10 @@ tests/e2e/        Playwright 真实用户流程
 - 状态入口：`src/app/state.ts` 的 `AppState`；使用 `useReducer`。
 - Action 命名使用命名空间：`mode/set`、`command/set`、`raw/set-from-hex`、
   `bit/toggle`、`value/set`、`l11/set-n`、`l11/set-y`、`l11/toggle-auto-n`、
-  `l16/set-vout-mode`、`direct/set-y`、`direct/set-coeff`、`copy/toggle-prefix`、
+  `vout-mode/set-byte`、`vout-mode/toggle-bit`、`vout-mode/set-relative`、
+  `vout-mode/set-format`、`vout-mode/set-linear-n`、`vout-mode/set-parameter`、
+  `vout-mode/normalize`、`l16/set-payload-kind`、`l16/set-nominal-vout`、
+  `direct/set-y`、`direct/set-coeff`、`copy/toggle-prefix`、
   `copy/toggle-space`、`copy/set-endian`、`ui/set-theme`。
 - UI 统一使用 `toCalculatorViewModel(state)`；格式化结果不要在 JSX 中重复计算。
 - 组件只能：接收 props、显示 viewModel、dispatch(action)、维护局部 UI 状态（如 popover open）。

@@ -8,8 +8,9 @@ const BASE: AppState = {
   raw: 0,
   commandKey: null,
   byteOrder: 'le',
+  voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
-  l16: { voutMode: 0x18 },
+  l16: { payloadKind: 'ulinear16', nominalVout: null },
   direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
   copy: { prefix0x: true, spaceBetweenBytes: true, endian: 'le' },
   ui: { theme: 'system', debugOpen: false },
@@ -79,7 +80,7 @@ describe('toCalculatorViewModel', () => {
     })
 
     test('voutModeInfo reports absolute LINEAR and exponent for 0x18', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode: 0x18 } }))
+      const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x18 } }))
       expect(vm.voutModeInfo?.hex).toBe('0x18')
       expect(vm.voutModeInfo?.isLinear).toBe(true)
       expect(vm.voutModeInfo?.isRelative).toBe(false)
@@ -90,58 +91,53 @@ describe('toCalculatorViewModel', () => {
     })
 
     test('relative LINEAR VOUT_MODE 0x98 is not computed as an absolute voltage', () => {
-      const vm = toCalculatorViewModel(
-        make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode: 0x98 } }),
-      )
+      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }))
       expect(vm.voutModeInfo?.isLinear).toBe(true)
       expect(vm.voutModeInfo?.isRelative).toBe(true)
       expect(vm.voutModeInfo?.status).toBe('reference-required')
       expect(vm.valueText).toBe('—')
-      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-relative')).toBe(true)
+      expect(vm.warnings.some((w) => w.id === 'vout-mode-relative')).toBe(true)
       expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear')).toBe(false)
     })
 
-    test('non-LINEAR VOUT_MODE never fakes a LINEAR16 result', () => {
-      for (const voutMode of [0x20, 0x40, 0x60, 0xe0]) {
-        const vm = toCalculatorViewModel(
-          make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode } }),
-        )
-        expect(vm.valueText, `0x${voutMode.toString(16)}`).toBe('—')
-        expect(vm.warnings.length, `0x${voutMode.toString(16)}`).toBeGreaterThan(0)
-      }
-    })
-
-    test('VID 0x20 (Not Used) 产生 vid-not-used 警告而非 generic nonlinear', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode: 0x20 } }))
-      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-vid-not-used')).toBe(true)
-      expect(vm.voutModeInfo?.domainStatus).toBe('not-used')
-      expect(vm.voutModeInfo?.statusText).toBe('VID code 00h — Not Used（未使用）')
-    })
-
-    test('DIRECT/Half 参数非零被判为 invalid-parameter', () => {
-      for (const voutMode of [0x41, 0x5f, 0x61, 0x7f, 0xc1, 0xe1]) {
-        const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode } }))
-        expect(vm.voutModeInfo?.domainStatus, `0x${voutMode.toString(16)}`).toBe(
-          'invalid-parameter',
-        )
+    test('non-LINEAR shared VOUT_MODE falls back to default 0x18 for L16', () => {
+      for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
+        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
+        expect(vm.voutModeInfo?.source, `0x${byte.toString(16)}`).toBe('fallback-default')
+        expect(vm.voutModeInfo?.byte, `0x${byte.toString(16)}`).toBe(0x18)
+        expect(vm.valueText, `0x${byte.toString(16)}`).toBe('12')
         expect(
-          vm.warnings.some((w) => w.id === 'l16-vout-mode-invalid-parameter'),
-          `0x${voutMode.toString(16)}`,
+          vm.warnings.some((w) => w.id === 'l16-vout-mode-fallback'),
+          `0x${byte.toString(16)}`,
         ).toBe(true)
-        expect(vm.valueText).toBe('—')
       }
     })
 
-    test('relative VID 0xA0 被判为 invalid-combination 且绝不显示相对 LINEAR', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode: 0xa0 } }))
-      expect(vm.voutModeInfo?.domainStatus).toBe('invalid-combination')
-      expect(vm.voutModeInfo?.statusText).toBe('相对 VID — 非法组合（§8.5.3）')
-      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-invalid-combination')).toBe(true)
+    test('VID 0x20 共享字节在 L16 显示 fallback 而非伪造 VID 电压', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x20 } }))
+      expect(vm.voutModeInfo?.source).toBe('fallback-default')
+      expect(vm.voutModeInfo?.domainStatus).toBe('valid')
+      expect(vm.voutModeInfo?.statusText).toBe('绝对 LINEAR')
+      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-fallback')).toBe(true)
+    })
+
+    test('DIRECT/Half 参数非零共享字节在 L16 fallback 到 0x18', () => {
+      for (const byte of [0x41, 0x5f, 0x61, 0x7f, 0xc1, 0xe1]) {
+        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
+        expect(vm.voutModeInfo?.source, `0x${byte.toString(16)}`).toBe('fallback-default')
+        expect(vm.valueText, `0x${byte.toString(16)}`).toBe('12')
+      }
+    })
+
+    test('relative VID 0xA0 共享字节在 L16 fallback 且绝不显示相对 LINEAR', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0xa0 } }))
+      expect(vm.voutModeInfo?.source).toBe('fallback-default')
+      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-fallback')).toBe(true)
       expect(vm.formulaText).not.toContain('相对 LINEAR')
     })
 
     test('nRangeText reflects 0..65535×2^N', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16 } }))
+      const vm = toCalculatorViewModel(make({ mode: 'L16' }))
       expect(vm.nRangeText).toBe('0 ~ 255.99609375')
     })
 
@@ -153,6 +149,73 @@ describe('toCalculatorViewModel', () => {
     test('rawWordHex stays un-swapped regardless of byte order', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
       expect(vm.rawWordHex).toBe('0x1234')
+    })
+  })
+
+  test('relative ULINEAR16 ratio with nominal reference computes X = V_NOM × R', () => {
+    const vm = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0466,
+        voutMode: { byte: 0x96 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 3.3 },
+      }),
+    )
+    expect(vm.valueText).toBe('3.6287109375')
+    expect(vm.formulaText).toContain('R=1126 × 2^-10')
+  })
+
+  test('relative ULINEAR16 without nominal reference shows ratio but no final result', () => {
+    const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0466, voutMode: { byte: 0x96 } }))
+    expect(vm.valueText).toBe('—')
+    expect(vm.steps.some((s) => s.id === 'l16-ratio')).toBe(true)
+    expect(vm.steps.some((s) => s.kind === 'result')).toBe(false)
+  })
+
+  test('SLINEAR16 offset ignores VOUT_MODE bit7 (raw 0xFF00 stays -1 V at N=-8)', () => {
+    for (const byte of [0x18, 0x98]) {
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'L16',
+          raw: 0xff00,
+          voutMode: { byte },
+          l16: { payloadKind: 'slinear16-offset', nominalVout: null },
+        }),
+      )
+      expect(vm.valueText, `0x${byte.toString(16)}`).toBe('-1')
+      expect(vm.formulaText, `0x${byte.toString(16)}`).toContain('Y_s=-256 × 2^-8 = -1 V')
+    }
+  })
+
+  describe('mode=VOUT_MODE (standalone byte calculator)', () => {
+    test('valueText is the canonical byte hex and valueLabel is VOUT_MODE 字节', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE' }))
+      expect(vm.valueText).toBe('0x18')
+      expect(vm.valueLabel).toBe('VOUT_MODE 字节')
+      expect(vm.rawHexDigits).toBe('18')
+    })
+
+    test('voutModePage exposes nibbles, structureLegal and calculable', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x18 } }))
+      expect(vm.voutModePage?.hexDigits).toBe('18')
+      expect(vm.voutModePage?.nibbles).toHaveLength(2)
+      expect(vm.voutModePage?.nibbles[0].hex).toBe('1')
+      expect(vm.voutModePage?.nibbles[1].hex).toBe('8')
+      expect(vm.voutModePage?.structureLegal).toBe(true)
+      expect(vm.voutModePage?.calculable).toBe(true)
+    })
+
+    test('relative LINEAR byte is structure-legal but not calculable without a nominal reference', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x98 } }))
+      expect(vm.voutModePage?.structureLegal).toBe(true)
+      expect(vm.voutModePage?.calculable).toBe(false)
+      expect(vm.voutModePage?.statusText).toBe('相对 LINEAR（需参考值）')
+    })
+
+    test('byte calculator hides the 16-bit raw/byte-order UI', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE' }))
+      expect(vm.visible.byteCalculator).toBe(true)
+      expect(vm.visible.voutMode).toBe(false)
     })
   })
 
@@ -246,19 +309,24 @@ describe('toCalculatorViewModel', () => {
     })
 
     test('L16 steps expose VOUT_MODE fields and result for absolute LINEAR', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16 } }))
-      expect(vm.steps.some((s) => s.label === 'VOUT_MODE')).toBe(true)
+      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00 }))
+      expect(vm.steps.some((s) => s.label.includes('VOUT_MODE'))).toBe(true)
       expect(vm.steps.some((s) => s.label.includes('mode'))).toBe(true)
       expect(vm.steps.some((s) => s.kind === 'result' && s.value === '12')).toBe(true)
     })
 
-    test('L16 non-absolute steps contain no result', () => {
-      for (const voutMode of [0x98, 0x20, 0x40, 0x60, 0xe0]) {
-        const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode } }))
+    test('L16 relative LINEAR（缺 nominal）steps contain no result; fallback does', () => {
+      const rel = toCalculatorViewModel(
+        make({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }),
+      )
+      expect(rel.steps.some((s) => s.kind === 'result')).toBe(false)
+
+      for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
+        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
         expect(
           vm.steps.some((s) => s.kind === 'result'),
-          `0x${voutMode.toString(16)}`,
-        ).toBe(false)
+          `0x${byte.toString(16)}`,
+        ).toBe(true)
       }
     })
 
@@ -491,42 +559,46 @@ describe('toCalculatorViewModel', () => {
       expect(under.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
     })
 
-    test('L16 非 absolute LINEAR 不提供 nRangeText（不生成虚假 LINEAR16 范围）', () => {
-      for (const voutMode of [0x98, 0x20, 0x40, 0x60, 0xe0]) {
-        const vm = toCalculatorViewModel(
-          make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode } }),
-        )
-        expect(vm.nRangeText, `0x${voutMode.toString(16)}`).toBeUndefined()
+    test('L16 relative LINEAR 不提供 nRangeText；fallback 后恢复范围', () => {
+      const rel = toCalculatorViewModel(
+        make({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }),
+      )
+      expect(rel.nRangeText).toBeUndefined()
+
+      for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
+        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
+        expect(vm.nRangeText, `0x${byte.toString(16)}`).toBe('0 ~ 255.99609375')
       }
     })
 
-    test('L16 relative LINEAR 步骤解释指数/比值语义但不展示 V 字段与结果', () => {
-      const vm = toCalculatorViewModel(
-        make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode: 0x98 } }),
-      )
+    test('L16 relative LINEAR 步骤解释指数/比值语义但不展示 V 字段与结果（缺 nominal）', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }))
       expect(vm.steps.some((s) => s.id === 'l16-n')).toBe(true)
       expect(vm.steps.some((s) => s.id === 'l16-2n')).toBe(true)
+      expect(vm.steps.some((s) => s.id === 'l16-ratio')).toBe(true)
       expect(vm.steps.some((s) => s.id === 'l16-v')).toBe(false)
       expect(vm.steps.some((s) => s.kind === 'result')).toBe(false)
     })
 
-    test('L16 VID/DIRECT/IEEE Half 步骤不展示 LINEAR16 V/N 字段与结果', () => {
-      for (const voutMode of [0x20, 0x40, 0x60, 0xe0]) {
-        const vm = toCalculatorViewModel(
-          make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode } }),
-        )
+    test('L16 非 LINEAR 共享字节 fallback 到 0x18 并生成 LINEAR16 步骤', () => {
+      for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
+        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
+        expect(
+          vm.steps.some((s) => s.id === 'l16-fallback'),
+          `0x${byte.toString(16)}`,
+        ).toBe(true)
         expect(
           vm.steps.some((s) => s.id === 'l16-v'),
-          `0x${voutMode.toString(16)}`,
-        ).toBe(false)
+          `0x${byte.toString(16)}`,
+        ).toBe(true)
         expect(
           vm.steps.some((s) => s.id === 'l16-n'),
-          `0x${voutMode.toString(16)}`,
-        ).toBe(false)
+          `0x${byte.toString(16)}`,
+        ).toBe(true)
         expect(
           vm.steps.some((s) => s.kind === 'result'),
-          `0x${voutMode.toString(16)}`,
-        ).toBe(false)
+          `0x${byte.toString(16)}`,
+        ).toBe(true)
       }
     })
   })

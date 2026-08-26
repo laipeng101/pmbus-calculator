@@ -36,7 +36,7 @@ function isTheme(v: unknown): v is Theme {
 }
 
 function isMode(v: unknown): v is AppMode {
-  return v === 'L11' || v === 'L16' || v === 'DIRECT' || v === 'HALF'
+  return v === 'L11' || v === 'L16' || v === 'DIRECT' || v === 'HALF' || v === 'VOUT_MODE'
 }
 
 function isEndian(v: unknown): v is Endian {

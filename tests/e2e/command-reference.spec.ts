@@ -27,13 +27,13 @@ test.describe('命令参考（只读，无副作用）', () => {
   test('展开/收起可重复且不影响模式与 raw', async ({ page }) => {
     await page.goto('/')
     const toggle = page.locator('#command-reference-toggle')
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     const l11Tab = page.getByRole('tab', { name: /LINEAR11/ })
 
     await toggle.click()
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    await expect(hexInput).toHaveValue('0x0000')
+    await expect(hexInput).toHaveValue('0000')
     await expect(l11Tab).toHaveAttribute('aria-selected', 'true')
   })
 
@@ -131,14 +131,14 @@ test.describe('命令参考（只读，无副作用）', () => {
   test('L16 VOUT_MODE 不被命令参考修改', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    const voutModeInput = page.getByLabel('VOUT_MODE')
+    const voutModeInput = page.locator('#vout-mode-input')
     await voutModeInput.fill('18')
     await voutModeInput.press('Tab')
 
     await page.locator('#command-reference-toggle').click()
     await page.getByRole('row', { name: /VOUT_COMMAND/ }).click()
 
-    await expect(voutModeInput).toHaveValue('0x18')
+    await expect(voutModeInput).toHaveValue('18')
     await expect(page.locator('#value-input')).toHaveValue('0')
   })
 

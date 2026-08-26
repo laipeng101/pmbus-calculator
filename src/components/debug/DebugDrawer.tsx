@@ -13,6 +13,7 @@ const MODE_LABELS: Record<AppMode, string> = {
   L16: 'LINEAR16',
   DIRECT: 'DIRECT',
   HALF: 'HALF',
+  VOUT_MODE: 'VOUT_MODE',
 }
 
 export default function DebugDrawer({ open, state, onToggle }: Props) {
