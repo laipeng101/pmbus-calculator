@@ -28,7 +28,7 @@ export default function ResultSummary({ vm }: Props) {
           data-testid="result-tile"
           className="result-value-tile min-w-0 overflow-hidden rounded-xl px-4 py-4 text-center panel-surface-muted md:px-6 md:py-5"
         >
-          <div className="text-xs font-medium color-text-muted">物理值</div>
+          <div className="text-xs font-medium color-text-muted">{vm.valueLabel}</div>
           <div
             data-testid="result-value"
             className={`result-value result-value-${valueSizeClass} color-accent`}

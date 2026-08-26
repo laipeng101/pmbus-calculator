@@ -74,10 +74,10 @@ test.describe('L11（360×800 light）：手动 Y/N 非法输入、错误关联�
   })
 
   test('N 非法输入：draft 保留、错误关联、raw 不变、修正后清除', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('0801')
     await hexInput.press('Tab')
-    await expect(hexInput).toHaveValue('0x0801')
+    await expect(hexInput).toHaveValue('0801')
 
     // 解锁手动 N
     await page.getByRole('button', { name: 'N 已锁定（自动）' }).click()
@@ -87,38 +87,38 @@ test.describe('L11（360×800 light）：手动 Y/N 非法输入、错误关联�
     await nInput.fill('1.5')
     await expectFieldError(page, 'l11-n-input')
     await expect(nInput).toHaveValue('1.5')
-    await expect(hexInput).toHaveValue('0x0801')
+    await expect(hexInput).toHaveValue('0801')
 
     // blur 后非法 draft 保留且错误仍在，不静默回滚
     await nInput.press('Tab')
     await expect(nInput).toHaveValue('1.5')
     await expectFieldError(page, 'l11-n-input')
-    await expect(hexInput).toHaveValue('0x0801')
+    await expect(hexInput).toHaveValue('0801')
 
     // 合法修正：错误与旧 draft 同时清除
     await nInput.fill('3')
     await nInput.press('Tab')
     await expectNoFieldError(page, 'l11-n-input')
     await expect(nInput).toHaveValue('3')
-    await expect(hexInput).toHaveValue('0x1801')
+    await expect(hexInput).toHaveValue('1801')
 
     await expectNoBodyHorizontalOverflow(page)
   })
 
   test('Y 非法输入：错误关联、raw 不变、修正后清除、模式切换无 stale error', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('0801')
     await hexInput.press('Tab')
 
     const yInput = page.getByLabel('Y (11-bit)')
     await yInput.fill('12abc')
     await expectFieldError(page, 'l11-y-input')
-    await expect(hexInput).toHaveValue('0x0801')
+    await expect(hexInput).toHaveValue('0801')
 
     await yInput.fill('25')
     await yInput.press('Tab')
     await expectNoFieldError(page, 'l11-y-input')
-    await expect(hexInput).toHaveValue('0x0819')
+    await expect(hexInput).toHaveValue('0819')
 
     // 制造一个错误后切换模式再回来：不得留下与显示值矛盾的 stale error
     await yInput.fill('1e2')
@@ -141,13 +141,13 @@ test.describe('L16（390×844 dark）：V 非法整数、clamp 合同、无 body
   })
 
   test('V 非法整数被拒绝且 draft/错误可见，合法值照常提交', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     const vInput = page.getByLabel('V（16 位无符号，0～65535）')
 
     await vInput.fill('1e2')
     await expectFieldError(page, 'l16-v-input')
     await expect(vInput).toHaveValue('1e2')
-    await expect(hexInput).toHaveValue('0x0000')
+    await expect(hexInput).toHaveValue('0000')
 
     await vInput.press('Tab')
     await expect(vInput).toHaveValue('1e2')
@@ -156,25 +156,25 @@ test.describe('L16（390×844 dark）：V 非法整数、clamp 合同、无 body
     await vInput.fill('12')
     await vInput.press('Tab')
     await expectNoFieldError(page, 'l16-v-input')
-    await expect(hexInput).toHaveValue('0x000C')
+    await expect(hexInput).toHaveValue('000C')
 
     await expectNoBodyHorizontalOverflow(page)
   })
 
   test('V 超范围仍采用 clamp 合同（不是 wrap 也不是拒绝）', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     const vInput = page.getByLabel('V（16 位无符号，0～65535）')
 
     await vInput.fill('70000')
     await vInput.press('Tab')
     await expect(vInput).toHaveValue('65535')
-    await expect(hexInput).toHaveValue('0xFFFF')
+    await expect(hexInput).toHaveValue('FFFF')
     await expectNoFieldError(page, 'l16-v-input')
 
     await vInput.fill('-1')
     await vInput.press('Tab')
     await expect(vInput).toHaveValue('0')
-    await expect(hexInput).toHaveValue('0x0000')
+    await expect(hexInput).toHaveValue('0000')
 
     await expectNoBodyHorizontalOverflow(page)
   })
@@ -212,8 +212,8 @@ test.describe('DIRECT（768×1024 light）：m/b/R 与 Y 字段级错误、修�
     await expectNoFieldError(page, 'direct-coeff-b-input')
 
     // raw 未被非法输入破坏
-    const hexInput = page.locator('input[placeholder="0x0000"]')
-    await expect(hexInput).toHaveValue('0x0000')
+    const hexInput = page.locator('input[placeholder="0000"]')
+    await expect(hexInput).toHaveValue('0000')
     await expectNoBodyHorizontalOverflow(page)
   })
 
@@ -221,7 +221,7 @@ test.describe('DIRECT（768×1024 light）：m/b/R 与 Y 字段级错误、修�
     page,
   }) => {
     const mInput = page.getByLabel('DIRECT 系数 m')
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
 
     await mInput.fill('0')
     await mInput.press('Tab')
@@ -240,23 +240,23 @@ test.describe('DIRECT（768×1024 light）：m/b/R 与 Y 字段级错误、修�
     ).toBe(0)
 
     await page.locator('#value-input').fill('12')
-    await expect(hexInput).toHaveValue('0x0000')
+    await expect(hexInput).toHaveValue('0000')
   })
 
   test('Y 非法整数：字段级错误、raw 不变、公式稳定', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('000A')
     await hexInput.press('Tab')
 
     const yInput = page.getByLabel('Y（16 位有符号，−32768～32767）')
     await yInput.fill('1e2')
     await expectFieldError(page, 'direct-y-input')
-    await expect(hexInput).toHaveValue('0x000A')
+    await expect(hexInput).toHaveValue('000A')
 
     await yInput.fill('10')
     await yInput.press('Tab')
     await expectNoFieldError(page, 'direct-y-input')
-    await expect(hexInput).toHaveValue('0x000A')
+    await expect(hexInput).toHaveValue('000A')
 
     // 非法输入期间公式保持渲染且无 KaTeX 错误
     await yInput.fill('0x10')
@@ -276,32 +276,32 @@ test.describe('HALF（1280×900 dark）：NaN/Infinity 合法、垃圾文本非�
   })
 
   test('NaN 与 ±Infinity 是一等值，不产生错误状态', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     const valueInput = page.locator('#value-input')
 
     await valueInput.fill('NaN')
-    await expect(hexInput).toHaveValue('0x7E00')
+    await expect(hexInput).toHaveValue('7E00')
     await expectNoFieldError(page, 'value-input')
 
     await valueInput.fill('Infinity')
-    await expect(hexInput).toHaveValue('0x7C00')
+    await expect(hexInput).toHaveValue('7C00')
 
     await valueInput.fill('-Infinity')
-    await expect(hexInput).toHaveValue('0xFC00')
+    await expect(hexInput).toHaveValue('FC00')
   })
 
   test('垃圾文本非法：draft 保留、错误关联、raw 不变、修正后清除', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     const valueInput = page.locator('#value-input')
 
     // 先建立一个已知的最后有效状态
     await valueInput.fill('-Infinity')
-    await expect(hexInput).toHaveValue('0xFC00')
+    await expect(hexInput).toHaveValue('FC00')
 
     await valueInput.fill('garbage')
     await expectFieldError(page, 'value-input')
     await expect(valueInput).toHaveValue('garbage')
-    await expect(hexInput).toHaveValue('0xFC00')
+    await expect(hexInput).toHaveValue('FC00')
 
     await valueInput.press('Tab')
     await expect(valueInput).toHaveValue('garbage')
@@ -310,24 +310,24 @@ test.describe('HALF（1280×900 dark）：NaN/Infinity 合法、垃圾文本非�
     await valueInput.fill('1.5')
     await valueInput.press('Tab')
     await expectNoFieldError(page, 'value-input')
-    await expect(hexInput).toHaveValue('0x3E00')
+    await expect(hexInput).toHaveValue('3E00')
 
     await expectNoBodyHorizontalOverflow(page)
   })
 
   test('非 HALF 模式拒绝 NaN 并给出字段级错误（在 L11 中验证）', async ({ page }) => {
     await page.getByRole('tab', { name: /LINEAR11/ }).click()
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     const valueInput = page.locator('#value-input')
 
     await valueInput.fill('NaN')
     await expectFieldError(page, 'value-input')
-    await expect(hexInput).toHaveValue('0x0000')
+    await expect(hexInput).toHaveValue('0000')
 
     await valueInput.fill('12')
     await valueInput.press('Tab')
     await expectNoFieldError(page, 'value-input')
-    await expect(hexInput).toHaveValue('0x000C')
+    await expect(hexInput).toHaveValue('000C')
   })
 })
 
@@ -355,7 +355,7 @@ test.describe('全局快捷键：编辑区不触发、非编辑区触发', () =>
     const valueInput = page.locator('#value-input')
     await valueInput.click()
     await valueInput.fill('12.5')
-    await expect(page.locator('input[placeholder="0x0000"]')).toHaveValue('0xF819')
+    await expect(page.locator('input[placeholder="0000"]')).toHaveValue('F819')
 
     for (const combo of ['Control+2', 'Control+3', 'Control+4']) {
       await page.keyboard.press(combo)
@@ -365,12 +365,12 @@ test.describe('全局快捷键：编辑区不触发、非编辑区触发', () =>
       )
       await expect(valueInput).toBeFocused()
       await expect(valueInput).toHaveValue('12.5')
-      await expect(page.locator('input[placeholder="0x0000"]')).toHaveValue('0xF819')
+      await expect(page.locator('input[placeholder="0000"]')).toHaveValue('F819')
     }
   })
 
   test('焦点在 Hex 输入内按 Ctrl+2：不切换、不丢 draft', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.click()
     await page.keyboard.type('F819')
     await page.keyboard.press('Control+2')
@@ -406,7 +406,7 @@ test.describe('全局快捷键：编辑区不触发、非编辑区触发', () =>
     )
   })
 
-  test('非编辑区按 Ctrl+1..4 仍切换到正确模式', async ({ page }) => {
+  test('非编辑区按 Ctrl+1..5 仍切换到正确模式', async ({ page }) => {
     await page.locator('h1').first().click()
     const expectMode = async (tab: RegExp) => {
       await expect(page.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true')
@@ -418,6 +418,8 @@ test.describe('全局快捷键：编辑区不触发、非编辑区触发', () =>
     await expectMode(/DIRECT/)
     await page.keyboard.press('Control+4')
     await expectMode(/HALF/)
+    await page.keyboard.press('Control+5')
+    await expectMode(/VOUT_MODE/)
     await page.keyboard.press('Control+1')
     await expectMode(/LINEAR11/)
   })

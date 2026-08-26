@@ -10,7 +10,7 @@ async function settle(page: Page) {
 }
 
 async function fillRaw(page: Page, hex: string) {
-  const hexInput = page.locator('input[placeholder="0x0000"]')
+  const hexInput = page.locator('input[placeholder="0000"]')
   await hexInput.fill(hex)
   await hexInput.press('Tab')
 }
@@ -53,8 +53,8 @@ test.describe('M16 result stress geometry', () => {
     await expect(page.locator('[data-testid="formula-line"]').first()).toContainText('961')
 
     await switchMode(page, /LINEAR16/)
-    await page.getByLabel('VOUT_MODE').fill('13')
-    await page.getByLabel('VOUT_MODE').press('Tab')
+    await page.locator('#vout-mode-input').fill('13')
+    await page.locator('#vout-mode-input').press('Tab')
     await fillRaw(page, '8FC3')
     await expect(page.locator('#value-input')).toHaveValue('4.49255371094')
 
@@ -127,8 +127,8 @@ test.describe('M16 result stress geometry', () => {
     for (const mode of [/LINEAR11/, /LINEAR16/, /DIRECT/, /HALF/] as const) {
       await switchMode(page, mode)
       if (mode.source === 'LINEAR16') {
-        await page.getByLabel('VOUT_MODE').fill('13')
-        await page.getByLabel('VOUT_MODE').press('Tab')
+        await page.locator('#vout-mode-input').fill('13')
+        await page.locator('#vout-mode-input').press('Tab')
       }
       if (mode.source === 'DIRECT') {
         await page.getByLabel('DIRECT 系数 r').fill('12')

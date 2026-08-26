@@ -7,6 +7,7 @@ const MODES: { key: AppMode; label: string; shortcut: string }[] = [
   { key: 'L16', label: 'LINEAR16', shortcut: '2' },
   { key: 'DIRECT', label: 'DIRECT', shortcut: '3' },
   { key: 'HALF', label: 'HALF', shortcut: '4' },
+  { key: 'VOUT_MODE', label: 'VOUT_MODE', shortcut: '5' },
 ]
 
 interface Props {

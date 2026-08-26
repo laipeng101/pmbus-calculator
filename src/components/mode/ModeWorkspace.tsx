@@ -5,6 +5,7 @@ import BitGrid from '../bits/BitGrid'
 import HexInput from '../inputs/HexInput'
 import IntegerInput from '../inputs/IntegerInput'
 import ValueInput from '../inputs/ValueInput'
+import NominalVoutInput from '../inputs/NominalVoutInput'
 import ExponentEditor from '../formula/ExponentEditor'
 import LinearFormulaEditor from '../formula/LinearFormulaEditor'
 import VoutModeComposer from './VoutModeComposer'
@@ -26,27 +27,29 @@ interface Props {
 export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
   return (
     <div role="tabpanel" id={MODE_PANEL_ID} aria-labelledby={modeTabId(mode)} className="space-y-4">
-      {/* Hex Input */}
-      <section className="rounded-xl p-4 panel-surface-muted">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider color-text-secondary">
-          原始数据
-        </h3>
-        <div className="flex items-start gap-2">
-          <label className="mt-2 text-sm color-text-muted">Hex</label>
-          <HexInput
-            id="raw-hex-input"
-            value={vm.rawHex}
-            maxDigits={4}
-            ariaLabel="原始数据 Hex"
-            placeholder="0x0000"
-            className="input-surface flex-1 rounded-lg px-3 py-2 text-base font-mono outline-none"
-            onCommit={(text) => dispatch({ type: 'raw/set-from-hex', hex: text })}
-          />
-        </div>
+      {/* Hex Input + 16-bit Bit Grid (not for the 1-byte VOUT_MODE calculator) */}
+      {mode !== 'VOUT_MODE' && (
+        <section className="rounded-xl p-4 panel-surface-muted">
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider color-text-secondary">
+            原始数据
+          </h3>
+          <div className="flex items-start gap-2">
+            <label className="mt-2 text-sm color-text-muted">Hex</label>
+            <HexInput
+              id="raw-hex-input"
+              value={vm.rawHexDigits}
+              fixedPrefix="0x"
+              maxDigits={4}
+              ariaLabel="原始数据 Hex"
+              placeholder="0000"
+              className="input-surface w-full rounded-lg px-3 py-2 text-base font-mono outline-none"
+              onCommit={(text) => dispatch({ type: 'raw/set-from-hex', hex: text })}
+            />
+          </div>
 
-        {/* Bit Grid */}
-        <BitGrid mode={mode} groups={vm.bitGroups} dispatch={dispatch} />
-      </section>
+          <BitGrid mode={mode} groups={vm.bitGroups} dispatch={dispatch} />
+        </section>
+      )}
 
       {/* Mode-specific workspace */}
       <section className="rounded-xl p-4 panel-surface-muted">
@@ -57,7 +60,9 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               ? 'LINEAR16 / VOUT 参数'
               : mode === 'DIRECT'
                 ? 'DIRECT 系数'
-                : 'IEEE 754 binary16（半精度）'}
+                : mode === 'VOUT_MODE'
+                  ? 'VOUT_MODE 配置'
+                  : 'IEEE 754 binary16（半精度）'}
         </h3>
 
         {mode === 'L11' && (
@@ -113,27 +118,74 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         )}
 
         {mode === 'L16' && (
-          <div className="space-y-4">
-            {/* Structured VOUT_MODE composer (bit7 / format / parameter / byte) */}
-            <VoutModeComposer state={state} vm={vm} dispatch={dispatch} />
+          <div className="space-y-3">
+            {/* Shared VOUT_MODE composer: bits[6:5] locked to LINEAR */}
+            {vm.voutModeInfo && (
+              <VoutModeComposer
+                state={state}
+                info={vm.voutModeInfo}
+                byte={state.voutMode.byte}
+                dispatch={dispatch}
+                embedded
+              />
+            )}
 
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="w-24 text-sm color-text-muted">字节序</label>
-              <select
-                value={state.byteOrder}
-                onChange={(e) =>
-                  dispatch({ type: 'byte-order/set', endian: e.target.value as 'le' | 'be' })
-                }
-                className="panel-surface-muted rounded-lg px-3 py-2 text-sm outline-none"
-                aria-label="L16 字节序"
+            {/* Payload semantics + byte order in one compact row */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <label
+                className="flex items-center gap-2 text-sm color-text-muted"
+                htmlFor="l16-payload-kind"
               >
-                <option value="le">LE（低字节在前）</option>
-                <option value="be">BE（高字节在前）</option>
-              </select>
+                <span>Payload</span>
+                <select
+                  id="l16-payload-kind"
+                  value={state.l16.payloadKind}
+                  onChange={(e) =>
+                    dispatch({
+                      type: 'l16/set-payload-kind',
+                      payloadKind: e.target.value as 'ulinear16' | 'slinear16-offset',
+                    })
+                  }
+                  className="panel-surface-muted max-w-full min-w-0 rounded-lg px-3 py-2 text-sm outline-none"
+                  aria-label="L16 payload 类型"
+                >
+                  <option value="ulinear16">ULINEAR16（无符号）</option>
+                  <option value="slinear16-offset">SLINEAR16（二补码偏移）</option>
+                </select>
+              </label>
+
+              <label
+                className="flex items-center gap-2 text-sm color-text-muted"
+                htmlFor="l16-byte-order"
+              >
+                <span>字节序</span>
+                <select
+                  id="l16-byte-order"
+                  value={state.byteOrder}
+                  onChange={(e) =>
+                    dispatch({ type: 'byte-order/set', endian: e.target.value as 'le' | 'be' })
+                  }
+                  className="panel-surface-muted rounded-lg px-3 py-2 text-sm outline-none"
+                  aria-label="L16 字节序"
+                >
+                  <option value="le">LE（低字节在前）</option>
+                  <option value="be">BE（高字节在前）</option>
+                </select>
+              </label>
               <span className="text-xs color-text-muted">
                 PMBus/SMBus word 默认低字节在前；BE 仅用于寄存器显示或复制
               </span>
             </div>
+
+            {/* Relative ULINEAR16: nominal VOUT_COMMAND reference */}
+            {vm.voutModeInfo?.isRelative && state.l16.payloadKind === 'ulinear16' && (
+              <NominalVoutInput
+                id="l16-nominal-vout"
+                value={state.l16.nominalVout}
+                ariaLabel="VOUT_COMMAND nominal（V）"
+                onCommit={(text) => dispatch({ type: 'l16/set-nominal-vout', nominalVout: text })}
+              />
+            )}
 
             {vm.voutModeInfo?.status === 'ok' ? (
               <>
@@ -141,27 +193,28 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 <ValueInput vm={vm} dispatch={dispatch} />
 
                 <div className="text-center text-xs color-text-muted">
-                  {vm.nRangeText ? `可表示范围: ${vm.nRangeText}` : 'V 范围: 0 ~ 65535'}
+                  {vm.nRangeText ? `可表示范围: ${vm.nRangeText}` : '范围由 payload 类型决定'}
                 </div>
               </>
             ) : (
               <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
                 <p className="mb-2">
                   VOUT_MODE {vm.voutModeInfo?.hex} 为 {vm.voutModeInfo?.statusText}
-                  ；本页仅支持 absolute LINEAR，不给出伪造的 LINEAR16 电压结果。
+                  ；本页在 relative LINEAR 下解出比值并需 nominal reference，在非 absolute LINEAR
+                  下不给出伪造的 LINEAR16 电压结果。
                 </p>
-                {vm.voutModeInfo?.mode === 3 && (
-                  <button
-                    type="button"
-                    onClick={() => dispatch({ type: 'mode/set', mode: 'HALF' })}
-                    className="workspace-half-switch min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-                  >
-                    切换到 HALF 模式
-                  </button>
-                )}
               </div>
             )}
           </div>
+        )}
+
+        {mode === 'VOUT_MODE' && vm.voutModePage && (
+          <VoutModeComposer
+            state={state}
+            info={vm.voutModePage}
+            byte={state.voutMode.byte}
+            dispatch={dispatch}
+          />
         )}
 
         {mode === 'DIRECT' && (

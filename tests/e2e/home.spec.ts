@@ -46,7 +46,7 @@ test.describe('响应式 viewport 轻量检查', () => {
       const clientWidth = await body.evaluate((el) => el.clientWidth)
       expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
 
-      await expect(page.locator('input[placeholder="0x0000"]')).toBeVisible()
+      await expect(page.locator('input[placeholder="0000"]')).toBeVisible()
       await expect(page.getByRole('tab', { name: /LINEAR11/ })).toBeVisible()
       await expect(page.locator('#command-reference-toggle')).toBeVisible()
 

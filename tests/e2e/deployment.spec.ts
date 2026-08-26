@@ -111,15 +111,15 @@ test.describe('GitHub Pages production deployment', () => {
 
   test('L11 closed loop: hex input decodes and value input encodes back', async ({ page }) => {
     await page.goto(deploymentUrl!)
-    const hexInput = page.locator('input[placeholder="0x0000"]')
+    const hexInput = page.locator('input[placeholder="0000"]')
     const valueInput = page.locator('#value-input')
 
     await hexInput.fill('F819')
     await hexInput.press('Tab')
     await expect(valueInput).toHaveValue('12.5')
-    await expect(hexInput).toHaveValue('0xF819')
+    await expect(hexInput).toHaveValue('F819')
 
     await valueInput.fill('12.5')
-    await expect(hexInput).toHaveValue('0xF819')
+    await expect(hexInput).toHaveValue('F819')
   })
 })

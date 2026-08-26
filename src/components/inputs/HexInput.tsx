@@ -7,24 +7,25 @@ interface Props {
   maxDigits: number
   placeholder?: string
   ariaLabel: string
+  /** Fixed visual prefix rendered outside the real input (e.g. "0x"). */
+  fixedPrefix?: string
   className?: string
   onCommit: (text: string) => void
 }
 
-/** Transitional hex drafts (empty / bare 0x) that must not commit or error while typing. */
+/** Transitional hex drafts (empty) that must not commit or error while typing. */
 function isTransitionalHex(input: string): boolean {
-  const trimmed = input.trim()
-  return trimmed === '' || /^0x$/i.test(trimmed)
+  return input.trim() === ''
 }
 
 /**
- * Controlled hexadecimal input sharing the unified editing model:
+ * Fixed-prefix hexadecimal input sharing the unified editing model.
  *
- * - 过渡 draft（空串、裸 0x）在聚焦编辑中暂存，不修改 committed state，也不立刻报错；
- * - 非法文本（GG、12zz、超长）保持字段级唯一错误，不修改 raw/result/formula；
- * - 空串 blur/Enter 规范化为 0；裸 0x blur/Enter 后显示“输入不完整”，非法 draft 保留；
- * - 合法修正后错误、ARIA 与旧 draft 同时清除。reducer 仍通过
- *   raw/set-from-hex / l16/set-vout-mode 拥有全局校验。
+ * The real DOM input value contains ONLY hex digits; an optional `0x` prefix is
+ * a fixed, non-editable element outside the input. Pasting `18`, `0x18` or
+ * `0X18` is accepted and normalized to the digit-only draft `18`. Empty drafts
+ * commit to 0 on blur/Enter; illegal characters and over-long drafts keep a
+ * field-level error and never modify committed state.
  */
 export default function HexInput({
   id,
@@ -32,6 +33,7 @@ export default function HexInput({
   maxDigits,
   placeholder,
   ariaLabel,
+  fixedPrefix,
   className,
   onCommit,
 }: Props) {
@@ -43,7 +45,15 @@ export default function HexInput({
     if (!editing && !error) setDraft(value)
   }, [value, editing, error])
 
-  const handleChange = (text: string) => {
+  const normalizeDigits = (text: string): string => {
+    const trimmed = text.trim()
+    const m = /^0x([0-9a-fA-F]*)$/i.exec(trimmed)
+    if (m) return m[1]
+    return trimmed
+  }
+
+  const handleChange = (raw: string) => {
+    const text = normalizeDigits(raw)
     setDraft(text)
     if (isTransitionalHex(text)) {
       setError(null)
@@ -59,56 +69,65 @@ export default function HexInput({
   }
 
   const handleBlur = () => {
-    const trimmed = draft.trim()
-    if (trimmed === '') {
-      // Empty input normalizes to 0 (a defined completion, not a silent rollback).
+    const text = normalizeDigits(draft)
+    if (text === '') {
       setError(null)
       setDraft('0')
       onCommit('0')
       setEditing(false)
       return
     }
-    const parsed = parseHexStrict(trimmed, maxDigits)
+    const parsed = parseHexStrict(text, maxDigits)
     if (!parsed.ok) {
-      // Keep the invalid draft visible together with its error.
       setError(parsed.error)
     } else {
       setError(null)
-      setDraft(trimmed)
-      onCommit(trimmed)
+      setDraft(text)
+      onCommit(text)
     }
     setEditing(false)
   }
 
   return (
-    <div className="min-w-0 flex-1">
-      <input
-        id={id}
-        type="text"
-        inputMode="text"
-        autoComplete="off"
-        spellCheck={false}
-        value={editing || error ? draft : value}
-        placeholder={placeholder}
-        aria-label={ariaLabel}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${id}-error` : undefined}
-        className={className}
-        onFocus={(e) => {
-          setEditing(true)
-          e.target.select()
-        }}
-        onChange={(e) => handleChange(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-        }}
-      />
-      {error && (
-        <p id={`${id}-error`} role="alert" className="mt-1 text-xs color-danger">
-          {error}
-        </p>
+    <div className="hex-input-group flex min-w-0 flex-1 items-center gap-1">
+      {fixedPrefix && (
+        <span
+          className="hex-input-prefix font-mono text-sm color-text-muted"
+          aria-hidden="true"
+          data-testid={`${id}-prefix`}
+        >
+          {fixedPrefix}
+        </span>
       )}
+      <div className="min-w-0 flex-1">
+        <input
+          id={id}
+          type="text"
+          inputMode="text"
+          autoComplete="off"
+          spellCheck={false}
+          value={editing || error ? draft : value}
+          placeholder={placeholder}
+          aria-label={`${ariaLabel}（十六进制，0x 前缀固定）`}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className={className}
+          onFocus={(e) => {
+            setEditing(true)
+            e.target.select()
+          }}
+          onChange={(e) => handleChange(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          }}
+        />
+        {error && (
+          <p id={`${id}-error`} role="alert" className="mt-1 text-xs color-danger">
+            {error}
+          </p>
+        )}
+      </div>
     </div>
   )
 }

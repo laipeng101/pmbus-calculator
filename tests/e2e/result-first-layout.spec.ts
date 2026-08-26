@@ -11,7 +11,7 @@ async function settle(page: Page) {
 
 async function switchMode(page: Page, name: RegExp) {
   await page.getByRole('tab', { name }).click()
-  await expect(page.locator('.katex').first()).toBeVisible()
+  await expect(page.locator('.katex:visible').first()).toBeVisible()
 }
 
 const MODES = [
@@ -19,6 +19,7 @@ const MODES = [
   { label: 'LINEAR16', tab: /LINEAR16/ },
   { label: 'DIRECT', tab: /DIRECT/ },
   { label: 'HALF', tab: /HALF/ },
+  { label: 'VOUT_MODE', tab: /VOUT_MODE/ },
 ] as const
 
 async function resultGeometry(page: Page) {
@@ -57,7 +58,7 @@ test.describe('M36 result-first geometry', () => {
   ]
 
   for (const viewport of viewports) {
-    test(`${viewport.width}×${viewport.height}: 四模式结果卡完整位于首屏且切换顶边稳定`, async ({
+    test(`${viewport.width}×${viewport.height}: 五模式结果卡完整位于首屏且切换顶边稳定`, async ({
       page,
     }) => {
       await page.setViewportSize(viewport)
@@ -109,7 +110,7 @@ test.describe('M36 result-first geometry', () => {
     expect(order.resultBeforeWorkspace).toBe(true)
   })
 
-  test('1280×900 默认折叠状态下四模式 scrollHeight ≤ 1350', async ({ page }) => {
+  test('1280×900 默认折叠状态下五模式 scrollHeight ≤ 1350', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await settle(page)
 
