@@ -134,6 +134,56 @@ test.describe('M39 共享位字段网格', () => {
     }
   })
 
+  test('位格始终落在宿主卡片内容盒内（v2.4.0 溢出回归）', async ({ page }) => {
+    // 页面级 scrollWidth 断言拦不住「居中网格在卡片内部溢出」：
+    // v2.4.0 的 16 位网格 auto 轨道（4×174px+gap=714px）曾在 618px 卡片两侧
+    // 对称溢出 48px 而 scrollWidth 不变。这里直接断言位格几何。
+    for (const width of [360, 390, 768, 1024, 1440, 2048]) {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/')
+      await expect(page.getByTestId('result-panel')).toBeVisible()
+      for (const tab of [/LINEAR11/, /LINEAR16/, /DIRECT/, /HALF/, /VOUT_MODE/]) {
+        await page.getByRole('tab', { name: tab }).click()
+        await expect(page.locator('.bitfield').first()).toBeVisible()
+        const violations = await page.evaluate(() => {
+          const out: string[] = []
+          for (const field of document.querySelectorAll('.bitfield')) {
+            let card = field.parentElement
+            while (card && getComputedStyle(card).borderRadius === '0px') {
+              card = card.parentElement
+            }
+            if (card == null) continue
+            const cs = getComputedStyle(card)
+            const cardRect = card.getBoundingClientRect()
+            const contentL = cardRect.left + (parseFloat(cs.paddingLeft) || 0)
+            const contentR = cardRect.right - (parseFloat(cs.paddingRight) || 0)
+            for (const bit of field.querySelectorAll('.bitfield-bit')) {
+              const r = bit.getBoundingClientRect()
+              if (r.width === 0) continue
+              if (r.left < contentL - 0.5 || r.right > contentR + 0.5) {
+                out.push(
+                  'bit ' +
+                    (bit.querySelector('.bitfield-index')?.textContent ?? '?') +
+                    ' [' +
+                    Math.round(r.left) +
+                    '..' +
+                    Math.round(r.right) +
+                    '] vs content [' +
+                    Math.round(contentL) +
+                    '..' +
+                    Math.round(contentR) +
+                    ']',
+                )
+              }
+            }
+          }
+          return out
+        })
+        expect(violations, width + 'px ' + String(tab)).toEqual([])
+      }
+    }
+  })
+
   test('共享 token 可由 DOM/computed style 证明：16 位与 compact 单元使用同一 cell 类', async ({
     page,
   }) => {

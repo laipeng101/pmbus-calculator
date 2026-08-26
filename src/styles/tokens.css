@@ -574,24 +574,31 @@ select:disabled,
 
 /* =========================================================
    Bit field grid — shared nibble layout (8-bit and 16-bit)
-   ========================================================= */
+   =========================================================
+   Tracks cap at the nibble design width (10.875rem = 174px,
+   6.25rem = 100px compact) and shrink proportionally when the
+   card is narrower. An auto track never shrinks below its
+   min-content and overflowed the panel (v2.4.0 regression).
+   The 4-column breakpoint follows the workspace reality: at
+   1024-1151px the side panel leaves a ~490px column, so the
+   16-bit grid stays at 2 columns; 4 columns start at 1152px. */
 
 .bitfield-grid {
   display: grid;
-  grid-template-columns: repeat(1, auto);
+  grid-template-columns: repeat(1, minmax(0, 10.875rem));
   gap: 8px;
   justify-content: center;
 }
 
 @media (min-width: 360px) {
   .bitfield-grid {
-    grid-template-columns: repeat(2, auto);
+    grid-template-columns: repeat(2, minmax(0, 10.875rem));
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1152px) {
   .bitfield[data-bit-count='16'] .bitfield-grid {
-    grid-template-columns: repeat(4, auto);
+    grid-template-columns: repeat(4, minmax(0, 10.875rem));
     gap: 6px;
   }
 }
@@ -934,6 +941,8 @@ select:disabled,
   border-radius: 8px;
   padding: 0.5rem;
   background: var(--color-surface-muted);
+  /* Allow the card to follow a shrunken grid track instead of overflowing it. */
+  min-width: 0;
 }
 
 .bitfield-nibble-hex {
@@ -944,11 +953,18 @@ select:disabled,
   border-radius: 6px;
   padding: 0 0.5rem;
   background: var(--color-surface);
+  max-width: 100%;
 }
 
 .bitfield-nibble-bits {
   display: flex;
   gap: 4px;
+  justify-content: center;
+  /* Take the full track width instead of a fit-content resolution:
+     a centered column-flex child with shrinkable buttons collapses
+     to its min-content and produced ~12px cells on narrow screens. */
+  width: 100%;
+  min-width: 0;
 }
 
 .bitfield-bit {
@@ -956,7 +972,10 @@ select:disabled,
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  min-width: 2.25rem;
+  /* Design width 2.25rem; shrinkable so 4 columns fit a ~618px panel. */
+  flex: 0 1 2.25rem;
+  min-width: 0;
+  max-width: 2.25rem;
   min-height: 2.75rem;
   padding: 0.125rem;
   background: transparent;
@@ -967,7 +986,8 @@ select:disabled,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
+  width: 100%;
+  max-width: 1.75rem;
   height: 1.5rem;
   border-radius: 6px;
   border: 2px solid var(--color-border);
@@ -1006,9 +1026,16 @@ select:disabled,
   font-size: 0.625rem;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
+  max-width: 100%;
 }
 
-/* Compact density (L16 embedded): smaller cells, same nibble structure. */
+/* Compact density (L16 embedded): smaller cells, same nibble structure.
+   Track cap 6.25rem (100px) keeps the two-nibble row at its design width
+   and lets it shrink on narrow panels like the regular density. */
+.bitfield[data-density='compact'] .bitfield-grid {
+  grid-template-columns: repeat(2, minmax(0, 6.25rem));
+}
+
 .bitfield[data-density='compact'] .bitfield-nibble {
   padding: 0.125rem;
   gap: 1px;
@@ -1024,13 +1051,14 @@ select:disabled,
 }
 
 .bitfield[data-density='compact'] .bitfield-bit {
-  min-width: 1.375rem;
+  flex-basis: 1.375rem;
+  max-width: 1.375rem;
   min-height: 1.625rem;
   gap: 1px;
 }
 
 .bitfield[data-density='compact'] .bitfield-cell {
-  width: 1.125rem;
+  max-width: 1.125rem;
   height: 1.125rem;
   font-size: 0.6875rem;
 }
