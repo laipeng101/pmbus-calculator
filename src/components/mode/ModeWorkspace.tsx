@@ -2,10 +2,12 @@ import type { AppMode, AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
 import BitGrid from '../bits/BitGrid'
-import DecimalInput from '../inputs/DecimalInput'
 import HexInput from '../inputs/HexInput'
 import IntegerInput from '../inputs/IntegerInput'
 import ValueInput from '../inputs/ValueInput'
+import ExponentEditor from '../formula/ExponentEditor'
+import LinearFormulaEditor from '../formula/LinearFormulaEditor'
+import VoutModeComposer from './VoutModeComposer'
 import { MODE_PANEL_ID, modeTabId } from './modeTabs'
 import { LockIcon, UnlockIcon } from '../icons/Icon'
 import MathFormula from '../math/MathFormula'
@@ -60,51 +62,43 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
         {mode === 'L11' && (
           <div className="space-y-4">
-            {/* Immersive formula: Y × 2^N */}
-            <div className="panel-surface-muted flex items-center justify-center gap-3 rounded-xl px-4 py-5">
-              <div className="text-center">
-                <div className="mb-1 text-xs color-text-muted">Y (11-bit)</div>
-                <div className="mx-auto w-28">
+            {/* Continuous formula: Y × 2^N with N anchored to the exponent slot */}
+            <LinearFormulaEditor
+              ariaLabel="LINEAR11 公式编辑器"
+              valueCaption="Y（11-bit）"
+              valueEditor={
+                <div className="w-24">
                   <IntegerInput
                     id="l11-y-input"
                     value={state.l11.y}
                     ariaLabel="Y (11-bit)"
                     onCommit={(text) => dispatch({ type: 'l11/set-y', y: text })}
-                    className="surface border-default color-text-primary font-mono w-full rounded-lg px-3 py-2 text-center text-lg font-bold outline-none"
+                    className="surface border-default color-text-primary font-mono w-full rounded-lg px-2 py-2 text-center text-lg font-bold outline-none"
                   />
                 </div>
-              </div>
-
-              <div className="text-2xl font-bold color-text-secondary">×</div>
-
-              <div className="text-center">
-                <div className="mb-1 text-xs color-text-muted">
-                  2<sup>N</sup>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-20">
-                    <IntegerInput
-                      id="l11-n-input"
-                      value={state.l11.n}
-                      disabled={state.l11.autoN}
-                      ariaLabel="N 值 (指数)"
-                      onCommit={(text) => dispatch({ type: 'l11/set-n', n: text })}
-                      className="surface border-default color-text-primary font-mono w-full rounded-lg px-2 py-2 text-center text-lg font-bold outline-none disabled:opacity-60"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => dispatch({ type: 'l11/toggle-auto-n' })}
-                    className="n-lock-button flex min-h-10 min-w-10 items-center justify-center rounded-md px-2 py-1.5 transition-colors"
-                    title={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
-                    aria-label={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
-                    aria-pressed={state.l11.autoN}
-                  >
-                    {state.l11.autoN ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
-                  </button>
-                </div>
-              </div>
-            </div>
+              }
+              exponentEditor={
+                <ExponentEditor
+                  id="l11-n-input"
+                  value={state.l11.n}
+                  disabled={state.l11.autoN}
+                  ariaLabel="N 值 (指数)"
+                  onCommit={(text) => dispatch({ type: 'l11/set-n', n: text })}
+                />
+              }
+              lockButton={
+                <button
+                  type="button"
+                  onClick={() => dispatch({ type: 'l11/toggle-auto-n' })}
+                  className="n-lock-button flex min-h-10 min-w-10 items-center justify-center rounded-md px-2 py-1.5 transition-colors"
+                  title={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
+                  aria-label={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
+                  aria-pressed={state.l11.autoN}
+                >
+                  {state.l11.autoN ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
+                </button>
+              }
+            />
 
             {/* Range hint */}
             <div className="text-center text-xs color-text-muted">
@@ -120,45 +114,8 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
         {mode === 'L16' && (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="w-24 text-sm color-text-muted">VOUT_MODE</label>
-              <div className="w-28">
-                <HexInput
-                  id="vout-mode-input"
-                  value={
-                    vm.voutModeInfo?.hex ??
-                    '0x' + state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')
-                  }
-                  maxDigits={2}
-                  ariaLabel="VOUT_MODE"
-                  placeholder="0x18"
-                  className="input-surface w-full rounded-lg px-3 py-2 text-sm outline-none"
-                  onCommit={(text) => dispatch({ type: 'l16/set-vout-mode', hex: text })}
-                />
-              </div>
-              <span
-                className={`text-xs ${
-                  vm.voutModeInfo?.status === 'ok' ? 'color-text-muted' : 'color-warning'
-                }`}
-              >
-                {vm.voutModeInfo?.status === 'ok'
-                  ? `${vm.voutModeInfo.modeName}, N=${state.l16.n}`
-                  : vm.voutModeInfo?.isRelative
-                    ? '相对 LINEAR（需参考值）'
-                    : `${vm.voutModeInfo?.modeName ?? '未知'} (非LINEAR)`}
-              </span>
-            </div>
-
-            {/* VOUT_MODE bit-field breakdown per Part II §8.3 */}
-            {vm.voutModeInfo && (
-              <div className="workspace-vout-bits rounded-lg px-3 py-2 text-xs">
-                bit7 = {vm.voutModeInfo.isRelative ? 'relative (1)' : 'absolute (0)'} · bits[6:5]
-                mode = {vm.voutModeInfo.modeName} ({vm.voutModeInfo.mode}) · bits[4:0] param ={' '}
-                {vm.voutModeInfo.param}
-                {vm.voutModeInfo.status !== 'ok' &&
-                  ' · 本页不计算绝对电压（需要参考值或器件 Profile）'}
-              </div>
-            )}
+            {/* Structured VOUT_MODE composer (bit7 / format / parameter / byte) */}
+            <VoutModeComposer state={state} vm={vm} dispatch={dispatch} />
 
             <div className="flex flex-wrap items-center gap-3">
               <label className="w-24 text-sm color-text-muted">字节序</label>
@@ -180,20 +137,6 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
             {vm.voutModeInfo?.status === 'ok' ? (
               <>
-                {/* V raw input — direct LINEAR16 word value */}
-                <div>
-                  <label className="mb-1 block text-xs font-medium color-text-muted">
-                    V（16 位无符号，0～65535）
-                  </label>
-                  <DecimalInput
-                    id="l16-v-input"
-                    value={state.raw}
-                    ariaLabel="V（16 位无符号，0～65535）"
-                    onCommit={(text) => dispatch({ type: 'raw/set', raw: text })}
-                    className="input-surface w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
-                  />
-                </div>
-
                 {/* Physical value input — encodes via value / 2^N */}
                 <ValueInput vm={vm} dispatch={dispatch} />
 
@@ -204,11 +147,10 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
             ) : (
               <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
                 <p className="mb-2">
-                  VOUT_MODE 为{' '}
-                  {vm.voutModeInfo?.isRelative ? '相对 LINEAR' : vm.voutModeInfo?.modeName}
-                  ，本页仅支持 absolute LINEAR；不给出伪造的 LINEAR16 电压结果。
+                  VOUT_MODE {vm.voutModeInfo?.hex} 为 {vm.voutModeInfo?.statusText}
+                  ；本页仅支持 absolute LINEAR，不给出伪造的 LINEAR16 电压结果。
                 </p>
-                {vm.voutModeInfo?.modeName.includes('IEEE Half') && (
+                {vm.voutModeInfo?.mode === 3 && (
                   <button
                     type="button"
                     onClick={() => dispatch({ type: 'mode/set', mode: 'HALF' })}

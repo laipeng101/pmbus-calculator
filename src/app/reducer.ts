@@ -2,6 +2,7 @@ import { INITIAL_STATE } from './state'
 import type { AppState } from './state'
 import type { AppAction } from './actions'
 import { PMBusMath } from '../legacy/pmbus-math'
+import { analyzeVoutMode } from '../legacy/vout-mode'
 import { getCommandConfig } from '../legacy/command-metadata'
 import { parseHexStrict } from './hex-parse'
 import { parseIntegerStrict } from './int-parse'
@@ -68,9 +69,9 @@ function encodeL11FromValue(state: AppState, value: number): AppState {
  * LINEAR16 encoding instead of relying on hidden UI inputs.
  */
 function encodeL16FromValue(state: AppState, value: number): AppState {
-  const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
-  if (parsed.mode !== 0 || parsed.isRelative) return state
-  const n = PMBusMath.clamp(state.l16.n, -16, 15)
+  const analysis = analyzeVoutMode(state.l16.voutMode)
+  if (analysis.format !== 0 || analysis.isRelative) return state
+  const n = analysis.linearExponent ?? 0
   const p = PMBusMath.pow2(n)
   const v = PMBusMath.clamp(Math.round(value / p), 0, 65535)
   return { ...state, raw: v }
@@ -200,16 +201,49 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'l16/set-vout-mode': {
       const parsedHex = parseHexStrict(action.hex, 2)
       if (parsedHex.ok === false) return state
-      const voutMode = parsedHex.value
-      const parsed = PMBusMath.parseVoutMode(voutMode)
-      const l16 = {
-        ...state.l16,
-        voutMode,
-        // Per PMBus 1.3 Part II §8.3: VOUT_MODE LINEAR sets N from the low
-        // 5 bits.  Non-LINEAR modes must not silently change the exponent.
-        ...(typeof parsed.linearExponent === 'number' ? { n: parsed.linearExponent } : {}),
-      }
-      return { ...state, l16 }
+      // VOUT_MODE byte is the single source of truth for the L16 exponent;
+      // the view-model derives N from it via analyzeVoutMode.
+      return { ...state, l16: { voutMode: parsedHex.value } }
+    }
+
+    case 'l16/set-vout-relative': {
+      const analysis = analyzeVoutMode(state.l16.voutMode)
+      if (analysis.status === 'invalid-input') return state
+      // Relative is not available for VID (§8.5.3); refuse setting it, but
+      // still allow clearing an invalid relative-VID byte back to absolute.
+      if (analysis.format === 1 && action.relative) return state
+      const next = (state.l16.voutMode & 0x7f) | (action.relative ? 0x80 : 0x00)
+      return { ...state, l16: { voutMode: next } }
+    }
+
+    case 'l16/set-vout-format': {
+      const analysis = analyzeVoutMode(state.l16.voutMode)
+      if (analysis.status === 'invalid-input') return state
+      const format = action.format
+      // Canonicalization: DIRECT / IEEE Half force parameter to 0; selecting
+      // VID forces absolute (Relative is not available for VID, §8.5.3).
+      const parameter = format === 2 || format === 3 ? 0 : analysis.parameter
+      const relative = format === 1 ? false : analysis.isRelative
+      const next = ((format & 0x03) << 5) | (parameter & 0x1f) | (relative ? 0x80 : 0x00)
+      return { ...state, l16: { voutMode: next } }
+    }
+
+    case 'l16/set-vout-linear-n': {
+      const analysis = analyzeVoutMode(state.l16.voutMode)
+      if (analysis.format !== 0) return state
+      const n = parseIntegerSafe(action.n)
+      if (n === null) return state
+      const clamped = PMBusMath.clamp(n, -16, 15)
+      const next = (state.l16.voutMode & 0xe0) | (clamped & 0x1f)
+      return { ...state, l16: { voutMode: next } }
+    }
+
+    case 'l16/set-vout-vid-code': {
+      const analysis = analyzeVoutMode(state.l16.voutMode)
+      if (analysis.format !== 1) return state
+      if (!Number.isInteger(action.code) || action.code < 0 || action.code > 31) return state
+      const next = (state.l16.voutMode & 0xe0) | (action.code & 0x1f)
+      return { ...state, l16: { voutMode: next } }
     }
 
     case 'direct/set-y': {

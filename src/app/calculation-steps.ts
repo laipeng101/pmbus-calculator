@@ -10,6 +10,7 @@
  */
 import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
+import { analyzeVoutMode } from '../legacy/vout-mode'
 
 export interface CalculationStepVM {
   id: string
@@ -96,40 +97,71 @@ function buildL11Steps(state: AppState): CalculationStepVM[] {
 }
 
 function buildL16Steps(state: AppState): CalculationStepVM[] {
-  const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+  const a = analyzeVoutMode(state.l16.voutMode)
+  const n = a.linearExponent ?? 0
   const hex = `0x${state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')}`
   const steps: CalculationStepVM[] = [
     field('l16-vout-mode', 'VOUT_MODE', hex),
     field(
       'l16-vout-mode-bit7',
       'bit7 absolute/relative',
-      parsed.isRelative ? 'relative (1)' : 'absolute (0)',
+      a.isRelative ? 'relative (1)' : 'absolute (0)',
     ),
-    field('l16-vout-mode-mode', 'bits[6:5] mode', `${parsed.modeName} (${parsed.mode})`),
-    field('l16-vout-mode-param', 'bits[4:0] parameter', String(parsed.param)),
+    field('l16-vout-mode-mode', 'bits[6:5] mode', `${a.formatName} (${a.format})`),
+    field('l16-vout-mode-param', 'bits[4:0] parameter', String(a.parameter)),
   ]
 
-  // Non-LINEAR VOUT_MODE (VID / DIRECT / IEEE Half): the raw word is NOT a
-  // LINEAR16 V×2^N payload — no V/N fields, no range, no result.
-  if (parsed.mode !== 0) {
+  if (a.status === 'invalid-combination') {
     steps.push(
       warningStep(
-        'l16-unsupported',
-        `${parsed.modeName}：需要器件 Profile，当前不计算 LINEAR16 电压；raw 不是 LINEAR16 V/N 编码。`,
+        'l16-invalid-combination',
+        '相对 + VID 是非法组合（Part II §8.5.3：Relative 不适用于 VID）；当前不计算电压。',
       ),
     )
     return steps
   }
 
-  if (parsed.isRelative) {
-    // relative LINEAR：VOUT_MODE 参数位携带指数 N，可解释为比值缩放语义；
-    // 但绝对电压需要参考值，不把 raw 标成绝对电压。
-    steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(state.l16.n)))
-    steps.push(intermediate('l16-2n', '2^N（比值缩放）', formatNumber(PMBusMath.pow2(state.l16.n))))
+  if (a.status === 'invalid-parameter') {
+    steps.push(
+      warningStep(
+        'l16-invalid-parameter',
+        `${a.formatName} 的 Parameter 必须为 00000b（Part II §8.3 Table 2）；当前参数 ${a.parameter} 非法，不计算电压。`,
+      ),
+    )
+    return steps
+  }
+
+  if (a.format === 1) {
+    steps.push(
+      warningStep(
+        'l16-vid',
+        `${a.vidCode?.label ?? 'VID code ' + a.parameter}；需要器件资料确定电压映射，当前不计算 LINEAR16 电压。`,
+      ),
+    )
+    return steps
+  }
+
+  // Non-LINEAR VOUT_MODE (DIRECT / IEEE Half) with parameter 0: the raw word
+  // is NOT a LINEAR16 V×2^N payload — no V/N fields, no range, no result.
+  if (a.format !== 0) {
     steps.push(
       warningStep(
         'l16-unsupported',
-        '相对 LINEAR：VOUT_MODE 给出指数/比值语义，但绝对电压需要参考值；当前不把 raw 标为绝对电压。',
+        `${a.formatName}：需要器件 Profile（DIRECT 系数/设备数据），当前不计算 LINEAR16 电压；raw 不是 LINEAR16 V/N 编码。`,
+      ),
+    )
+    return steps
+  }
+
+  if (a.isRelative) {
+    // relative LINEAR：VOUT_MODE 参数位携带指数 N，可解释为比值缩放语义；
+    // 但绝对电压需要 VOUT_COMMAND nominal reference，不把 raw 标成绝对电压。
+    steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(n)))
+    steps.push(intermediate('l16-2n', '2^N（比值缩放）', formatNumber(PMBusMath.pow2(n))))
+    steps.push(
+      warningStep(
+        'l16-unsupported',
+        '相对 LINEAR：VOUT_MODE 给出指数/比值语义，但绝对电压需要 VOUT_COMMAND nominal reference；当前不把 raw 标为绝对电压。',
       ),
     )
     return steps
@@ -137,18 +169,18 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
 
   // absolute LINEAR: full V → X = V × 2^N chain.
   steps.push(field('l16-v', 'V（16-bit 无符号）', String(state.raw)))
-  steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(state.l16.n)))
-  const p = PMBusMath.pow2(state.l16.n)
+  steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(n)))
+  const p = PMBusMath.pow2(n)
   steps.push(
     formula('l16-formula', '通用公式', 'X = V × 2^N', 'X = V \\times 2^N'),
     intermediate('l16-2n', '2^N', formatNumber(p)),
     formula(
       'l16-substitution',
       '数值代入',
-      `X = ${state.raw} × 2^${state.l16.n}`,
-      `X = ${state.raw} \\times 2^{${state.l16.n}}`,
+      `X = ${state.raw} × 2^${n}`,
+      `X = ${state.raw} \\times 2^{${n}}`,
     ),
-    resultStep(formatNumber(PMBusMath.decodeLinear16(state.raw, state.l16.n).value)),
+    resultStep(formatNumber(PMBusMath.decodeLinear16(state.raw, n).value)),
   )
   return steps
 }

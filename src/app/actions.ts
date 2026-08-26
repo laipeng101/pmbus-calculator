@@ -1,4 +1,5 @@
 import type { AppMode, Endian, Theme } from './state'
+import type { VoutModeFormat } from '../legacy/vout-mode'
 
 export type AppAction =
   | { type: 'mode/set'; mode: AppMode }
@@ -11,6 +12,10 @@ export type AppAction =
   | { type: 'l11/set-y'; y: string }
   | { type: 'l11/toggle-auto-n' }
   | { type: 'l16/set-vout-mode'; hex: string }
+  | { type: 'l16/set-vout-relative'; relative: boolean }
+  | { type: 'l16/set-vout-format'; format: VoutModeFormat }
+  | { type: 'l16/set-vout-linear-n'; n: string }
+  | { type: 'l16/set-vout-vid-code'; code: number }
   | { type: 'direct/set-y'; y: string }
   | { type: 'direct/set-coeff'; name: 'm' | 'b' | 'r'; value: string }
   | { type: 'byte-order/set'; endian: Endian }

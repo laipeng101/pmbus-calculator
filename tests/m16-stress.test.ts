@@ -48,9 +48,7 @@ describe('M16 non-zero stress golden cases', () => {
     expect(r.n).toBe(-13)
     expect(r.value).toBeCloseTo(4.49255371094, 11)
 
-    const vm = toCalculatorViewModel(
-      base({ mode: 'L16', raw: 0x8fc3, l16: { n: -13, voutMode: 0x13 } }),
-    )
+    const vm = toCalculatorViewModel(base({ mode: 'L16', raw: 0x8fc3, l16: { voutMode: 0x13 } }))
     expect(vm.valueText).toBe('4.49255371094')
     expect(vm.voutModeInfo?.hex).toBe('0x13')
     expect(vm.voutModeInfo?.linearExponent).toBe(-13)

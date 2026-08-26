@@ -4,6 +4,35 @@
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-08-26
+
+### Added
+
+- M37：共享 LINEAR 公式编辑器（`LinearFormulaEditor` / `ExponentEditor`），L11 与 L16 LINEAR
+  复用同一 `Y/V × 2^N` 视觉；N 控件锚定到底数 2 的右上指数槽，锁按钮在相邻独立槽，
+  `-16/-1/15` 与锁定切换时底数与乘号锚点不漂移。
+- M37：L16 `VoutModeComposer` 结构化配置器——bit7（Absolute/Relative）、bits[6:5]
+  （LINEAR/VID/DIRECT/IEEE Half）、bits[4:0]（LINEAR signed N / VID unsigned code /
+  DIRECT·Half 固定 0）双向同步，实时显示 canonical byte、8-bit binary 与明确合法性状态。
+- 新增单一领域来源 `src/legacy/vout-mode.ts`：`analyzeVoutMode`（0..255 全字节 total）、
+  `composeVoutMode`、`classifyVidCode` / `VID_CODE_TABLE`，输出机器可测试的 validity status
+  与 reason code。
+
+### Fixed
+
+- VOUT_MODE 相对非 LINEAR（如 `0xA0` relative VID）不再被误标为“相对 LINEAR”；
+  Part II §8.5.3 的 relative-VID 非法组合被明确分类并阻止计算。
+- DIRECT / IEEE Half 的 parameter 非零（如 `0x5F`、`0xE1`）被判为 invalid parameter
+  （Part II §8.3 Table 2 要求 `00000b`），可解码但不再被宣称为有效配置。
+- 删除 `AppState.l16.n` 冗余状态：VOUT_MODE byte 成为 L16 exponent 的唯一事实来源，
+  view-model/formula/steps 统一从 analyzer 派生 N，消除双事实源漂移。
+- `HexInput` 空串与裸 `0x` 过渡态合同修正：聚焦编辑中暂存为 draft、不修改 committed state、
+  不逐键报错；空串 blur/Enter 归一化为 0，裸 `0x` blur/Enter 后显示“输入不完整”，非法修正
+  后错误/ARIA/draft 同时清除。
+- bit7 语义按 Part II §8.5 纠偏：bit7 配置 §8.5 所列 output-voltage-related commands 的
+  absolute/relative 行为，VOUT_COMMAND 为 nominal reference；UI/文档不再笼统暗示任意 payload
+  都是绝对/相对电压。
+
 ## [2.1.0] - 2026-08-26
 
 ### Changed

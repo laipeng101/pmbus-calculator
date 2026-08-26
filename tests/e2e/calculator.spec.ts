@@ -251,12 +251,17 @@ test.describe('计算器真实用户流程', () => {
     await expect(page.locator('#value-input')).toHaveValue('0')
   })
 
-  test('只有 0x 前缀的 Hex 输入显示明确错误', async ({ page }) => {
+  test('只有 0x 前缀的 Hex 输入：编辑中为 draft，blur 后才显示输入不完整', async ({ page }) => {
     await page.goto('/')
     const hexInput = page.locator('input[placeholder="0x0000"]')
 
     await hexInput.fill('0x')
 
+    // 编辑中裸 0x 是合法过渡态：不逐键报错，也不修改 committed state。
+    await expect(page.getByText(/0x\/0X 后/)).toHaveCount(0)
+    await expect(page.locator('#value-input')).toHaveValue('0')
+
+    await hexInput.press('Tab')
     await expect(page.getByText(/0x\/0X 后/)).toBeVisible()
     await expect(page.locator('#value-input')).toHaveValue('0')
   })

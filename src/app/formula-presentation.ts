@@ -1,5 +1,7 @@
 import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
+import { analyzeVoutMode } from '../legacy/vout-mode'
+import type { VoutModeAnalysis } from '../legacy/vout-mode'
 
 export interface FormulaPresentation {
   /** Plain-text formula used for copy output and C macro comments. */
@@ -163,6 +165,20 @@ function singleExpansionLine(plainText: string, latex: string): FormulaDetailLin
   return [{ kind: 'expansion', plainText, latex }]
 }
 
+/** Precise non-computable label for the L16 formula fallback (never "相对 LINEAR" for VID/DIRECT/Half). */
+function l16FormulaLabel(a: VoutModeAnalysis): string {
+  const rel = a.isRelative ? '相对 ' : '绝对 '
+  if (a.format === 0) return a.isRelative ? '相对 LINEAR' : '绝对 LINEAR'
+  if (a.format === 1) {
+    if (a.isRelative) return '相对 VID（非法组合）'
+    if (a.status === 'not-used') return 'VID（code 00h Not Used）'
+    if (a.status === 'profile-required') return 'VID（制造商自定义）'
+    return 'VID（保留 code）'
+  }
+  const suffix = a.status === 'invalid-parameter' ? '（参数必须为 0）' : ''
+  return rel + (a.format === 2 ? 'DIRECT' : 'IEEE Half') + suffix
+}
+
 /**
  * Single source of truth for on-screen formulas.
  *
@@ -185,10 +201,11 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
     }
 
     case 'L16': {
-      const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
-      const canCompute = parsed.mode === 0 && parsed.isRelative === false
+      const a = analyzeVoutMode(state.l16.voutMode)
+      const n = a.linearExponent ?? 0
+      const canCompute = a.format === 0 && a.isRelative === false
       if (canCompute === false) {
-        const label = parsed.isRelative ? '相对 LINEAR' : parsed.modeName
+        const label = l16FormulaLabel(a)
         const hex = state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')
         const plainText = `VOUT_MODE 0x${hex} 为 ${label}；需要参考值或器件 Profile，当前不计算绝对电压`
         const latex = `\\text{VOUT_MODE \\#0x${hex}: ${label} — 需要参考值/器件 Profile}`
@@ -199,8 +216,8 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
           detailLines: singleExpansionLine(plainText, latex),
         }
       }
-      const plainText = `V=${state.raw} × 2^${state.l16.n}`
-      const latex = `X = V \\times 2^N = ${state.raw} \\times 2^{${state.l16.n}}`
+      const plainText = `V=${state.raw} × 2^${n}`
+      const latex = `X = V \\times 2^N = ${state.raw} \\times 2^{${n}}`
       return {
         plainText,
         latex,

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { appReducer } from './reducer'
 import { INITIAL_STATE, type AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
+import { analyzeVoutMode } from '../legacy/vout-mode'
 
 describe('appReducer — state transitions', () => {
   const base: AppState = { ...INITIAL_STATE }
@@ -236,7 +237,6 @@ describe('appReducer — state transitions', () => {
   describe('L16 value -> raw encode', () => {
     it('encodes with VOUT_MODE-derived N=-8', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      expect(l16.l16.n).toBe(-8)
       const s = appReducer(l16, { type: 'value/set', value: '12' })
       // 12 / 2^-8 = 3072 = 0x0C00
       expect(s.raw).toBe(0x0c00)
@@ -381,18 +381,18 @@ describe('appReducer — state transitions', () => {
 
     it('derives N for LINEAR VOUT_MODE (0x18 -> N=-8)', () => {
       const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x18' })
-      expect(s.l16.n).toBe(-8)
+      expect(analyzeVoutMode(s.l16.voutMode).linearExponent).toBe(-8)
     })
 
     it('derives N for LINEAR VOUT_MODE (0x17 -> N=-9)', () => {
       const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x17' })
-      expect(s.l16.n).toBe(-9)
+      expect(analyzeVoutMode(s.l16.voutMode).linearExponent).toBe(-9)
     })
 
-    it('keeps previous N for non-LINEAR VOUT_MODE', () => {
+    it('non-LINEAR VOUT_MODE keeps the byte without a stored N', () => {
       const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x20' })
       expect(s.l16.voutMode).toBe(0x20)
-      expect(s.l16.n).toBe(base.l16.n)
+      expect(analyzeVoutMode(s.l16.voutMode).linearExponent).toBeNull()
     })
 
     it('rejects over-long VOUT_MODE instead of masking', () => {
@@ -408,6 +408,85 @@ describe('appReducer — state transitions', () => {
     it('ignores invalid hex', () => {
       const s = appReducer(base, { type: 'l16/set-vout-mode', hex: 'gg' })
       expect(s.l16.voutMode).toBe(base.l16.voutMode)
+    })
+  })
+
+  describe('structured VOUT_MODE actions (M37)', () => {
+    it('set-vout-relative only flips bit7 for non-VID formats and keeps raw', () => {
+      const s = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x18' })
+      const rel = appReducer(s, { type: 'l16/set-vout-relative', relative: true })
+      expect(rel.l16.voutMode).toBe(0x98)
+      expect(analyzeVoutMode(rel.l16.voutMode).linearExponent).toBe(-8)
+      expect(rel.raw).toBe(s.raw)
+    })
+
+    it('set-vout-relative refuses relative VID', () => {
+      const vid = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x20' })
+      const s = appReducer(vid, { type: 'l16/set-vout-relative', relative: true })
+      expect(s.l16.voutMode).toBe(0x20)
+    })
+
+    it('set-vout-relative clears an invalid relative-VID byte back to absolute', () => {
+      const relVid = appReducer(base, { type: 'l16/set-vout-mode', hex: '0xa0' })
+      const s = appReducer(relVid, { type: 'l16/set-vout-relative', relative: false })
+      expect(s.l16.voutMode).toBe(0x20)
+      expect(analyzeVoutMode(s.l16.voutMode).status).toBe('not-used')
+    })
+
+    it('set-vout-relative only flips bit7 and preserves parameter bits', () => {
+      const direct = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x41' })
+      const s = appReducer(direct, { type: 'l16/set-vout-relative', relative: true })
+      expect(s.l16.voutMode).toBe(0xc1) // relative DIRECT, parameter still 1 (invalid-parameter)
+      expect(analyzeVoutMode(s.l16.voutMode).status).toBe('invalid-parameter')
+    })
+
+    it('set-vout-format canonicalizes DIRECT/Half parameter and VID bit7', () => {
+      const relLinear = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x98' })
+      const direct = appReducer(relLinear, { type: 'l16/set-vout-format', format: 2 })
+      expect(direct.l16.voutMode).toBe(0xc0) // relative DIRECT, param forced 0
+      const vid = appReducer(relLinear, { type: 'l16/set-vout-format', format: 1 })
+      expect(vid.l16.voutMode).toBe(0x38) // absolute VID code 24, bit7 cleared
+    })
+
+    it('set-vout-format to LINEAR preserves the parameter bits', () => {
+      const half = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x60' })
+      const linear = appReducer(half, { type: 'l16/set-vout-format', format: 0 })
+      expect(linear.l16.voutMode).toBe(0x00)
+    })
+
+    it('set-vout-linear-n edits only bits[4:0] and clamps to -16..15', () => {
+      const rel = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x98' })
+      const hi = appReducer(rel, { type: 'l16/set-vout-linear-n', n: '15' })
+      expect(hi.l16.voutMode).toBe(0x8f) // relative LINEAR, N=15
+      const clamped = appReducer(rel, { type: 'l16/set-vout-linear-n', n: '99' })
+      expect(clamped.l16.voutMode).toBe(0x8f) // clamped to 15
+      const lo = appReducer(rel, { type: 'l16/set-vout-linear-n', n: '-17' })
+      expect(lo.l16.voutMode).toBe(0x90) // clamped to -16
+    })
+
+    it('set-vout-linear-n is a no-op for non-LINEAR', () => {
+      const vid = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x20' })
+      const s = appReducer(vid, { type: 'l16/set-vout-linear-n', n: '5' })
+      expect(s.l16.voutMode).toBe(0x20)
+    })
+
+    it('set-vout-vid-code edits bits[4:0] for VID only', () => {
+      const vid = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x20' })
+      const s = appReducer(vid, { type: 'l16/set-vout-vid-code', code: 0x1e })
+      expect(s.l16.voutMode).toBe(0x3e)
+      expect(analyzeVoutMode(s.l16.voutMode).status).toBe('profile-required')
+      const linear = appReducer(base, { type: 'l16/set-vout-mode', hex: '0x18' })
+      expect(appReducer(linear, { type: 'l16/set-vout-vid-code', code: 1 }).l16.voutMode).toBe(0x18)
+    })
+
+    it('structured actions never touch raw or top-level mode', () => {
+      const s0 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s1 = appReducer(s0, { type: 'l16/set-vout-relative', relative: true })
+      expect(s1.raw).toBe(s0.raw)
+      expect(s1.mode).toBe('L16')
+      const s2 = appReducer(s1, { type: 'l16/set-vout-linear-n', n: '-16' })
+      expect(s2.raw).toBe(s0.raw)
+      expect(s2.mode).toBe('L16')
     })
   })
 

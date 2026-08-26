@@ -9,7 +9,7 @@ const BASE: AppState = {
   commandKey: null,
   byteOrder: 'le',
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
-  l16: { n: -8, voutMode: 0x18 },
+  l16: { voutMode: 0x18 },
   direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
   copy: { prefix0x: true, spaceBetweenBytes: true, endian: 'le' },
   ui: { theme: 'system', debugOpen: false },
@@ -79,9 +79,7 @@ describe('toCalculatorViewModel', () => {
     })
 
     test('voutModeInfo reports absolute LINEAR and exponent for 0x18', () => {
-      const vm = toCalculatorViewModel(
-        make({ mode: 'L16', l16: { ...BASE.l16, voutMode: 0x18, n: -8 } }),
-      )
+      const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode: 0x18 } }))
       expect(vm.voutModeInfo?.hex).toBe('0x18')
       expect(vm.voutModeInfo?.isLinear).toBe(true)
       expect(vm.voutModeInfo?.isRelative).toBe(false)
@@ -93,7 +91,7 @@ describe('toCalculatorViewModel', () => {
 
     test('relative LINEAR VOUT_MODE 0x98 is not computed as an absolute voltage', () => {
       const vm = toCalculatorViewModel(
-        make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode: 0x98, n: -8 } }),
+        make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode: 0x98 } }),
       )
       expect(vm.voutModeInfo?.isLinear).toBe(true)
       expect(vm.voutModeInfo?.isRelative).toBe(true)
@@ -106,23 +104,44 @@ describe('toCalculatorViewModel', () => {
     test('non-LINEAR VOUT_MODE never fakes a LINEAR16 result', () => {
       for (const voutMode of [0x20, 0x40, 0x60, 0xe0]) {
         const vm = toCalculatorViewModel(
-          make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode, n: -8 } }),
+          make({ mode: 'L16', raw: 0x0c00, l16: { ...BASE.l16, voutMode } }),
         )
         expect(vm.valueText, `0x${voutMode.toString(16)}`).toBe('—')
-        expect(
-          vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear'),
-          `0x${voutMode.toString(16)}`,
-        ).toBe(true)
+        expect(vm.warnings.length, `0x${voutMode.toString(16)}`).toBeGreaterThan(0)
       }
     })
 
-    test('non-LINEAR VOUT_MODE produces a warning', () => {
+    test('VID 0x20 (Not Used) 产生 vid-not-used 警告而非 generic nonlinear', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode: 0x20 } }))
-      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear')).toBe(true)
+      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-vid-not-used')).toBe(true)
+      expect(vm.voutModeInfo?.domainStatus).toBe('not-used')
+      expect(vm.voutModeInfo?.statusText).toBe('VID code 00h — Not Used（未使用）')
+    })
+
+    test('DIRECT/Half 参数非零被判为 invalid-parameter', () => {
+      for (const voutMode of [0x41, 0x5f, 0x61, 0x7f, 0xc1, 0xe1]) {
+        const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode } }))
+        expect(vm.voutModeInfo?.domainStatus, `0x${voutMode.toString(16)}`).toBe(
+          'invalid-parameter',
+        )
+        expect(
+          vm.warnings.some((w) => w.id === 'l16-vout-mode-invalid-parameter'),
+          `0x${voutMode.toString(16)}`,
+        ).toBe(true)
+        expect(vm.valueText).toBe('—')
+      }
+    })
+
+    test('relative VID 0xA0 被判为 invalid-combination 且绝不显示相对 LINEAR', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, voutMode: 0xa0 } }))
+      expect(vm.voutModeInfo?.domainStatus).toBe('invalid-combination')
+      expect(vm.voutModeInfo?.statusText).toBe('相对 VID — 非法组合（§8.5.3）')
+      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-invalid-combination')).toBe(true)
+      expect(vm.formulaText).not.toContain('相对 LINEAR')
     })
 
     test('nRangeText reflects 0..65535×2^N', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16, n: -8 } }))
+      const vm = toCalculatorViewModel(make({ mode: 'L16', l16: { ...BASE.l16 } }))
       expect(vm.nRangeText).toBe('0 ~ 255.99609375')
     })
 
