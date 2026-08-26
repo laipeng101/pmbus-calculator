@@ -28,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.4.2；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.0；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -54,7 +54,10 @@ M0–M39 complete；stable release v2.4.2；production distribution: GitHub Page
   model 重构为中文主文案、VOUT_MODE 配置摘要移出 KaTeX（UI/数据/数学三字体角色）、
   `BitFieldGrid` 统一 16 位与 8 位（含 L16 compact 双 nibble）与中文图例、
   页面 `<title>` 补全 VOUT_MODE。
-- 当前：v2.4.0 已发布；M39 complete；无进行中的功能里程碑。
+- M40（v2.5.0）：格式编码量化误差读数扩展到 L16/DIRECT/HALF——可判别结果分类
+  （exact/quantized/saturated/overflow/special）、provenance 合同、零分母/溢出/
+  特殊值正确呈现、fallback 标注、DOMAIN_MODEL §6 与 UI_CONVENTIONS §15。
+- 当前：v2.5.0 已发布；M40 complete；无进行中的功能里程碑。
 
 ## 下一产品目标
 

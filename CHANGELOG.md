@@ -4,6 +4,42 @@
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-08-27
+
+### Added
+
+- **格式编码量化误差读数扩展到全部数值模式（MINOR，向后兼容）**：LINEAR16 / DIRECT /
+  IEEE 754 binary16 现在与 LINEAR11 共享同一 `ErrorDelta` 面板与计算过程步骤，领域模型
+  重构为可判别联合（`exact / quantized / saturated / overflow / special`，
+  `src/app/quantization-error.ts`），严重度由结果分类决定。
+
+### Fixed
+
+- **不再伪造零误差**：无显式编码请求（初始状态、手工 Hex/bit/raw 编辑、清除请求来源）时
+  误差读数整体隐藏——「未输入请求」与「误差为零」是不同领域状态；请求来源
+  （`l11.valueInput` + 模式标签的 `state.valueRequest`）在任何改变 raw 位或编码解释的
+  动作（系数、payload kind、VOUT_MODE 字节、模式切换）后失效清除。
+- **零请求值的相对误差显示「—」**：零分母（requested = 0 / −0）不再显示 0%；
+  绝对误差照常保留（如 DIRECT m=1,b=1,R=−1 请求 0：+1.000000 (—)）。
+- **HALF 有限值溢出不再隐藏**：65520 → +Infinity 以 overflow/error 状态呈现；
+  NaN / ±Infinity 显式请求以 special 状态分类显示，不再静默消失。
+- **非零小误差绝不渲染为文本零**：|x| ≥ 1e-6 用固定 6 位小数，更小非零值
+  （如 binary16 次正规 ties-to-even 的 2^-25 → +0）用自适应有效数字显示。
+- **移除跨格式 1e-5 绝对阈值**：PMBus 设备准确度由产品资料规定（Part II §7.8/§7.9），
+  不存在通用阈值；UI 更名为「格式编码量化误差」，L11 饱和、L16 clamp、DIRECT Y 饱和
+  统一为 saturated/error 分类。
+- **L16 语义对齐**：SLINEAR16 offset 的量化不受 VOUT_MODE bit7 relative 影响
+  （payload 语义优先，§13.3/§13.4）；fallback 0x18 时读数标注「按 fallback 0x18 计算」；
+  relative ULINEAR16（比值语义）不显示物理量化误差。
+- **重复选择当前模式不再清除请求来源**（same-mode dispatch 幂等）。
+- DOMAIN_MODEL §2.2 fallback 矛盾消除（拒绝仅限 relative LINEAR），新增 §6 量化语义；
+  UI_CONVENTIONS 新增 §15 面板契约。
+
+### 证据
+
+- 4 张桌面 L11 视觉基线按 REPOSITORY_HYGIENE 3.10 逐图审查更新（移除伪造零误差卡），
+  其余 24 张场景（含全部移动端）不变。
+
 ## [2.4.2] - 2026-08-27
 
 ### Fixed
