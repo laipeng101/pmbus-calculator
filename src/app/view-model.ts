@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import type { AppState, AppMode } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
+import { analyzeVoutMode } from '../legacy/vout-mode'
+import type { VoutModeStatus } from '../legacy/vout-mode'
 import { getCommandConfig } from '../legacy/command-metadata'
 import { buildCMacro } from './copy-utils'
 import { getFormulaPresentation } from './formula-presentation'
@@ -23,7 +25,7 @@ export interface WarningVM {
 export interface VoutModeInfoVM {
   hex: string
   modeName: string
-  linearExponent: number | 'IEEE Half' | null
+  linearExponent: number | null
   isLinear: boolean
   isRelative: boolean
   /** Mode bits [6:5] per Part II §8.3. */
@@ -32,6 +34,16 @@ export interface VoutModeInfoVM {
   param: number
   /** Whether the LINEAR16 page may compute an absolute voltage. */
   status: 'ok' | 'reference-required' | 'unsupported'
+  /** Domain validity classification (M37). */
+  domainStatus: VoutModeStatus
+  /** Machine-testable reason code. */
+  reason: string
+  /** VID code classification, present only for the VID format. */
+  vidCodeKind?: 'not-used' | 'reserved' | 'profile-required'
+  /** Short UI classification text derived from the domain analysis. */
+  statusText: string
+  /** 8-bit binary rendering of the canonical byte. */
+  binary: string
 }
 
 export interface CalculatorViewModel {
@@ -111,6 +123,29 @@ function buildBitGroups(raw: number): BitGroupVM[] {
   return groups
 }
 
+function voutModeStatusText(state: AppState): string {
+  const a = analyzeVoutMode(state.l16.voutMode)
+  switch (a.status) {
+    case 'valid':
+      if (a.format === 0) return a.isRelative ? '相对 LINEAR（需参考值）' : '绝对 LINEAR'
+      if (a.format === 2)
+        return a.isRelative ? '相对 DIRECT（需系数与参考值）' : '绝对 DIRECT（需系数）'
+      return a.isRelative ? '相对 IEEE Half（需参考值）' : 'IEEE Half（需器件资料）'
+    case 'invalid-combination':
+      return '相对 VID — 非法组合（§8.5.3）'
+    case 'invalid-parameter':
+      return a.formatName + ' 参数必须为 0（§8.3 Table 2）'
+    case 'not-used':
+      return 'VID code 00h — Not Used（未使用）'
+    case 'reserved':
+      return 'VID code 保留（规范未列出）'
+    case 'profile-required':
+      return 'VID code 制造商自定义（需器件资料）'
+    case 'invalid-input':
+      return '无效 VOUT_MODE'
+  }
+}
+
 function computeValueText(state: AppState): string {
   try {
     switch (state.mode) {
@@ -119,10 +154,10 @@ function computeValueText(state: AppState): string {
         return formatNumber(r.value)
       }
       case 'L16': {
-        const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
-        const canCompute = parsed.mode === 0 && parsed.isRelative === false
+        const a = analyzeVoutMode(state.l16.voutMode)
+        const canCompute = a.format === 0 && a.isRelative === false
         if (canCompute === false) return '—'
-        const r = PMBusMath.decodeLinear16(state.raw, state.l16.n)
+        const r = PMBusMath.decodeLinear16(state.raw, a.linearExponent ?? 0)
         return formatNumber(r.value)
       }
       case 'DIRECT': {
@@ -169,19 +204,49 @@ function buildWarnings(state: AppState): WarningVM[] {
     }
   }
   if (state.mode === 'L16') {
-    const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+    const a = analyzeVoutMode(state.l16.voutMode)
     const hex = `0x${state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0')}`
-    if (parsed.mode !== 0) {
-      warnings.push({
-        id: 'l16-vout-mode-nonlinear',
-        level: 'warning',
-        text: `VOUT_MODE ${hex} 为 ${parsed.modeName} 模式；LINEAR16 页面不能给出有效电压结果，需要器件 Profile 或切换到对应格式。`,
-      })
-    } else if (parsed.isRelative) {
+    if (a.format === 0 && a.isRelative) {
       warnings.push({
         id: 'l16-vout-mode-relative',
         level: 'info',
-        text: `VOUT_MODE ${hex} 为相对 LINEAR；需要参考值，当前不计算绝对电压。`,
+        text: `VOUT_MODE ${hex} 为相对 LINEAR；需要参考值（VOUT_COMMAND nominal reference），当前不计算绝对电压。`,
+      })
+    } else if (a.status === 'invalid-combination') {
+      warnings.push({
+        id: 'l16-vout-mode-invalid-combination',
+        level: 'error',
+        text: `VOUT_MODE ${hex} 为相对 + VID 非法组合（Part II §8.5.3：Relative 不适用于 VID）。`,
+      })
+    } else if (a.status === 'invalid-parameter') {
+      warnings.push({
+        id: 'l16-vout-mode-invalid-parameter',
+        level: 'error',
+        text: `VOUT_MODE ${hex} 的 ${a.formatName} 参数必须为 00000b（Part II §8.3 Table 2），当前参数 ${a.parameter} 非法。`,
+      })
+    } else if (a.status === 'not-used') {
+      warnings.push({
+        id: 'l16-vout-mode-vid-not-used',
+        level: 'warning',
+        text: `VOUT_MODE ${hex} 为 VID code 00h（Not Used），不构成有效 VID profile；LINEAR16 页面不给出电压结果。`,
+      })
+    } else if (a.status === 'reserved') {
+      warnings.push({
+        id: 'l16-vout-mode-vid-reserved',
+        level: 'warning',
+        text: `VOUT_MODE ${hex} 的 VID code ${a.parameter.toString(16).toUpperCase().padStart(2, '0')}h 为保留值（Part II §8.4.2 Table 3 未列出）；不构成有效 VID profile。`,
+      })
+    } else if (a.status === 'profile-required') {
+      warnings.push({
+        id: 'l16-vout-mode-vid-profile',
+        level: 'warning',
+        text: `VOUT_MODE ${hex} 的 VID code 为制造商自定义；需要器件资料确定电压映射，本页不猜测。`,
+      })
+    } else if (a.format === 2 || a.format === 3) {
+      warnings.push({
+        id: 'l16-vout-mode-nonlinear',
+        level: 'warning',
+        text: `VOUT_MODE ${hex} 为 ${a.formatName} 格式；LINEAR16 页面不给出 V×2^N 电压结果，需要器件 Profile（DIRECT 系数/设备数据）或切换到对应格式。`,
       })
     }
   }
@@ -235,31 +300,36 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   } else if (state.mode === 'L16') {
     // Only absolute LINEAR VOUT_MODE has a LINEAR16 V×2^N range; relative
     // LINEAR is a ratio and VID/DIRECT/IEEE Half are not LINEAR16 at all.
-    const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
-    if (parsed.mode === 0 && parsed.isRelative === false) {
-      const p = PMBusMath.pow2(state.l16.n)
+    const a = analyzeVoutMode(state.l16.voutMode)
+    if (a.format === 0 && a.isRelative === false) {
+      const p = PMBusMath.pow2(a.linearExponent ?? 0)
       nRangeText = '0 ~ ' + formatNumber(65535 * p)
     }
   }
 
   let voutModeInfo: VoutModeInfoVM | undefined
   if (state.mode === 'L16') {
-    const parsed = PMBusMath.parseVoutMode(state.l16.voutMode)
+    const a = analyzeVoutMode(state.l16.voutMode)
     const status =
-      parsed.mode === 0 && parsed.isRelative === false
+      a.format === 0 && a.isRelative === false
         ? 'ok'
-        : parsed.mode === 0
+        : a.format === 0
           ? 'reference-required'
           : 'unsupported'
     voutModeInfo = {
       hex: '0x' + state.l16.voutMode.toString(16).toUpperCase().padStart(2, '0'),
-      modeName: parsed.modeName,
-      linearExponent: parsed.linearExponent,
-      isLinear: parsed.mode === 0,
-      isRelative: parsed.isRelative,
-      mode: parsed.mode,
-      param: parsed.param,
+      modeName: a.formatName,
+      linearExponent: a.linearExponent,
+      isLinear: a.format === 0,
+      isRelative: a.isRelative,
+      mode: a.format,
+      param: a.parameter,
       status,
+      domainStatus: a.status,
+      reason: a.reason,
+      ...(a.vidCode ? { vidCodeKind: a.vidCode.kind } : {}),
+      statusText: voutModeStatusText(state),
+      binary: state.l16.voutMode.toString(2).padStart(8, '0'),
     }
   }
 

@@ -23,7 +23,7 @@ export interface AppState {
   }
 
   l16: {
-    n: number
+    /** VOUT_MODE data byte (0..255) — the single source of truth for the L16 exponent. */
     voutMode: number
   }
 
@@ -71,7 +71,6 @@ export const INITIAL_STATE: AppState = {
   },
 
   l16: {
-    n: -8,
     voutMode: 0x18,
   },
 

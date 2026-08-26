@@ -943,6 +943,185 @@ select:disabled,
   border-color: var(--color-accent-solid);
 }
 
+/* =========================================================
+   Shared LINEAR formula editor (Y × 2^N / V × 2^N)
+   ========================================================= */
+
+.linear-formula {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  padding: 0.5rem 0.25rem;
+}
+
+.linear-formula-value {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.linear-formula-caption {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.linear-op {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  align-self: center;
+}
+
+.power-term {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  padding-top: 1.75rem;
+}
+
+.power-base {
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text-primary);
+}
+
+.power-exponent {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  width: 3.25rem;
+  transform: translateX(-52%);
+}
+
+.power-lock {
+  align-self: flex-end;
+  margin-left: 1.5rem;
+  margin-bottom: -2px;
+}
+
+.exponent-input {
+  height: 1.5rem;
+  min-height: 1.5rem;
+}
+
+/* =========================================================
+   VOUT_MODE structured composer
+   ========================================================= */
+
+.vout-composer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.vout-seg {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-surface-muted);
+}
+
+.vout-seg-btn {
+  min-height: 32px;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.vout-seg-btn[aria-checked='true'] {
+  background: var(--color-accent-solid);
+  color: var(--color-on-accent);
+}
+
+.vout-seg-btn:disabled,
+.vout-seg-btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.vout-param-linear {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.vout-param-note {
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.vout-param-vid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.vout-param-fixed {
+  color: var(--color-text-muted);
+}
+
+.vout-canonical {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+}
+
+.vout-canonical-byte {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-text-primary);
+}
+
+.vout-canonical-binary {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.vout-canonical-status {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.vout-canonical-status-alert {
+  color: var(--color-warning);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .vout-seg-btn:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--color-control-hover);
+    color: var(--color-text-primary);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vout-seg-btn {
+    transition: none;
+  }
+}
+
 .debug-dot {
   background: var(--color-text-muted);
 }

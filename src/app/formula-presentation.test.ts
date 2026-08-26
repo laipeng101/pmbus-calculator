@@ -40,7 +40,7 @@ describe('formula presentation model', () => {
   })
 
   it('L16 keeps legacy plainText and adds LaTeX with actual values', () => {
-    const s = state({ mode: 'L16', raw: 0, l16: { n: -8, voutMode: 0x18 } })
+    const s = state({ mode: 'L16', raw: 0, l16: { voutMode: 0x18 } })
     const f = getFormulaPresentation(s)
 
     expect(f.plainText).toBe('V=0 × 2^-8')
@@ -167,7 +167,7 @@ describe('formula presentation model', () => {
   it('KaTeX templates only use the safe common subset', () => {
     const samples = [
       state({ mode: 'L11', raw: 0xf819 }),
-      state({ mode: 'L16', raw: 0xffff, l16: { n: -16, voutMode: 0x18 } }),
+      state({ mode: 'L16', raw: 0xffff, l16: { voutMode: 0x18 } }),
       state({
         mode: 'DIRECT',
         raw: 0x8000,

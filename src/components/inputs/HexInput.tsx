@@ -11,14 +11,20 @@ interface Props {
   onCommit: (text: string) => void
 }
 
+/** Transitional hex drafts (empty / bare 0x) that must not commit or error while typing. */
+function isTransitionalHex(input: string): boolean {
+  const trimmed = input.trim()
+  return trimmed === '' || /^0x$/i.test(trimmed)
+}
+
 /**
  * Controlled hexadecimal input sharing the unified editing model:
  *
- * - 过渡 draft（`0x`、部分输入）暂存，不被 committed 值强行重置；
- * - 非法文本（`1G`、超长、裸 `0x`）不修改 committed state，并显示字段级
- *   唯一可见错误；blur 不静默回滚，非法 draft 保留；
- * - 空输入 blur 归一化为 0。reducer 仍通过 `raw/set-from-hex` /
- *   `l16/set-vout-mode` 拥有全局校验。
+ * - 过渡 draft（空串、裸 0x）在聚焦编辑中暂存，不修改 committed state，也不立刻报错；
+ * - 非法文本（GG、12zz、超长）保持字段级唯一错误，不修改 raw/result/formula；
+ * - 空串 blur/Enter 规范化为 0；裸 0x blur/Enter 后显示“输入不完整”，非法 draft 保留；
+ * - 合法修正后错误、ARIA 与旧 draft 同时清除。reducer 仍通过
+ *   raw/set-from-hex / l16/set-vout-mode 拥有全局校验。
  */
 export default function HexInput({
   id,
@@ -39,6 +45,10 @@ export default function HexInput({
 
   const handleChange = (text: string) => {
     setDraft(text)
+    if (isTransitionalHex(text)) {
+      setError(null)
+      return
+    }
     const parsed = parseHexStrict(text, maxDigits)
     if (!parsed.ok) {
       setError(parsed.error)
@@ -50,15 +60,22 @@ export default function HexInput({
 
   const handleBlur = () => {
     const trimmed = draft.trim()
-    const text = trimmed === '' ? '0' : trimmed
-    const parsed = parseHexStrict(text, maxDigits)
+    if (trimmed === '') {
+      // Empty input normalizes to 0 (a defined completion, not a silent rollback).
+      setError(null)
+      setDraft('0')
+      onCommit('0')
+      setEditing(false)
+      return
+    }
+    const parsed = parseHexStrict(trimmed, maxDigits)
     if (!parsed.ok) {
       // Keep the invalid draft visible together with its error.
       setError(parsed.error)
     } else {
       setError(null)
-      setDraft(text)
-      onCommit(text)
+      setDraft(trimmed)
+      onCommit(trimmed)
     }
     setEditing(false)
   }

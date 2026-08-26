@@ -60,17 +60,28 @@
 
 ## 3. VOUT_MODE
 
-- `parseVoutMode(byte)` 按 PMBus Part II §8.3 解析：
-  - bit7 = absolute/relative（1 为 relative，需要参考值）；
-  - bits[6:5] = mode（`00` LINEAR、`01` VID、`10` DIRECT、`11` IEEE Half Float）；
-  - bits[4:0] = parameter。
-  - 旧实现用 `(byte >> 5) & 0x07` 把 bit7 混入 mode，是位域解析错误；mode 只有 2 位。
-- LINEAR（mode=00）时 N 取 param bits 的 5-bit signed；IEEE Half 时 `linearExponent` 为 `'IEEE Half'`。
-- 非 LINEAR 模式不得静默修改 `state.l16.n`。
+- 单一领域来源：`src/legacy/vout-mode.ts` 的 `analyzeVoutMode` / `composeVoutMode`；
+  `parseVoutMode` 保持兼容（PMBus Part II §8.3 位域解析）：
+  - bit7 = Absolute/Relative（Part II §8.5）；bits[6:5] = format（`00` LINEAR、`01` VID、
+    `10` DIRECT、`11` IEEE Half）；bits[4:0] = parameter。
+  - 旧实现用 `(byte >> 5) & 0x07` 把 bit7 混入 format，是位域解析错误；format 只有 2 位。
+- **bit7 语义纠偏（Part II §8.5 / §8.5.1–§8.5.3）**：bit7 配置的是 §8.5 所列
+  output-voltage-related commands（VOUT_MARGIN_HIGH/LOW、VOUT_OV/UV_FAULT/WARN_LIMIT、
+  POWER_GOOD_ON/OFF）的 absolute/relative 行为；VOUT_COMMAND 是 nominal reference，
+  而不是被改成相对值。relative 编码数值是相对比值，绝对阈值 = 相对值 × VOUT_COMMAND
+  nominal。本页没有命令选择上下文，因此不把 generic raw 自动标为绝对 V，也不套用器件数据。
+- **Relative 不适用于 VID（Part II §8.5.3）**：`0xA0..0xBF` 分类为 `invalid-combination`，
+  绝不显示“相对 LINEAR”。
+- **DIRECT / IEEE Half 参数必须为 `00000b`（Part II §8.3 Table 2）**：`0x41..0x5F`、
+  `0x61..0x7F` 及对应 bit7=1 的组合分类为 `invalid-parameter`，可解码但不可作为有效配置。
+- VID 参数是 unsigned VID Code Type（Part II §8.4.2 Table 3）：`00h` = not-used；
+  `1Eh/1Fh` = profile-required（制造商自定义）；其余未列 code = reserved。
+- **L16 exponent 单一事实源**：`AppState.l16` 只存 `voutMode` byte；N 一律由
+  `analyzeVoutMode(voutMode).linearExponent` 派生，不存在第二个 exponent 存储。
 - L16 页面只在 **absolute LINEAR** 时计算并显示 `X = V \times 2^N`：
-  - relative LINEAR：显示“需要参考值，当前不计算绝对电压”；
-  - VID / DIRECT / IEEE Half：不得伪装成 LINEAR16 结果，显示 unsupported/profile-required 状态，
-    可提供切换到 HALF 或查阅器件手册的入口。
+  - relative LINEAR：解释 `V \times 2^N` 的比值语义并说明需要 nominal reference，不计算绝对电压；
+  - VID / DIRECT / IEEE Half：不得伪装成 LINEAR16 结果，显示精确的
+    not-used / reserved / profile-required / invalid-parameter / invalid-combination 状态。
 
 ## 4. 字节序
 

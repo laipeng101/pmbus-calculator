@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-26（M36 结果优先响应式布局 + 确定性视觉基线治理）
+最后更新：2026-08-26（M37 LINEAR 指数编辑器与 VOUT_MODE 结构化配置器）
 
 ## 当前产品基线
 
@@ -28,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M36 complete；stable release v2.1.0；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M37 complete；stable release v2.2.0；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -41,7 +41,11 @@ M0–M36 complete；stable release v2.1.0；production distribution: GitHub Page
   清理全部 React inline style 并新增 `check:inline-style` 门禁。
 - M36：结果优先响应式布局 + 确定性视觉基线治理——物理值首屏可见、计算过程默认折叠、
   命令参考降级、visual scene 版本规范化。
-- 当前：v2.1.0 已发布；M36 complete；无进行中的功能里程碑。
+- M37：LINEAR 指数编辑器与 VOUT_MODE 结构化配置器——共享 LINEAR 公式编辑器（N 锚定 2 右上
+  指数槽）、L16 VOUT_MODE composer（bit7/format/parameter 双向同步 + canonical byte）、
+  VOUT_MODE analyzer/composer 单一领域来源、精确 validity 分类（relative-VID 非法组合、
+  DIRECT/Half 非零参数非法）、Hex 过渡态合同修正、L16 exponent 单事实源。
+- 当前：v2.2.0 已发布；M37 complete；无进行中的功能里程碑。
 
 ## 下一产品目标
 
