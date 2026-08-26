@@ -9,6 +9,8 @@ import IntegerInput from '../inputs/IntegerInput'
 import HexInput from '../inputs/HexInput'
 import ExponentEditor from '../formula/ExponentEditor'
 import LinearFormulaEditor from '../formula/LinearFormulaEditor'
+import TechnicalTerm from '../term/TechnicalTerm'
+import type { TermId } from '../../app/terminology'
 import VoutModeBitGrid from './VoutModeBitGrid'
 import VoutModeExplanations from './VoutModeExplanations'
 
@@ -28,6 +30,13 @@ const FORMATS: Array<{ value: VoutModeFormat; label: string }> = [
   { value: 2, label: 'DIRECT' },
   { value: 3, label: 'IEEE Half' },
 ]
+
+const FORMAT_TERM_ID: Record<VoutModeFormat, TermId> = {
+  0: 'linear',
+  1: 'vid',
+  2: 'direct',
+  3: 'binary16',
+}
 
 function vidOptionLabel(code: number, kind: string): string {
   const hex = code.toString(16).toUpperCase().padStart(2, '0')
@@ -110,6 +119,15 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           </div>
         )}
       </div>
+
+      {!embedded && (
+        <div className="vout-term-row" data-testid="vout-term-row">
+          <span className="text-xs color-text-muted">配置字节：</span>
+          <TechnicalTerm termId="vout-mode" />
+          <span className="text-xs color-text-muted">当前格式：</span>
+          <TechnicalTerm termId={FORMAT_TERM_ID[info.format]} />
+        </div>
+      )}
 
       {/* bits[4:0] parameter */}
       {info.format === 0 ? (
