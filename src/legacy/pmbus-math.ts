@@ -155,13 +155,46 @@ export const PMBusMath = {
     return { n: bestN, y: bestY, value: bestVal, delta: val - bestVal }
   },
 
-  /** LINEAR16: voltage = V × 2^N (V is 16-bit unsigned, N from VOUT_MODE) */
+  /** LINEAR16: voltage = V × 2^N (V is 16-bit unsigned, N from VOUT_MODE). */
   decodeLinear16(raw: number, n: number): Linear16Result {
     return { v: raw, n, value: raw * this.pow2(n) }
   },
 
   encodeLinear16(v: number, _n: number): number {
     return this.clamp(v, 0, 65535)
+  },
+
+  /**
+   * ULINEAR16 payload (Part II §8.4.1): X = Y_u × 2^N where Y_u is the
+   * unsigned 16-bit integer 0..65535.  In Relative mode the same payload is a
+   * dimensionless positive ratio R = Y_u × 2^N; the caller applies V_NOM.
+   */
+  decodeUlinear16(raw: number, n: number): Linear16Result {
+    return { v: raw, n, value: raw * this.pow2(n) }
+  },
+
+  /**
+   * ULINEAR16 encode from a physical value / ratio: Y_u = round(X / 2^N),
+   * clamped to 0..65535 (the established rounding contract).
+   */
+  encodeUlinear16(value: number, n: number): number {
+    return this.clamp(Math.round(value / this.pow2(n)), 0, 65535)
+  },
+
+  /**
+   * SLINEAR16 offset payload (Part II §13.3 VOUT_TRIM / §13.4 VOUT_CAL_OFFSET):
+   * X_offset = Y_s × 2^N where Y_s is the signed two's-complement 16-bit
+   * integer -32768..32767.  bit7 of VOUT_MODE is NOT part of this payload's
+   * math; it belongs to another command group's global behavior.
+   */
+  decodeSlinear16(raw: number, n: number): { y: number; n: number; value: number } {
+    const y = this.toSigned(raw, 16)
+    return { y, n, value: y * this.pow2(n) }
+  },
+
+  /** SLINEAR16 encode: Y_s = round(X / 2^N), clamped to -32768..32767. */
+  encodeSlinear16(value: number, n: number): number {
+    return this.fromSigned(this.clamp(Math.round(value / this.pow2(n)), -32768, 32767), 16)
   },
 
   /** DIRECT: X = (1/m) × (Y × 10^(-R) – b) */
