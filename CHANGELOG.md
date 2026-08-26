@@ -4,6 +4,31 @@
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-08-26
+
+### Added
+
+- M39：中文优先界面 + 可访问术语气泡 + 字体角色统一 + 共享位字段网格（MINOR，向后兼容）。
+- **术语气泡**：canonical 英文 token（VOUT_MODE、LINEAR/VID/DIRECT/IEEE 754 binary16 等）
+  通过虚下划线触发器提供单一中文解释数据源 `src/app/terminology.ts`；`TechnicalTerm` 组件
+  基于 `@floating-ui/react-dom`（offset/flip/shift/size/autoUpdate + portal），支持点击/
+  键盘/触屏、Escape 关闭并恢复焦点、点外关闭而气泡内不误关，viewport 边缘防裁切。
+- **共享位字段网格**：新 `BitFieldGrid` + `getBitRegions` 单一来源替换原 `BitGrid` 与
+  `VoutModeBitGrid` 两套实现；16 位恒为 4 nibble 组、8 位恒为 2 nibble 组；
+  L16 内嵌 VOUT_MODE 为 compact 密度但保留两个四位分组与统一图例；
+  bits[6:5] 在 L16 真正 disabled 且 ARIA 注明“格式位固定为 LINEAR”。
+- 全模式位图例中文化（指数/尾数/符号位/数值/绝对相对/格式/参数）。
+
+### Changed
+
+- **中文优先语言合同**：双语 explanation model（zh/en 并排）重构为中文主文案 + canonical
+  token 引用；按钮/状态/徽标/ARIA 不再中英双写（如“说明 / Details”“规范化 / Normalize”
+  “应用默认 … / Apply default”、linked/fallback-default → 已关联/默认回退、
+  Absolute/Relative → 绝对值/相对值）；VID code 分类标签改为 未使用/保留/制造商自定义。
+- **字体角色统一**：VOUT_MODE 结果摘要改为结构化配置视图（byte 用 mono、token/状态用
+  系统 UI 字体），不再经 KaTeX/serif 排版；真实数学等式仍由 KaTeX 渲染。
+- 页面 `<title>` 补全第五个模式 VOUT_MODE；release/deployment smoke 同步断言。
+
 ## [2.3.0] - 2026-08-26
 
 ### Added

@@ -83,12 +83,16 @@
 
 ## 7. Popover containment（通用规则）
 
-当前产品面没有命令下拉弹层（命令参考为页内折叠表格）；以下规则保留给未来任何 portal popover：
+术语气泡（`TechnicalTerm`）是当前唯一的 portal popover；命令参考仍是页内折叠表格：
 
 - popover 使用 `@floating-ui/react-dom`（或等价的 flip/shift/size/autoUpdate 组合），portal 渲染。
 - 必须配置 `flip`、`shift`（viewport padding 8–12px）、`size` 和 `autoUpdate`。
 - popup 打开时 resize、页面滚动、触发器靠近顶部/底部都必须保持 viewport 内完整可见；
   可用高度不足时只让内部列表滚动，不得滚动整个页面。
+- 术语气泡内容为非交互说明时使用 tooltip 语义：触发器携带 `aria-expanded` /
+  `aria-controls` / `aria-describedby`；若未来加入可点击内容必须升级为非模态 dialog。
+- 禁止在 tab、button、summary、option 等已有交互控件内部嵌套术语触发器；
+  禁止把整段说明塞进原生 `title`。
 
 ## 8. 输入编辑与错误合同（M21 起长期稳定）
 
@@ -157,3 +161,43 @@
 - 不使用 snapshot 替代数值、行为、无障碍或几何断言；不为了减小仓库而使用有损压缩。
 - visual scene 中的 volatile metadata（例如由 package.json 注入的版本徽标）必须在截图前先断言真实值，
   再规范化为明确的测试占位值；不 mask，且该规范化只存在于 E2E helper，不得进入 `src/` 或生产 bundle。
+
+## 12. 中文优先语言与术语气泡（M39 起）
+
+- 中文是界面、按钮、状态、帮助、ARIA 与错误提示的主语言；同一按钮/标题/状态/解释
+  不得中英双写，中文正文后不得追加完整英文译文（解释列表、计算步骤同样适用）。
+- 英文仅保留行业不可替代的 canonical identifier：`PMBus`、`SMBus`、命令名、
+  `LINEAR/LINEAR11/LINEAR16/ULINEAR16/SLINEAR16`、`VID`、`DIRECT`、
+  `IEEE 754 binary16`、`Hex`、`LE/BE`、bit 编号与变量符号（X/Y/V/N/R/m/b）。
+  规范引用（`Part II §8.5`）可保留，叙述必须中文。
+- canonical token 的中文解释只维护在单一数据源 `src/app/terminology.ts`；组件不得
+  复制同一段中文定义。新增 token 时先扩 glossary，再在重点出现位置挂 `TechnicalTerm`。
+- 解释模型（`VoutModeExplanation` 等）输出中文主文案 + canonical token 引用，
+  不再维护并排英文字段；组件不得用 CSS 隐藏英文来伪装完成。
+- 回归矩阵：`tests/e2e/ui-language.spec.ts`（违禁双语/英文子串清单 + 显式 allowlist）、
+  `tests/e2e/terminology-popover.spec.ts`（点击/键盘/触屏/单开/防裁切/无嵌套交互）。
+
+## 13. 字体角色（M39 起）
+
+| 角色 | 字体               | 用途                                             |
+| ---- | ------------------ | ------------------------------------------------ |
+| UI   | 系统无衬线         | 中文标题、按钮、标签、状态、说明、警告、气泡正文 |
+| 数据 | `var(--font-mono)` | Hex、binary、raw 数字、bit/nibble 数字、字节摘要 |
+| 数学 | KaTeX              | 真实公式、指数与等式（如 `X = Y × 2^N`）         |
+
+- 配置摘要（`VOUT_MODE = 0x18 · LINEAR · 绝对值`）是结构化状态，不是公式：
+  byte 用数据字体、token/状态用 UI 字体，不得经 KaTeX 渲染。
+  合同测试在 `tests/e2e/math-interaction.spec.ts`（配置摘要无 `.katex`、无 serif 回退）。
+- 结果主数值保持等宽 + `font-variant-numeric: tabular-nums` 合同不变。
+
+## 14. 共享位字段网格（M39 起）
+
+- 16 位编辑器恒为 4 个 nibble 组 × 4 位；8 位编辑器恒为 2 个 nibble 组 × 4 位；
+  组件 `src/components/bits/BitFieldGrid.tsx` 是唯一实现，禁止再分叉第二套 bit/nibble CSS。
+- L16 内嵌 VOUT_MODE 使用 `density="compact"`：只缩小尺寸与间距，不得退化成无分组单行。
+- on-bit 着色、图例与禁用态都由 `src/app/bit-regions.ts` 的 region 定义驱动；
+  颜色只传达分区，不得作为唯一信息（文本图例、bit range 与 disabled 状态必须同时存在）。
+- L16 的 bits[6:5] 固定 `00`：必须真正 `disabled`，ARIA 注明“格式位固定为 LINEAR”。
+- 位按钮可访问名形如“第 7 位，绝对值/相对值，当前为 0”（16 位无语义位保持
+  “位 15: 0”既有合同），不得双语重复。
+- 几何/结构合同测试在 `tests/e2e/bit-field-grid.spec.ts`。

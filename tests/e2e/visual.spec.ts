@@ -221,6 +221,37 @@ test.describe('visual regression (stable scenes)', () => {
     await expect(page).toHaveScreenshot('mobile-360-l11.png', { animations: 'disabled' })
   })
 
+  // M39：术语气泡打开状态——触发器虚下划线、浮层完整位于首屏。
+  test('desktop light VOUT_MODE 术语气泡打开', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
+    await settle(page)
+    await switchToVoutMode(page)
+    const summary = page.getByTestId('vout-mode-config-summary')
+    await summary.getByTestId('term-trigger-vout-mode').click()
+    await expect(page.getByTestId('term-popover-vout-mode')).toBeVisible()
+    await expect(page.getByTestId('term-popover-vout-mode')).toContainText('输出电压格式配置字节')
+    await expect(page).toHaveScreenshot('desktop-light-vout-mode-glossary.png', {
+      animations: 'disabled',
+    })
+  })
+
+  // M39：L16 内嵌 VOUT_MODE 保持两个四位分组（compact 密度）与统一图例。
+  test('mobile 390 LINEAR16 内嵌双 nibble', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
+    await settle(page)
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    await expect(page.locator('[data-testid="vout-mode-canonical"]')).toBeVisible()
+    const grid = page.locator('.bitfield[data-density="compact"]')
+    await expect(grid.locator('.bitfield-nibble')).toHaveCount(2)
+    await expect(page.locator('.katex').first()).toBeVisible()
+    await page.evaluate(async () => {
+      await document.fonts.ready
+    })
+    await page.waitForTimeout(120)
+    await expect(page).toHaveScreenshot('mobile-390-l16-embedded.png', { animations: 'disabled' })
+  })
+
   test('mobile 360 HALF', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 })
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))

@@ -85,12 +85,12 @@ function toSigned5(bits: number): number {
 
 function vidCodeKindLabel(code: number, kind: VidCodeKind): string {
   const hex = code.toString(16).toUpperCase().padStart(2, '0')
-  if (kind === 'not-used') return hex + 'h — Not Used（未使用）'
+  if (kind === 'not-used') return hex + 'h — 未使用'
   if (kind === 'profile-required') return hex + 'h — 制造商自定义（需器件资料）'
-  if (code >= 0x01 && code <= 0x04) return hex + 'h — Reserved（保留给未来 Intel 处理器）'
-  if (code >= 0x10 && code <= 0x11) return hex + 'h — Reserved（保留给未来 AMD 处理器）'
-  if (code >= 0x1c && code <= 0x1d) return hex + 'h — Reserved（保留未来使用）'
-  return hex + 'h — Reserved（规范未列出）'
+  if (code >= 0x01 && code <= 0x04) return hex + 'h — 保留（留给未来 Intel 处理器）'
+  if (code >= 0x10 && code <= 0x11) return hex + 'h — 保留（留给未来 AMD 处理器）'
+  if (code >= 0x1c && code <= 0x1d) return hex + 'h — 保留（留作未来使用）'
+  return hex + 'h — 保留（规范未列出）'
 }
 
 /**

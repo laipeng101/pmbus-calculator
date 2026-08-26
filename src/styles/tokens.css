@@ -758,12 +758,6 @@ select:disabled,
   font-family: var(--font-mono);
 }
 
-.workspace-vout-bits {
-  background: var(--color-surface-muted);
-  color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
-}
-
 .workspace-l16-block {
   background: var(--color-warning-surface);
   color: var(--color-text-primary);
