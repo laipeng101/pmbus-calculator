@@ -96,12 +96,21 @@ export default function TechnicalTerm({ termId, children }: Props) {
       {open &&
         createPortal(
           <div
-            ref={refs.setFloating}
+            // floating-ui 定位是逐帧动态坐标；仓库门禁禁止 JSX inline style
+            // prop，因此用 callback ref 直接把定位写入 DOM style。
+            ref={(node: HTMLDivElement | null) => {
+              refs.setFloating(node)
+              const floating = refs.floating.current
+              if (floating == null) return
+              for (const [key, value] of Object.entries(floatingStyles)) {
+                floating.style.setProperty(key, value === undefined ? '' : String(value))
+              }
+              floating.style.zIndex = '50'
+            }}
             id={panelId}
             role="tooltip"
             data-testid={'term-popover-' + termId}
             className="term-popover popover-enter"
-            style={{ ...floatingStyles, zIndex: 50 }}
           >
             <span className="term-popover-name">{term.name}</span>
             <span className="term-popover-detail">{term.detail}</span>
