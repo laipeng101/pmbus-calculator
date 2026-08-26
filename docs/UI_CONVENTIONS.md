@@ -204,3 +204,22 @@
 - 位按钮可访问名形如“第 7 位，绝对值/相对值，当前为 0”（16 位无语义位保持
   “位 15: 0”既有合同），不得双语重复。
 - 几何/结构合同测试在 `tests/e2e/bit-field-grid.spec.ts`。
+
+## 15. 格式编码量化误差读数（ErrorDelta）
+
+- 组件 `src/components/result/ErrorDelta.tsx` 是 L11/L16/DIRECT/HALF 共享的单一实现；
+  数据一律来自 view-model（`deltaText` / `deltaKind` / `deltaNote`），组件不重算数值。
+- 仅当存在显式编码请求 provenance 时渲染；无请求时组件返回 `null`，禁止展示伪造的
+  `+0.000000 (0.0000%)`——「未输入请求」不是「误差为零」。
+- 面板标签为「格式编码量化误差」，语义是数字格式的编码量化，不得暗示 PMBus 设备
+  测量/设置准确度（Part II §7.8/§7.9：准确度由产品资料规定）。
+- `data-kind` 契约：`ok`（exact）、`warn`（quantized / special）、`error`（saturated /
+  overflow）；颜色由 `tokens.css` 的 `.error-delta-value[data-kind]` 提供。符号只表示
+  方向（`requested − represented`），永不改变严重度。
+- 零分母（requested = 0 / −0）的相对误差显示 `—`，不显示 0%。
+- 绝对误差格式化必须保证非零差值绝不渲染为文本零：`|x| ≥ 1e-6` 用固定 6 位小数，
+  更小的非零值用自适应有效数字（如 `+2.98023223877e-8`）。
+- `deltaNote` 承载上下文附注（fallback 0x18、饱和、溢出、特殊值说明），以小字渲染在
+  主值下方，不得挤占主值行或造成换行溢出。
+- 计算过程中的量化步骤（`<mode>-quantization` intermediate）与面板使用同一文案来源，
+  label 为「格式编码量化误差（请求值 − 表示值）」。
