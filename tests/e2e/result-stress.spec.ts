@@ -189,7 +189,7 @@ test.describe('M16 result stress geometry', () => {
     expect(labels).toEqual(['0x 前缀', '字节空格', 'LE', 'BE'])
   })
 
-  test('negative ordinary quantization error is not displayed as danger', async ({ page }) => {
+  test('negative ordinary quantization error is informational, never danger', async ({ page }) => {
     await settle(page)
     const valueInput = page.locator('#value-input')
     await valueInput.fill('0.999999')
@@ -198,7 +198,9 @@ test.describe('M16 result stress geometry', () => {
     const errorDelta = page.locator('[data-testid="quantization-error"]')
     await expect(errorDelta).toBeVisible()
     await expect(errorDelta).toContainText('量化误差')
-    await expect(errorDelta).toHaveAttribute('data-kind', 'ok')
+    // Severity follows the outcome class (quantized → warn): the negative
+    // sign must never escalate to danger.
+    await expect(errorDelta).toHaveAttribute('data-kind', 'warn')
     const color = await errorDelta.locator('span').evaluate((el) => getComputedStyle(el).color)
     const danger = await errorDelta.evaluate(() => {
       const probe = document.createElement('span')
@@ -209,6 +211,104 @@ test.describe('M16 result stress geometry', () => {
       return color
     })
     expect(color).not.toBe(danger)
+  })
+
+  test('quantization panel: hidden without request, visible on encode, hidden after raw edit', async ({
+    page,
+  }) => {
+    await settle(page)
+
+    // LINEAR16, clean entry: no provenance → no fabricated zero.
+    await switchMode(page, /LINEAR16/)
+    const panel = page.locator('[data-testid="quantization-error"]')
+    await expect(panel).toHaveCount(0)
+
+    // N=-8 (0x18): 0.005 → Y=1 → represented 0.00390625.
+    const valueInput = page.locator('#value-input')
+    await valueInput.fill('0.005')
+    await valueInput.press('Tab')
+    await expect(panel).toContainText('+0.001094 (21.8750%)')
+    await expect(panel).toHaveAttribute('data-kind', 'warn')
+
+    // Manual raw edit invalidates provenance — the panel must disappear,
+    // not fall back to a fabricated zero.
+    await fillRaw(page, 'ABCD')
+    await expect(panel).toHaveCount(0)
+
+    // Re-encoding restores the readout.
+    await valueInput.fill('0.005')
+    await valueInput.press('Tab')
+    await expect(panel).toContainText('+0.001094 (21.8750%)')
+
+    // Re-selecting the active mode keeps the provenance (same-mode click).
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    await expect(panel).toContainText('+0.001094 (21.8750%)')
+  })
+
+  test('DIRECT zero request shows the absolute error and an undefined relative error', async ({
+    page,
+  }) => {
+    await settle(page)
+    await switchMode(page, /DIRECT/)
+
+    // m=1, b=1, R=-1: X=0 → Y=round((0+1)×10⁻¹)=0 → decode −1.
+    await page.locator('#direct-coeff-b-input').fill('1')
+    await page.locator('#direct-coeff-b-input').press('Tab')
+    await page.locator('#direct-coeff-r-input').fill('-1')
+    await page.locator('#direct-coeff-r-input').press('Tab')
+
+    const panel = page.locator('[data-testid="quantization-error"]')
+    await expect(panel).toHaveCount(0)
+
+    const valueInput = page.locator('#value-input')
+    await valueInput.fill('0')
+    await valueInput.press('Tab')
+    await expect(panel).toContainText('+1.000000 (—)')
+    await expect(panel).toHaveAttribute('data-kind', 'warn')
+  })
+
+  test('HALF: finite overflow surfaces as danger, subnormal tie never reads as zero', async ({
+    page,
+  }) => {
+    await settle(page)
+    await switchMode(page, /HALF/)
+    const panel = page.locator('[data-testid="quantization-error"]')
+    const valueInput = page.locator('#value-input')
+
+    // 65520 rounds to +Infinity — the most important encoding failure to show.
+    await valueInput.fill('65520')
+    await valueInput.press('Tab')
+    await expect(panel).toContainText('65520 → +Infinity')
+    await expect(panel).toHaveAttribute('data-kind', 'error')
+    await expect(panel).toContainText('溢出')
+
+    // 2⁻²⁵ ties-to-even to +0: absolute error is non-zero, shown in adaptive
+    // significant digits, relative error 100%.
+    await valueInput.fill('2.9802322387695312e-8')
+    await valueInput.press('Tab')
+    await expect(panel).toContainText('+2.98023223877e-8 (100.0000%)')
+    await expect(panel).toHaveAttribute('data-kind', 'warn')
+
+    // Manual raw edit hides the readout instead of faking a zero.
+    await fillRaw(page, '3C05')
+    await expect(panel).toHaveCount(0)
+  })
+
+  test('LINEAR16 fallback to 0x18 is labelled in the quantization readout', async ({ page }) => {
+    await settle(page)
+    await switchMode(page, /LINEAR16/)
+
+    // 0x20 = DIRECT format (non-LINEAR): the page computes on fallback 0x18.
+    await page.locator('#vout-mode-input').fill('20')
+    await page.locator('#vout-mode-input').press('Tab')
+    const panel = page.locator('[data-testid="quantization-error"]')
+    await expect(panel).toHaveCount(0)
+
+    const valueInput = page.locator('#value-input')
+    await valueInput.fill('0.005')
+    await valueInput.press('Tab')
+    await expect(panel).toContainText('+0.001094 (21.8750%)')
+    await expect(panel).toContainText('按 fallback 0x18 计算')
   })
 
   test('copy feedback has role status and does not push layout', async ({ page }) => {

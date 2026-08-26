@@ -234,6 +234,94 @@ describe('appReducer — state transitions', () => {
     })
   })
 
+  describe('valueRequest lifecycle (L16/DIRECT/HALF quantization-error parity)', () => {
+    const enterMode = (mode: AppState['mode']) => appReducer(base, { type: 'mode/set', mode })
+
+    it('records the committed request on value/set for L16, DIRECT and HALF', () => {
+      for (const [mode, raw] of [
+        ['L16', 0x0c00],
+        ['DIRECT', 12],
+        ['HALF', 0x4a00],
+      ] as const) {
+        const s = appReducer(enterMode(mode), { type: 'value/set', value: '12' })
+        expect(s.valueRequest, mode).toEqual({ mode, value: 12 })
+        expect(s.raw, mode).toBe(raw)
+      }
+    })
+
+    it('keeps L11 on its historical l11.valueInput channel only', () => {
+      const s = appReducer(base, { type: 'value/set', value: '12' })
+      expect(s.l11.valueInput).toBe(12)
+      expect(s.valueRequest).toBeNull()
+    })
+
+    it('re-selecting the active mode keeps the provenance (same-mode idempotence)', () => {
+      // Same-tab click / Ctrl+ shortcut on the current mode must not wipe a
+      // still-valid request: neither raw bits nor semantics changed.
+      const l16 = appReducer(enterMode('L16'), { type: 'value/set', value: '12' })
+      expect(appReducer(l16, { type: 'mode/set', mode: 'L16' })).toBe(l16)
+
+      const direct = appReducer(enterMode('DIRECT'), { type: 'value/set', value: '12' })
+      expect(appReducer(direct, { type: 'mode/set', mode: 'DIRECT' })).toBe(direct)
+
+      const half = appReducer(enterMode('HALF'), { type: 'value/set', value: '12' })
+      expect(appReducer(half, { type: 'mode/set', mode: 'HALF' })).toBe(half)
+    })
+
+    it('clears a stale request when raw is edited through hex or bit toggles', () => {
+      for (const mode of ['L16', 'DIRECT', 'HALF'] as const) {
+        const withRequest = appReducer(enterMode(mode), { type: 'value/set', value: '12' })
+        expect(withRequest.valueRequest).not.toBeNull()
+        const viaHex = appReducer(withRequest, { type: 'raw/set-from-hex', hex: 'ABCD' })
+        expect(viaHex.valueRequest, `${mode} hex`).toBeNull()
+        const restored = appReducer(viaHex, {
+          type: 'value/set',
+          value: '12',
+        })
+        const viaBit = appReducer(restored, { type: 'bit/toggle', bit: 15 })
+        expect(viaBit.valueRequest, `${mode} bit`).toBeNull()
+      }
+    })
+
+    it('clears the request when DIRECT Y or coefficients change', () => {
+      const direct = appReducer(enterMode('DIRECT'), { type: 'value/set', value: '12' })
+      const viaY = appReducer(direct, { type: 'direct/set-y', y: '-5' })
+      expect(viaY.valueRequest).toBeNull()
+      const withNewRequest = appReducer(viaY, { type: 'value/set', value: '12' })
+      const viaCoeff = appReducer(withNewRequest, {
+        type: 'direct/set-coeff',
+        name: 'm',
+        value: '2',
+      })
+      expect(viaCoeff.valueRequest).toBeNull()
+      // m=0 stores the explicit error state but still invalidates the request.
+      const mZero = appReducer(withNewRequest, {
+        type: 'direct/set-coeff',
+        name: 'm',
+        value: '0',
+      })
+      expect(mZero.valueRequest).toBeNull()
+    })
+
+    it('clears the request on payload-kind switch, VOUT_MODE edits and mode switches', () => {
+      const l16 = appReducer(enterMode('L16'), { type: 'value/set', value: '12' })
+      expect(l16.valueRequest).toEqual({ mode: 'L16', value: 12 })
+
+      const switched = appReducer(l16, {
+        type: 'l16/set-payload-kind',
+        payloadKind: 'slinear16-offset',
+      })
+      expect(switched.valueRequest).toBeNull()
+
+      const again = appReducer(switched, { type: 'value/set', value: '12' })
+      const byteEdit = appReducer(again, { type: 'vout-mode/set-linear-n', n: '-9' })
+      expect(byteEdit.valueRequest).toBeNull()
+
+      const toHalf = appReducer(byteEdit, { type: 'mode/set', mode: 'HALF' })
+      expect(toHalf.valueRequest).toBeNull()
+    })
+  })
+
   describe('L16 value -> raw encode', () => {
     it('encodes with VOUT_MODE-derived N=-8', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })

@@ -34,7 +34,10 @@ describe('L11 value -> raw roundtrip (auto-N)', () => {
 
       const vm = toCalculatorViewModel(state)
       expect(vm.deltaKind).toBe('ok')
-      expect(vm.deltaText).toBe('+0.000000 (0.0000%)')
+      // Exact roundtrip: relative error is 0.0000%; the zero request is the
+      // zero-denominator case and must read '—', never a fabricated 0%.
+      const expectedText = c.inputValue === 0 ? '+0.000000 (—)' : '+0.000000 (0.0000%)'
+      expect(vm.deltaText).toBe(expectedText)
     })
   }
 })

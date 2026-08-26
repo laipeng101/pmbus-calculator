@@ -31,7 +31,15 @@ function parseIntegerRange(s: string, min: number, max: number): number | null {
 /** Encode a physical value into DIRECT raw via legacy rounding. */
 function encodeDirectFromValue(state: AppState, value: number): AppState {
   const y = PMBusMath.encodeDirect(value, state.direct.m, state.direct.b, state.direct.r)
-  return { ...state, raw: PMBusMath.fromSigned(y, 16) }
+  return { ...state, raw: PMBusMath.fromSigned(y, 16), valueRequest: { mode: 'DIRECT', value } }
+}
+
+/**
+ * Clear the stale last-request marker (see AppState.valueRequest). Idempotent:
+ * states without a marker keep their reference so reducers stay cheap.
+ */
+function withoutValueRequest(state: AppState): AppState {
+  return state.valueRequest === null ? state : { ...state, valueRequest: null }
 }
 
 /**
@@ -75,25 +83,41 @@ function encodeL16FromValue(state: AppState, value: number): AppState {
   if (a.format !== 0 || a.isRelative) return state
   const n = a.linearExponent ?? 0
   if (state.l16.payloadKind === 'slinear16-offset') {
-    return { ...state, raw: PMBusMath.encodeSlinear16(value, n) }
+    return {
+      ...state,
+      raw: PMBusMath.encodeSlinear16(value, n),
+      valueRequest: { mode: 'L16', value },
+    }
   }
-  return { ...state, raw: PMBusMath.encodeUlinear16(value, n) }
+  return {
+    ...state,
+    raw: PMBusMath.encodeUlinear16(value, n),
+    valueRequest: { mode: 'L16', value },
+  }
 }
 
-/** Set raw and, when in L11 mode, re-sync N/Y from the raw bits. */
+/**
+ * Set raw and, when in L11 mode, re-sync N/Y from the raw bits.
+ * Any raw edit through this path invalidates the last encoding request:
+ * the quantization-error baseline falls back to request == represented.
+ */
 function withRaw(state: AppState, raw: number): AppState {
   const nextRaw = raw & 0xffff
-  if (state.mode !== 'L11') return { ...state, raw: nextRaw }
+  if (state.mode !== 'L11') return withoutValueRequest({ ...state, raw: nextRaw })
   const decoded = PMBusMath.decodeLinear11(nextRaw)
-  return {
+  return withoutValueRequest({
     ...state,
     raw: nextRaw,
     l11: { ...state.l11, n: decoded.n, y: decoded.y, valueInput: null },
-  }
+  })
 }
 
+/**
+ * Write a VOUT_MODE byte. On the L16 page every byte change can move the
+ * effective exponent or format, so the previous value request goes stale.
+ */
 function setVoutModeByte(state: AppState, byte: number): AppState {
-  return { ...state, voutMode: { byte: byte & 0xff } }
+  return withoutValueRequest({ ...state, voutMode: { byte: byte & 0xff } })
 }
 
 /**
@@ -109,15 +133,19 @@ function voutSemanticBase(state: AppState): number {
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'mode/set': {
-      if (action.mode === 'L11' && state.mode !== 'L11') {
+      // Re-selecting the active mode (same tab click or shortcut) is a no-op:
+      // it changes neither raw bits nor the encoding interpretation, so a
+      // still-valid value request keeps its provenance.
+      if (action.mode === state.mode) return state
+      if (action.mode === 'L11') {
         const decoded = PMBusMath.decodeLinear11(state.raw)
-        return {
+        return withoutValueRequest({
           ...state,
           mode: 'L11',
           l11: { ...state.l11, n: decoded.n, y: decoded.y, valueInput: null },
-        }
+        })
       }
-      return { ...state, mode: action.mode }
+      return withoutValueRequest({ ...state, mode: action.mode })
     }
 
     case 'command/set':
@@ -175,7 +203,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       }
       if (state.mode === 'HALF') {
         // HALF supports NaN and ±Infinity as first-class values.
-        return { ...state, raw: PMBusMath.encodeHalf(value) }
+        // The quantization readout hides itself for non-finite pairs.
+        return { ...state, raw: PMBusMath.encodeHalf(value), valueRequest: { mode: 'HALF', value } }
       }
       // VOUT_MODE is a byte configuration, not a physical value.
       return state
@@ -311,7 +340,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (action.payloadKind !== 'ulinear16' && action.payloadKind !== 'slinear16-offset') {
         return state
       }
-      return { ...state, l16: { ...state.l16, payloadKind: action.payloadKind } }
+      // Switching signedness reinterprets the same raw word, so a previous
+      // ULINEAR16 request no longer describes the represented value.
+      return withoutValueRequest({
+        ...state,
+        l16: { ...state.l16, payloadKind: action.payloadKind },
+      })
     }
 
     case 'l16/set-slinear-y': {
@@ -344,7 +378,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       // source of truth — Y is derived back from raw by the view-model.
       const clamped = PMBusMath.clamp(y, -32768, 32767)
       if (state.mode !== 'DIRECT') return state
-      return { ...state, raw: PMBusMath.fromSigned(clamped, 16) }
+      return withoutValueRequest({ ...state, raw: PMBusMath.fromSigned(clamped, 16) })
     }
 
     case 'direct/set-coeff': {
@@ -371,23 +405,25 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (isM && val === 0) {
         // m=0 is stored so the field-level m=0 error stays visible, but it is
         // still an explicit error state rather than a silent acceptance.
-        return {
+        return withoutValueRequest({
           ...state,
           direct: {
             ...state.direct,
             m: 0,
             errors: { ...state.direct.errors, m: 'DIRECT 系数 m 不能为 0' },
           },
-        }
+        })
       }
-      return {
+      // Coefficient edits change what the unchanged raw word decodes to, so
+      // a previous value request no longer describes the represented value.
+      return withoutValueRequest({
         ...state,
         direct: {
           ...state.direct,
           [action.name]: val,
           errors: { ...state.direct.errors, [action.name]: null },
         },
-      }
+      })
     }
 
     case 'byte-order/set':

@@ -18,6 +18,56 @@ function kinds(steps: ReturnType<typeof buildCalculationSteps>): string[] {
   return steps.map((s) => s.kind)
 }
 
+describe('buildCalculationSteps — quantization-error step (LINEAR11 parity)', () => {
+  it('appends the quantization intermediate after an explicit L16 encode request', () => {
+    const steps = buildCalculationSteps(
+      state({
+        mode: 'L16',
+        raw: 0x0001,
+        valueRequest: { mode: 'L16', value: 0.005 },
+      }),
+    )
+    const q = steps.at(-1)
+    expect(q?.id).toBe('l16-quantization')
+    expect(q?.kind).toBe('intermediate')
+    expect(q?.label).toBe('格式编码量化误差（请求值 − 表示值）')
+    expect(q?.plainText).toContain('= ')
+  })
+
+  it('appends the quantization intermediate for DIRECT and HALF requests', () => {
+    const direct = buildCalculationSteps(
+      state({ mode: 'DIRECT', raw: 1235, valueRequest: { mode: 'DIRECT', value: 1.2345 } }),
+    )
+    expect(direct.some((s) => s.id === 'direct-quantization' && s.kind === 'intermediate')).toBe(
+      true,
+    )
+
+    const half = buildCalculationSteps(
+      state({ mode: 'HALF', raw: 0x3c05, valueRequest: { mode: 'HALF', value: 1.005 } }),
+    )
+    expect(half.some((s) => s.id === 'half-quantization' && s.kind === 'intermediate')).toBe(true)
+  })
+
+  it('keeps the walkthrough free of a quantization line without an explicit request', () => {
+    // No request on any page → no fabricated error line (the panel's ±0
+    // baseline is display-only and must not leak into the steps).
+    expect(
+      buildCalculationSteps(state({ mode: 'L16' })).some((s) => s.id.endsWith('-quantization')),
+    ).toBe(false)
+    expect(
+      buildCalculationSteps(state({ mode: 'DIRECT' })).some((s) => s.id.endsWith('-quantization')),
+    ).toBe(false)
+    expect(
+      buildCalculationSteps(state({ mode: 'HALF' })).some((s) => s.id.endsWith('-quantization')),
+    ).toBe(false)
+  })
+
+  it('never appends quantization steps on the VOUT_MODE byte calculator', () => {
+    const steps = buildCalculationSteps(state({ mode: 'VOUT_MODE' }))
+    expect(steps.some((s) => s.id.endsWith('-quantization'))).toBe(false)
+  })
+})
+
 describe('buildCalculationSteps — unified four-mode skeleton', () => {
   it('L11 exposes fields, formula, intermediates, and result', () => {
     const steps = buildCalculationSteps(state({ mode: 'L11', raw: 0xf819 }))

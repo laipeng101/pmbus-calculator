@@ -33,6 +33,14 @@ export interface AppState {
     valueInput: number | null
   }
 
+  /**
+   * Last committed physical-value encoding request for modes other than L11
+   * (which keeps its own l11.valueInput channel). Mirrors the same contract:
+   * set only by a successful ValueInput encode, cleared whenever raw or the
+   * decode parameters change through any other path, and never persisted.
+   */
+  valueRequest: { mode: AppMode; value: number } | null
+
   l16: {
     /**
      * How the 16-bit payload word is interpreted. This is a command-payload
@@ -94,6 +102,8 @@ export const INITIAL_STATE: AppState = {
     autoN: true,
     valueInput: null,
   },
+
+  valueRequest: null,
 
   l16: {
     payloadKind: 'ulinear16',

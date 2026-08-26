@@ -12,6 +12,24 @@ import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
 import { effectiveL16VoutMode } from './vout-mode-selector'
+import { computeQuantizationOutcome } from './quantization-error'
+import type { QuantizationOutcome } from './quantization-error'
+
+/** Step text mirrors the shared readout panel wording. */
+function quantizationStepValue(outcome: QuantizationOutcome): string {
+  switch (outcome.status) {
+    case 'exact':
+      return '0（精确编码）'
+    case 'quantized':
+      return formatNumber(outcome.absoluteError ?? 0)
+    case 'saturated':
+      return `${formatNumber(outcome.absoluteError ?? 0)}（已饱和到边界值）`
+    case 'overflow':
+      return `（有限值编码溢出为 ${outcome.represented > 0 ? '+Infinity' : '-Infinity'}）`
+    case 'special':
+      return '（特殊值，量化误差不适用）'
+  }
+}
 
 export interface CalculationStepVM {
   id: string
@@ -87,11 +105,6 @@ function buildL11Steps(state: AppState): CalculationStepVM[] {
         ),
       )
     }
-  }
-
-  if (state.l11.valueInput != null && Number.isFinite(state.l11.valueInput)) {
-    const delta = state.l11.valueInput - decoded.value
-    steps.push(intermediate('l11-quantization', '量化误差（请求值 − 表示值）', formatNumber(delta)))
   }
 
   return steps
@@ -360,19 +373,47 @@ function voutModeInvalidText(a: ReturnType<typeof analyzeVoutMode>): string {
   return `${a.vidCode?.label ?? a.status}；需器件资料。`
 }
 
-export function buildCalculationSteps(state: AppState): CalculationStepVM[] {
-  switch (state.mode) {
-    case 'L11':
-      return buildL11Steps(state)
-    case 'L16':
-      return buildL16Steps(state)
-    case 'DIRECT':
-      return buildDirectSteps(state)
-    case 'HALF':
-      return buildHalfSteps(state)
-    case 'VOUT_MODE':
-      return buildVoutModeSteps(state)
-    default:
-      return []
+/**
+ * Append the quantization-error intermediate for every mode whose physical
+ * value came from an explicit encoding request. L11 produces its own step
+ * inside buildL11Steps and keeps that historical placement; the other modes
+ * share the domain layer here so the wording stays identical.
+ */
+/**
+ * Append the format-encoding quantization intermediate for every mode whose
+ * physical value came from an explicit encoding request (L11 included —
+ * same provenance contract as the shared readout panel).
+ */
+function appendQuantizationStep(state: AppState, steps: CalculationStepVM[]): void {
+  const outcome = computeQuantizationOutcome(state)
+  if (outcome) {
+    steps.push(
+      intermediate(
+        `${state.mode.toLowerCase()}-quantization`,
+        '格式编码量化误差（请求值 − 表示值）',
+        quantizationStepValue(outcome),
+      ),
+    )
   }
+}
+
+export function buildCalculationSteps(state: AppState): CalculationStepVM[] {
+  const steps = (() => {
+    switch (state.mode) {
+      case 'L11':
+        return buildL11Steps(state)
+      case 'L16':
+        return buildL16Steps(state)
+      case 'DIRECT':
+        return buildDirectSteps(state)
+      case 'HALF':
+        return buildHalfSteps(state)
+      case 'VOUT_MODE':
+        return buildVoutModeSteps(state)
+      default:
+        return []
+    }
+  })()
+  appendQuantizationStep(state, steps)
+  return steps
 }

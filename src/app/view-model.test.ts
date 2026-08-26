@@ -10,6 +10,7 @@ const BASE: AppState = {
   byteOrder: 'le',
   voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
+  valueRequest: null,
   l16: { payloadKind: 'ulinear16', nominalVout: null },
   direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
   copy: { prefix0x: true, spaceBetweenBytes: true, endian: 'le' },
@@ -49,10 +50,10 @@ describe('toCalculatorViewModel', () => {
       expect(vm.valueText).toBe('0.5')
     })
 
-    test('delta is zero when no value edit is active', () => {
+    test('delta panel stays hidden without a value edit — no fabricated zero', () => {
       const vm = toCalculatorViewModel(BASE)
-      expect(vm.deltaText).toBe('+0.000000 (0.0000%)')
-      expect(vm.deltaKind).toBe('ok')
+      expect(vm.deltaText).toBeUndefined()
+      expect(vm.deltaKind).toBeUndefined()
     })
 
     test('delta reports the quantization error from the requested value', () => {
@@ -149,6 +150,44 @@ describe('toCalculatorViewModel', () => {
     test('rawWordHex stays un-swapped regardless of byte order', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
       expect(vm.rawWordHex).toBe('0x1234')
+    })
+
+    test('quantization panel stays hidden without an explicit request (no fabricated zero)', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16' }))
+      expect(vm.deltaText).toBeUndefined()
+    })
+
+    test('quantization error reports the round-to-nearest ULINEAR16 error', () => {
+      // N=-8 (VOUT_MODE 0x18): requested 0.005 → Y=1 → represented 0.00390625.
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'L16',
+          raw: 0x0001,
+          voutMode: { byte: 0x18 },
+          valueRequest: { mode: 'L16', value: 0.005 },
+        }),
+      )
+      expect(vm.deltaText).toBe('+0.001094 (21.8750%)')
+      expect(vm.deltaKind).toBe('warn')
+    })
+
+    test('relative ULINEAR16 hides the panel; SLINEAR16 offset ignores bit7 relative', () => {
+      // Relative ULINEAR16 is a ratio — no physical request error applies.
+      const relative = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x98 } }))
+      expect(relative.deltaText).toBeUndefined()
+
+      // SLINEAR16 offset (Part II §13.3/§13.4): bit7 does not participate,
+      // so a committed offset request still quantizes against the payload.
+      const slinearRequest = make({
+        mode: 'L16',
+        raw: 0x034d, // Y_s=845 → 3.30078125 at N=-8
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'slinear16-offset', nominalVout: null },
+        valueRequest: { mode: 'L16', value: 3.3 },
+      })
+      const offset = toCalculatorViewModel(slinearRequest)
+      expect(offset.deltaText).toBe('-0.000781 (-0.0237%)')
+      expect(offset.deltaKind).toBe('warn')
     })
   })
 
@@ -264,6 +303,36 @@ describe('toCalculatorViewModel', () => {
       )
       expect(vm.directY).toBe(-32768)
     })
+
+    test('quantization panel stays hidden without an explicit request (no fabricated zero)', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'DIRECT' }))
+      expect(vm.deltaText).toBeUndefined()
+    })
+
+    test('quantization error reports the legacy DIRECT rounding error', () => {
+      // m=1000: requested 1.2345 → Y=round(1234.5)=1235 → represented 1.235.
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'DIRECT',
+          raw: 1235,
+          direct: { m: 1000, b: 0, r: 0, errors: { m: null, b: null, r: null } },
+          valueRequest: { mode: 'DIRECT', value: 1.2345 },
+        }),
+      )
+      expect(vm.valueText).toBe('1.235')
+      expect(vm.deltaText).toBe('-0.000500 (-0.0405%)')
+      expect(vm.deltaKind).toBe('warn')
+    })
+
+    test('m=0 hides the quantization panel together with the value', () => {
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'DIRECT',
+          direct: { m: 0, b: 0, r: 0, errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null } },
+        }),
+      )
+      expect(vm.deltaText).toBeUndefined()
+    })
   })
 
   describe('mode=HALF', () => {
@@ -295,6 +364,54 @@ describe('toCalculatorViewModel', () => {
     test('raw=0x0000 preserves positive zero', () => {
       const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x0000 }))
       expect(vm.valueText).toBe('0')
+    })
+
+    test('quantization panel stays hidden without an explicit request (no fabricated zero)', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'HALF' }))
+      expect(vm.deltaText).toBeUndefined()
+    })
+
+    test('quantization error reports binary16 rounding from an explicit request', () => {
+      // 1.005 → nearest binary16 is 0x3C05 = 1.0048828125.
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'HALF',
+          raw: 0x3c05,
+          valueRequest: { mode: 'HALF', value: 1.005 },
+        }),
+      )
+      expect(vm.deltaText).toBe('+0.000117 (0.0117%)')
+      expect(vm.deltaKind).toBe('warn')
+    })
+
+    test('special values: no request hides, committed special requests classify', () => {
+      // NaN / ±Infinity payload without provenance → hidden (error unknown).
+      expect(toCalculatorViewModel(make({ mode: 'HALF', raw: 0x7e00 })).deltaText).toBeUndefined()
+      expect(toCalculatorViewModel(make({ mode: 'HALF', raw: 0x7c00 })).deltaText).toBeUndefined()
+
+      // Committed NaN request → explicit special classification, not silence.
+      const nanRequest = make({
+        mode: 'HALF',
+        raw: 0x7e00,
+        valueRequest: { mode: 'HALF', value: NaN },
+      })
+      const nan = toCalculatorViewModel(nanRequest)
+      expect(nan.deltaText).toBe('NaN → NaN')
+      expect(nan.deltaKind).toBe('warn')
+      expect(nan.deltaNote).toContain('量化误差不适用')
+    })
+
+    test('finite overflow surfaces as an error instead of hiding', () => {
+      const overflow = toCalculatorViewModel(
+        make({
+          mode: 'HALF',
+          raw: 0x7c00,
+          valueRequest: { mode: 'HALF', value: 65520 },
+        }),
+      )
+      expect(overflow.deltaText).toBe('65520 → +Infinity')
+      expect(overflow.deltaKind).toBe('error')
+      expect(overflow.deltaNote).toContain('溢出')
     })
   })
 
@@ -605,15 +722,15 @@ describe('toCalculatorViewModel', () => {
 })
 
 describe('M16 quantization-error sign semantics', () => {
-  test('small negative delta stays ok, not warn/error', () => {
+  test('small negative delta is informational (warn), never danger', () => {
     const vm = toCalculatorViewModel(
       make({ raw: 0x0001, l11: { ...BASE.l11, valueInput: 0.999999 } }),
     )
     expect(vm.deltaText).toBe('-0.000001 (-0.0001%)')
-    expect(vm.deltaKind).toBe('ok')
+    expect(vm.deltaKind).toBe('warn')
   })
 
-  test('negative warn-size delta maps to warn, not error', () => {
+  test('larger negative delta is also warn — the sign never implies danger', () => {
     const vm = toCalculatorViewModel(make({ raw: 0x0001, l11: { ...BASE.l11, valueInput: 0.98 } }))
     expect(vm.deltaText).toBe('-0.020000 (-2.0408%)')
     expect(vm.deltaKind).toBe('warn')

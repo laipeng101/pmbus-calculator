@@ -103,7 +103,7 @@ export default function ResultInspector({
         </div>
       </div>
 
-      {/* Quantization error (L11) */}
+      {/* Quantization error (L11/L16/DIRECT/HALF) */}
       <ErrorDelta vm={vm} />
 
       {/* Copy Tools */}

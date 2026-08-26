@@ -9,6 +9,8 @@ import { getFormulaPresentation } from './formula-presentation'
 import type { FormulaDetailLine } from './formula-presentation'
 import { buildCalculationSteps } from './calculation-steps'
 import type { CalculationStepVM } from './calculation-steps'
+import { computeQuantizationOutcome } from './quantization-error'
+import type { QuantizationOutcome } from './quantization-error'
 import { buildVoutModeExplanations } from './vout-mode-explanation'
 import type { VoutModeExplanation } from './vout-mode-explanation'
 import { effectiveL16VoutMode } from './vout-mode-selector'
@@ -94,6 +96,8 @@ export interface CalculatorViewModel {
   steps: CalculationStepVM[]
   deltaText?: string
   deltaKind?: 'ok' | 'warn' | 'error'
+  /** Provenance/severity context for the readout (fallback, saturation…). */
+  deltaNote?: string
   warnings: WarningVM[]
   bitGroups: BitGroupVM[]
   commandNote?: string
@@ -422,6 +426,70 @@ function getValueLabel(mode: AppMode): string {
   return mode === 'VOUT_MODE' ? 'VOUT_MODE 字节' : '物理值'
 }
 
+/**
+ * Signed error rendering. Readable fixed 6-decimals for |x| >= 1e-6 (legacy
+ * look), adaptive significant digits below it — any non-zero error must
+ * never render as textual zero.
+ */
+function formatSignedError(value: number): string {
+  if (value === 0) return '+0.000000'
+  const body = Math.abs(value) >= 1e-6 ? value.toFixed(6) : formatNumber(value)
+  return `${value > 0 ? '+' : ''}${body}`
+}
+
+function formatSpecial(value: number): string {
+  if (Number.isNaN(value)) return 'NaN'
+  if (value > 0) return '+Infinity'
+  if (value < 0) return '-Infinity'
+  return Object.is(value, -0) ? '-0' : '+0'
+}
+
+/**
+ * Present one quantization outcome for the shared readout panel.
+ *
+ * Severity follows the outcome class only — exact/neutral, quantized/
+ * informational, saturated or overflowing/error — with no cross-format
+ * absolute threshold: PMBus device accuracy is a datasheet property
+ * (Part II §7.8/§7.9), so no universal cut-off is implied.
+ */
+function presentQuantizationOutcome(outcome: QuantizationOutcome): {
+  kind: 'ok' | 'warn' | 'error'
+  text: string
+  note?: string
+} {
+  switch (outcome.status) {
+    case 'exact': {
+      const percent = outcome.relativeError === null ? '—' : `${outcome.relativeError.toFixed(4)}%`
+      return { kind: 'ok', text: `+0.000000 (${percent})` }
+    }
+    case 'quantized': {
+      const percent = outcome.relativeError === null ? '—' : `${outcome.relativeError.toFixed(4)}%`
+      return {
+        kind: 'warn',
+        text: `${formatSignedError(outcome.absoluteError ?? 0)} (${percent})`,
+      }
+    }
+    case 'saturated':
+      return {
+        kind: 'error',
+        text: `${formatSignedError(outcome.absoluteError ?? 0)}（已编码到边界值）`,
+        note: '请求值超出当前指数下的可表示范围，编码器已饱和',
+      }
+    case 'overflow':
+      return {
+        kind: 'error',
+        text: `${formatNumber(outcome.requested)} → ${formatSpecial(outcome.represented)}`,
+        note: '有限值编码溢出（IEEE 754 binary16 范围 ±65504）',
+      }
+    case 'special':
+      return {
+        kind: 'warn',
+        text: `${formatSpecial(outcome.requested)} → ${formatSpecial(outcome.represented)}`,
+        note: '特殊值（NaN / ±Infinity）：量化误差不适用',
+      }
+  }
+}
+
 export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   const raw = state.raw & 0xffff
   const le = toBytesLE(raw)
@@ -429,16 +497,30 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   const decodedL11 = state.mode === 'L11' ? PMBusMath.decodeLinear11(raw) : null
 
+  // L16 only: whether the page is computing against a fallback VOUT_MODE.
+  const voutModeSource = state.mode === 'L16' ? effectiveL16VoutMode(state).source : undefined
+
+  // Format-encoding quantization readout — shared by L11/L16/DIRECT/HALF via
+  // the domain layer. Hidden entirely without an explicit request provenance
+  // (error unknown, never fabricated zero); hidden for pages that cannot
+  // decode a physical value (VOUT_MODE, relative LINEAR16, DIRECT m=0).
   let deltaText: string | undefined
   let deltaKind: 'ok' | 'warn' | 'error' | undefined
-  if (decodedL11) {
-    const represented = decodedL11.value
-    const requested = state.l11.valueInput ?? represented
-    const delta = requested - represented
-    if (Number.isFinite(requested) && Number.isFinite(delta)) {
-      const percent = Math.abs(requested) > 1e-12 ? (delta / Math.abs(requested)) * 100 : 0
-      deltaKind = Math.abs(delta) > 1e-5 ? 'warn' : 'ok'
-      deltaText = `${delta >= 0 ? '+' : ''}${delta.toFixed(6)} (${percent.toFixed(4)}%)`
+  let deltaNote: string | undefined
+  {
+    const outcome = computeQuantizationOutcome(state)
+    if (outcome) {
+      const presented = presentQuantizationOutcome(outcome)
+      deltaKind = presented.kind
+      deltaText = presented.text
+      const notes: string[] = []
+      if (presented.note) notes.push(presented.note)
+      // Fallback provenance: when the shared byte is non-LINEAR the page is
+      // computing against the canonical 0x18, not the displayed byte.
+      if (state.mode === 'L16' && voutModeSource === 'fallback-default') {
+        notes.push('共享 VOUT_MODE 非 LINEAR；按 fallback 0x18 计算')
+      }
+      if (notes.length > 0) deltaNote = notes.join('；')
     }
   }
 
@@ -519,6 +601,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     formulaDetailLines: formula.detailLines,
     deltaText,
     deltaKind,
+    deltaNote,
     warnings: buildWarnings(state),
     bitGroups: buildBitGroups(raw),
     directY: state.mode === 'DIRECT' ? PMBusMath.toSigned(raw, 16) : undefined,
