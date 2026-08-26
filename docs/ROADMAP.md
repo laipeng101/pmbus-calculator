@@ -28,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.4.1；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.4.2；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
