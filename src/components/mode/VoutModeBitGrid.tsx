@@ -43,8 +43,7 @@ export default function VoutModeBitGrid({
               onClick={() => onToggle(index)}
               disabled={disabled}
               aria-pressed={isOn}
-              aria-label={`Bit ${index}, ${bit?.semantic.zh ?? 'Parameter'} / ${bit?.semantic.en ?? 'Parameter'}, value ${bit?.value ?? 0}`}
-              title={`bit${index} = ${bit?.value ?? 0}`}
+              aria-label={`第 ${index} 位，${bit?.semantic ?? '参数'}，当前为 ${bit?.value ?? 0}`}
               className="vout-bit-btn"
             >
               <span
@@ -83,8 +82,7 @@ export default function VoutModeBitGrid({
                   onClick={() => onToggle(bit.index)}
                   disabled={disabled}
                   aria-pressed={isOn}
-                  aria-label={`Bit ${bit.index}, ${bit.semantic.zh} / ${bit.semantic.en}, value ${bit.value}`}
-                  title={`bit${bit.index} = ${bit.value}`}
+                  aria-label={`第 ${bit.index} 位，${bit.semantic}，当前为 ${bit.value}`}
                   className="vout-bit-btn"
                 >
                   <span

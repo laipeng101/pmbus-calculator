@@ -1314,13 +1314,9 @@ select:disabled,
   color: var(--color-text-muted);
 }
 
-.vout-explanation-title-zh {
+.vout-explanation-title {
   font-weight: 700;
   color: var(--color-text-primary);
-}
-
-.vout-explanation-title-en {
-  color: var(--color-text-secondary);
 }
 
 .vout-explanation-ref {
@@ -1335,11 +1331,6 @@ select:disabled,
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   line-height: 1.5;
-}
-
-.vout-explanation-detail-sep {
-  margin: 0 0.375rem;
-  color: var(--color-text-muted);
 }
 
 .debug-dot {

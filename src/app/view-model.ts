@@ -10,7 +10,7 @@ import type { FormulaDetailLine } from './formula-presentation'
 import { buildCalculationSteps } from './calculation-steps'
 import type { CalculationStepVM } from './calculation-steps'
 import { buildVoutModeExplanations } from './vout-mode-explanation'
-import type { BilingualText, VoutModeExplanation } from './vout-mode-explanation'
+import type { VoutModeExplanation } from './vout-mode-explanation'
 import { effectiveL16VoutMode } from './vout-mode-selector'
 
 export interface BitGroupVM {
@@ -29,7 +29,8 @@ export interface VoutModeBitVM {
   index: number
   value: number
   region: 'ar' | 'format' | 'parameter'
-  semantic: BilingualText
+  /** Chinese-primary semantic label (bit7 = 绝对值/相对值, [6:5] = 格式, [4:0] = 参数). */
+  semantic: string
 }
 
 export interface VoutModeNibbleVM {
@@ -164,10 +165,6 @@ function buildBitGroups(raw: number): BitGroupVM[] {
   return groups
 }
 
-function bt(zh: string, en: string): BilingualText {
-  return { zh, en }
-}
-
 function voutModeStatusText(byte: number): string {
   const a = analyzeVoutMode(byte)
   switch (a.status) {
@@ -192,10 +189,10 @@ function voutModeStatusText(byte: number): string {
 }
 
 function buildVoutModeNibbles(byte: number): VoutModeNibbleVM[] {
-  const semantic = (index: number): BilingualText => {
-    if (index === 7) return bt('Absolute/Relative', 'Absolute/Relative')
-    if (index === 5 || index === 6) return bt('Format', 'Format')
-    return bt('Parameter / N / VID code', 'Parameter / N / VID code')
+  const semantic = (index: number): string => {
+    if (index === 7) return '绝对值/相对值'
+    if (index === 5 || index === 6) return '格式'
+    return '参数'
   }
 
   const highBits: VoutModeBitVM[] = []
@@ -236,11 +233,11 @@ function buildVoutModeVM(byte: number, source?: 'linked' | 'fallback-default'): 
     explanations.unshift({
       id: 'l16-fallback',
       severity: 'warning',
-      title: bt('L16 使用默认 LINEAR 0x18', 'L16 is using default LINEAR 0x18'),
-      detail: bt(
-        `当前共享 VOUT_MODE ${formatByteHex(byte)} 非 LINEAR；本页暂用默认 0x18 计算，未改写共享字节。`,
-        `Shared VOUT_MODE ${formatByteHex(byte)} is not LINEAR; this page is using fallback 0x18 without rewriting the shared byte.`,
-      ),
+      title: 'L16 使用默认 LINEAR 0x18',
+      detail:
+        '当前共享 VOUT_MODE ' +
+        formatByteHex(byte) +
+        ' 非 LINEAR；本页暂用默认 0x18 计算，未改写共享字节。',
       specRef: 'Part II §8.3',
     })
   }
@@ -479,11 +476,9 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       voutModeInfo.explanations.unshift({
         id: 'slinear16-bit7-na',
         severity: 'info',
-        title: bt('bit7 对本 payload 不适用', 'bit7 does not apply to this payload'),
-        detail: bt(
-          'SLINEAR16 offset 使用 16-bit 二补码 payload，bit7 只作用于 §8.5 的 8 个输出电压相关命令，不参与 X_offset = Y_s × 2^N；选择 offset 语义不会把公式切成“有符号比例”。',
-          'The SLINEAR16 offset uses a 16-bit two\'s-complement payload. bit7 only applies to the eight output-voltage commands in §8.5 and is not part of X_offset = Y_s × 2^N; choosing offset semantics never switches the formula into a "signed ratio".',
-        ),
+        title: 'bit7 对本 payload 不适用',
+        detail:
+          'SLINEAR16 offset 使用 16 位二补码 payload，bit7 只作用于 §8.5 的 8 个输出电压相关命令，不参与 X_offset = Y_s × 2^N；选择 offset 语义不会把公式切成“有符号比例”。',
         specRef: 'Part II §13.3 / §13.4 / §8.5',
       })
     }
