@@ -15,8 +15,8 @@ import WorkspaceLayout from './components/layout/WorkspaceLayout'
 import ModeSwitcher from './components/mode/ModeSwitcher'
 import ModeWorkspace from './components/mode/ModeWorkspace'
 import CommandReference from './components/command/CommandReference'
-import ResultInspector from './components/result/ResultInspector'
-import InfoPanel from './components/result/InfoPanel'
+import ResultSummary from './components/result/ResultSummary'
+import ResultDetails from './components/result/ResultDetails'
 import DebugDrawer from './components/debug/DebugDrawer'
 
 function resolveTheme(theme: AppState['ui']['theme']): 'light' | 'dark' {
@@ -84,24 +84,23 @@ function App() {
 
         <ModeSwitcher mode={state.mode} onChange={(mode) => dispatch({ type: 'mode/set', mode })} />
 
-        {/* Read-only command reference: no selection, no mode/raw side effects. */}
-        <CommandReference />
+        <ResultSummary vm={vm} />
 
         <WorkspaceLayout
           primary={<ModeWorkspace mode={state.mode} state={state} vm={vm} dispatch={dispatch} />}
           secondary={
-            <div className="space-y-4">
-              <ResultInspector
-                vm={vm}
-                copyPrefs={state.copy}
-                onTogglePrefix={() => dispatch({ type: 'copy/toggle-prefix' })}
-                onToggleSpace={() => dispatch({ type: 'copy/toggle-space' })}
-                onCopyEndianChange={(endian) => dispatch({ type: 'copy/set-endian', endian })}
-              />
-              <InfoPanel warnings={vm.warnings} />
-            </div>
+            <ResultDetails
+              vm={vm}
+              copyPrefs={state.copy}
+              onTogglePrefix={() => dispatch({ type: 'copy/toggle-prefix' })}
+              onToggleSpace={() => dispatch({ type: 'copy/toggle-space' })}
+              onCopyEndianChange={(endian) => dispatch({ type: 'copy/set-endian', endian })}
+            />
           }
         />
+
+        {/* Read-only command reference: no selection, no mode/raw side effects. */}
+        <CommandReference />
 
         <DebugDrawer
           open={state.ui.debugOpen}

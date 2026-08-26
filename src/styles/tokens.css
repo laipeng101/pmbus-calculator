@@ -490,7 +490,7 @@ select:disabled,
 
 @media (min-width: 960px) {
   .workspace-layout {
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
     gap: 24px;
     max-width: 1120px;
     margin: 0 auto;
@@ -503,13 +503,11 @@ select:disabled,
   min-width: 0;
 }
 
-/* Secondary panel — sticky on desktop; single-column below 960px. */
-@media (min-width: 960px) {
-  .secondary-panel {
-    position: sticky;
-    top: 16px;
-    align-self: start;
-  }
+/* Secondary panel — no overall sticky container. Keeping a panel taller than
+   the viewport sticky does not reveal its lower content and risks overlap.
+   Below 960px the layout is a single column. */
+.secondary-panel {
+  min-width: 0;
 }
 
 /* =========================================================
@@ -601,6 +599,40 @@ select:disabled,
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
   text-align: center;
+}
+
+/* =========================================================
+   Result summary — result-first responsive grid
+   ========================================================= */
+
+.result-summary {
+  margin: 0 16px 16px;
+}
+
+@media (min-width: 640px) {
+  .result-summary {
+    margin: 0 0 16px;
+  }
+}
+
+.result-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .result-summary-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+    align-items: stretch;
+    gap: 16px;
+  }
+}
+
+.result-summary-formula {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 /* =========================================================
@@ -960,6 +992,47 @@ select:disabled,
 /* =========================================================
    Calculation steps (unified four-mode walkthrough)
    ========================================================= */
+
+.calc-steps-disclosure {
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+}
+
+.calc-steps-summary {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.calc-steps-summary::-webkit-details-marker {
+  display: none;
+}
+
+.calc-steps-summary::before {
+  content: '▸';
+  margin-right: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  transition: transform 120ms var(--motion-ease-out);
+}
+
+.calc-steps-disclosure[open] > .calc-steps-summary::before {
+  transform: rotate(90deg);
+}
+
+.calc-steps-summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
 
 .calc-steps-panel {
   background: var(--color-surface-muted);

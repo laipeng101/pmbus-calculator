@@ -64,6 +64,8 @@
 
 `reduced-motion` 已改为普通 computed-style/行为断言，不使用独立 snapshot；其余基线不得被该变更更新。
 
+visual scene 中 volatile metadata 的规范化策略见 [`docs/UI_CONVENTIONS.md`](UI_CONVENTIONS.md) 第 11 节；不在此重复流程。
+
 ## 4. Artifact 政策
 
 | 内容                          | 存储位置                               |

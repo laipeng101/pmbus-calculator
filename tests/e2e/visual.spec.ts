@@ -1,7 +1,28 @@
 import { test, expect, type Page } from '@playwright/test'
 
+/**
+ * Visual scenes are deterministic by construction.
+ *
+ * The production version badge is correctly injected from package.json, but it
+ * changes on every release. That volatile metadata is not a product layout
+ * regression, so before any screenshot we (1) assert the real badge is present
+ * and SemVer-shaped, then (2) replace only its DOM text with a stable
+ * placeholder. We intentionally do NOT mask it: masking would lose the badge's
+ * layout and color regression signal. release.spec.ts / deployment.spec.ts keep
+ * asserting the real v${pkg.version} contract.
+ */
+async function normalizeVersionBadge(page: Page) {
+  const badge = page.getByTestId('version-badge')
+  await expect(badge).toBeVisible()
+  await expect(badge).toHaveText(/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/)
+  await badge.evaluate((el) => {
+    el.textContent = 'v0.0.0-visual'
+  })
+}
+
 async function settle(page: Page) {
   await page.goto('/')
+  await normalizeVersionBadge(page)
   await expect(page.locator('.katex').first()).toBeVisible()
   await page.evaluate(async () => {
     await document.fonts.ready

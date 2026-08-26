@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-26（M35 工程质量加固：Vite 构建拆包、覆盖率门槛上调、inline style 清理与防回归门禁）
+最后更新：2026-08-26（M36 结果优先响应式布局 + 确定性视觉基线治理）
 
 ## 当前产品基线
 
@@ -28,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M35 complete；stable release v2.0.2；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M36 complete；stable release v2.1.0；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -39,7 +39,9 @@ M0–M35 complete；stable release v2.0.2；production distribution: GitHub Page
   事务锁/journal/恢复/进程监督机制已退役，详见 Git 历史与本任务 PR）。
 - M35：工程质量加固——Vite 构建拆包消除 500 kB 警告；覆盖率门槛上调并补测；
   清理全部 React inline style 并新增 `check:inline-style` 门禁。
-- 当前：v2.0.2 已发布；M35 complete；无进行中的功能里程碑。
+- M36：结果优先响应式布局 + 确定性视觉基线治理——物理值首屏可见、计算过程默认折叠、
+  命令参考降级、visual scene 版本规范化。
+- 当前：v2.1.0 已发布；M36 complete；无进行中的功能里程碑。
 
 ## 下一产品目标
 
