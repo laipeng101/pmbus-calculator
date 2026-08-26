@@ -133,11 +133,11 @@ test.describe('M38 VOUT_MODE 结构化配置器（L16 embedded）', () => {
     await switchToL16(page)
 
     await expect(page.getByRole('radio', { name: 'VID' })).toHaveCount(0)
-    const bit5 = page.getByRole('button', { name: /Bit 5, Format/ })
-    const bit6 = page.getByRole('button', { name: /Bit 6, Format/ })
+    const bit5 = page.getByRole('button', { name: /第 5 位，格式位固定为 LINEAR/ })
+    const bit6 = page.getByRole('button', { name: /第 6 位，格式位固定为 LINEAR/ })
     await expect(bit5).toBeDisabled()
     await expect(bit6).toBeDisabled()
-    await expect(page.getByRole('button', { name: /Bit 7, Absolute\/Relative/ })).toBeEnabled()
+    await expect(page.getByRole('button', { name: /第 7 位，绝对值\/相对值/ })).toBeEnabled()
   })
 })
 
@@ -152,8 +152,8 @@ test.describe('M38 standalone VOUT_MODE calculator', () => {
     )
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
     await expect(page.getByTestId('vout-mode-binary')).toHaveText('0b00011000')
-    await expect(page.getByRole('button', { name: /Bit 7, Absolute\/Relative/ })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Bit 0, Parameter/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /第 7 位，绝对值\/相对值/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /第 0 位，参数/ })).toBeVisible()
   })
 
   test('raw bit toggle 是 lossless 的：可构造 0xA0/0x41/0xE1 且不被吞掉', async ({ page }) => {
@@ -270,11 +270,13 @@ test.describe('M37 公式/配置器布局与溢出', () => {
     })
   }
 
-  test('1280×900 L16 默认折叠下 scrollHeight ≤ 1350', async ({ page }) => {
+  test('1280×900 L16 默认折叠下 scrollHeight ≤ 1400（M39：内嵌 VOUT_MODE 保留双 nibble 分组与图例）', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await settle(page)
     await switchToL16(page)
     const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
-    expect(scrollHeight).toBeLessThanOrEqual(1350)
+    expect(scrollHeight).toBeLessThanOrEqual(1400)
   })
 })

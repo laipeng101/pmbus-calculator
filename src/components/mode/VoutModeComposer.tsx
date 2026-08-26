@@ -11,7 +11,8 @@ import ExponentEditor from '../formula/ExponentEditor'
 import LinearFormulaEditor from '../formula/LinearFormulaEditor'
 import TechnicalTerm from '../term/TechnicalTerm'
 import type { TermId } from '../../app/terminology'
-import VoutModeBitGrid from './VoutModeBitGrid'
+import { getBitRegions } from '../../app/bit-regions'
+import BitFieldGrid from '../bits/BitFieldGrid'
 import VoutModeExplanations from './VoutModeExplanations'
 
 interface Props {
@@ -65,11 +66,15 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
   return (
     <div className="vout-composer min-w-0 space-y-1">
       {/* 8-bit interactive editor */}
-      <VoutModeBitGrid
-        nibbles={info.nibbles}
-        onToggle={(bit) => dispatch({ type: 'vout-mode/toggle-bit', bit })}
+      <BitFieldGrid
+        bitCount={8}
+        groups={info.nibbles}
+        regions={getBitRegions('VOUT_MODE')}
         disabledBits={disabledBits}
-        compact={embedded}
+        disabledHint={embedded ? '格式位固定为 LINEAR' : undefined}
+        density={embedded ? 'compact' : 'regular'}
+        onToggle={(bit) => dispatch({ type: 'vout-mode/toggle-bit', bit })}
+        groupLabel="VOUT_MODE 8 位编辑器"
       />
 
       {/* bit7 + bits[6:5] semantic controls */}

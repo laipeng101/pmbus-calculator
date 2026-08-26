@@ -28,7 +28,6 @@ export interface WarningVM {
 export interface VoutModeBitVM {
   index: number
   value: number
-  region: 'ar' | 'format' | 'parameter'
   /** Chinese-primary semantic label (bit7 = 绝对值/相对值, [6:5] = 格式, [4:0] = 参数). */
   semantic: string
 }
@@ -200,7 +199,6 @@ function buildVoutModeNibbles(byte: number): VoutModeNibbleVM[] {
     highBits.push({
       index,
       value: (byte >> index) & 1,
-      region: index === 7 ? 'ar' : index === 5 || index === 6 ? 'format' : 'parameter',
       semantic: semantic(index),
     })
   }
@@ -209,7 +207,6 @@ function buildVoutModeNibbles(byte: number): VoutModeNibbleVM[] {
     lowBits.push({
       index,
       value: (byte >> index) & 1,
-      region: 'parameter',
       semantic: semantic(index),
     })
   }

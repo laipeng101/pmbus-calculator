@@ -1,7 +1,7 @@
 import type { AppMode, AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
-import BitGrid from '../bits/BitGrid'
+import BitFieldGrid from '../bits/BitFieldGrid'
 import HexInput from '../inputs/HexInput'
 import IntegerInput from '../inputs/IntegerInput'
 import ValueInput from '../inputs/ValueInput'
@@ -12,6 +12,7 @@ import VoutModeComposer from './VoutModeComposer'
 import { MODE_PANEL_ID, modeTabId } from './modeTabs'
 import { LockIcon, UnlockIcon } from '../icons/Icon'
 import MathFormula from '../math/MathFormula'
+import { getBitRegions } from '../../app/bit-regions'
 
 function formatSignedRange(value: number): string {
   return String(value).replace('-', '−')
@@ -47,7 +48,13 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
             />
           </div>
 
-          <BitGrid mode={mode} groups={vm.bitGroups} dispatch={dispatch} />
+          <BitFieldGrid
+            bitCount={16}
+            groups={vm.bitGroups}
+            regions={getBitRegions(mode, state.l16.payloadKind)}
+            onToggle={(index) => dispatch({ type: 'bit/toggle', bit: 15 - index })}
+            groupLabel="16 位编辑器"
+          />
         </section>
       )}
 
