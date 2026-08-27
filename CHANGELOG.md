@@ -4,6 +4,33 @@
 
 ## [Unreleased]
 
+## [2.5.4] - 2026-08-27
+
+### Fixed
+
+- **IEEE Half 被错误当成需要器件 Profile 的格式（P1）**：独立 VOUT_MODE 页面曾把
+  `0x60`（绝对 Half）标为「IEEE Half（需器件资料）」并显示「需要器件 Profile
+  （DIRECT 系数/设备数据）」警告——与同页 L16 阻断卡「Half 是合法标准格式」直接
+  矛盾。按 Part II §7.6/§8.4.4，Half 的 word ↔ 数值换算是标准 IEEE 754 binary16，
+  不依赖任何 m/b/R 系数、VID 表或器件 profile。新增
+  `src/app/vout-mode-requirements.ts` discriminated requirement 单一来源，状态文本、
+  InfoPanel 警告、说明与计算步骤共同消费：
+  - `0x60`：状态「IEEE Half（标准 binary16）」，warning/explanation/steps 表述标准
+    binary16 并指向 HALF 模式页；全部表面反向禁词（`需器件资料`/`器件 Profile`/
+    `m/b/R`/`DIRECT 系数`），不出现标称参考值要求；
+  - `0xE0`：payload 仍是标准 binary16；仅按 §8.5.2 增加相对阈值需要 VOUT_COMMAND
+    标称参考值的表述，不要求任何器件数值；
+  - `0x40`/`0xC0`：DIRECT 继续明确要求器件 m/b/R（§7.4），relative 叠加标称参考值；
+  - `0x61`/`0xE1`：保持 invalid-parameter error 级与 00000b 约束；
+  - L16 页 `half-unsupported-in-l16` 阻断卡文案不变，仅以回归测试固定；L16 页继续
+    对 Half fail closed，不借用 0x18、不改造成 Half 解码器。
+- **文档收口**：DOMAIN_MODEL 登记 Part II §7.2/§8.1.2 设备级互斥（器件使用 Half 则
+  所有 numerical data 只能 Half；使用任一 LINEAR/DIRECT 则不得使用 Half；数据手册
+  决定采用格式但不改变 binary16 解码公式）与 §3 requirement 单一来源合同；
+  UI_CONVENTIONS §15 拆开合并的 DIRECT/Half 文案合同并新增 §16；两份 README 以 §7.2
+  全设备互斥规则取代「器件可自由混用格式组合」表述；ROADMAP 删除与已发布 v2.5.3
+  矛盾的「发布进行中」过期状态。
+
 ## [2.5.3] - 2026-08-27
 
 ### Fixed
