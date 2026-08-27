@@ -48,7 +48,9 @@ M0–M39 complete；stable release v2.5.2；production distribution: GitHub Page
 - M38：独立 VOUT_MODE 计算器 + 标准 LINEAR16 语义——第五个 VOUT_MODE 模式（8-bit 双 nibble
   交互位网格、raw lossless、Normalize canonicalize）、ULINEAR16（X=Y_u×2^N）与
   SLINEAR16 offset（X_offset=Y_s×2^N）payload 语义、relative ULINEAR16 比值
-  X=V_NOM×R、L16 共享 VOUT_MODE 非 LINEAR 回退 0x18、固定 0x 前缀 HexInput 合同。
+  X=V_NOM×R、固定 0x 前缀 HexInput 合同。历史注记：M38 当时实现含「L16 共享 VOUT_MODE
+  非 LINEAR 回退 0x18」，该行为**已由 v2.5.2 移除**（非 LINEAR 一律 fail closed，
+  显式 apply-default 恢复），当前契约见 DOMAIN_MODEL §3；不要把此摘要当现行行为。
 - M39：中文优先界面 + 可访问术语气泡 + 字体角色统一 + 共享位字段网格——单一术语数据源
   `terminology.ts` 与 `TechnicalTerm` 浮层（点击/键盘/触屏、防裁切）、双语 explanation
   model 重构为中文主文案、VOUT_MODE 配置摘要移出 KaTeX（UI/数据/数学三字体角色）、
@@ -61,7 +63,10 @@ M0–M39 complete；stable release v2.5.2；production distribution: GitHub Page
   字节级 status 判定）与手动 Y_s provenance 失效；DOMAIN_MODEL §2.2/§6.1 与
   UI_CONVENTIONS §15 契约同步。complete。
 - v2.5.2（PATCH）：非 LINEAR 共享 VOUT_MODE 在 L16 页 fail closed（Part II §8.4，移除隐式 0x18 回退；显式 apply-default 恢复），默认 E2E 与 deployment smoke 口径隔离。
-- 当前：v2.5.2 已发布；M40–M41 complete；无进行中的功能里程碑。
+- v2.5.3（PATCH）：VID scope 纠偏（Part II §8.4.2 支持 VID，仅 VOUT_TRIM/VOUT_CAL_OFFSET
+  在 VID 下由 §13.3/§13.4 禁止、相对 ×VID 由 §8.5.3 排除）——payload discriminated
+  contract 取代全局 vidProhibited；非 LINEAR raw 位域改用中性图例；文档与测试矩阵同步。
+- 当前：v2.5.3 发布进行中；M40–M41 complete；无其他进行中的功能里程碑。
 
 ## 下一产品目标
 

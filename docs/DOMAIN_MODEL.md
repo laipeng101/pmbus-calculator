@@ -108,8 +108,23 @@
   - 非 LINEAR 共享字节：fail closed——结果为 `—`、无物理值输入、无伪 LINEAR 范围、
     `computeQuantizationOutcome` 返回 null、计算步骤无伪 N/伪 V/伪结果；显示非 LINEAR
     说明与显式应用默认 0x18 的入口（`l16/apply-default-vout-mode` 真正改写共享字节）。
-    VID（§8.4 + §13.3/§13.4 禁止）与 DIRECT/IEEE Half（需要相应 profile/coefficients，
-    不猜测 N）有各自的阻断文案；invalid-parameter / invalid-combination 保持 error 级。
+    invalid-parameter / invalid-combination 保持 error 级。
+- **L16 × VOUT_MODE payload 合同为 discriminated union（v2.5.3）**：单一来源是
+  `src/app/l16-payload-contract.ts` 的 `resolveL16PayloadContext(byte, payloadKind)`，
+  view-model 文案、输入可用性、warning 级别与测试共同消费它，禁止在组件或测试里用
+  布尔再推导规范结论：
+  - `linear-supported`：LINEAR 共享字节，按 payload 语义正常编码；
+  - `vid-profile-required`：绝对 VID 字节 + 非偏移 payload——**VID 是 §8.4.2 支持的
+    输出电压数据格式，不是被禁止格式**；本页未选定 VID 表 / 产品 profile，不能换算
+    code ↔ 电压；code 类别沿用 Table 3 分类（not-used / reserved / 制造商自定义），
+    制造商自定义映射必须来自器件资料；
+  - `vid-offset-prohibited`：绝对 VID 字节 + `slinear16-offset`——VOUT_TRIM /
+    VOUT_CAL_OFFSET 的二补码偏移命令被规范明确禁止（§13.3/§13.4），error 级提示；
+    **禁止范围仅限这两条命令**，不得扩大成“输出电压相关命令禁止 VID”；
+  - `vid-relative-invalid`：bit7 相对 + VID（§8.5.3 相对格式不适用于 VID），字节组合无效；
+  - `direct-profile-required` / `half-unsupported-in-l16`：DIRECT 需要 m/b/R（§7.4）、
+    IEEE Half 是合法输出电压格式但本页不实现解释（§8.4.4）；均不借用 0x18 或猜测 N；
+  - `reserved-or-invalid`：DIRECT/Half 参数非零等无解释合同的保留/非法配置。
 - 独立 VOUT_MODE 计算器（第五个模式）是 8-bit 字节配置器：双 nibble 交互位网格、bit7
   Absolute/Relative、bits[6:5] format、bits[4:0] parameter；raw 位/Hex 编辑 lossless
   （可构造 `0xA0`/`0x41`/`0xE1`），语义控件 canonicalize，`Normalize` 显式规范化。

@@ -232,10 +232,26 @@
   不再包含量化 intermediate；非法/过渡输入不得改变 raw，也不得清除仍有效的请求。
 - 非 LINEAR 共享字节的 L16 页面 fail closed（v2.5.2，Part II §8.4）：无物理值输入、
   无伪「可表示范围」、结果为 `—`、无量化面板与伪量化步骤；composer 显示实际字节与
-  `非 LINEAR` source 徽标。阻断卡按 payload/格式区分文案：VID 引用 §8.4 + §13.3/§13.4
-  禁止并声明不生成 word；DIRECT / IEEE Half 声明需要相应 format/profile/coefficients、
-  不猜测 N；invalid-parameter / invalid-combination 提示保持 error 级。恢复入口只有
-  显式「应用默认 VOUT_MODE」按钮（`l16/apply-default-vout-mode`）：点击后共享字节
-  真实变为 `0x18`、source 徽标回到「已关联」，输入/范围/结果/量化读数随之恢复，
-  旧 provenance 被清除。禁止重新引入任何隐式 fallback 通道或「按 fallback 0x18
-  计算」读数标注。
+  `非 LINEAR` source 徽标。阻断卡文案必须消费 view-model 的 discriminated blocked
+  契约（`l16Payload.blocked.status`，v2.5.3），组件不得自行推导规范结论：
+  - 绝对 VID + 非偏移 payload（`vid-profile-required`）：VID 是 §8.4.2 支持的输出电压
+    数据格式，**禁止出现「输出电压相关命令禁止使用 VID」类全局禁令文案**；只能说
+    「合法但未选定 VID 表 / 产品 profile，无法换算 code ↔ 电压」，制造商自定义
+    code（raw 0x3E/0x3F）注明映射来自器件资料，不称保留或禁止；
+  - 绝对 VID + SLINEAR16 offset（`vid-offset-prohibited`）：按 §13.3/§13.4 说明两条
+    二补码偏移命令被禁止并声明不生成 word，同时声明**禁止范围仅限这两条命令**；
+    InfoPanel 出现 error 级 `vout-mode-vid-offset-prohibited` 提示；
+  - 相对 + VID（`vid-relative-invalid`）：按 §8.5.3 说明字节组合本身无效；
+  - DIRECT / IEEE Half：声明需要系数/profile 或本页只实现 LINEAR16 解释、不猜测 N，
+    且明确这两者是合法输出电压数据格式；
+  - invalid-parameter / invalid-combination 提示保持 error 级。
+    恢复入口只有显式「应用默认 VOUT_MODE」按钮（`l16/apply-default-vout-mode`）：点击后共享字节
+    真实变为 `0x18`、source 徽标回到「已关联」，输入/范围/结果/量化读数随之恢复，
+    旧 provenance 被清除。禁止重新引入任何隐式 fallback 通道或「按 fallback 0x18
+    计算」读数标注。
+- 非 LINEAR 共享字节下，L16 的 16 位位域图例必须是中性 raw word 文案
+  （`RAW_WORD_NEUTRAL_LABEL = "raw word [15:0]（未按 LINEAR16 解释）"`，v2.5.3）：
+  `getBitRegions('L16', payloadKind, state.voutMode.byte)` 以实际共享字节为准，任何
+  VID/DIRECT/IEEE Half/非法参数状态都不得显示「数值 V [15:0]」或「有符号值 Y [15:0]」；
+  payload 下拉切换不得复活 V/Y 图例；LINEAR 字节（含 bit7=1）恢复 payload-specific
+  图例。ARIA 标签不含 V/Y 语义（bits 无 semantic 字段），复制路径不输出图例文字。
