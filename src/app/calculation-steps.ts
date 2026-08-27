@@ -11,6 +11,7 @@
 import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
+import { resolveVoutModeRequirement } from './vout-mode-requirements'
 import { effectiveL16VoutMode } from './vout-mode-selector'
 import { computeQuantizationOutcome } from './quantization-error'
 import type { QuantizationOutcome } from './quantization-error'
@@ -319,6 +320,9 @@ function buildHalfSteps(state: AppState): CalculationStepVM[] {
 function buildVoutModeSteps(state: AppState): CalculationStepVM[] {
   const byte = state.voutMode.byte
   const a = analyzeVoutMode(byte)
+  // v2.5.5: the requirement verdict comes only from the shared discriminator;
+  // branches select on `req.id`, never on format numbers or status strings.
+  const req = resolveVoutModeRequirement(a)
   const hex = `0x${byte.toString(16).toUpperCase().padStart(2, '0')}`
   const steps: CalculationStepVM[] = [
     field('vout-mode-byte', 'VOUT_MODE', hex),
@@ -327,8 +331,8 @@ function buildVoutModeSteps(state: AppState): CalculationStepVM[] {
     field('vout-mode-param', 'bits[4:0] 参数', String(a.parameter)),
   ]
 
-  if (a.status === 'valid') {
-    if (a.format === 0) {
+  switch (req.id) {
+    case 'linear-absolute': {
       steps.push(
         field('vout-mode-n', 'N（5 位二补码指数）', String(a.linearExponent ?? 0)),
         formula(
@@ -337,51 +341,102 @@ function buildVoutModeSteps(state: AppState): CalculationStepVM[] {
           'X = Y × 2^N（ULINEAR16 / SLINEAR16 偏移量）',
           'X = Y \\times 2^N',
         ),
+        warningStep('vout-mode-absolute-note', '结构合法；绝对 LINEAR 可在 L16 页计算绝对电压。'),
       )
+      break
+    }
+    case 'linear-relative': {
       steps.push(
+        field('vout-mode-n', 'N（5 位二补码指数）', String(a.linearExponent ?? 0)),
+        formula(
+          'vout-mode-linear',
+          'LINEAR 语义',
+          'X = Y × 2^N（ULINEAR16 / SLINEAR16 偏移量）',
+          'X = Y \\times 2^N',
+        ),
         warningStep(
-          a.isRelative ? 'vout-mode-relative-note' : 'vout-mode-absolute-note',
-          a.isRelative
-            ? '结构合法；相对 LINEAR 需 VOUT_COMMAND 标称参考值才能计算最终电压。'
-            : '结构合法；绝对 LINEAR 可在 L16 页计算绝对电压。',
+          'vout-mode-relative-note',
+          '结构合法；相对 LINEAR 需 VOUT_COMMAND 标称参考值才能计算最终电压。',
         ),
       )
-    } else if (a.format === 1) {
-      steps.push(
-        warningStep('vout-mode-vid', `${a.vidCode?.label ?? 'VID code'}；需器件资料确定电压映射。`),
-      )
-    } else if (a.format === 2) {
+      break
+    }
+    case 'direct-absolute':
       steps.push(
         warningStep(
           'vout-mode-direct',
-          a.isRelative
-            ? 'DIRECT 参数为 0，结构合法；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能计算（Part II §7.4），最终电压还需 VOUT_COMMAND 标称参考值（§8.5.2）。'
-            : 'DIRECT 参数为 0，结构合法；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能计算（Part II §7.4）。',
+          'DIRECT 参数为 0，结构合法；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能计算（Part II §7.4）。',
         ),
       )
-    } else {
+      break
+    case 'direct-relative':
+      steps.push(
+        warningStep(
+          'vout-mode-direct',
+          'DIRECT 参数为 0，结构合法；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能计算（Part II §7.4），最终电压还需 VOUT_COMMAND 标称参考值（§8.5.2）。',
+        ),
+      )
+      break
+    case 'half-absolute':
       // IEEE Half is standard binary16 (Part II §7.6/§8.4.4): no device
       // coefficients; the HALF page already performs the conversion.
       steps.push(
         warningStep(
           'vout-mode-half',
-          a.isRelative
-            ? 'IEEE Half 参数为 0，结构合法；payload 是标准 IEEE 754 binary16，换算不需要器件系数，相对阈值还需 VOUT_COMMAND 标称参考值才能得到最终电压（Part II §8.5.2）。'
-            : 'IEEE Half 参数为 0，结构合法；word 是标准 IEEE 754 binary16，可在 HALF 模式页换算，不需要器件系数（Part II §7.6 / §8.4.4）。',
+          'IEEE Half 参数为 0，结构合法；word 是标准 IEEE 754 binary16，可在 HALF 模式页换算，不需要器件系数（Part II §7.6 / §8.4.4）。',
         ),
       )
-    }
-  } else {
-    steps.push(warningStep('vout-mode-invalid', voutModeInvalidText(a)))
+      break
+    case 'half-relative':
+      steps.push(
+        warningStep(
+          'vout-mode-half',
+          'IEEE Half 参数为 0，结构合法；payload 是标准 IEEE 754 binary16，换算不需要器件系数，相对阈值还需 VOUT_COMMAND 标称参考值才能得到最终电压（Part II §8.5.2）。',
+        ),
+      )
+      break
+    case 'vid-not-used':
+      steps.push(
+        warningStep(
+          'vout-mode-vid-not-used',
+          `${a.vidCode?.label ?? 'VID code 00h'}；不构成有效 VID profile，不能当作有效配置使用（Part II §8.4.2 Table 3）。`,
+        ),
+      )
+      break
+    case 'vid-reserved':
+      steps.push(
+        warningStep(
+          'vout-mode-vid-reserved',
+          `${a.vidCode?.label ?? 'VID code 保留'}；该 code 保留，不得当作有通用电压映射的 profile（Part II §8.4.2 Table 3）。`,
+        ),
+      )
+      break
+    case 'vid-profile-required':
+      // Table-3-listed manufacturer-specific VID: structurally legal but not
+      // calculable here — its own branch, never the invalid one.
+      steps.push(
+        warningStep(
+          'vout-mode-vid-profile',
+          `${a.vidCode?.label ?? 'VID code 制造商自定义'}；结构合法（Part II §8.4.2 Table 3 明列），但码表与电压映射必须来自器件资料，当前计算器不可换算。`,
+        ),
+      )
+      break
+    case 'vid-relative-invalid':
+      steps.push(warningStep('vout-mode-invalid-combination', '相对 + VID 非法组合（§8.5.3）。'))
+      break
+    case 'direct-or-half-param-invalid':
+      steps.push(
+        warningStep(
+          'vout-mode-param-invalid',
+          `${a.formatName} 参数必须为 00000b（§8.3 Table 2）。`,
+        ),
+      )
+      break
+    case 'invalid-input':
+      steps.push(warningStep('vout-mode-invalid-input', '无效 VOUT_MODE 输入。'))
+      break
   }
   return steps
-}
-
-function voutModeInvalidText(a: ReturnType<typeof analyzeVoutMode>): string {
-  if (a.status === 'invalid-combination') return '相对 + VID 非法组合（§8.5.3）。'
-  if (a.status === 'invalid-parameter') return `${a.formatName} 参数必须为 00000b（§8.3 Table 2）。`
-  if (a.status === 'invalid-input') return '无效 VOUT_MODE 输入。'
-  return `${a.vidCode?.label ?? a.status}；需器件资料。`
 }
 
 /**

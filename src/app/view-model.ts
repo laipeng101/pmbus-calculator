@@ -539,55 +539,89 @@ function buildWarnings(state: AppState): WarningVM[] {
           ? `VOUT_MODE ${hex} 的 bit7 为相对值，但仅作用于 §8.5 相对阈值命令；当前 SLINEAR16 offset 是有符号命令 payload（§13.3/§13.4），bit7 不参与其数学，无需标称参考值。`
           : `VOUT_MODE ${hex} 为相对 LINEAR；需要 VOUT_COMMAND 标称参考值才能计算最终电压。`,
       })
-    } else if (a.status === 'invalid-combination') {
-      warnings.push({
-        id: 'vout-mode-invalid-combination',
-        level: 'error',
-        text: `VOUT_MODE ${hex} 为相对 + VID 非法组合（Part II §8.5.3：相对值不适用于 VID）。`,
-      })
-    } else if (a.status === 'invalid-parameter') {
-      warnings.push({
-        id: 'vout-mode-invalid-parameter',
-        level: 'error',
-        text: `VOUT_MODE ${hex} 的 ${a.formatName} 参数必须为 00000b（Part II §8.3 Table 2），当前参数 ${a.parameter} 非法。`,
-      })
-    } else if (a.status === 'not-used') {
-      warnings.push({
-        id: 'vout-mode-vid-not-used',
-        level: 'warning',
-        text: `VOUT_MODE ${hex} 的 VID code 00h 为未使用，不构成有效 VID profile。`,
-      })
-    } else if (a.status === 'reserved') {
-      warnings.push({
-        id: 'vout-mode-vid-reserved',
-        level: 'warning',
-        text: `VOUT_MODE ${hex} 的 VID code ${a.parameter.toString(16).toUpperCase().padStart(2, '0')}h 为保留值（Part II §8.4.2 Table 3 未列出）。`,
-      })
-    } else if (a.status === 'profile-required') {
-      warnings.push({
-        id: 'vout-mode-vid-profile',
-        level: 'warning',
-        text: `VOUT_MODE ${hex} 的 VID code 为制造商自定义；需要器件资料确定电压映射。`,
-      })
-    } else if (a.format === 2) {
-      // DIRECT genuinely needs device-specific m/b/R coefficients (§7.4/§8.4.3).
-      warnings.push({
-        id: 'vout-mode-direct-profile',
-        level: 'warning',
-        text: `VOUT_MODE ${hex} 为 DIRECT 格式；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能换算 word ↔ 物理值（Part II §7.4）。`,
-      })
-    } else if (a.format === 3) {
-      // IEEE Half is standard IEEE 754 binary16 (§7.6/§8.4.4): the word ↔
-      // value conversion never depends on device numbers. Only a relative
-      // byte adds the nominal-reference requirement (§8.5.2). Copy stays
-      // positive — profile/系数 wording is banned for Half surfaces.
-      warnings.push({
-        id: 'vout-mode-half-standard',
-        level: 'warning',
-        text: a.isRelative
-          ? `VOUT_MODE ${hex} 为相对 IEEE Half 格式；payload 是标准 IEEE 754 binary16（Part II §7.6 / §8.4.4），word ↔ 数值换算不依赖器件数值，但相对阈值需要 VOUT_COMMAND 标称参考值才能得到最终电压（§8.5.2）。`
-          : `VOUT_MODE ${hex} 为 IEEE Half 格式；payload 是标准 IEEE 754 binary16（Part II §7.6 / §8.4.4），word ↔ 数值换算不依赖器件数值，可在 HALF 模式页换算。`,
-      })
+    } else {
+      // v2.5.5: every remaining branch is selected by the shared requirement
+      // discriminator — no surface re-derives spec conclusions from format
+      // numbers or status strings. Field details (hex, code) still come from
+      // the analysis.
+      const req = resolveVoutModeRequirement(a)
+      switch (req.id) {
+        // Relative LINEAR (incl. the SLINEAR16-offset nuance) is handled
+        // above; absolute LINEAR and non-byte inputs carry no warning.
+        case 'linear-absolute':
+        case 'linear-relative':
+        case 'invalid-input':
+          break
+        case 'direct-absolute':
+          // DIRECT genuinely needs device-specific m/b/R coefficients (§7.4/§8.4.3).
+          warnings.push({
+            id: 'vout-mode-direct-profile',
+            level: 'warning',
+            text: `VOUT_MODE ${hex} 为 DIRECT 格式；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能换算 word ↔ 物理值（Part II §7.4）。`,
+          })
+          break
+        case 'direct-relative':
+          // Relative DIRECT needs BOTH the coefficients and the nominal
+          // reference (§7.4 + §8.5.2) — stated in this one warning.
+          warnings.push({
+            id: 'vout-mode-direct-profile',
+            level: 'warning',
+            text: `VOUT_MODE ${hex} 为相对 DIRECT 格式；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能换算 word ↔ 物理值（Part II §7.4），相对阈值还需要 VOUT_COMMAND 标称参考值才能得到最终电压（§8.5.2）。`,
+          })
+          break
+        case 'half-absolute':
+          // IEEE Half is standard IEEE 754 binary16 (§7.6/§8.4.4): the word ↔
+          // value conversion never depends on device numbers. Copy stays
+          // positive — profile/系数 wording is banned for Half surfaces.
+          warnings.push({
+            id: 'vout-mode-half-standard',
+            level: 'warning',
+            text: `VOUT_MODE ${hex} 为 IEEE Half 格式；payload 是标准 IEEE 754 binary16（Part II §7.6 / §8.4.4），word ↔ 数值换算不依赖器件数值，可在 HALF 模式页换算。`,
+          })
+          break
+        case 'half-relative':
+          warnings.push({
+            id: 'vout-mode-half-standard',
+            level: 'warning',
+            text: `VOUT_MODE ${hex} 为相对 IEEE Half 格式；payload 是标准 IEEE 754 binary16（Part II §7.6 / §8.4.4），word ↔ 数值换算不依赖器件数值，但相对阈值需要 VOUT_COMMAND 标称参考值才能得到最终电压（§8.5.2）。`,
+          })
+          break
+        case 'vid-relative-invalid':
+          warnings.push({
+            id: 'vout-mode-invalid-combination',
+            level: 'error',
+            text: `VOUT_MODE ${hex} 为相对 + VID 非法组合（Part II §8.5.3：相对值不适用于 VID）。`,
+          })
+          break
+        case 'direct-or-half-param-invalid':
+          warnings.push({
+            id: 'vout-mode-invalid-parameter',
+            level: 'error',
+            text: `VOUT_MODE ${hex} 的 ${a.formatName} 参数必须为 00000b（Part II §8.3 Table 2），当前参数 ${a.parameter} 非法。`,
+          })
+          break
+        case 'vid-not-used':
+          warnings.push({
+            id: 'vout-mode-vid-not-used',
+            level: 'warning',
+            text: `VOUT_MODE ${hex} 的 VID code 00h 为未使用，不构成有效 VID profile。`,
+          })
+          break
+        case 'vid-reserved':
+          warnings.push({
+            id: 'vout-mode-vid-reserved',
+            level: 'warning',
+            text: `VOUT_MODE ${hex} 的 VID code ${a.parameter.toString(16).toUpperCase().padStart(2, '0')}h 为保留值（Part II §8.4.2 Table 3 未列出）。`,
+          })
+          break
+        case 'vid-profile-required':
+          warnings.push({
+            id: 'vout-mode-vid-profile',
+            level: 'warning',
+            text: `VOUT_MODE ${hex} 的 VID code 为制造商自定义（Part II §8.4.2 Table 3 明列，结构合法）；需要器件资料确定电压映射，当前计算器不可换算。`,
+          })
+          break
+      }
     }
   }
 
