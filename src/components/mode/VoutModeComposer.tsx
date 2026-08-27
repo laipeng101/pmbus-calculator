@@ -190,8 +190,9 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           )}
           {info.isRelative && (
             <p className="vout-param-note text-xs">
-              相对 LINEAR：payload 与 VOUT_COMMAND 同格式，解出比值 R；最终电压需要 VOUT_COMMAND
-              标称参考值。
+              {state.l16.payloadKind === 'slinear16-offset'
+                ? 'bit7 相对值仅作用于 §8.5 相对阈值命令；当前 SLINEAR16 offset 是有符号命令 payload（§13.3/§13.4），bit7 不参与其数学，无需标称参考值。'
+                : '相对 LINEAR：payload 与 VOUT_COMMAND 同格式，解出比值 R；最终电压需要 VOUT_COMMAND 标称参考值。'}
             </p>
           )}
         </div>

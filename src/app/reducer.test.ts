@@ -346,6 +346,46 @@ describe('appReducer — state transitions', () => {
     })
   })
 
+  describe('SLINEAR16 offset bit7 semantics (v2.5.1 P1-A/P1-B)', () => {
+    const enterRelativeSlinear = () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const withMode = appReducer(l16, { type: 'vout-mode/set-byte', hex: '98' })
+      return appReducer(withMode, {
+        type: 'l16/set-payload-kind',
+        payloadKind: 'slinear16-offset',
+      })
+    }
+
+    it('ULINEAR16 + 0x98 still refuses value/set and keeps no provenance', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const withMode = appReducer(l16, { type: 'vout-mode/set-byte', hex: '98' })
+      const before = withMode.raw
+      const s = appReducer(withMode, { type: 'value/set', value: '3.3' })
+      expect(s.raw).toBe(before)
+      expect(s.valueRequest).toBeNull()
+      // Nominal reference channel stays available for the ratio semantics.
+      const withNominal = appReducer(s, { type: 'l16/set-nominal-vout', nominalVout: '3.3' })
+      expect(withNominal.l16.nominalVout).toBe(3.3)
+    })
+
+    it('SLINEAR16 offset + 0x98 encodes 3.3 as signed 0x034D and records provenance', () => {
+      const s0 = enterRelativeSlinear()
+      const s = appReducer(s0, { type: 'value/set', value: '3.3' })
+      // Y_s = round(3.3 / 2^-8) = 845 = 0x034D; shared VOUT_MODE stays 0x98.
+      expect(s.raw).toBe(0x034d)
+      expect(s.voutMode.byte).toBe(0x98)
+      expect(s.valueRequest).toEqual({ mode: 'L16', value: 3.3 })
+    })
+
+    it('SLINEAR16 offset + 0x98 clamps 200 to 0x7FFF (saturation territory)', () => {
+      const s0 = enterRelativeSlinear()
+      const s = appReducer(s0, { type: 'value/set', value: '200' })
+      // Y_s = round(200 × 256) clamps to 32767 = 0x7FFF.
+      expect(s.raw).toBe(0x7fff)
+      expect(s.valueRequest).toEqual({ mode: 'L16', value: 200 })
+    })
+  })
+
   describe('L16 value/set semantics with shared VOUT_MODE', () => {
     it('relative LINEAR 0x98 拒绝 value/set，raw 不变', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })

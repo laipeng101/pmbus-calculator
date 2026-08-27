@@ -226,6 +226,56 @@ describe('toCalculatorViewModel', () => {
     }
   })
 
+  describe('mode=L16 SLINEAR16 offset under bit7 (v2.5.1 P1-A/P1-B)', () => {
+    const makeRelativeSlinear = () =>
+      make({
+        mode: 'L16',
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'slinear16-offset', nominalVout: null },
+      })
+
+    test('physical input contract: signed offset available, nominal not required', () => {
+      const vm = toCalculatorViewModel(makeRelativeSlinear())
+      expect(vm.l16Payload).toMatchObject({
+        kind: 'slinear16-offset',
+        signedOffset: true,
+        relativeRatio: false,
+        physicalInputAvailable: true,
+        requiresNominalReference: false,
+      })
+      // Signed range at N=-8, labelled even though the byte is relative.
+      expect(vm.nRangeText).toBe('-128 ~ 127.99609375')
+    })
+
+    test('3.3 request quantizes with the P1-A vector and full panel context', () => {
+      const vm = toCalculatorViewModel(
+        make({
+          ...makeRelativeSlinear(),
+          raw: 0x034d,
+          valueRequest: { mode: 'L16', value: 3.3 },
+        }),
+      )
+      expect(vm.valueText).toBe('3.30078125')
+      expect(vm.deltaText).toBe('-0.000781 (-0.0237%)')
+      expect(vm.deltaKind).toBe('warn')
+      expect(vm.deltaNote).toBeUndefined() // byte is LINEAR: no fallback note
+      // Walkthrough carries the quantization intermediate for the request.
+      expect(vm.steps.some((st) => st.id === 'l16-quantization')).toBe(true)
+    })
+
+    test('relative ULINEAR16 context still requires the nominal reference', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x98 } }))
+      expect(vm.l16Payload).toMatchObject({
+        kind: 'ulinear16',
+        signedOffset: false,
+        relativeRatio: true,
+        physicalInputAvailable: false,
+        requiresNominalReference: true,
+      })
+      expect(vm.nRangeText).toBeUndefined()
+    })
+  })
+
   describe('mode=VOUT_MODE (standalone byte calculator)', () => {
     test('valueText is the canonical byte hex and valueLabel is VOUT_MODE 字节', () => {
       const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE' }))
