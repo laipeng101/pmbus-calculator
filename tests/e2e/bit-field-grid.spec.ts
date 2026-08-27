@@ -119,6 +119,32 @@ test.describe('M39 共享位字段网格', () => {
     await expect(legend).toContainText('有符号值 Y [15:0]')
   })
 
+  test('非 LINEAR 共享字节的 L16 图例必须是中性 raw word，绝不显示 V/Y（v2.5.3）', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    const legend = page.locator('.bitfield[data-bit-count="16"] .bitfield-legend')
+    for (const hex of ['20', '3E', '40', '60']) {
+      await page.locator('#vout-mode-input').fill(hex)
+      await page.locator('#vout-mode-input').press('Tab')
+      await expect(legend, `VOUT_MODE ${hex}`).toContainText('未按 LINEAR16 解释')
+      await expect(legend, `VOUT_MODE ${hex}`).not.toContainText('数值 V')
+      await expect(legend, `VOUT_MODE ${hex}`).not.toContainText('有符号值 Y')
+
+      // The payload dropdown must not resurrect the V/Y legend either.
+      await page.getByLabel('L16 数据解释类型').selectOption('slinear16-offset')
+      await expect(legend, `VOUT_MODE ${hex} + SLINEAR16`).toContainText('未按 LINEAR16 解释')
+      await expect(legend, `VOUT_MODE ${hex} + SLINEAR16`).not.toContainText('有符号值 Y')
+      await page.getByLabel('L16 数据解释类型').selectOption('ulinear16')
+    }
+    // Back on a LINEAR byte the payload-specific legends return.
+    await page.locator('#vout-mode-input').fill('18')
+    await page.locator('#vout-mode-input').press('Tab')
+    await expect(legend).toContainText('数值 V [15:0]')
+    await expect(legend).not.toContainText('未按 LINEAR16 解释')
+  })
+
   test('宽横截面（360/390/430/768/1024/1440）无横向溢出', async ({ page }) => {
     for (const width of [360, 390, 430, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 })
