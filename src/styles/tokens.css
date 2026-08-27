@@ -1604,3 +1604,24 @@ select:disabled,
   color: var(--color-accent);
   font-family: var(--font-mono);
 }
+
+/* HALF §7.6.2 special-value operational-semantics notice (v2.5.5) */
+.half-special-card {
+  background: var(--color-warning-surface);
+  border: 1px solid var(--color-warning-border);
+  border-left: 3px solid var(--color-warning);
+  color: var(--color-text-primary);
+}
+
+.half-special-title {
+  color: var(--color-warning-text);
+}
+
+.half-special-scope,
+.half-special-ref {
+  color: var(--color-text-secondary);
+}
+
+.half-special-term {
+  color: var(--color-text-secondary);
+}

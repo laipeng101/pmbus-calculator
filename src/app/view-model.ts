@@ -14,6 +14,8 @@ import type { QuantizationOutcome } from './quantization-error'
 import { buildVoutModeExplanations } from './vout-mode-explanation'
 import type { VoutModeExplanation } from './vout-mode-explanation'
 import { resolveVoutModeRequirement } from './vout-mode-requirements'
+import { resolveHalfSpecialSemantics } from './half-special-semantics'
+import type { HalfSpecialSemantics } from './half-special-semantics'
 import { effectiveL16VoutMode } from './vout-mode-selector'
 import { resolveL16PayloadContext } from './l16-payload-contract'
 import type { L16FormatSemantics } from './l16-payload-contract'
@@ -155,6 +157,12 @@ export interface CalculatorViewModel {
   voutModePage?: VoutModeInfoVM
   /** DIRECT mode: signed Y derived from raw via toSigned(raw, 16). */
   directY?: number
+  /**
+   * HALF only, and only for NaN / ±Infinity raw words: the PMBus §7.6.2
+   * send/read operational semantics card content. Finite values never
+   * expose it (v2.5.5).
+   */
+  halfSpecial?: HalfSpecialSemantics
   visible: {
     voutMode: boolean
     directCoefficients: boolean
@@ -764,6 +772,15 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       ? byteDigits(state.voutMode.byte)
       : (displayedRaw & 0xffff).toString(16).toUpperCase().padStart(4, '0')
 
+  // HALF §7.6.2 special-value semantics: derived from the current raw word so
+  // BOTH user paths (raw Hex edit and physical-value encode) surface the same
+  // notice; it can never go stale because it is never stored in state.
+  let halfSpecial: HalfSpecialSemantics | undefined
+  if (state.mode === 'HALF') {
+    const semantics = resolveHalfSpecialSemantics(PMBusMath.decodeHalf(raw).value)
+    if (semantics.presentable) halfSpecial = semantics
+  }
+
   return {
     mode: state.mode,
     steps: buildCalculationSteps(state),
@@ -796,6 +813,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     l16Payload,
     voutModeInfo,
     voutModePage,
+    halfSpecial,
     visible: {
       voutMode: state.mode === 'L16',
       directCoefficients: state.mode === 'DIRECT',
