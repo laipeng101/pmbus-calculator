@@ -15,8 +15,9 @@ import type { Linear16PayloadKind } from './state'
  * and payload:
  *
  * - VID is a SUPPORTED output-voltage data format (§8.4.2). It is not a
- *   globally prohibited format. Only without a selected VID table / product
- *   profile can the page not map code ↔ voltage: `vid-profile-required`.
+ *   globally prohibited format. Only without a selected VID code map or
+ *   product profile can the page not map code ↔ voltage:
+ *   `vid-profile-required`.
  * - The two's-complement offset commands VOUT_TRIM / VOUT_CAL_OFFSET are
  *   explicitly prohibited under VID by the spec itself: `vid-offset-prohibited`
  *   (§13.3 / §13.4 — devices must reject them).
