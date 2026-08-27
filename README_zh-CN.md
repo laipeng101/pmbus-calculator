@@ -56,7 +56,7 @@
 | **DIRECT**          | 通过三个设备专属系数进行线性变换                            | $X = \frac{1}{m}\left(Y \times 10^{-R} - b\right)$                        |
 | **IEEE 半精度**     | IEEE 754 binary16（1 位符号、5 位指数、10 位尾数）          | IEEE 754 binary16 分段解码（zero / subnormal / normal / ±Infinity / NaN） |
 
-> 四种模式是四个独立的换算器，不代表某个器件同时支持这四种格式；器件实际支持的格式由数据手册及 `CAPABILITY`/`QUERY` 类机制决定，本页面不做器件能力声明。
+> 四个标签页是四个独立换算器，本页面不做器件能力声明。器件实际采用的格式由数据手册决定，且按 PMBus Rev. 1.3 Part II §7.2 该选择是**全设备级**的、不按命令混用：若器件对 numerical data 使用 IEEE Half，则该器件所有数值命令（含与输出电压无关的命令）只能使用 IEEE Half；若器件对任一数值命令使用 LINEAR 或 DIRECT，则不得对任何命令使用 IEEE Half。数据手册只决定格式采用，**不改变** binary16 的数值解码公式——HALF 换算不需要任何器件系数（仅 DIRECT 需要器件专属 m/b/R，§7.4）。
 
 ---
 

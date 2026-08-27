@@ -242,8 +242,13 @@
     二补码偏移命令被禁止并声明不生成 word，同时声明**禁止范围仅限这两条命令**；
     InfoPanel 出现 error 级 `vout-mode-vid-offset-prohibited` 提示；
   - 相对 + VID（`vid-relative-invalid`）：按 §8.5.3 说明字节组合本身无效；
-  - DIRECT / IEEE Half：声明需要系数/profile 或本页只实现 LINEAR16 解释、不猜测 N，
-    且明确这两者是合法输出电压数据格式；
+  - DIRECT（`direct-profile-required`）：声明 word ↔ 物理量需要器件 m/b/R 系数
+    （§7.4/§8.4.3）、本页不猜测系数、不借用 LINEAR16 指数 N，且 DIRECT 是合法
+    输出电压数据格式；
+  - IEEE Half（`half-unsupported-in-l16`）：payload 是标准 IEEE 754 binary16
+    （§7.6/§8.4.4），本页只实现 LINEAR16 解释、不猜测 N；HALF 模式页可做该换算，
+    且 Half 是合法输出电压数据格式。**禁止出现「需要器件 profile / DIRECT 系数 /
+    设备数据」类表述**——Half 的换算不依赖任何器件数值；
   - invalid-parameter / invalid-combination 提示保持 error 级。
     恢复入口只有显式「应用默认 VOUT_MODE」按钮（`l16/apply-default-vout-mode`）：点击后共享字节
     真实变为 `0x18`、source 徽标回到「已关联」，输入/范围/结果/量化读数随之恢复，
@@ -255,3 +260,19 @@
   VID/DIRECT/IEEE Half/非法参数状态都不得显示「数值 V [15:0]」或「有符号值 Y [15:0]」；
   payload 下拉切换不得复活 V/Y 图例；LINEAR 字节（含 bit7=1）恢复 payload-specific
   图例。ARIA 标签不含 V/Y 语义（bits 无 semantic 字段），复制路径不输出图例文字。
+
+## 16. 独立 VOUT_MODE 页面的 requirement 文案合同（v2.5.4）
+
+- 状态文本、InfoPanel 警告、说明列表与计算步骤的规范结论一律来自
+  `resolveVoutModeRequirement`（`src/app/vout-mode-requirements.ts`）；组件不得用
+  `format` 数字或散落布尔重新推导。
+- DIRECT 字节（`0x40`/`0xC0` 等）：状态与警告必须继续要求器件 m/b/R 系数
+  （§7.4），relative 组合再叠加 VOUT_COMMAND 标称参考值（§8.5.2）。
+- IEEE Half 字节（`0x60`/`0xE0` 等）：所有用户可见表面必须表述「标准
+  IEEE 754 binary16（§7.6 / §8.4.4），换算不依赖器件数值」，并指向 HALF 模式页；
+  **禁止出现「需器件资料」「器件 Profile」「m/b/R」「DIRECT 系数」等反向禁词**。
+  `0xE0` 额外表述需要标称参考值（§8.5.2），`0x60` 不出现该表述。
+- 参数非零（`0x61`/`0xE1` 等）保持「参数必须为 00000b（§8.3 Table 2）」error 级，
+  不进入任何格式要求分支。
+- E2E 反向禁词合同在 `tests/e2e/vout-mode-half-matrix.spec.ts`；unit truth table 在
+  `src/app/vout-mode-requirements.test.ts`。

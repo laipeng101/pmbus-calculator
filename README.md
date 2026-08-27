@@ -54,7 +54,7 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 | **DIRECT**          | Linear transform with three device-specific coefficients                   | $X = \frac{1}{m}\left(Y \times 10^{-R} - b\right)$                               |
 | **IEEE Half**       | IEEE 754 binary16 (1-bit sign, 5-bit exponent, 10-bit mantissa)            | IEEE 754 binary16 piecewise decode (zero / subnormal / normal / ±Infinity / NaN) |
 
-> These four modes are four independent converters. A single device may support a different combination of formats as described by its datasheet and `CAPABILITY`/`QUERY`-style mechanisms; this page does not claim any device capability.
+> These four tabs are four independent converters; this page does not claim any device capability. Which format(s) a device uses is decided by its datasheet — and under PMBus Rev. 1.3 Part II §7.2 that choice is device-wide, not per command: a device that uses IEEE Half for numerical data must use **only** IEEE Half for all of its numerical commands, and a device that uses any LINEAR or DIRECT format for any numerical data must **not** use IEEE Half for any command. The datasheet determines format adoption only — it does not change the binary16 value-decoding formula, so HALF conversion never needs device coefficients (only DIRECT needs device-specific m/b/R per §7.4).
 
 ---
 
