@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-27（v2.4.1 位字段网格溢出修复 + 视觉基线审查约定）
+最后更新：2026-08-27（v2.5.1 SLINEAR16 offset bit7 可达性 + provenance PATCH）
 
 ## 当前产品基线
 
@@ -28,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.0；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.1；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -57,7 +57,10 @@ M0–M39 complete；stable release v2.5.0；production distribution: GitHub Page
 - M40（v2.5.0）：格式编码量化误差读数扩展到 L16/DIRECT/HALF——可判别结果分类
   （exact/quantized/saturated/overflow/special）、provenance 合同、零分母/溢出/
   特殊值正确呈现、fallback 标注、DOMAIN_MODEL §6 与 UI_CONVENTIONS §15。
-- 当前：v2.5.0 已发布；M40 complete；无进行中的功能里程碑。
+- M41（v2.5.1）：SLINEAR16 offset 在 bit7=1 时的物理输入可达性（payload 上下文取代
+  字节级 status 判定）与手动 Y_s provenance 失效；DOMAIN_MODEL §2.2/§6.1 与
+  UI_CONVENTIONS §15 契约同步。complete。
+- 当前：v2.5.1 已发布；M40–M41 complete；无进行中的功能里程碑。
 
 ## 下一产品目标
 

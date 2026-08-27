@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-08-27
+
+### Fixed
+
+- **SLINEAR16 offset 在 bit7=1 时物理输入不可达（P1-A）**：0x98 + SLINEAR16 下页面按
+  signed offset 解码结果，却隐藏物理值输入并保留 relative LINEAR 的 nominal 阻断卡；
+  reducer `encodeL16FromValue` 在 payload 判定前因 bit7 relative 拒绝，量化层也没有
+  signed 可编码范围（200 无法分类为饱和）。现在编码/范围/UI 入口全部按 payload 上下文
+  判定（Part II §13.3/§13.4）：任意 LINEAR 字节下 `value/set 3.3 → 0x034D`、
+  `200 → 0x7FFF` saturated/error、范围 `-128..127.99609375`；nominal 门槛与阻断卡
+  只作用于 relative ULINEAR16（比值）。
+- **手动 Y_s 编辑后旧请求未失效（P1-B）**：`l16/set-slinear-y` 直接改写 raw 而不清除
+  `valueRequest`，误差面板与计算步骤继续报告过期的请求-表示对。现在提交性 Y_s 编辑
+  与其他 raw 变更一致清除 provenance；非法/过渡输入不改变 raw 也不清除仍有效请求。
+- **DOMAIN_MODEL §2.2 与 §6.1 矛盾纠偏**：relative LINEAR 拒绝规则限定为
+  ULINEAR16 比值语义；SLINEAR16 offset 的编码顺序、可编码范围与 bit7 不参与数学
+  成为明确契约；provenance 失效清单加入手动 Y_s；UI_CONVENTIONS §15 记录
+  payload 上下文入口与手动失效验收。
+
 ## [2.5.0] - 2026-08-27
 
 ### Added
