@@ -187,9 +187,19 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
     }
 
     case 'L16': {
-      // L16 always derives from the effective VOUT_MODE byte: the shared byte
-      // when LINEAR, otherwise the explicit fallback 0x18.
       const eff = effectiveL16VoutMode(state)
+      // Fail closed on a non-LINEAR shared byte (v2.5.2, §8.4): no pseudo N,
+      // no pseudo physical expansion line.
+      if (eff.source === 'non-linear') {
+        const sharedHex = '0x' + state.voutMode.byte.toString(16).toUpperCase().padStart(2, '0')
+        const plainText = `共享 VOUT_MODE ${sharedHex} 非 LINEAR；输出电压命令的数据格式由 VOUT_MODE 决定（§8.4），未计算。`
+        return {
+          plainText,
+          latex: '\\text{共享 VOUT_MODE 非 LINEAR，未计算（§8.4）}',
+          genericLatex: '\\text{需要 LINEAR VOUT_MODE}',
+          detailLines: [],
+        }
+      }
       const a = analyzeVoutMode(eff.byte)
       const n = a.linearExponent ?? 0
 

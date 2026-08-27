@@ -114,29 +114,27 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
   const eff = effectiveL16VoutMode(state)
   const a = analyzeVoutMode(eff.byte)
   const n = a.linearExponent ?? 0
-  const hex = `0x${eff.byte.toString(16).toUpperCase().padStart(2, '0')}`
-  const steps: CalculationStepVM[] = [
-    field('l16-vout-mode', 'VOUT_MODE（有效）', hex),
+  const hex = `0x${state.voutMode.byte.toString(16).toUpperCase().padStart(2, '0')}`
+  const steps: CalculationStepVM[] = [field('l16-vout-mode', 'VOUT_MODE（共享字节）', hex)]
+
+  // Fail closed on a non-LINEAR shared byte (v2.5.2, Part II §8.4): the page
+  // shows the actual byte and refuses to derive N / results / quantization
+  // from an implicit 0x18 substitution. No LINEAR math below this point.
+  if (eff.source === 'non-linear') {
+    steps.push(
+      warningStep(
+        'l16-nonlinear',
+        `共享 VOUT_MODE ${hex} 为 ${a.formatName}；输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），本页不隐式替换字节。显式应用默认 0x18 后才恢复计算。`,
+      ),
+    )
+    return steps
+  }
+
+  steps.push(
     field('l16-vout-mode-bit7', 'bit7 绝对值/相对值', a.isRelative ? '相对值 (1)' : '绝对值 (0)'),
     field('l16-vout-mode-mode', 'bits[6:5] 格式', `${a.formatName} (${a.format})`),
     field('l16-vout-mode-param', 'bits[4:0] 参数', String(a.parameter)),
-  ]
-
-  if (eff.source === 'fallback-default') {
-    steps.push(
-      warningStep(
-        'l16-fallback',
-        `共享 VOUT_MODE 0x${state.voutMode.byte.toString(16).toUpperCase().padStart(2, '0')} 非 LINEAR；本页显式使用默认 0x18。`,
-      ),
-    )
-  }
-
-  // The effective byte is always LINEAR on this page; keep these guards as a
-  // fail-closed contract in case the selector invariant is ever broken.
-  if (a.format !== 0) {
-    steps.push(warningStep('l16-unsupported', '有效 VOUT_MODE 非 LINEAR；不计算 LINEAR16 结果。'))
-    return steps
-  }
+  )
 
   // SLINEAR16 offset: bit7 belongs to another command group and must not
   // switch the signed offset formula or its unit.

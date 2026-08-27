@@ -80,9 +80,12 @@ function encodableRange(state: AppState): { min: number; max: number } | null {
         ? { min: PMBusMath.minLinear11(), max: PMBusMath.maxLinear11() }
         : PMBusMath.linear11RangeForN(state.l11.n)
     case 'L16': {
+      // Fail closed on a non-LINEAR shared byte (v2.5.2, §8.4): no implicit
+      // 0x18 channel, no bounded physical range to saturate against.
+      const eff = effectiveL16VoutMode(state)
+      if (eff.source === 'non-linear') return null
       // Payload semantics come first (Part II §13.3/§13.4): the signed
       // offset range applies to ANY LINEAR byte — bit7 does not participate.
-      const eff = effectiveL16VoutMode(state)
       const a = analyzeVoutMode(eff.byte)
       if (a.format !== 0) return null
       const p = PMBusMath.pow2(a.linearExponent ?? 0)
@@ -121,6 +124,7 @@ function computeRepresented(state: AppState): number | null {
         return PMBusMath.decodeLinear11(state.raw).value
       case 'L16': {
         const eff = effectiveL16VoutMode(state)
+        if (eff.source === 'non-linear') return null
         const a = analyzeVoutMode(eff.byte)
         if (a.format !== 0) return null
         const n = a.linearExponent ?? 0

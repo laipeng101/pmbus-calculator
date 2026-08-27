@@ -128,17 +128,27 @@ describe('buildCalculationSteps — unified four-mode skeleton', () => {
     expect(steps.some((s) => s.id === 'l16-v')).toBe(false)
   })
 
-  it('L16 非 LINEAR 共享字节 fallback 到 0x18 并生成结果', () => {
+  it('L16 非 LINEAR 共享字节 fail closed：无伪 N、无伪结果（v2.5.2）', () => {
     for (const byte of [0x40, 0x60, 0xe0, 0x20, 0xa0, 0x41, 0xc1, 0xe1]) {
       const steps = buildCalculationSteps(state({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
       expect(
-        steps.some((s) => s.kind === 'warning' && s.id === 'l16-fallback'),
+        steps.some((s) => s.kind === 'warning' && s.id === 'l16-nonlinear'),
         `0x${byte.toString(16)}`,
       ).toBe(true)
+      // §8.4 fail-closed contract: no pseudo N field, no LINEAR V expansion,
+      // and never a fabricated result from a substituted 0x18.
+      expect(
+        steps.some((s) => s.id === 'l16-n'),
+        `0x${byte.toString(16)}`,
+      ).toBe(false)
+      expect(
+        steps.some((s) => s.id === 'l16-v'),
+        `0x${byte.toString(16)}`,
+      ).toBe(false)
       expect(
         steps.some((s) => s.kind === 'result' && s.value === '12'),
         `0x${byte.toString(16)}`,
-      ).toBe(true)
+      ).toBe(false)
     }
   })
 

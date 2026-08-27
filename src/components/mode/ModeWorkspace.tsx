@@ -209,6 +209,24 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                   {vm.nRangeText ? `可表示范围: ${vm.nRangeText}` : '范围由数据解释类型决定'}
                 </div>
               </>
+            ) : vm.l16Payload?.vidProhibited ? (
+              <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm" role="note">
+                <p className="mb-2">
+                  VOUT_MODE {vm.voutModeInfo?.hex} 为 VID 格式：输出电压相关命令禁止使用 VID
+                  数据格式（Part II §8.4），VOUT_TRIM / VOUT_CAL_OFFSET 的二补码固定偏移
+                  payload（§13.3/§13.4）也不得在 VID 下使用。该命令组合被禁止，本页不生成
+                  word。显式应用默认 VOUT_MODE 0x18 后才恢复 LINEAR16 编码。
+                </p>
+              </div>
+            ) : vm.l16Payload?.nonLinear ? (
+              <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm" role="note">
+                <p className="mb-2">
+                  VOUT_MODE {vm.voutModeInfo?.hex} 为 {vm.l16Payload.nonLinearFormat}
+                  格式：需要相应 format/profile/coefficients 才能解释输出电压数据 （Part II
+                  §8.4），LINEAR16 页不可计算，也不猜测指数 N。显式应用默认 VOUT_MODE 0x18 后才恢复
+                  LINEAR16 编码。
+                </p>
+              </div>
             ) : (
               <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
                 <p className="mb-2">

@@ -18,10 +18,10 @@ import VoutModeExplanations from './VoutModeExplanations'
 interface Props {
   state: AppState
   info: VoutModeInfoVM
-  /** Shared byte edited by the expert Hex input (may differ from info on L16 fallback). */
+  /** Shared byte edited by the expert Hex input. */
   byte: number
   dispatch: React.Dispatch<AppAction>
-  /** L16 embedded editor locks bits[6:5] and shows the linked/fallback source. */
+  /** L16 embedded editor locks bits[6:5] and shows the linked/non-linear source. */
   embedded?: boolean
 }
 
@@ -71,7 +71,13 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         groups={info.nibbles}
         regions={getBitRegions('VOUT_MODE')}
         disabledBits={disabledBits}
-        disabledHint={embedded ? '格式位固定为 LINEAR' : undefined}
+        disabledHint={
+          embedded
+            ? info.source === 'non-linear'
+              ? '格式位不可在本页切换（当前字节非 LINEAR）'
+              : '格式位固定为 LINEAR'
+            : undefined
+        }
         density={embedded ? 'compact' : 'regular'}
         onToggle={(bit) => dispatch({ type: 'vout-mode/toggle-bit', bit })}
         groupLabel="VOUT_MODE 8 位编辑器"
@@ -242,7 +248,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         </span>
         {info.source && (
           <span className="vout-canonical-source" data-testid="vout-mode-source">
-            {info.source === 'linked' ? '已关联' : '默认回退'}
+            {info.source === 'linked' ? '已关联' : '非 LINEAR'}
           </span>
         )}
       </div>
@@ -266,7 +272,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
 
       {/* Explicit canonicalization action */}
       {embedded ? (
-        info.source === 'fallback-default' ? (
+        info.source === 'non-linear' ? (
           <button
             type="button"
             onClick={() => dispatch({ type: 'l16/apply-default-vout-mode' })}
