@@ -17,6 +17,14 @@ import type { VoutModeAnalysis } from '../legacy/vout-mode'
  * reference to obtain final volts (§8.5.2), for any format. §7.2 additionally
  * makes Half and LINEAR/DIRECT mutually exclusive per device — a device-level
  * adoption rule documented in DOMAIN_MODEL, not a per-byte decode condition.
+ *
+ * v2.5.5 separates structural legality from calculability: VID Code Types
+ * 1Eh/1Fh are explicitly listed in §8.4.2 Table 3 as PMBus device
+ * manufacturer specific — the byte is a STRUCTURALLY LEGAL configuration
+ * (`structureLegal: true`) whose voltage mapping must come from the product
+ * literature (`requiresVidProfile: true`), so it is legal-but-needs-external-
+ * data, never reserved or illegal. `00h` (Not Used) and unlisted codes
+ * (reserved) remain non-usable configurations (`structureLegal: false`).
  */
 export interface VoutModeRequirement {
   /** Machine-testable discriminator; exhaustive over the byte space. */
@@ -33,6 +41,14 @@ export interface VoutModeRequirement {
     | 'vid-reserved'
     | 'vid-profile-required'
     | 'invalid-input'
+  /**
+   * The byte is a structurally legal PMBus VOUT_MODE configuration
+   * (§8.3 / §8.4.2 Table 3). Orthogonal to calculability: 1Eh/1Fh are legal
+   * but not calculable without the device VID table. Never reuse this flag
+   * for "needs external data" — that is `requiresDeviceCoefficients` /
+   * `requiresVidProfile`.
+   */
+  structureLegal: boolean
   /** Word ↔ physical conversion needs device m/b/R coefficients (§7.4). */
   requiresDeviceCoefficients: boolean
   /** Voltage mapping needs a device VID code list / product profile (§8.4.2). */
@@ -45,6 +61,7 @@ export interface VoutModeRequirement {
 
 const LINEAR_ABSOLUTE: VoutModeRequirement = {
   id: 'linear-absolute',
+  structureLegal: true,
   requiresDeviceCoefficients: false,
   requiresVidProfile: false,
   requiresNominalReference: false,
@@ -59,6 +76,7 @@ const LINEAR_RELATIVE: VoutModeRequirement = {
 
 const DIRECT_ABSOLUTE: VoutModeRequirement = {
   id: 'direct-absolute',
+  structureLegal: true,
   requiresDeviceCoefficients: true,
   requiresVidProfile: false,
   requiresNominalReference: false,
@@ -73,6 +91,7 @@ const DIRECT_RELATIVE: VoutModeRequirement = {
 
 const HALF_ABSOLUTE: VoutModeRequirement = {
   id: 'half-absolute',
+  structureLegal: true,
   requiresDeviceCoefficients: false,
   requiresVidProfile: false,
   requiresNominalReference: false,
@@ -87,6 +106,7 @@ const HALF_RELATIVE: VoutModeRequirement = {
 
 const VID_RELATIVE_INVALID: VoutModeRequirement = {
   id: 'vid-relative-invalid',
+  structureLegal: false,
   requiresDeviceCoefficients: false,
   requiresVidProfile: false,
   requiresNominalReference: false,
@@ -95,6 +115,7 @@ const VID_RELATIVE_INVALID: VoutModeRequirement = {
 
 const DIRECT_OR_HALF_PARAM_INVALID: VoutModeRequirement = {
   id: 'direct-or-half-param-invalid',
+  structureLegal: false,
   requiresDeviceCoefficients: false,
   requiresVidProfile: false,
   requiresNominalReference: false,
@@ -103,6 +124,7 @@ const DIRECT_OR_HALF_PARAM_INVALID: VoutModeRequirement = {
 
 const VID_NOT_USED: VoutModeRequirement = {
   id: 'vid-not-used',
+  structureLegal: false,
   requiresDeviceCoefficients: false,
   requiresVidProfile: false,
   requiresNominalReference: false,
@@ -116,6 +138,7 @@ const VID_RESERVED: VoutModeRequirement = {
 
 const VID_PROFILE_REQUIRED: VoutModeRequirement = {
   id: 'vid-profile-required',
+  structureLegal: true,
   requiresDeviceCoefficients: false,
   requiresVidProfile: true,
   requiresNominalReference: false,
@@ -124,6 +147,7 @@ const VID_PROFILE_REQUIRED: VoutModeRequirement = {
 
 const INVALID_INPUT: VoutModeRequirement = {
   id: 'invalid-input',
+  structureLegal: false,
   requiresDeviceCoefficients: false,
   requiresVidProfile: false,
   requiresNominalReference: false,

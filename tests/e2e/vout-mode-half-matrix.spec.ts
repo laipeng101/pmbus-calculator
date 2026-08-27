@@ -222,3 +222,104 @@ test.describe('v2.5.4 L16 page — IEEE Half block card never claims a profile',
     }
   })
 })
+
+test.describe('v2.5.5 VOUT_MODE legality — structural validity is separate from calculability', () => {
+  test('0x3E/0x3F carry no illegal alert marker and keep the device-data warning', async ({
+    page,
+  }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+    for (const hex of ['3E', '3F'] as const) {
+      await setVoutModeByte(page, hex)
+      await expandDetails(page)
+
+      // Structurally legal: no alert marker on the config summary and no
+      // alert class on the canonical status chip.
+      await expect(page.getByTestId('vout-mode-status')).toHaveText(
+        'VID code 制造商自定义（需器件资料）',
+      )
+      await expect(page.getByTestId('vout-mode-config-summary')).not.toHaveAttribute(
+        'data-alert',
+        /.*/,
+      )
+      await expect(page.getByTestId('vout-mode-status')).not.toHaveClass(
+        /vout-canonical-status-alert/,
+      )
+
+      // Still needs the device datasheet: explicit warning remains.
+      const profileAlert = page.getByRole('alert').filter({ hasText: '器件资料' }).first()
+      await expect(profileAlert).toBeAttached()
+      await expect(profileAlert).toHaveAttribute('data-level', 'warning')
+
+      // Never described as reserved or illegal; the steps keep their own
+      // manufacturer-specific branch.
+      const surfaces = await visibleSurfaces(page)
+      expect(surfaces).toContain('制造商自定义')
+      expect(surfaces).not.toContain('非法')
+      expect(surfaces).not.toContain('保留')
+      expect(surfaces).not.toContain('vout-mode-invalid')
+
+      // Normalize must not rewrite a legal manufacturer-specific byte.
+      const before = await page.getByTestId('vout-mode-byte').innerText()
+      const normalize = page.getByRole('button', { name: /规范化|Normalize/ })
+      if ((await normalize.count()) > 0) {
+        await normalize.click()
+        await expect(page.getByTestId('vout-mode-byte')).toHaveText(before)
+      }
+    }
+  })
+
+  test('negative examples keep their non-usable classification', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+
+    // 00h Not Used and an unlisted reserved code: not valid profiles.
+    for (const [hex, expected] of [
+      ['20', 'VID code 00h — 未使用'],
+      ['24', 'VID code 保留'],
+    ] as const) {
+      await setVoutModeByte(page, hex)
+      await expect(page.getByTestId('vout-mode-status')).toContainText(expected)
+      await expect(page.getByTestId('vout-mode-config-summary')).toHaveAttribute(
+        'data-alert',
+        'true',
+      )
+    }
+
+    // Relative + VID stays an invalid combination (§8.5.3).
+    await setVoutModeByte(page, 'A0')
+    await expect(page.getByTestId('vout-mode-status')).toContainText('非法组合')
+    await expect(page.getByRole('alert').filter({ hasText: '非法组合' }).first()).toHaveAttribute(
+      'data-level',
+      'error',
+    )
+
+    // Absolute DIRECT is legal and needs m/b/R; Half parameter error stays.
+    await setVoutModeByte(page, '40')
+    await expect(page.getByTestId('vout-mode-config-summary')).not.toHaveAttribute(
+      'data-alert',
+      /.*/,
+    )
+    await setVoutModeByte(page, '61')
+    await expect(page.getByTestId('vout-mode-status')).toContainText('参数必须为 0')
+    await expect(page.getByTestId('vout-mode-config-summary')).toHaveAttribute('data-alert', 'true')
+  })
+
+  test('L16 page 0x3E fails closed as legal-but-profile-missing, never illegal', async ({
+    page,
+  }) => {
+    await settle(page)
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    await expect(page.locator('#vout-mode-input')).toBeVisible()
+    await page.locator('#vout-mode-input').fill('3E')
+    await page.locator('#vout-mode-input').press('Tab')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x3E')
+
+    await expect(page.locator('#value-input')).toHaveCount(0)
+    await expect(page.locator('[data-testid="result-value"]')).toContainText('—')
+    const card = page.locator('.workspace-l16-block')
+    await expect(card).toContainText('制造商自定义')
+    await expect(card).toContainText('器件资料')
+    await expect(card).not.toContainText('非法')
+  })
+})

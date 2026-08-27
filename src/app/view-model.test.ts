@@ -482,6 +482,45 @@ describe('toCalculatorViewModel', () => {
       expect(vm.voutModePage?.statusText).toBe('相对 LINEAR（需参考值）')
     })
 
+    test('v2.5.5: 0x3E/0x3F are structure-legal, not calculable, and need external data', () => {
+      for (const byte of [0x3e, 0x3f]) {
+        const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte } }))
+        expect(vm.voutModePage?.structureLegal, `0x${byte.toString(16)}`).toBe(true)
+        expect(vm.voutModePage?.calculable, `0x${byte.toString(16)}`).toBe(false)
+        expect(vm.voutModePage?.requiresExternalData, `0x${byte.toString(16)}`).toBe(true)
+        expect(vm.voutModePage?.vidCodeKind, `0x${byte.toString(16)}`).toBe('profile-required')
+      }
+    })
+
+    test('v2.5.5 legality/external-data matrix across representative bytes', () => {
+      const rows: Array<{
+        byte: number
+        structureLegal: boolean
+        requiresExternalData: boolean
+      }> = [
+        { byte: 0x18, structureLegal: true, requiresExternalData: false },
+        { byte: 0x98, structureLegal: true, requiresExternalData: false },
+        { byte: 0x40, structureLegal: true, requiresExternalData: true },
+        { byte: 0xc0, structureLegal: true, requiresExternalData: true },
+        { byte: 0x60, structureLegal: true, requiresExternalData: false },
+        { byte: 0xe0, structureLegal: true, requiresExternalData: false },
+        { byte: 0x20, structureLegal: false, requiresExternalData: false },
+        { byte: 0x24, structureLegal: false, requiresExternalData: false },
+        { byte: 0x3e, structureLegal: true, requiresExternalData: true },
+        { byte: 0xa0, structureLegal: false, requiresExternalData: false },
+        { byte: 0x61, structureLegal: false, requiresExternalData: false },
+      ]
+      for (const row of rows) {
+        const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: row.byte } }))
+        expect(vm.voutModePage?.structureLegal, `0x${row.byte.toString(16)}`).toBe(
+          row.structureLegal,
+        )
+        expect(vm.voutModePage?.requiresExternalData, `0x${row.byte.toString(16)}`).toBe(
+          row.requiresExternalData,
+        )
+      }
+    })
+
     test('byte calculator hides the 16-bit raw/byte-order UI', () => {
       const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE' }))
       expect(vm.visible.byteCalculator).toBe(true)

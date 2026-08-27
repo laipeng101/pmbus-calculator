@@ -111,8 +111,12 @@ export interface VoutModeInfoVM {
   statusText: string
   /** 8-bit binary rendering of the byte. */
   binary: string
-  /** True only when the byte is a legal PMBus VOUT_MODE configuration. */
+  /** True only when the byte is a structurally legal PMBus VOUT_MODE
+   *  configuration (v2.5.5: 1Eh/1Fh manufacturer-specific VID included —
+   *  legal but not calculable here); sourced from the shared requirement. */
   structureLegal: boolean
+  /** True when word ↔ value needs external device data (m/b/R or VID table). */
+  requiresExternalData: boolean
   /** True only when the current calculator can produce a value for the byte. */
   calculable: boolean
   source?: 'linked' | 'non-linear'
@@ -294,6 +298,11 @@ function buildVoutModeNibbles(byte: number): VoutModeNibbleVM[] {
 
 function buildVoutModeVM(byte: number, source?: 'linked' | 'non-linear'): VoutModeInfoVM {
   const a = analyzeVoutMode(byte)
+  // Single spec source (v2.5.5): structural legality and the external-data
+  // question come from the shared requirement discriminator, never from
+  // raw `format`/`status` switches. 1Eh/1Fh are Table-3-listed
+  // manufacturer-specific codes: structurally legal, not calculable here.
+  const req = resolveVoutModeRequirement(a)
   const isLinear = a.format === 0
   const status: VoutModeInfoVM['status'] = !isLinear
     ? 'unsupported'
@@ -333,7 +342,8 @@ function buildVoutModeVM(byte: number, source?: 'linked' | 'non-linear'): VoutMo
     ...(a.vidCode ? { vidCodeKind: a.vidCode.kind } : {}),
     statusText: voutModeStatusText(byte),
     binary: (byte & 0xff).toString(2).padStart(8, '0'),
-    structureLegal: a.isLegal,
+    structureLegal: req.structureLegal,
+    requiresExternalData: req.requiresDeviceCoefficients || req.requiresVidProfile,
     calculable: isLinear && a.isRelative === false,
     ...(source ? { source } : {}),
     explanations,
