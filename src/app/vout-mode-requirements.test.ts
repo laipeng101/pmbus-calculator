@@ -160,3 +160,65 @@ describe('resolveVoutModeRequirement (v2.5.4 discriminated truth matrix)', () =>
     }
   })
 })
+
+/**
+ * v2.5.5: structural legality, calculability and the external-data question
+ * are three ORTHOGONAL verdicts. §8.4.2 Table 3 lists 1Eh/1Fh as PMBus device
+ * manufacturer specific VID Code Types — structurally legal bytes whose
+ * voltage mapping must come from the product literature. 00h (Not Used) and
+ * unlisted (reserved) codes stay non-usable configurations.
+ */
+describe('resolveVoutModeRequirement structureLegal vs calculability (v2.5.5)', () => {
+  it('0x3E/0x3F are structurally legal, not calculable, and require the VID profile', () => {
+    for (const byte of [0x3e, 0x3f]) {
+      const req = resolveVoutModeRequirement(analyzeVoutMode(byte))
+      expect(req.id, `byte 0x${byte.toString(16)}`).toBe('vid-profile-required')
+      expect(req.structureLegal, `byte 0x${byte.toString(16)}`).toBe(true)
+      expect(req.requiresVidProfile, `byte 0x${byte.toString(16)}`).toBe(true)
+      // Legal structure ≠ calculable byte: no device table, no conversion.
+      expect(req.requiresDeviceCoefficients, `byte 0x${byte.toString(16)}`).toBe(false)
+      expect(req.requiresNominalReference, `byte 0x${byte.toString(16)}`).toBe(false)
+    }
+  })
+
+  it('00h Not Used and reserved codes remain non-usable configurations', () => {
+    // VID-format bytes 0x20|code: 00h not-used; 01h..04h, 10h..11h and
+    // 1Ch..1Dh reserved; unlisted codes reserved as well.
+    for (const byte of [0x20, 0x21, 0x24, 0x30, 0x3c, 0x3d]) {
+      const req = resolveVoutModeRequirement(analyzeVoutMode(byte))
+      expect(req.structureLegal, `byte 0x${byte.toString(16)}`).toBe(false)
+      expect(req.requiresVidProfile, `byte 0x${byte.toString(16)}`).toBe(false)
+      expect(req.id === 'vid-not-used' || req.id === 'vid-reserved', `0x${byte.toString(16)}`).toBe(
+        true,
+      )
+    }
+  })
+
+  it('0..255 exhaustive separation of structure legality, calculability and external data', () => {
+    for (let byte = 0; byte <= 0xff; byte++) {
+      const a = analyzeVoutMode(byte)
+      const req = resolveVoutModeRequirement(a)
+      const hex = `byte 0x${byte.toString(16).padStart(2, '0')}`
+
+      // Structural legality: valid verdicts plus the Table-3-listed
+      // manufacturer-specific VID codes, nothing else.
+      const expectedStructureLegal = a.status === 'valid' || a.status === 'profile-required'
+      expect(req.structureLegal, hex).toBe(expectedStructureLegal)
+
+      // External data: DIRECT needs m/b/R; profile-required VID needs the
+      // device table; no byte needs both; no illegal byte needs either.
+      expect(req.requiresDeviceCoefficients && req.requiresVidProfile, hex).toBe(false)
+      if (!req.structureLegal) {
+        expect(req.requiresDeviceCoefficients || req.requiresVidProfile, hex).toBe(false)
+      }
+
+      // Relative-only nominal reference, and only on legal structures.
+      expect(req.requiresNominalReference, hex).toBe(a.isRelative && req.structureLegal)
+
+      // standardBinary16 exactly on legal Half bytes.
+      expect(req.standardBinary16, hex).toBe(
+        req.id === 'half-absolute' || req.id === 'half-relative',
+      )
+    }
+  })
+})

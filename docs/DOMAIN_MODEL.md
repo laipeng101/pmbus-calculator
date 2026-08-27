@@ -86,6 +86,21 @@
   - subnormal 与 normal 边界按 subnormal ulp $2^{-24}$ 舍入；
   - `|value| >= 65520` 溢出到 `±Infinity`；
   - `NaN` → `0x7E00`，`±0` 保留符号。
+- **特殊值 PMBus 操作语义（Part II §7.6.2，v2.5.5）**：数学编码之外，HALF 页必须
+  解释设备如何操作 NaN / ±Infinity。单一来源
+  `src/app/half-special-semantics.ts`（可判别 `half-finite` / `half-nan` /
+  `half-positive-infinity` / `half-negative-infinity`，输出 machine id、severity、
+  send/read 双解释、spec ref）：
+  - 设备读回主机先前写入的值时必须返回主机发送的精确 IEEE 编码（含 NaN、±Inf）；
+  - NaN 作为写入数据：设备必须按 invalid data 处理、声明 communications fault 并按
+    §10.8 响应；作为读回值：设备可在值不可用时返回 NaN；
+  - +Inf / -Inf 作为写入数据：设备分别解释为正 / 负满量程；作为读回值：分别表示
+    测量通道正 / 负方向饱和。
+  - 展示由 view-model `halfSpecial` 驱动特殊值卡（raw 解码与 value 编码两条路径
+    均出现，有限值不出现），且必须注明这是 PMBus 操作语义、不代表已发生总线通信。
+    量化误差分类不变：主动输入特殊值 = `special/warn`，有限 `65520` 溢出 =
+    `overflow/error`；有限溢出编码出的 ±Inf word 同时显示 overflow 读数与 §7.6.2
+    卡是正确形态（两个表面回答不同问题）。
 
 ## 3. VOUT_MODE
 
@@ -134,9 +149,10 @@
   - `direct-profile-required` / `half-unsupported-in-l16`：DIRECT 需要 m/b/R（§7.4）、
     IEEE Half 是合法输出电压格式但本页不实现解释（§8.4.4）；均不借用 0x18 或猜测 N；
   - `reserved-or-invalid`：DIRECT/Half 参数非零等无解释合同的保留/非法配置。
-- **VOUT_MODE 格式 requirement 单一来源（v2.5.4）**：`src/app/vout-mode-requirements.ts` 的
-  `resolveVoutModeRequirement(analyzeVoutMode(byte))` 是独立 VOUT_MODE 页面 status 文本、
-  InfoPanel 警告、说明与计算步骤的共享判别来源。其语义按 Part II 固定：
+- **VOUT_MODE 格式 requirement 单一来源（v2.5.4 / v2.5.5）**：
+  `src/app/vout-mode-requirements.ts` 的
+  `resolveVoutModeRequirement(analyzeVoutMode(byte))` 是独立 VOUT_MODE 页面 status
+  文本、InfoPanel 警告、说明与计算步骤的共享判别来源。其语义按 Part II 固定：
   - DIRECT（`0x40`/`0xC0` 等）：合法结构，word ↔ 物理量**需要**器件 m/b/R 系数
     （§7.4，来自 COEFFICIENTS 或器件资料）；bit7=1 时最终电压还需 VOUT_COMMAND
     标称参考值（§8.5.2）；
@@ -146,8 +162,20 @@
     DIRECT 系数或设备数据；
   - 参数非零（`0x41..0x5F`/`0x61..0x7F` 及对应 relative 组合）保持 invalid-parameter
     error 级，不进入任何格式要求分支；
-  - 状态/警告/说明/步骤全部消费该来源，禁止在组件或测试中用 `format === 2 || 3`
+  - 状态/警告/说明/步骤全部消费该来源（v2.5.5 起四个表面全部 switch 在 `req.id` 上，
+    字段解析仍可读取 format/parameter），禁止在组件或测试中用 `format === 2 || 3`
     这类散落布尔重新推导规范结论。
+- **结构合法性、可计算性与外部数据三维正交（v2.5.5）**：requirement 判别式输出
+  `structureLegal`、`requiresDeviceCoefficients` / `requiresVidProfile`（合成为
+  view-model 的 `requiresExternalData`）等可分别断言的字段：
+  - VID code `1Eh/1Fh` 是 §8.4.2 Table 3 明列的制造商自定义 code——
+    `structureLegal=true`、`requiresVidProfile=true`、当前不可换算；「需要器件资料」
+    不等于「VOUT_MODE 结构非法」，呈现不得复用非法结构的 alert 标志/class 或
+    「保留/非法」文案；
+  - `00h`（not-used）与未列出 code（reserved）仍是不可用配置
+    （`structureLegal=false`）；relative+VID、DIRECT/Half 非零参数同样非法；
+  - view-model 的 `calculable` 表示当前计算器能否直接算出数值（仅绝对 LINEAR），
+    与结构合法性独立（`0x60` 结构合法但本页不可算）。
 - 独立 VOUT_MODE 计算器（第五个模式）是 8-bit 字节配置器：双 nibble 交互位网格、bit7
   Absolute/Relative、bits[6:5] format、bits[4:0] parameter；raw 位/Hex 编辑 lossless
   （可构造 `0xA0`/`0x41`/`0xE1`），语义控件 canonicalize，`Normalize` 显式规范化。

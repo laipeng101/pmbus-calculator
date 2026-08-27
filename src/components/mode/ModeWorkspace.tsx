@@ -9,6 +9,7 @@ import NominalVoutInput from '../inputs/NominalVoutInput'
 import ExponentEditor from '../formula/ExponentEditor'
 import LinearFormulaEditor from '../formula/LinearFormulaEditor'
 import VoutModeComposer from './VoutModeComposer'
+import HalfSpecialCard from './HalfSpecialCard'
 import { MODE_PANEL_ID, modeTabId } from './modeTabs'
 import { LockIcon, UnlockIcon } from '../icons/Icon'
 import MathFormula from '../math/MathFormula'
@@ -316,6 +317,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               +0、-0、NaN、+Infinity、-Infinity。
             </p>
             <ValueInput vm={vm} dispatch={dispatch} />
+            {vm.halfSpecial && <HalfSpecialCard semantics={vm.halfSpecial} />}
           </div>
         )}
       </section>

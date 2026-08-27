@@ -482,6 +482,45 @@ describe('toCalculatorViewModel', () => {
       expect(vm.voutModePage?.statusText).toBe('相对 LINEAR（需参考值）')
     })
 
+    test('v2.5.5: 0x3E/0x3F are structure-legal, not calculable, and need external data', () => {
+      for (const byte of [0x3e, 0x3f]) {
+        const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte } }))
+        expect(vm.voutModePage?.structureLegal, `0x${byte.toString(16)}`).toBe(true)
+        expect(vm.voutModePage?.calculable, `0x${byte.toString(16)}`).toBe(false)
+        expect(vm.voutModePage?.requiresExternalData, `0x${byte.toString(16)}`).toBe(true)
+        expect(vm.voutModePage?.vidCodeKind, `0x${byte.toString(16)}`).toBe('profile-required')
+      }
+    })
+
+    test('v2.5.5 legality/external-data matrix across representative bytes', () => {
+      const rows: Array<{
+        byte: number
+        structureLegal: boolean
+        requiresExternalData: boolean
+      }> = [
+        { byte: 0x18, structureLegal: true, requiresExternalData: false },
+        { byte: 0x98, structureLegal: true, requiresExternalData: false },
+        { byte: 0x40, structureLegal: true, requiresExternalData: true },
+        { byte: 0xc0, structureLegal: true, requiresExternalData: true },
+        { byte: 0x60, structureLegal: true, requiresExternalData: false },
+        { byte: 0xe0, structureLegal: true, requiresExternalData: false },
+        { byte: 0x20, structureLegal: false, requiresExternalData: false },
+        { byte: 0x24, structureLegal: false, requiresExternalData: false },
+        { byte: 0x3e, structureLegal: true, requiresExternalData: true },
+        { byte: 0xa0, structureLegal: false, requiresExternalData: false },
+        { byte: 0x61, structureLegal: false, requiresExternalData: false },
+      ]
+      for (const row of rows) {
+        const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: row.byte } }))
+        expect(vm.voutModePage?.structureLegal, `0x${row.byte.toString(16)}`).toBe(
+          row.structureLegal,
+        )
+        expect(vm.voutModePage?.requiresExternalData, `0x${row.byte.toString(16)}`).toBe(
+          row.requiresExternalData,
+        )
+      }
+    })
+
     test('byte calculator hides the 16-bit raw/byte-order UI', () => {
       const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE' }))
       expect(vm.visible.byteCalculator).toBe(true)
@@ -534,7 +573,11 @@ describe('toCalculatorViewModel', () => {
       for (const banned of HALF_BANNED) {
         expect(everySurface, 'unexpected copy: ' + banned).not.toContain(banned)
       }
-      expect(everySurface).toContain('标称参考值')
+      // v2.5.5: per-surface — each requirement surface itself carries the
+      // nominal-reference wording, not just the concatenation.
+      expect(warningCopy).toContain('标称参考值')
+      expect(explanationCopy).toContain('标称参考值')
+      expect(stepCopy).toContain('标称参考值')
       expect(warningCopy).toContain('§8.5.2')
     })
 
@@ -544,24 +587,27 @@ describe('toCalculatorViewModel', () => {
       expect(absolute.warningCopy).toContain('m/b/R')
       expect(absolute.warningCopy).toContain('§7.4')
       expect(absolute.explanationCopy).toContain('m/b/R')
-      const absoluteSurface = [
+      for (const surface of [
         absolute.page?.statusText ?? '',
         absolute.explanationCopy,
         absolute.stepCopy,
         absolute.warningCopy,
-      ].join('\n')
-      expect(absoluteSurface).not.toContain('标称参考值')
+      ]) {
+        expect(surface, '0x40 must not need a nominal reference').not.toContain('标称参考值')
+      }
 
       const relative = voutModePageSurfaces(0xc0)
       expect(relative.page?.statusText).toBe('相对 DIRECT（需系数与参考值）')
+      // v2.5.5: the InfoPanel warning ITSELF states both the m/b/R
+      // coefficients and the VOUT_COMMAND nominal reference (§8.5.2);
+      // explanations and steps each carry both too.
       expect(relative.warningCopy).toContain('m/b/R')
-      const relativeSurface = [
-        relative.page?.statusText ?? '',
-        relative.explanationCopy,
-        relative.stepCopy,
-        relative.warningCopy,
-      ].join('\n')
-      expect(relativeSurface).toContain('标称参考值')
+      expect(relative.warningCopy).toContain('标称参考值')
+      expect(relative.warningCopy).toContain('§8.5.2')
+      expect(relative.explanationCopy).toContain('m/b/R')
+      expect(relative.explanationCopy).toContain('标称参考值')
+      expect(relative.stepCopy).toContain('m/b/R')
+      expect(relative.stepCopy).toContain('标称参考值')
     })
 
     test('0x61/0xE1 参数非法：保持 error 级与 00000b 约束，不落入任何格式要求分支', () => {

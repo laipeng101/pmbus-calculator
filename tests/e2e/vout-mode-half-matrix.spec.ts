@@ -9,9 +9,29 @@ import { test, expect, type Page } from '@playwright/test'
  * (0x40/0xC0) genuinely needs device m/b/R (§7.4). The matrix drives the real
  * standalone VOUT_MODE page plus the L16 fail-closed card, on both desktop and
  * mobile projects.
+ *
+ * v2.5.5: surfaces are captured and asserted INDIVIDUALLY — the helper below
+ * returns a per-surface record instead of one concatenated string, so a claim
+ * present on only one surface can never satisfy another surface's check.
  */
 
 const HALF_BANNED = ['需器件资料', '器件 Profile', 'm/b/R', 'DIRECT 系数', '设备数据']
+
+/** Every user-visible VOUT_MODE-page surface, kept separate. */
+interface VoutModeSurfaces {
+  /** Config summary line (absent on some L16 states). */
+  summary: string | null
+  /** Canonical status chip. */
+  status: string
+  /** Canonical byte/binary block. */
+  canonical: string
+  /** InfoPanel alerts (each element individually). */
+  alerts: string[]
+  /** Structured explanation list. */
+  explanations: string
+  /** Calculation steps panel. */
+  steps: string
+}
 
 async function settle(page: Page) {
   await page.goto('/')
@@ -47,30 +67,82 @@ async function expandDetails(page: Page) {
   await expect(page.locator('[data-testid="calculation-steps"]')).toBeVisible()
 }
 
-/**
- * Concatenate every user-visible VOUT_MODE-page surface for the byte: config
- * summary, status chip, InfoPanel alerts, explanations and calculation steps.
- */
-async function visibleSurfaces(page: Page): Promise<string> {
-  const parts: string[] = []
+async function visibleSurfaces(page: Page): Promise<VoutModeSurfaces> {
   const summary = page.getByTestId('vout-mode-config-summary')
-  if ((await summary.count()) > 0) parts.push(await summary.innerText())
-  parts.push(await page.getByTestId('vout-mode-status').innerText())
-  parts.push(await page.getByTestId('vout-mode-canonical').innerText())
-  const alerts = page.getByRole('alert')
-  for (let i = 0; i < (await alerts.count()); i++) {
-    parts.push(await alerts.nth(i).innerText())
+  const summaryText = (await summary.count()) > 0 ? await summary.innerText() : null
+  const status = await page.getByTestId('vout-mode-status').innerText()
+  const canonical = await page.getByTestId('vout-mode-canonical').innerText()
+  const alerts: string[] = []
+  const alertLocators = page.getByRole('alert')
+  const alertCount = await alertLocators.count()
+  for (let i = 0; i < alertCount; i++) {
+    alerts.push(await alertLocators.nth(i).innerText())
   }
   const explanations = page.locator('.vout-explanations-details')
-  if ((await explanations.count()) > 0) parts.push(await explanations.innerText())
+  const explanationText = (await explanations.count()) > 0 ? await explanations.innerText() : ''
   const steps = page.getByTestId('calculation-steps')
-  if ((await steps.count()) > 0) parts.push(await steps.innerText())
-  return parts.join('\n')
+  const stepsText = (await steps.count()) > 0 ? await steps.innerText() : ''
+  return {
+    summary: summaryText,
+    status,
+    canonical,
+    alerts,
+    explanations: explanationText,
+    steps: stepsText,
+  }
 }
 
+function surfaceEntries(surfaces: VoutModeSurfaces): Array<[string, string]> {
+  return [
+    ['summary', surfaces.summary ?? ''],
+    ['status', surfaces.status],
+    ['canonical', surfaces.canonical],
+    ...surfaces.alerts.map((a, i): [string, string] => [`alert#${i}`, a]),
+    ['explanations', surfaces.explanations],
+    ['steps', surfaces.steps],
+  ]
+}
+
+/** Per-surface banned-copy check: each surface must pass on its own. */
 function expectNoHalfProfileCopy(surface: string, label: string) {
   for (const banned of HALF_BANNED) {
     expect(surface, `${label} unexpected copy: ${banned}`).not.toContain(banned)
+  }
+}
+
+function expectNoHalfProfileCopyEverywhere(surfaces: VoutModeSurfaces, label: string) {
+  for (const [name, text] of surfaceEntries(surfaces)) {
+    expectNoHalfProfileCopy(text, `${label} ${name}:`)
+  }
+}
+
+/**
+ * Named surfaces must contain all the fragments. For 'alerts' the check is
+ * "at least one alert carries every fragment" (unrelated alerts may coexist);
+ * every other named surface is checked on its own. Banned-copy checks above
+ * still run per individual alert.
+ */
+function expectSurfacesContain(
+  surfaces: VoutModeSurfaces,
+  names: string[],
+  fragments: string[],
+  label: string,
+) {
+  const entries = surfaceEntries(surfaces)
+  for (const name of names) {
+    if (name === 'alerts') {
+      const alertTexts = entries.filter(([n]) => n.startsWith('alert#')).map(([, t]) => t)
+      const carrier = alertTexts.find((t) => fragments.every((f) => t.includes(f)))
+      expect(
+        carrier,
+        `${label} no single alert carries all of: ${fragments.join(', ')}`,
+      ).toBeDefined()
+      continue
+    }
+    const text = entries.find(([n]) => n === name)?.[1] ?? ''
+    for (const fragment of fragments) {
+      expect(text, `${label} ${name} missing: ${fragment}`).toContain(fragment)
+    }
   }
 }
 
@@ -86,12 +158,16 @@ test.describe('v2.5.4 standalone VOUT_MODE page — IEEE Half vs DIRECT requirem
     await expect(page.getByTestId('vout-mode-status')).toHaveText('IEEE Half（标准 binary16）')
     await expect(page.getByTestId('vout-mode-canonical')).toContainText('0b01100000')
     const surfaces = await visibleSurfaces(page)
-    expectNoHalfProfileCopy(surfaces, '0x60')
-    expect(surfaces).toContain('标准 IEEE 754 binary16')
-    expect(surfaces).toContain('§7.6')
-    expect(surfaces).toContain('HALF 模式页')
-    // Absolute Half needs no nominal reference.
-    expect(surfaces).not.toContain('标称参考值')
+    expectNoHalfProfileCopyEverywhere(surfaces, '0x60')
+    // Per-surface positive statements — each surface on its own.
+    expectSurfacesContain(surfaces, ['explanations', 'steps'], ['标准 IEEE 754 binary16'], '0x60')
+    expectSurfacesContain(surfaces, ['steps'], ['§7.6', 'HALF 模式页'], '0x60')
+    expectSurfacesContain(surfaces, ['alerts'], ['§8.4.4'], '0x60')
+    // Absolute Half needs no nominal reference, on any surface.
+    expect(surfaces.status).not.toContain('标称参考值')
+    expect(surfaces.explanations).not.toContain('标称参考值')
+    expect(surfaces.steps).not.toContain('标称参考值')
+    for (const alert of surfaces.alerts) expect(alert).not.toContain('标称参考值')
 
     // The half-standard warning is informational (warning level), never an
     // error: the byte is a legal configuration.
@@ -108,10 +184,14 @@ test.describe('v2.5.4 standalone VOUT_MODE page — IEEE Half vs DIRECT requirem
 
     await expect(page.getByTestId('vout-mode-status')).toHaveText('相对 IEEE Half（需参考值）')
     const surfaces = await visibleSurfaces(page)
-    expectNoHalfProfileCopy(surfaces, '0xE0')
-    expect(surfaces).toContain('标准 IEEE 754 binary16')
-    expect(surfaces).toContain('标称参考值')
-    expect(surfaces).toContain('§8.5.2')
+    expectNoHalfProfileCopyEverywhere(surfaces, '0xE0')
+    expectSurfacesContain(surfaces, ['status'], ['需参考值'], '0xE0')
+    expectSurfacesContain(
+      surfaces,
+      ['explanations', 'steps'],
+      ['标准 IEEE 754 binary16', '标称参考值', '§8.5.2'],
+      '0xE0',
+    )
   })
 
   test('0x40/0xC0 DIRECT: device m/b/R requirement stays; relative adds the reference', async ({
@@ -124,16 +204,24 @@ test.describe('v2.5.4 standalone VOUT_MODE page — IEEE Half vs DIRECT requirem
     await expandDetails(page)
     await expect(page.getByTestId('vout-mode-status')).toHaveText('绝对 DIRECT（需 m/b/R 系数）')
     const absolute = await visibleSurfaces(page)
-    expect(absolute).toContain('m/b/R')
-    expect(absolute).toContain('§7.4')
-    expect(absolute).not.toContain('标称参考值')
+    expectSurfacesContain(absolute, ['alerts', 'explanations', 'steps'], ['m/b/R', '§7.4'], '0x40')
+    for (const surface of [absolute.status, absolute.explanations, absolute.steps]) {
+      expect(surface, '0x40 must not need a nominal reference').not.toContain('标称参考值')
+    }
 
     await setVoutModeByte(page, 'C0')
     await expandDetails(page)
     await expect(page.getByTestId('vout-mode-status')).toHaveText('相对 DIRECT（需系数与参考值）')
     const relative = await visibleSurfaces(page)
-    expect(relative).toContain('m/b/R')
-    expect(relative).toContain('标称参考值')
+    // The InfoPanel alert ITSELF must state both the coefficients and the
+    // nominal reference — not one of them split across other surfaces.
+    const coeffAlert = relative.alerts.find((a) => a.includes('m/b/R'))
+    expect(coeffAlert, '0xC0 InfoPanel alert with m/b/R').toBeDefined()
+    expect(coeffAlert, '0xC0 InfoPanel alert must also carry the nominal reference').toContain(
+      '标称参考值',
+    )
+    expect(coeffAlert, '0xC0 InfoPanel alert cites §8.5.2').toContain('§8.5.2')
+    expectSurfacesContain(relative, ['explanations', 'steps'], ['m/b/R', '标称参考值'], '0xC0')
   })
 
   test('0x61/0xE1: parameter-invalid error is preserved and no requirement branch fires', async ({
@@ -149,8 +237,11 @@ test.describe('v2.5.4 standalone VOUT_MODE page — IEEE Half vs DIRECT requirem
       await expect(invalid).toBeAttached()
       await expect(invalid).toHaveAttribute('data-level', 'error')
       const surfaces = await visibleSurfaces(page)
-      expectNoHalfProfileCopy(surfaces, `0x${hex}`)
-      expect(surfaces).not.toContain('标准 IEEE 754 binary16')
+      expectNoHalfProfileCopyEverywhere(surfaces, `0x${hex}`)
+      // No requirement branch fires on any surface.
+      for (const text of [surfaces.status, surfaces.explanations, surfaces.steps]) {
+        expect(text, `0x${hex}`).not.toContain('标准 IEEE 754 binary16')
+      }
     }
   })
 
@@ -220,5 +311,107 @@ test.describe('v2.5.4 L16 page — IEEE Half block card never claims a profile',
       const alertText = await alerts.allInnerTexts()
       expectNoHalfProfileCopy(alertText.join('\n'), `L16 alerts 0x${hex}`)
     }
+  })
+})
+
+test.describe('v2.5.5 VOUT_MODE legality — structural validity is separate from calculability', () => {
+  test('0x3E/0x3F carry no illegal alert marker and keep the device-data warning', async ({
+    page,
+  }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+    for (const hex of ['3E', '3F'] as const) {
+      await setVoutModeByte(page, hex)
+      await expandDetails(page)
+
+      // Structurally legal: no alert marker on the config summary and no
+      // alert class on the canonical status chip.
+      await expect(page.getByTestId('vout-mode-status')).toHaveText(
+        'VID code 制造商自定义（需器件资料）',
+      )
+      await expect(page.getByTestId('vout-mode-config-summary')).not.toHaveAttribute(
+        'data-alert',
+        /.*/,
+      )
+      await expect(page.getByTestId('vout-mode-status')).not.toHaveClass(
+        /vout-canonical-status-alert/,
+      )
+
+      // Still needs the device datasheet: explicit warning remains.
+      const profileAlert = page.getByRole('alert').filter({ hasText: '器件资料' }).first()
+      await expect(profileAlert).toBeAttached()
+      await expect(profileAlert).toHaveAttribute('data-level', 'warning')
+
+      // Never described as reserved or illegal; each surface keeps its own
+      // manufacturer-specific branch wording.
+      const surfaces = await visibleSurfaces(page)
+      expectSurfacesContain(surfaces, ['explanations', 'steps'], ['制造商自定义'], hex)
+      for (const [name, text] of surfaceEntries(surfaces)) {
+        expect(text, `${hex} ${name} must not say illegal/reserved`).not.toContain('非法')
+        expect(text, `${hex} ${name} must not say illegal/reserved`).not.toContain('保留')
+      }
+
+      // Normalize must not rewrite a legal manufacturer-specific byte.
+      const before = await page.getByTestId('vout-mode-byte').innerText()
+      const normalize = page.getByRole('button', { name: /规范化|Normalize/ })
+      if ((await normalize.count()) > 0) {
+        await normalize.click()
+        await expect(page.getByTestId('vout-mode-byte')).toHaveText(before)
+      }
+    }
+  })
+
+  test('negative examples keep their non-usable classification', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+
+    // 00h Not Used and an unlisted reserved code: not valid profiles.
+    for (const [hex, expected] of [
+      ['20', 'VID code 00h — 未使用'],
+      ['24', 'VID code 保留'],
+    ] as const) {
+      await setVoutModeByte(page, hex)
+      await expect(page.getByTestId('vout-mode-status')).toContainText(expected)
+      await expect(page.getByTestId('vout-mode-config-summary')).toHaveAttribute(
+        'data-alert',
+        'true',
+      )
+    }
+
+    // Relative + VID stays an invalid combination (§8.5.3).
+    await setVoutModeByte(page, 'A0')
+    await expect(page.getByTestId('vout-mode-status')).toContainText('非法组合')
+    await expect(page.getByRole('alert').filter({ hasText: '非法组合' }).first()).toHaveAttribute(
+      'data-level',
+      'error',
+    )
+
+    // Absolute DIRECT is legal and needs m/b/R; Half parameter error stays.
+    await setVoutModeByte(page, '40')
+    await expect(page.getByTestId('vout-mode-config-summary')).not.toHaveAttribute(
+      'data-alert',
+      /.*/,
+    )
+    await setVoutModeByte(page, '61')
+    await expect(page.getByTestId('vout-mode-status')).toContainText('参数必须为 0')
+    await expect(page.getByTestId('vout-mode-config-summary')).toHaveAttribute('data-alert', 'true')
+  })
+
+  test('L16 page 0x3E fails closed as legal-but-profile-missing, never illegal', async ({
+    page,
+  }) => {
+    await settle(page)
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    await expect(page.locator('#vout-mode-input')).toBeVisible()
+    await page.locator('#vout-mode-input').fill('3E')
+    await page.locator('#vout-mode-input').press('Tab')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x3E')
+
+    await expect(page.locator('#value-input')).toHaveCount(0)
+    await expect(page.locator('[data-testid="result-value"]')).toContainText('—')
+    const card = page.locator('.workspace-l16-block')
+    await expect(card).toContainText('制造商自定义')
+    await expect(card).toContainText('器件资料')
+    await expect(card).not.toContainText('非法')
   })
 })
