@@ -225,3 +225,63 @@ describe('buildCalculationSteps — unified four-mode skeleton', () => {
     }
   })
 })
+
+describe('buildCalculationSteps — VOUT_MODE page DIRECT/Half requirement split (v2.5.4)', () => {
+  const HALF_BANNED = ['需器件资料', '器件 Profile', 'm/b/R', 'DIRECT 系数', '设备数据']
+
+  function voutModeSteps(byte: number) {
+    return buildCalculationSteps(state({ mode: 'VOUT_MODE', voutMode: { byte } }))
+  }
+
+  it('0x60/0xE0 step copy states standard binary16 and never claims device numbers', () => {
+    for (const byte of [0x60, 0xe0]) {
+      const steps = voutModeSteps(byte)
+      const step = steps.find((s) => s.id === 'vout-mode-half')
+      expect(step, `0x${byte.toString(16)}`).toBeDefined()
+      const copy = steps.map((s) => s.plainText).join('\n')
+      expect(copy).toContain('标准 IEEE 754 binary16')
+      for (const banned of HALF_BANNED) {
+        expect(copy, `0x${byte.toString(16)} unexpected copy: ${banned}`).not.toContain(banned)
+      }
+    }
+    // Absolute Half points at the existing HALF converter; only the relative
+    // byte adds the nominal-reference requirement (§8.5.2).
+    const absolute = voutModeSteps(0x60)
+      .map((s) => s.plainText)
+      .join('\n')
+    expect(absolute).toContain('HALF 模式页')
+    expect(absolute).not.toContain('标称参考值')
+    const relative = voutModeSteps(0xe0)
+      .map((s) => s.plainText)
+      .join('\n')
+    expect(relative).toContain('标称参考值')
+    expect(relative).toContain('§8.5.2')
+  })
+
+  it('0x40/0xC0 step copy keeps the device m/b/R requirement', () => {
+    for (const byte of [0x40, 0xc0]) {
+      const steps = voutModeSteps(byte)
+      expect(
+        steps.some((s) => s.id === 'vout-mode-direct'),
+        `0x${byte.toString(16)}`,
+      ).toBe(true)
+      const copy = steps.map((s) => s.plainText).join('\n')
+      expect(copy).toContain('m/b/R')
+      expect(copy).toContain('器件')
+    }
+    expect(voutModeSteps(0x40).some((s) => s.plainText.includes('标称参考值'))).toBe(false)
+    expect(voutModeSteps(0xc0).some((s) => s.plainText.includes('标称参考值'))).toBe(true)
+  })
+
+  it('0x61/0xE1 keep the invalid-parameter step without any format requirement branch', () => {
+    for (const byte of [0x61, 0xe1]) {
+      const steps = voutModeSteps(byte)
+      expect(steps.some((s) => s.id === 'vout-mode-half')).toBe(false)
+      expect(steps.some((s) => s.id === 'vout-mode-direct')).toBe(false)
+      expect(
+        steps.some((s) => s.plainText.includes('00000b')),
+        `0x${byte.toString(16)}`,
+      ).toBe(true)
+    }
+  })
+})
