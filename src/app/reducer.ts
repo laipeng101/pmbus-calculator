@@ -356,9 +356,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'l16/set-slinear-y': {
       if (state.mode !== 'L16' || state.l16.payloadKind !== 'slinear16-offset') return state
       const y = parseIntegerSafe(action.y)
+      // Invalid/transitional input changes nothing — including provenance.
       if (y === null) return state
       const clamped = PMBusMath.clamp(y, -32768, 32767)
-      return { ...state, raw: PMBusMath.fromSigned(clamped, 16) }
+      // A committed Y_s edit rewrites raw behind any prior value request,
+      // so the quantization provenance goes stale exactly like hex/bit edits.
+      return withoutValueRequest({ ...state, raw: PMBusMath.fromSigned(clamped, 16) })
     }
 
     case 'l16/set-nominal-vout': {

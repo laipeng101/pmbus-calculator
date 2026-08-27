@@ -263,6 +263,21 @@ describe('toCalculatorViewModel', () => {
       expect(vm.steps.some((st) => st.id === 'l16-quantization')).toBe(true)
     })
 
+    test('manual Y_s edit invalidates provenance across panel and steps', () => {
+      // Reducer state after value/set 3.3 then l16/set-slinear-y 1.
+      const vm = toCalculatorViewModel(
+        make({
+          ...makeRelativeSlinear(),
+          raw: 0x0001,
+          valueRequest: null,
+        }),
+      )
+      expect(vm.deltaText).toBeUndefined()
+      expect(vm.deltaKind).toBeUndefined()
+      expect(vm.deltaNote).toBeUndefined()
+      expect(vm.steps.some((st) => st.id === 'l16-quantization')).toBe(false)
+    })
+
     test('relative ULINEAR16 context still requires the nominal reference', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x98 } }))
       expect(vm.l16Payload).toMatchObject({

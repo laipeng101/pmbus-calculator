@@ -377,6 +377,27 @@ describe('appReducer — state transitions', () => {
       expect(s.valueRequest).toEqual({ mode: 'L16', value: 3.3 })
     })
 
+    it('manual Y_s edit clears the still-valid value request (P1-B)', () => {
+      const withRequest = appReducer(enterRelativeSlinear(), {
+        type: 'value/set',
+        value: '3.3',
+      })
+      expect(withRequest.valueRequest).toEqual({ mode: 'L16', value: 3.3 })
+      const edited = appReducer(withRequest, { type: 'l16/set-slinear-y', y: '1' })
+      expect(edited.raw).toBe(0x0001)
+      expect(edited.valueRequest).toBeNull()
+    })
+
+    it('invalid Y_s input changes nothing and keeps a valid request', () => {
+      const withRequest = appReducer(enterRelativeSlinear(), {
+        type: 'value/set',
+        value: '3.3',
+      })
+      const edited = appReducer(withRequest, { type: 'l16/set-slinear-y', y: 'abc' })
+      expect(edited.raw).toBe(withRequest.raw)
+      expect(edited.valueRequest).toEqual({ mode: 'L16', value: 3.3 })
+    })
+
     it('SLINEAR16 offset + 0x98 clamps 200 to 0x7FFF (saturation territory)', () => {
       const s0 = enterRelativeSlinear()
       const s = appReducer(s0, { type: 'value/set', value: '200' })

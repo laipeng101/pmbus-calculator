@@ -88,6 +88,25 @@ test.describe('SLINEAR16 offset under relative VOUT_MODE (v2.5.1)', () => {
     await expect(page.locator('#vout-mode-input')).toHaveValue(/98/i)
   })
 
+  test('manual Y_s edit invalidates the panel and the calculation step', async ({ page }) => {
+    await settle(page)
+    await enterRelativeL16(page, 'slinear16-offset')
+    await setValue(page, '3.3')
+    await expect(panel(page)).toContainText('-0.000781')
+
+    // Manual signed Y edit through the formula editor.
+    const ysEditor = page.locator('#l16-v-input')
+    await ysEditor.fill('1')
+    await ysEditor.press('Tab')
+
+    await expect(rawHex(page)).toHaveValue(/0001/i)
+    await expect(panel(page)).toHaveCount(0)
+
+    // Expand the calculation walkthrough: no quantization intermediate.
+    await page.locator('[data-testid="calculation-steps-summary"]').first().click()
+    await expect(page.getByText('格式编码量化误差（请求值 − 表示值）')).toHaveCount(0)
+  })
+
   test('200 saturates to 0x7FFF with the error readout and signed range', async ({ page }) => {
     await settle(page)
     await enterRelativeL16(page, 'slinear16-offset')
