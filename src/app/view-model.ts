@@ -14,11 +14,27 @@ import type { QuantizationOutcome } from './quantization-error'
 import { buildVoutModeExplanations } from './vout-mode-explanation'
 import type { VoutModeExplanation } from './vout-mode-explanation'
 import { effectiveL16VoutMode } from './vout-mode-selector'
+import { resolveL16PayloadContext } from './l16-payload-contract'
+import type { L16FormatSemantics } from './l16-payload-contract'
 
 export interface BitGroupVM {
   nibbleIndex: number
   hex: string
   bits: Array<{ index: number; value: number; label?: string }>
+}
+
+type L16BlockedStatus = Exclude<L16FormatSemantics['status'], 'linear-supported'>
+
+/**
+ * Fail-closed card content for a shared VOUT_MODE byte the L16 page cannot
+ * interpret with LINEAR16 semantics. `status` is machine-checkable and
+ * exhaustively switches over the payload contract (§8.4 / §8.4.2 / §8.5.3 /
+ * §13.3 / §13.4); title/detailLines carry the spec-accurate reason.
+ */
+export interface L16BlockVM {
+  status: L16BlockedStatus
+  title: string
+  detailLines: readonly string[]
 }
 
 /** L16 payload-context contract: UI entry decided by payload, not byte status. */
@@ -32,9 +48,14 @@ export interface L16PayloadContextVM {
   nonLinear: boolean
   /** Format name of the non-LINEAR shared byte (VID / DIRECT / IEEE Half). */
   nonLinearFormat?: string
-  /** VID format prohibits output-voltage commands (§8.4) and the offset
-   *  commands' two's-complement payloads (§13.3/§13.4). */
-  vidProhibited: boolean
+  /**
+   * Present ONLY when the word cannot be interpreted with LINEAR16
+   * semantics on this page state; absent for every active LINEAR state.
+   * VID legality vs prohibition is encoded by the machine status
+   * (`vid-profile-required` is legal-but-profile-missing, NOT prohibited),
+   * so no component re-derives spec claims from booleans.
+   */
+  blocked?: L16BlockVM
   /** Physical-value input and reverse encoding are available on this page. */
   physicalInputAvailable: boolean
   /** Nominal VOUT_COMMAND reference input applies to this page state. */
@@ -296,6 +317,79 @@ function buildVoutModeVM(byte: number, source?: 'linked' | 'non-linear'): VoutMo
   }
 }
 
+/**
+ * Spec-accurate reason text per payload-contract status (v2.5.3). VID is
+ * never described as a globally prohibited format: §8.4.2 supports it, only
+ * VOUT_TRIM / VOUT_CAL_OFFSET are prohibited under VID (§13.3/§13.4) and a
+ * relative byte × VID is invalid outright (§8.5.3).
+ */
+function buildL16BlockVM(
+  semantics: L16FormatSemantics,
+  byteHex: string,
+  formatName: string,
+): L16BlockVM {
+  switch (semantics.status) {
+    case 'linear-supported':
+      throw new Error('linear-supported states have no blocked card')
+    case 'vid-profile-required': {
+      const detailLines = [
+        'VID 是规范支持的输出电压数据格式（Part II §8.4.2），不是被禁止的数据格式。当前页面未选定任何 VID 表或产品 profile，无法在 VID 码与物理电压之间换算，也不允许借用 LINEAR16 指数 N 计算。',
+      ]
+      if (semantics.vidCodeKind === 'profile-required') {
+        detailLines.push(
+          `${byteHex} 的 VID code 为制造商自定义；码表与电压映射必须来自器件资料，本页不提供。`,
+        )
+      }
+      return {
+        status: semantics.status,
+        title: `VOUT_MODE ${byteHex} 为 VID 格式（${semantics.vidCodeLabel}）`,
+        detailLines,
+      }
+    }
+    case 'vid-offset-prohibited':
+      return {
+        status: semantics.status,
+        title: `VOUT_MODE ${byteHex} 为 VID 格式：二补码偏移命令被禁止`,
+        detailLines: [
+          '当前解释类型 SLINEAR16（二补码偏移）对应 VOUT_TRIM / VOUT_CAL_OFFSET 的命令语义；这两类命令在 VID 输出电压格式下被规范明确禁止（Part II §13.3 / §13.4），器件必须拒绝。该命令组合被禁止，本页不生成 word。',
+          '禁止范围仅限这两条二补码偏移命令：VID 本身对其他输出电压相关命令（如 VOUT_COMMAND）是合法数据格式（Part II §8.4.2）。',
+        ],
+      }
+    case 'vid-relative-invalid':
+      return {
+        status: semantics.status,
+        title: `VOUT_MODE ${byteHex} 为相对 + VID 非法组合`,
+        detailLines: [
+          '相对数据格式不适用于 VID（Part II §8.5.3），该 VOUT_MODE 字节组合本身无效。本页不生成 word，也不显示相对比值结果。',
+        ],
+      }
+    case 'direct-profile-required':
+      return {
+        status: semantics.status,
+        title: `VOUT_MODE ${byteHex} 为 DIRECT 格式`,
+        detailLines: [
+          'DIRECT 需要 m / b / R 系数（来自 COEFFICIENTS 或器件资料）才能建立 word 与物理量的映射（Part II §7.4 / §8.4.3）。LINEAR16 页未实现 DIRECT 输出电压解释：不猜测系数，也不借用 LINEAR16 指数 N。本页不生成 word。',
+        ],
+      }
+    case 'half-unsupported-in-l16':
+      return {
+        status: semantics.status,
+        title: `VOUT_MODE ${byteHex} 为 ${formatName} 格式`,
+        detailLines: [
+          'IEEE Half 是合法的输出电压数据格式（Part II §8.4.4），但本页只实现 LINEAR16 解释：不做 Half 解码/编码，也不借用 LINEAR16 指数 N（HALF 模式页可做该格式的数学换算）。本页不生成 word。',
+        ],
+      }
+    case 'reserved-or-invalid':
+      return {
+        status: semantics.status,
+        title: `VOUT_MODE ${byteHex} 无有效解释合同`,
+        detailLines: [
+          `按 Part II §8.3 Table 2，${formatName} 模式的参数位必须为 00000b；当前字节为保留/非法配置（原因：${semantics.reason}），无任何输出电压解释合同。本页不生成 word。`,
+        ],
+      }
+  }
+}
+
 function computeValueText(state: AppState): string {
   try {
     switch (state.mode) {
@@ -384,6 +478,19 @@ function buildWarnings(state: AppState): WarningVM[] {
         level: 'warning',
         text: `当前共享 VOUT_MODE ${formatByteHex(state.voutMode.byte)} 为 ${a.formatName}；输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），LINEAR16 页不隐式替换字节。显式应用默认 0x18 后才恢复计算。`,
       })
+      // The offset-command prohibition is a spec-level error (§13.3/§13.4:
+      // devices must reject VOUT_TRIM / VOUT_CAL_OFFSET under VID), so it is
+      // announced at error level — distinct from the profile questions above.
+      if (
+        resolveL16PayloadContext(state.voutMode.byte, state.l16.payloadKind).semantics.status ===
+        'vid-offset-prohibited'
+      ) {
+        warnings.push({
+          id: 'vout-mode-vid-offset-prohibited',
+          level: 'error',
+          text: `SLINEAR16 偏移 payload 对应 VOUT_TRIM / VOUT_CAL_OFFSET，这两类命令在 VID 输出电压格式下被规范禁止（Part II §13.3 / §13.4）；本页不生成 word。`,
+        })
+      }
     }
 
     if (a.format === 0 && a.isRelative) {
@@ -575,19 +682,24 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   let l16Payload: L16PayloadContextVM | undefined
   if (state.mode === 'L16') {
-    // Always analyze the shared byte — never a substituted 0x18 (v2.5.2).
-    const a = analyzeVoutMode(state.voutMode.byte)
-    const signedOffset = state.l16.payloadKind === 'slinear16-offset'
-    const nonLinear = a.format !== 0
+    // Single semantic resolution of byte × payload (v2.5.3): the shared
+    // byte is analyzed as-is — never a substituted 0x18 (v2.5.2) — and the
+    // discriminated contract decides input availability, blocked copy and
+    // profile questions for every non-LINEAR format.
+    const ctx = resolveL16PayloadContext(state.voutMode.byte, state.l16.payloadKind)
+    const nonLinear = ctx.source === 'non-linear'
+    const a = analyzeVoutMode(ctx.byte)
     l16Payload = {
       kind: state.l16.payloadKind,
-      signedOffset,
-      relativeRatio: !nonLinear && !signedOffset && a.isRelative,
+      signedOffset: ctx.signedOffset,
+      relativeRatio: ctx.relativeRatio,
       nonLinear,
       ...(nonLinear ? { nonLinearFormat: a.formatName } : {}),
-      vidProhibited: nonLinear && a.format === 1,
-      physicalInputAvailable: !nonLinear && (signedOffset || !a.isRelative),
-      requiresNominalReference: !nonLinear && !signedOffset && a.isRelative,
+      ...(ctx.semantics.status !== 'linear-supported'
+        ? { blocked: buildL16BlockVM(ctx.semantics, formatByteHex(ctx.byte), a.formatName) }
+        : {}),
+      physicalInputAvailable: ctx.physicalInputAvailable,
+      requiresNominalReference: ctx.requiresNominalReference,
     }
   }
 

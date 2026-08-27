@@ -119,16 +119,166 @@ describe('toCalculatorViewModel', () => {
       }
     })
 
-    test('VID 0x20 共享字节在 L16 fail-closed 且 VID+SLINEAR 引用禁止条款', () => {
+    test('VID 0x20 + ULINEAR16：VID 合法但缺 profile（v2.5.3），绝不宣称输出电压命令总体禁止 VID', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x20 } }))
       expect(vm.voutModeInfo?.source).toBe('non-linear')
       expect(vm.voutModeInfo?.domainStatus).toBe('not-used')
-      expect(vm.l16Payload?.vidProhibited).toBe(true)
       expect(vm.l16Payload?.nonLinearFormat).toBe('VID')
-      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear')).toBe(true)
-      // No implicit 0x18 channel: no range, no input, no quantization.
+      // v2.5.3 discriminated contract: legal format, missing profile — NOT a
+      // prohibition.
+      expect(vm.l16Payload?.blocked?.status).toBe('vid-profile-required')
+      expect(vm.l16Payload?.blocked?.title).toContain('VID 格式')
+      const copy = [
+        vm.l16Payload?.blocked?.title,
+        ...(vm.l16Payload?.blocked?.detailLines ?? []),
+      ].join('\n')
+      expect(copy).toContain('不是被禁止的数据格式')
+      expect(copy).toContain('§8.4.2')
+      expect(copy).not.toContain('输出电压相关命令禁止')
+      expect(copy).not.toContain('禁止使用 VID')
+      // Fail-closed numerics unchanged: no input, no range, no quantization.
       expect(vm.l16Payload?.physicalInputAvailable).toBe(false)
       expect(vm.nRangeText).toBeUndefined()
+      expect(vm.valueText).toBe('—')
+      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear')).toBe(true)
+    })
+
+    test('VID 0x3E + ULINEAR16：制造商自定义 code 合法，映射来自器件资料；不称保留或禁止', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x3e } }))
+      expect(vm.l16Payload?.blocked?.status).toBe('vid-profile-required')
+      expect(vm.l16Payload?.blocked?.title).toContain('1Eh — 制造商自定义（需器件资料）')
+      const copy = [
+        vm.l16Payload?.blocked?.title,
+        ...(vm.l16Payload?.blocked?.detailLines ?? []),
+      ].join('\n')
+      expect(copy).toContain('器件资料')
+      // Manufacturer-specific codes are legal — they must not be called
+      // reserved or prohibited anywhere in the card copy.
+      expect(copy).not.toContain('保留')
+      expect(copy).not.toContain('输出电压相关命令禁止')
+      expect(copy).not.toContain('该命令组合被禁止')
+    })
+
+    test.each([
+      ['0x20', 0x20],
+      ['0x3e', 0x3e],
+    ] as const)(
+      'VID %s + SLINEAR16：二补码偏移命令按 §13.3/§13.4 规范禁止（error 级）',
+      (_hex, byte) => {
+        const vm = toCalculatorViewModel(
+          make({
+            mode: 'L16',
+            voutMode: { byte },
+            l16: { ...BASE.l16, payloadKind: 'slinear16-offset' },
+          }),
+        )
+        expect(vm.l16Payload?.blocked?.status).toBe('vid-offset-prohibited')
+        const copy = [
+          vm.l16Payload?.blocked?.title,
+          ...(vm.l16Payload?.blocked?.detailLines ?? []),
+        ].join('\n')
+        expect(copy).toContain('§13.3 / §13.4')
+        expect(copy).toContain('VOUT_TRIM / VOUT_CAL_OFFSET')
+        // Prohibition scope is limited to the two offset commands; VID itself
+        // stays a legal format per §8.4.2 — never claim a global ban.
+        expect(copy).toContain('禁止范围仅限这两条二补码偏移命令')
+        expect(copy).not.toContain('输出电压相关命令禁止使用 VID')
+        // Spec-level violation announces an error-level warning.
+        expect(
+          vm.warnings.some(
+            (w) => w.id === 'vout-mode-vid-offset-prohibited' && w.level === 'error',
+          ),
+        ).toBe(true)
+        expect(vm.l16Payload?.physicalInputAvailable).toBe(false)
+        expect(vm.valueText).toBe('—')
+      },
+    )
+
+    test.each(['ulinear16', 'slinear16-offset'] as const)(
+      'relative VID 0xA0 + %s：字节组合无效（§8.5.3），不落入偏移禁止或 profile 分支',
+      (payloadKind) => {
+        const vm = toCalculatorViewModel(
+          make({
+            mode: 'L16',
+            voutMode: { byte: 0xa0 },
+            l16: { ...BASE.l16, payloadKind },
+          }),
+        )
+        expect(vm.l16Payload?.blocked?.status).toBe('vid-relative-invalid')
+        const copy = [
+          vm.l16Payload?.blocked?.title,
+          ...(vm.l16Payload?.blocked?.detailLines ?? []),
+        ].join('\n')
+        expect(copy).toContain('§8.5.3')
+        expect(
+          vm.warnings.some((w) => w.id === 'vout-mode-invalid-combination' && w.level === 'error'),
+        ).toBe(true)
+        expect(vm.formulaText).not.toContain('相对 LINEAR')
+        expect(vm.formulaText).toContain('非 LINEAR')
+      },
+    )
+
+    test('DIRECT 0x40 / IEEE Half 0x60：合法格式但本页无 profile，fail-closed 不猜 N', () => {
+      const direct = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x40 } }))
+      expect(direct.l16Payload?.blocked?.status).toBe('direct-profile-required')
+      const directCopy = [
+        direct.l16Payload?.blocked?.title,
+        ...(direct.l16Payload?.blocked?.detailLines ?? []),
+      ].join('\n')
+      expect(directCopy).toContain('DIRECT')
+      expect(directCopy).toContain('m / b / R')
+      expect(directCopy).toContain('§7.4')
+      expect(directCopy).not.toContain('被禁止')
+
+      const half = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x60 } }))
+      expect(half.l16Payload?.blocked?.status).toBe('half-unsupported-in-l16')
+      const halfCopy = [
+        half.l16Payload?.blocked?.title,
+        ...(half.l16Payload?.blocked?.detailLines ?? []),
+      ].join('\n')
+      expect(halfCopy).toContain('IEEE Half 是合法的输出电压数据格式')
+      expect(halfCopy).toContain('§8.4.4')
+      expect(halfCopy).not.toContain('被禁止')
+
+      // Same contract for the signed-offset payload interpretation.
+      const directOffset = toCalculatorViewModel(
+        make({
+          mode: 'L16',
+          voutMode: { byte: 0x40 },
+          l16: { ...BASE.l16, payloadKind: 'slinear16-offset' },
+        }),
+      )
+      expect(directOffset.l16Payload?.blocked?.status).toBe('direct-profile-required')
+    })
+
+    test('非法参数 0x41/0x61：reserved-or-invalid 合同；error 级警告保持', () => {
+      for (const byte of [0x41, 0x61]) {
+        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
+        expect(vm.l16Payload?.blocked?.status).toBe('reserved-or-invalid')
+        expect(vm.l16Payload?.blocked?.detailLines.join('')).toContain('00000b')
+        expect(
+          vm.warnings.some((w) => w.id === 'vout-mode-invalid-parameter' && w.level === 'error'),
+          `0x${byte.toString(16)}`,
+        ).toBe(true)
+      }
+    })
+
+    test('LINEAR 字节永不出现 blocked 卡：0x18 绝对值与 0x98 偏移恢复完整输入', () => {
+      const abs = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00 }))
+      expect(abs.l16Payload?.blocked).toBeUndefined()
+      expect(abs.l16Payload?.physicalInputAvailable).toBe(true)
+
+      const offset = toCalculatorViewModel(
+        make({
+          mode: 'L16',
+          raw: 0x034d,
+          voutMode: { byte: 0x98 },
+          l16: { ...BASE.l16, payloadKind: 'slinear16-offset' },
+        }),
+      )
+      expect(offset.l16Payload?.blocked).toBeUndefined()
+      expect(offset.l16Payload?.physicalInputAvailable).toBe(true)
+      expect(offset.valueText).toBe('3.30078125')
     })
 
     test('DIRECT/Half 非法/非零参数共享字节在 L16 fail-closed 且 error 级保持', () => {

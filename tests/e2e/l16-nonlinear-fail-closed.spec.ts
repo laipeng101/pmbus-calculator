@@ -1,11 +1,16 @@
 import { test, expect, type Page } from '@playwright/test'
 
 /**
- * v2.5.2 P1 regression: a non-LINEAR shared VOUT_MODE byte must fail closed
- * on the LINEAR16 page. Part II §8.4 — output-voltage-related commands take
- * their data format from the current VOUT_MODE, so the page must never
- * substitute the default 0x18 behind the user's back. Recovery requires the
- * explicit "应用默认 VOUT_MODE" action, which really writes 0x18.
+ * v2.5.2/v2.5.3 regressions: a non-LINEAR shared VOUT_MODE byte must fail
+ * closed on the LINEAR16 page, and the fail-closed copy must be
+ * spec-accurate. Part II §8.4 — output-voltage-related commands take their
+ * data format from the current VOUT_MODE, so the page must never substitute
+ * the default 0x18 behind the user's back. §8.4.2 — VID is a SUPPORTED
+ * output-voltage data format: the page may only say "legal but missing a
+ * table/profile", NEVER "output-voltage commands prohibit VID". The spec's
+ * own prohibitions are narrow: VOUT_TRIM / VOUT_CAL_OFFSET under VID
+ * (§13.3/§13.4) and relative × VID (§8.5.3). Recovery requires the explicit
+ * "应用默认 VOUT_MODE" action, which really writes 0x18.
  * These cases drive the real UI on both desktop and mobile projects.
  */
 
@@ -35,20 +40,49 @@ function rawHex(page: Page) {
   return page.locator('#raw-hex-input')
 }
 
-test.describe('L16 non-LINEAR VOUT_MODE fail-closed (v2.5.2)', () => {
-  test('0x20 + SLINEAR16 is VID-prohibited: no input, no encode, no word', async ({ page }) => {
+function blockCard(page: Page) {
+  return page.locator('.workspace-l16-block')
+}
+
+function legend(page: Page) {
+  return page.locator('.bitfield[data-bit-count="16"] .bitfield-legend')
+}
+
+async function expectFailClosedBaseline(page: Page) {
+  // No physical-value entry, no pseudo range, no result, no quantization.
+  await expect(page.locator('#value-input')).toHaveCount(0)
+  await expect(page.locator('#l16-nominal-vout')).toHaveCount(0)
+  await expect(page.getByText(/可表示范围/)).toHaveCount(0)
+  await expect(panel(page)).toHaveCount(0)
+  await expect(page.locator('[data-testid="result-value"]')).toContainText('—')
+  // The raw word legend is neutral — it never promises LINEAR16 V/Y.
+  await expect(legend(page)).toContainText('未按 LINEAR16 解释')
+  await expect(legend(page)).not.toContainText('数值 V [15:0]')
+  await expect(legend(page)).not.toContainText('有符号值 Y [15:0]')
+}
+
+test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () => {
+  test('0x20 + SLINEAR16 is prohibited per §13.3/§13.4 only — not a global VID ban', async ({
+    page,
+  }) => {
     await settle(page)
     await enterL16(page, '20', 'slinear16-offset')
 
-    // Fail closed: no physical-value entry, no pseudo range, no result.
-    await expect(page.locator('#value-input')).toHaveCount(0)
-    await expect(page.locator('#l16-nominal-vout')).toHaveCount(0)
-    await expect(page.locator('.workspace-l16-block')).toBeVisible()
-    await expect(page.locator('.workspace-l16-block')).toContainText('禁止')
-    await expect(page.locator('.workspace-l16-block')).toContainText('§13.3/§13.4')
-    await expect(page.locator('[data-testid="result-value"]')).toContainText('—')
-    await expect(page.getByText(/可表示范围/)).toHaveCount(0)
-    await expect(panel(page)).toHaveCount(0)
+    await expectFailClosedBaseline(page)
+    // Prohibition named for exactly the two offset commands.
+    const card = blockCard(page)
+    await expect(card).toBeVisible()
+    await expect(card).toContainText('禁止')
+    await expect(card).toContainText('§13.3 / §13.4')
+    await expect(card).toContainText('VOUT_TRIM / VOUT_CAL_OFFSET')
+    await expect(card).toContainText('禁止范围仅限这两条二补码偏移命令')
+    // And the over-broad v2.5.2 claim must be gone for good.
+    await expect(card).not.toContainText('输出电压相关命令禁止使用 VID')
+    await expect(card).not.toContainText('输出电压相关命令禁止使用')
+    // Spec-level violation announces an error-level alert next to the card.
+    const offsetAlert = page.getByRole('alert').filter({ hasText: '§13.3 / §13.4' }).first()
+    await expect(offsetAlert).toBeAttached()
+    await expect(offsetAlert).toHaveAttribute('data-level', 'error')
 
     // The composer shows the ACTUAL shared byte, never a substituted 0x18.
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x20')
@@ -59,25 +93,65 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed (v2.5.2)', () => {
     await expect(rawHex(page)).toHaveValue(/0000/i)
   })
 
-  test('0x40 DIRECT and 0x60 IEEE Half never guess N or a profile', async ({ page }) => {
+  test('0x20 + ULINEAR16: VID is legal but needs a selected table/profile', async ({ page }) => {
     await settle(page)
-    for (const [hex, formatName] of [
-      ['40', 'DIRECT'],
-      ['60', 'IEEE Half'],
-    ] as const) {
+    await enterL16(page, '20', 'ulinear16')
+
+    await expectFailClosedBaseline(page)
+    const card = blockCard(page)
+    await expect(card).toContainText('VID 格式')
+    // Legal-format wording present…
+    await expect(card).toContainText('不是被禁止的数据格式')
+    await expect(card).toContainText('§8.4.2')
+    await expect(card).toContainText('未选定任何 VID 表或产品 profile')
+    // …the historical over-claim absent…
+    await expect(card).not.toContainText('输出电压相关命令禁止使用')
+    await expect(card).not.toContainText('该命令组合被禁止')
+    // …and the InfoPanel keeps calling code 00h what §8.4.2 Table 3 calls it.
+    await expect(page.getByRole('alert').filter({ hasText: 'VID code 00h' }).first()).toBeAttached()
+  })
+
+  test('0x3E + ULINEAR16: manufacturer-specific VID is legal, mapping from device data', async ({
+    page,
+  }) => {
+    await settle(page)
+    await enterL16(page, '3E', 'ulinear16')
+
+    await expectFailClosedBaseline(page)
+    const card = blockCard(page)
+    await expect(card).toContainText('1Eh — 制造商自定义（需器件资料）')
+    await expect(card).toContainText('器件资料')
+    await expect(card).not.toContainText('输出电压相关命令禁止使用')
+    await expect(card).not.toContainText('保留')
+    // The §8.4.2 VID-code note agrees: manufacturer-defined mapping comes
+    // from the product literature, and this byte is neither banned nor
+    // called reserved.
+    await expect(page.getByRole('alert').filter({ hasText: '制造商自定义' }).first()).toBeAttached()
+  })
+
+  test('0x40 DIRECT and 0x60 IEEE Half stay fail-closed without guessing N or a profile', async ({
+    page,
+  }) => {
+    await settle(page)
+    for (const hex of ['40', '60'] as const) {
       await enterL16(page, hex, 'ulinear16')
-      await expect(page.locator('#value-input')).toHaveCount(0)
-      await expect(page.locator('.workspace-l16-block')).toContainText(formatName)
-      await expect(page.locator('.workspace-l16-block')).toContainText(
-        '需要相应 format/profile/coefficients',
-      )
-      await expect(page.locator('[data-testid="result-value"]')).toContainText('—')
-      await expect(page.getByText(/可表示范围/)).toHaveCount(0)
+      await expectFailClosedBaseline(page)
+      const card = blockCard(page)
+      await expect(card).toContainText(hex === '40' ? 'DIRECT 格式' : 'IEEE Half 格式')
+      if (hex === '40') {
+        await expect(card).toContainText('m / b / R')
+        await expect(card).toContainText('不猜测系数')
+      } else {
+        await expect(card).toContainText('本页只实现 LINEAR16 解释')
+        await expect(card).toContainText('HALF 模式页')
+      }
       await expect(page.getByTestId('vout-mode-byte')).toHaveText(`0x${hex}`)
     }
   })
 
-  test('invalid parameters 0x41/0x61 keep the error-level warning', async ({ page }) => {
+  test('invalid parameters 0x41/0x61 keep the error-level warning and neutral legend', async ({
+    page,
+  }) => {
     await settle(page)
     for (const hex of ['41', '61']) {
       await enterL16(page, hex, 'ulinear16')
@@ -88,8 +162,31 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed (v2.5.2)', () => {
         .first()
       await expect(invalidParamAlert).toBeAttached()
       await expect(invalidParamAlert).toHaveAttribute('data-level', 'error')
+      await expect(blockCard(page)).toContainText('无有效解释合同')
       await expect(page.locator('[data-testid="result-value"]')).toContainText('—')
+      await expect(legend(page)).toContainText('未按 LINEAR16 解释')
     }
+  })
+
+  test('relative VID 0xA0: the byte combination itself is invalid per §8.5.3', async ({ page }) => {
+    await settle(page)
+    await enterL16(page, 'A0', 'ulinear16')
+
+    await expectFailClosedBaseline(page)
+    const card = blockCard(page)
+    await expect(card).toContainText('相对 + VID 非法组合')
+    await expect(card).toContainText('§8.5.3')
+    await expect(card).not.toContainText('输出电压相关命令禁止使用')
+    // The existing byte-level error remains.
+    const invalidCombination = page.getByRole('alert').filter({ hasText: '§8.5.3' }).first()
+    await expect(invalidCombination).toBeAttached()
+    await expect(invalidCombination).toHaveAttribute('data-level', 'error')
+
+    // Switching payloads must not turn the invalid byte into a computable
+    // signed-offset state either.
+    await page.locator('#l16-payload-kind').selectOption('slinear16-offset')
+    await expect(blockCard(page)).toContainText('相对 + VID 非法组合')
+    await expect(page.locator('#value-input')).toHaveCount(0)
   })
 
   test('explicit apply of the default byte writes 0x18 and restores encoding', async ({ page }) => {
@@ -113,8 +210,23 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed (v2.5.2)', () => {
 
     // Quantization readout is back too — exact at this vector.
     await expect(panel(page)).toContainText('0.000000 (0.0000%)')
-    // The blocking card is gone.
-    await expect(page.locator('.workspace-l16-block')).toHaveCount(0)
+    // The blocking card is gone and the payload legend returns.
+    await expect(blockCard(page)).toHaveCount(0)
+    await expect(legend(page)).toContainText('有符号值 Y [15:0]')
+    await expect(legend(page)).not.toContainText('未按 LINEAR16 解释')
+  })
+
+  test('explicit apply also restores absolute ULINEAR16 value input from 0x3E', async ({
+    page,
+  }) => {
+    await settle(page)
+    await enterL16(page, '3E', 'ulinear16')
+    await expect(page.locator('#value-input')).toHaveCount(0)
+
+    await page.getByRole('button', { name: '应用默认 VOUT_MODE' }).click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
+    await expect(page.locator('#value-input')).toBeVisible()
+    await expect(legend(page)).toContainText('数值 V [15:0]')
   })
 
   test('calculation walkthrough shows the fail-closed notice without pseudo N', async ({
