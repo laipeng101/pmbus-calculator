@@ -21,6 +21,19 @@ export interface BitGroupVM {
   bits: Array<{ index: number; value: number; label?: string }>
 }
 
+/** L16 payload-context contract: UI entry decided by payload, not byte status. */
+export interface L16PayloadContextVM {
+  kind: 'ulinear16' | 'slinear16-offset'
+  /** Signed command payload (§13.3/§13.4) — bit7 not part of its math. */
+  signedOffset: boolean
+  /** ULINEAR16 + relative byte: dimensionless ratio semantics. */
+  relativeRatio: boolean
+  /** Physical-value input and reverse encoding are available on this page. */
+  physicalInputAvailable: boolean
+  /** Nominal VOUT_COMMAND reference input applies to this page state. */
+  requiresNominalReference: boolean
+}
+
 export interface WarningVM {
   id: string
   level: 'info' | 'warning' | 'error'
@@ -102,6 +115,13 @@ export interface CalculatorViewModel {
   bitGroups: BitGroupVM[]
   commandNote?: string
   nRangeText?: string
+  /**
+   * L16 only: payload-context contract (v2.5.1). Byte-level VOUT_MODE
+   * status alone cannot decide UI entry — the signed offset payload
+   * (Part II §13.3/§13.4) ignores bit7, while relative ULINEAR16 is a
+   * ratio that needs a nominal reference and has no reverse encode.
+   */
+  l16Payload?: L16PayloadContextVM
   voutModeInfo?: VoutModeInfoVM
   voutModePage?: VoutModeInfoVM
   /** DIRECT mode: signed Y derived from raw via toSigned(raw, 16). */
@@ -355,10 +375,16 @@ function buildWarnings(state: AppState): WarningVM[] {
     }
 
     if (a.format === 0 && a.isRelative) {
+      // The nominal-reference note describes relative ULINEAR16 ratio
+      // semantics only; the signed offset payload (§13.3/§13.4) ignores
+      // bit7 and computes without a nominal.
+      const signedOffset = state.mode === 'L16' && state.l16.payloadKind === 'slinear16-offset'
       warnings.push({
         id: 'vout-mode-relative',
         level: 'info',
-        text: `VOUT_MODE ${hex} 为相对 LINEAR；需要 VOUT_COMMAND 标称参考值才能计算最终电压。`,
+        text: signedOffset
+          ? `VOUT_MODE ${hex} 的 bit7 为相对值，但仅作用于 §8.5 相对阈值命令；当前 SLINEAR16 offset 是有符号命令 payload（§13.3/§13.4），bit7 不参与其数学，无需标称参考值。`
+          : `VOUT_MODE ${hex} 为相对 LINEAR；需要 VOUT_COMMAND 标称参考值才能计算最终电压。`,
       })
     } else if (a.status === 'invalid-combination') {
       warnings.push({
@@ -529,20 +555,30 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     const p = PMBusMath.pow2(decodedL11.n)
     nRangeText = `${formatNumber(-1024 * p)} ~ ${formatNumber(1023 * p)}`
   } else if (state.mode === 'L16') {
-    // Only absolute LINEAR VOUT_MODE has a LINEAR16 V×2^N range; relative
-    // LINEAR is a ratio and VID/DIRECT/IEEE Half are not LINEAR16 at all.
+    // Payload semantics first: the signed offset range applies to ANY
+    // LINEAR byte (bit7 not part of its math); absolute ULINEAR16 keeps the
+    // unsigned range; relative ULINEAR16 is a ratio with no voltage range.
     const eff = effectiveL16VoutMode(state)
     const a = analyzeVoutMode(eff.byte)
-    if (a.format === 0 && a.isRelative === false && state.l16.payloadKind === 'ulinear16') {
-      const p = PMBusMath.pow2(a.linearExponent ?? 0)
-      nRangeText = '0 ~ ' + formatNumber(65535 * p)
-    } else if (
-      a.format === 0 &&
-      a.isRelative === false &&
-      state.l16.payloadKind === 'slinear16-offset'
-    ) {
+    if (a.format === 0 && state.l16.payloadKind === 'slinear16-offset') {
       const p = PMBusMath.pow2(a.linearExponent ?? 0)
       nRangeText = `${formatNumber(-32768 * p)} ~ ${formatNumber(32767 * p)}`
+    } else if (a.format === 0 && a.isRelative === false) {
+      const p = PMBusMath.pow2(a.linearExponent ?? 0)
+      nRangeText = '0 ~ ' + formatNumber(65535 * p)
+    }
+  }
+
+  let l16Payload: L16PayloadContextVM | undefined
+  if (state.mode === 'L16') {
+    const a = analyzeVoutMode(effectiveL16VoutMode(state).byte)
+    const signedOffset = state.l16.payloadKind === 'slinear16-offset'
+    l16Payload = {
+      kind: state.l16.payloadKind,
+      signedOffset,
+      relativeRatio: !signedOffset && a.isRelative,
+      physicalInputAvailable: a.format === 0 && (signedOffset || !a.isRelative),
+      requiresNominalReference: !signedOffset && a.isRelative,
     }
   }
 
@@ -607,6 +643,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     directY: state.mode === 'DIRECT' ? PMBusMath.toSigned(raw, 16) : undefined,
     commandNote: getCommandConfig(state.commandKey)?.note,
     nRangeText,
+    l16Payload,
     voutModeInfo,
     voutModePage,
     visible: {

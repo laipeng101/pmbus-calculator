@@ -30,8 +30,9 @@
 ### 2.2 LINEAR16
 
 - 手动 V 输入和 `raw/set` 必须 clamp 到 `0..65535`，不得使用 `raw & 0xffff` 回绕。
-- reducer/domain 层在 **relative LINEAR** 共享字节下必须拒绝 `value/set` 生成 LINEAR16
-  编码——不能只靠隐藏 UI 输入阻止错误状态。
+- reducer/domain 层在 **relative LINEAR + ULINEAR16（比值语义）** 下必须拒绝 `value/set`
+  生成 LINEAR16 编码——不能只靠隐藏 UI 输入阻止错误状态。拒绝按 payload 上下文判定，
+  而非字节级 status：
 - 非 LINEAR 共享字节（VID / DIRECT / IEEE Half 格式）遵循 §3 的 fallback 契约：`value/set`
   按回退后的 `DEFAULT_LINEAR_VOUT_MODE = 0x18`（N=-8）继续编码，不静默改写共享字节；
   UI 必须同时显示 fallback 徽标/说明，量化误差读数必须标注「按 fallback 0x18 计算」。
@@ -45,7 +46,13 @@
     `X = V_NOM × R`（`raw=0` 时 `R=0`，规范要求 relative value 为正，标记为非符合性）。
   - `SLINEAR16 offset`：`X_offset = Y_s × 2^N`，`Y_s` 是 16 位二补码 `-32768..32767`
     （Part II §13.3 VOUT_TRIM / §13.4 VOUT_CAL_OFFSET）；bit7 不参与该 payload 的数学，
-    相对 + 有符号比例是伪标准组合，不提供。
+    相对 + 有符号比例是伪标准组合，不提供。编码顺序契约（v2.5.1）：`value/set` 先判
+    **effective format 非 LINEAR 才拒绝**（non-LINEAR 共享字节仍按 §3 fallback 0x18 变为
+    effective LINEAR），再按 payload 判定——`slinear16-offset` 在**任意 LINEAR 字节**
+    （含 bit7=1，如 0x98）下按 signed 16-bit 编码并记录 provenance；`ulinear16` + relative
+    拒绝；absolute ULINEAR 保持 `0..65535` 行为。可编码范围（`encodableRange`）同样
+    payload 优先：signed payload 适用 `-32768..32767 × 2^N`，与 bit7 无关——
+    0x98 / N=-8 的范围是 `-128..127.99609375`，`200 → 0x7FFF` 分类为 saturated/error。
 - `raw/set-from-hex` 使用严格十六进制解析：可选 `0x`/`0X` 前缀与首尾空白；必须整串匹配，最多 4 位十六进制数字；非法、只有 `0x`、超长输入均报错且不修改 `state.raw`；空输入按 0 处理。不再通过 `& 0xffff` 静默截断超长输入。
 
 ### 2.3 DIRECT
@@ -140,7 +147,8 @@
   最后一次成功提交的 `value/set`。L11 使用历史通道 `l11.valueInput`；L16/DIRECT/HALF
   共享模式标签的 `state.valueRequest`（`{ mode, value }`），防止跨页污染。
 - 以下任一动作会使请求失效（provenance 清除，误差变为**未知**）：
-  - 任何不经物理值输入的 raw 变更（Hex 输入、bit toggle、`raw/set`、DIRECT Y）；
+  - 任何不经物理值输入的 raw 变更（Hex 输入、bit toggle、`raw/set`、DIRECT Y、
+    SLINEAR16 手动 `l16/set-slinear-y`）；
   - 改变编码解释的状态变更（DIRECT m/b/R、L16 payload kind、任何 VOUT_MODE 字节变更）；
   - 切换到另一个模式。重复选择当前模式是幂等 no-op，**不清除**请求。
 - 没有请求来源时 UI **必须隐藏**误差读数——禁止伪造 `+0.000000 (0.0000%)`。

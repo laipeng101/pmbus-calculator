@@ -185,7 +185,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
             </div>
 
             {/* Relative ULINEAR16: nominal VOUT_COMMAND reference */}
-            {vm.voutModeInfo?.isRelative && state.l16.payloadKind === 'ulinear16' && (
+            {vm.l16Payload?.requiresNominalReference && (
               <NominalVoutInput
                 id="l16-nominal-vout"
                 value={state.l16.nominalVout}
@@ -194,7 +194,13 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               />
             )}
 
-            {vm.voutModeInfo?.status === 'ok' ? (
+            {/*
+             * Physical-value entry is decided by the payload context, not by
+             * the byte-level VOUT_MODE status: the signed offset payload
+             * (§13.3/§13.4) ignores bit7, so 0x98 + SLINEAR16 keeps its
+             * input; only relative ULINEAR16 (a ratio) blocks reverse encode.
+             */}
+            {vm.l16Payload?.physicalInputAvailable ? (
               <>
                 {/* Physical value input — encodes via value / 2^N */}
                 <ValueInput vm={vm} dispatch={dispatch} />
@@ -207,8 +213,10 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
                 <p className="mb-2">
                   VOUT_MODE {vm.voutModeInfo?.hex} 为 {vm.voutModeInfo?.statusText}
-                  ；本页在相对 LINEAR 下解出比值并需 VOUT_COMMAND 标称参考值，非绝对 LINEAR
-                  不给出伪造的 LINEAR16 电压结果。
+                  ；当前数据解释为相对比值 R = Y_u × 2^N（仅适用于 §8.5 列出的相对阈值 命令），需
+                  VOUT_COMMAND 标称参考值才能得到最终电压；本页不提供其物理值
+                  反向编码，也不给出伪造的 LINEAR16 电压结果。SLINEAR16（二补码偏移） 解释不受 bit7
+                  影响并保留物理值输入。
                 </p>
               </div>
             )}

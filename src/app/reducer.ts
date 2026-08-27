@@ -70,17 +70,20 @@ function encodeL11FromValue(state: AppState, value: number): AppState {
 /**
  * Encode a physical value into the LINEAR16 payload word.
  *
- * - ULINEAR16 + Absolute LINEAR: Y_u = round(X / 2^N), clamp 0..65535.
- * - SLINEAR16 offset: Y_s = round(X_offset / 2^N), clamp -32768..32767.
- *
- * Relative LINEAR is a ratio (not a physical voltage), and non-LINEAR
- * VOUT_MODE is not a LINEAR16 payload at all — both are refused here so the
- * reducer cannot fabricate an encoding behind a hidden input.
+ * Order matters (Part II §8.5 vs §13.3/§13.4):
+ * - SLINEAR16 offset is a signed command payload (VOUT_TRIM /
+ *   VOUT_CAL_OFFSET): bit7 belongs to another command group and does not
+ *   participate in its math, so it encodes for ANY LINEAR byte including
+ *   relative ones such as 0x98.
+ * - ULINEAR16 + relative LINEAR is a dimensionless ratio — no reverse encode.
+ * - ULINEAR16 + absolute LINEAR keeps the V = X / 2^N behaviour.
+ * - Non-LINEAR shared bytes never reach a payload decision: the effective
+ *   byte falls back to 0x18 (see effectiveL16VoutMode), which is LINEAR.
  */
 function encodeL16FromValue(state: AppState, value: number): AppState {
   const eff = effectiveL16VoutMode(state)
   const a = analyzeVoutMode(eff.byte)
-  if (a.format !== 0 || a.isRelative) return state
+  if (a.format !== 0) return state
   const n = a.linearExponent ?? 0
   if (state.l16.payloadKind === 'slinear16-offset') {
     return {
@@ -89,6 +92,8 @@ function encodeL16FromValue(state: AppState, value: number): AppState {
       valueRequest: { mode: 'L16', value },
     }
   }
+  // Relative ULINEAR16 is a ratio, not a reverse-encodable physical value.
+  if (a.isRelative) return state
   return {
     ...state,
     raw: PMBusMath.encodeUlinear16(value, n),
@@ -351,9 +356,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'l16/set-slinear-y': {
       if (state.mode !== 'L16' || state.l16.payloadKind !== 'slinear16-offset') return state
       const y = parseIntegerSafe(action.y)
+      // Invalid/transitional input changes nothing — including provenance.
       if (y === null) return state
       const clamped = PMBusMath.clamp(y, -32768, 32767)
-      return { ...state, raw: PMBusMath.fromSigned(clamped, 16) }
+      // A committed Y_s edit rewrites raw behind any prior value request,
+      // so the quantization provenance goes stale exactly like hex/bit edits.
+      return withoutValueRequest({ ...state, raw: PMBusMath.fromSigned(clamped, 16) })
     }
 
     case 'l16/set-nominal-vout': {

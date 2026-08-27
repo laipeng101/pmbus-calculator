@@ -80,14 +80,18 @@ function encodableRange(state: AppState): { min: number; max: number } | null {
         ? { min: PMBusMath.minLinear11(), max: PMBusMath.maxLinear11() }
         : PMBusMath.linear11RangeForN(state.l11.n)
     case 'L16': {
-      // Only absolute LINEAR VOUT_MODE exposes a physical-value input.
+      // Payload semantics come first (Part II §13.3/§13.4): the signed
+      // offset range applies to ANY LINEAR byte — bit7 does not participate.
       const eff = effectiveL16VoutMode(state)
       const a = analyzeVoutMode(eff.byte)
-      if (a.format !== 0 || a.isRelative) return null
+      if (a.format !== 0) return null
       const p = PMBusMath.pow2(a.linearExponent ?? 0)
-      return state.l16.payloadKind === 'slinear16-offset'
-        ? { min: -32768 * p, max: 32767 * p }
-        : { min: 0, max: 65535 * p }
+      if (state.l16.payloadKind === 'slinear16-offset') {
+        return { min: -32768 * p, max: 32767 * p }
+      }
+      // Relative ULINEAR16 is a ratio: no bounded physical-value channel.
+      if (a.isRelative) return null
+      return { min: 0, max: 65535 * p }
     }
     case 'DIRECT': {
       if (state.direct.m === 0) return null

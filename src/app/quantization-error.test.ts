@@ -166,6 +166,22 @@ describe('computeQuantizationOutcome — LINEAR16', () => {
     }
   })
 
+  it('SLINEAR16 offset + 0x98 clamps 200 to the signed boundary (saturated)', () => {
+    // Y_s = round(200 × 256) clamps to 32767 → 127.99609375; the bounded
+    // signed range makes this saturated/error, never quantized/warn.
+    const q = computeQuantizationOutcome(
+      make({
+        mode: 'L16',
+        raw: 0x7fff,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'slinear16-offset', nominalVout: null },
+        valueRequest: { mode: 'L16', value: 200 },
+      }),
+    )
+    expect(q?.status).toBe('saturated')
+    expect(q?.represented).toBe(127.99609375)
+  })
+
   it('SLINEAR16 offset keeps signed semantics even when bit7 is relative', () => {
     // 0x98 = relative LINEAR; payload kind wins for the offset semantics
     // (Part II §13.3/§13.4: bit7 does not participate in the offset math).
