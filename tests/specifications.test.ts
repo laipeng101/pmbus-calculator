@@ -29,6 +29,14 @@ const ALLOWED_DOWNLOAD_URL =
 const ALLOWED_DOWNLOAD_URL_2 =
   'https://pmbusprod.wpenginepowered.com/wp-content/uploads/2022/01/doc-2.pdf'
 
+// Fixture repos and spawned scripts must be standalone: git exports GIT_DIR /
+// GIT_INDEX_FILE (and friends) to child processes, so under `git commit`
+// (simple-git-hooks pre-commit) they would address the OUTER repository.
+// Vitest runs each test file in its own worker, so this cleanup is scoped.
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith('GIT_')) delete process.env[key]
+}
+
 const roots: string[] = []
 
 async function makeTempRoot() {

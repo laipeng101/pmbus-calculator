@@ -7,6 +7,15 @@ import { checkRepoHygiene, gitIndexSizes, gitLsFiles, MiB } from '../scripts/che
 
 const roots: string[] = []
 
+// Nested fixture repos and spawned scripts must be standalone: git exports
+// GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE (and friends) to child processes,
+// so under `git commit` (simple-git-hooks pre-commit) they would otherwise
+// address the OUTER repository's index and hooks instead of the fixture.
+// Vitest runs each test file in its own worker, so this cleanup is scoped.
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith('GIT_')) delete process.env[key]
+}
+
 async function makeTempRoot() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pmbus-hygiene-test-'))
   roots.push(root)
