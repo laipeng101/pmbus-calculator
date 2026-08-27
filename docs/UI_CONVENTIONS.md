@@ -223,3 +223,10 @@
   主值下方，不得挤占主值行或造成换行溢出。
 - 计算过程中的量化步骤（`<mode>-quantization` intermediate）与面板使用同一文案来源，
   label 为「格式编码量化误差（请求值 − 表示值）」。
+- L16 物理值输入与标称参考门槛由 **payload 上下文**（view-model `l16Payload`）决定，
+  不以字节级 VOUT_MODE status 为唯一条件（v2.5.1）：`SLINEAR16 offset` 在任意 LINEAR
+  字节（含 0x98 等 bit7=1）下保留物理值输入、signed 编码、范围与量化读数，且必须出现
+  「bit7 对本 payload 不参与数学」说明；`ULINEAR16` + relative 才显示标称参考输入、
+  relative 警示与阻断卡，阻断卡不得宣称 signed offset 页「需要 nominal」。
+- 手动 `l16/set-slinear-y` 是 raw 变更：提交后面板隐藏（组件返回 null）、计算步骤
+  不再包含量化 intermediate；非法/过渡输入不得改变 raw，也不得清除仍有效的请求。
