@@ -4,6 +4,30 @@
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-08-27
+
+### Fixed
+
+- **非 LINEAR 共享 VOUT_MODE 被隐式替换为 0x18 后继续 LINEAR16 编码（P1）**：v2.5.1 中
+  共享字节为 VID / DIRECT / IEEE Half 时，LINEAR16 页面静默回退到
+  `DEFAULT_LINEAR_VOUT_MODE = 0x18` 并继续编码——`0x20 + SLINEAR16` 下输入 `1` 生成
+  `raw=0x0100`、显示 `1` 与 `0%` 量化误差，仅以 fallback 标注（Part II §8.4：输出电压
+  相关命令的数据格式由当前 VOUT_MODE 决定，不能静默改用另一个字节）。现在
+  fail closed：`effectiveL16VoutMode` 返回实际共享字节（`source: 'non-linear'`），
+  `value/set` 对非 LINEAR 共享字节 no-op（不生成 raw、不伪造 provenance），结果为
+  `—`、无伪「可表示范围」、无量化面板、计算步骤无伪 N/伪 V；VID 阻断卡引用
+  §8.4 + §13.3/§13.4（禁止组合、不生成 word），DIRECT / IEEE Half 声明需要相应
+  format/profile/coefficients、不猜测 N；invalid-parameter / invalid-combination
+  保持 error 级。恢复编码的唯一路径是显式「应用默认 VOUT_MODE」
+  （`l16/apply-default-vout-mode`）——真实写入 `0x18` 并清除旧 provenance 后，
+  输入、范围、结果与量化读数恢复。
+- **默认 E2E 套件混入 deployment 用例**：默认 `playwright.config.ts` 现在排除
+  `deployment.spec.ts`；Pages smoke 只由 `playwright.deployment.config.ts` 对正式
+  URL 运行。口径：默认 326 tests / 15 files（无 URL-gated skip），deployment
+  4 tests / 1 file。
+- **测试基建**：嵌套 git fixture 仓库不再继承 `git commit` 钩子导出的 `GIT_*`
+  环境变量（pre-commit 下运行会寻址外层仓库 index）。
+
 ## [2.5.1] - 2026-08-27
 
 ### Fixed

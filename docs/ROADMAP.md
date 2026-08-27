@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-27（v2.5.1 SLINEAR16 offset bit7 可达性 + provenance PATCH）
+最后更新：2026-08-27（v2.5.2 非 LINEAR VOUT_MODE fail-closed + E2E 口径隔离 PATCH）
 
 ## 当前产品基线
 
@@ -28,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.1；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.2；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -60,7 +60,8 @@ M0–M39 complete；stable release v2.5.1；production distribution: GitHub Page
 - M41（v2.5.1）：SLINEAR16 offset 在 bit7=1 时的物理输入可达性（payload 上下文取代
   字节级 status 判定）与手动 Y_s provenance 失效；DOMAIN_MODEL §2.2/§6.1 与
   UI_CONVENTIONS §15 契约同步。complete。
-- 当前：v2.5.1 已发布；M40–M41 complete；无进行中的功能里程碑。
+- v2.5.2（PATCH）：非 LINEAR 共享 VOUT_MODE 在 L16 页 fail closed（Part II §8.4，移除隐式 0x18 回退；显式 apply-default 恢复），默认 E2E 与 deployment smoke 口径隔离。
+- 当前：v2.5.2 已发布；M40–M41 complete；无进行中的功能里程碑。
 
 ## 下一产品目标
 
