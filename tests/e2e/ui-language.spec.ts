@@ -115,7 +115,7 @@ test.describe('M39 中文优先界面语言合同', () => {
       },
     },
     {
-      name: 'L16 fallback 默认回退 0x20',
+      name: 'L16 非 LINEAR fail-closed 0x20',
       run: async (page) => {
         await page.getByRole('tab', { name: /LINEAR16/ }).click()
         await page.locator('#vout-mode-input').fill('20')
