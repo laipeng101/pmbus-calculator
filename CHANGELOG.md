@@ -4,6 +4,33 @@
 
 ## [Unreleased]
 
+## [2.5.3] - 2026-08-27
+
+### Fixed
+
+- **VID 数据格式被错误描述为「输出电压相关命令禁止使用 VID」（P1）**：v2.5.2 的
+  fail-closed 数值行为有效，但阻断文案把 §8.4.2 支持的 VID 格式扩大成了全局禁令，
+  制造商自定义 code（raw `0x3E`/`0x3F`）也被一并归为禁止。现在 L16 × VOUT_MODE 组合
+  由 discriminated contract（`src/app/l16-payload-contract.ts`）统一判定并驱动文案、
+  输入可用性、warning 级别与测试：
+  - 绝对 VID + 数值 payload → `vid-profile-required`：VID 合法但本页未选定 VID 表 /
+    产品 profile，不能换算 code ↔ 电压，也不借用 LINEAR16 指数 N；不再出现
+    「输出电压相关命令禁止使用 VID」；
+  - 绝对 VID + SLINEAR16 offset → `vid-offset-prohibited`：仅 VOUT_TRIM /
+    VOUT_CAL_OFFSET 被规范禁止（Part II §13.3/§13.4，error 级提示），并明确禁止范围
+    仅限这两条命令；
+  - 相对 + VID（如 `0xA0`）→ `vid-relative-invalid`：字节组合无效（Part II §8.5.3）；
+  - DIRECT / IEEE Half → 合法输出电压数据格式但本页不实现解释（`direct-profile-required`
+    / `half-unsupported-in-l16`），不猜测系数或 N；
+  - 非法参数 → `reserved-or-invalid`。
+- **非 LINEAR raw word 仍被标成 LINEAR16 V/Y（P1/P2）**：`getBitRegions` 现在接收实际
+  共享 VOUT_MODE 字节——任何非 LINEAR 状态（含 `0x20`/`0x3E`/`0x40`/`0x60`、相对
+  VID 与非法参数）的 16 位位域图例改为中性 `raw word [15:0]（未按 LINEAR16 解释）`，
+  payload 下拉切换不会复活 V/Y 图例；LINEAR 字节（含 bit7=1 的 `0x98`）恢复
+  payload-specific 图例。
+- **文档与矩阵**：DOMAIN_MODEL §3 / UI_CONVENTIONS §15 登记新契约并禁止回归旧的全局
+  禁令文案；ROADMAP M38 的历史「回退 0x18」摘要标注已被 v2.5.2 supersede。
+
 ## [2.5.2] - 2026-08-27
 
 ### Fixed
