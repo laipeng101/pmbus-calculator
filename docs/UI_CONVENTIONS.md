@@ -261,18 +261,47 @@
   payload 下拉切换不得复活 V/Y 图例；LINEAR 字节（含 bit7=1）恢复 payload-specific
   图例。ARIA 标签不含 V/Y 语义（bits 无 semantic 字段），复制路径不输出图例文字。
 
-## 16. 独立 VOUT_MODE 页面的 requirement 文案合同（v2.5.4）
+## 16. 独立 VOUT_MODE 页面的 requirement 文案合同（v2.5.4 / v2.5.5）
 
 - 状态文本、InfoPanel 警告、说明列表与计算步骤的规范结论一律来自
   `resolveVoutModeRequirement`（`src/app/vout-mode-requirements.ts`）；组件不得用
-  `format` 数字或散落布尔重新推导。
+  `format` 数字或散落布尔重新推导。v2.5.5 起 status/warnings/explanations/steps
+  四个表面全部 switch 在该判别式的 `req.id` 上（字段解析仍可读取
+  format/parameter），E2E helper 不再把所有表面拼接成单一字符串——逐表面独立断言。
 - DIRECT 字节（`0x40`/`0xC0` 等）：状态与警告必须继续要求器件 m/b/R 系数
-  （§7.4），relative 组合再叠加 VOUT_COMMAND 标称参考值（§8.5.2）。
+  （§7.4），relative 组合再叠加 VOUT_COMMAND 标称参考值（§8.5.2）；`0xC0` 的
+  **InfoPanel 警告本身**必须同时包含 m/b/R 与标称参考值，不得靠其他表面拼出。
 - IEEE Half 字节（`0x60`/`0xE0` 等）：所有用户可见表面必须表述「标准
   IEEE 754 binary16（§7.6 / §8.4.4），换算不依赖器件数值」，并指向 HALF 模式页；
   **禁止出现「需器件资料」「器件 Profile」「m/b/R」「DIRECT 系数」等反向禁词**。
   `0xE0` 额外表述需要标称参考值（§8.5.2），`0x60` 不出现该表述。
 - 参数非零（`0x61`/`0xE1` 等）保持「参数必须为 00000b（§8.3 Table 2）」error 级，
   不进入任何格式要求分支。
-- E2E 反向禁词合同在 `tests/e2e/vout-mode-half-matrix.spec.ts`；unit truth table 在
+- **合法性与可计算性正交（v2.5.5）**：VID Code Type `1Eh`/`1Fh` 是 §8.4.2 Table 3
+  明列的制造商自定义 code——`structureLegal=true`、`requiresVidProfile=true`、
+  当前不可换算，呈现为「制造商自定义（需器件资料）」，**不得**复用代表非法结构的
+  alert 标志/class 或「保留/非法」文案；`00h`（未使用）与未列出 code（保留）仍是
+  不可用配置。机器可测字段：`structureLegal`（结构合法）、`requiresExternalData`
+  （需器件数据 = m/b/R 或 VID 表）、`calculable`（当前计算器可算，仅绝对 LINEAR）。
+- E2E 反向禁词与逐表面合同在 `tests/e2e/vout-mode-half-matrix.spec.ts`；unit truth
+  table（含 0..255 结构合法/可计算/外部数据三维穷举分离）在
   `src/app/vout-mode-requirements.test.ts`。
+
+## 17. HALF 特殊值 §7.6.2 操作语义卡（v2.5.5）
+
+- 单一来源：`resolveHalfSpecialSemantics`（`src/app/half-special-semantics.ts`），
+  区分 `half-finite` / `half-nan` / `half-positive-infinity` /
+  `half-negative-infinity`，输出稳定 machine id、severity、send/read 双解释与
+  spec ref；组件只渲染 view-model 暴露的 `vm.halfSpecial`，不得自行判值。
+- 出现条件：HALF 模式且当前 raw word 解码为 NaN / ±Infinity——raw Hex 解码与
+  物理值编码两条真实路径都会看到（卡片由共享 raw word 派生，不会 stale）。
+  有限值（含 ±0）永不显示。
+- 卡片内容必须同时列出「作为写入数据」与「作为设备读回值」两种解释（不猜测实际
+  命令方向）：NaN 写入 = invalid data + communications fault（§10.8），读回 =
+  值不可用；±Inf 写入 = 正/负满量程，读回 = 测量通道正/负方向饱和。必须注明
+  「这是 PMBus 操作语义，不代表已发生总线通信；binary16 数学不变」。
+- 量化误差读数合同不变：主动输入特殊值 = `special/warn`；有限 `65520` 溢出 =
+  `overflow/error`。有限溢出编码出的 +Inf word 同时显示 overflow/error 读数与
+  §7.6.2 卡是正确形态——两个表面回答不同问题，不得合并成一个状态。
+- E2E：`tests/e2e/half-special-semantics.spec.ts`（desktop/mobile 双项目）覆盖
+  NaN/±Inf/有限、双路径、ARIA role、1280/390/360 无横向溢出。

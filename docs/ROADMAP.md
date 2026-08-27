@@ -3,7 +3,8 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-27（v2.5.4 IEEE Half 语义纠偏：DIRECT 器件系数要求与标准 binary16 语义拆分 + §7.2 设备级互斥文档收口）
+最后更新：2026-08-28（v2.5.5 IEEE Half §7.6.2 特殊值操作语义 + VOUT_MODE 合法性/
+可计算性/外部数据三维正交 + requirement 单一来源真正收口）
 
 ## 当前产品基线
 
@@ -28,7 +29,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.4；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.5；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -70,7 +71,14 @@ M0–M39 complete；stable release v2.5.4；production distribution: GitHub Page
   m/b/R/VID 表/器件 profile；仅 relative 字节需 §8.5.2 标称参考值）——独立 VOUT_MODE
   页面 status/warning/explanation/steps 由 `vout-mode-requirements.ts` discriminated
   requirement 单一来源驱动；文档登记 §7.2 Half 与 LINEAR/DIRECT 设备级互斥。
-- 当前：无进行中的功能里程碑；v2.5.4 已完成发布（Release + Pages，2026-08-27），
+- v2.5.5（PATCH）：HALF 特殊值 PMBus §7.6.2 操作语义（NaN 写入=invalid data+
+  communications fault/读回=值不可用，±Inf 写入=正/负满量程/读回=测量通道饱和，
+  有限值不显示，raw/value 双路径可见，binary16 数学与量化分类不变）——
+  `half-special-semantics.ts` 单一来源 + 特殊值卡；VOUT_MODE 结构合法性、可计算性
+  与外部数据三维正交（§8.4.2 Table 3 明列的 1Eh/1Fh 为结构合法+需器件资料，不再
+  复用非法 alert 标志）；status/InfoPanel/说明/步骤四个表面真正全部消费
+  requirement 判别式，E2E 改为逐表面断言。
+- 当前：无进行中的功能里程碑；v2.5.5 已完成发布（Release + Pages，2026-08-28），
   M40–M41 complete。下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

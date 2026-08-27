@@ -4,6 +4,53 @@
 
 ## [Unreleased]
 
+## [2.5.5] - 2026-08-28
+
+### Fixed
+
+- **HALF 页遗漏 PMBus §7.6.2 特殊值操作语义（P1）**：页面此前允许输入、编码并复制
+  NaN / ±Infinity，却只称其为「支持的特殊值」，未告知设备的操作语义，可能让用户把
+  特殊值当普通数值写入器件。新增 `src/app/half-special-semantics.ts` 单一语义来源
+  （`half-finite` / `half-nan` / `half-positive-infinity` / `half-negative-infinity`，
+  输出稳定 machine id、severity、send/read 双解释、spec ref），HALF 页在当前 raw word
+  为特殊值时显示 §7.6.2 特殊值卡（raw 解码与 value 编码两条路径均可见；有限值不显示）：
+  - NaN：作为写入数据，设备必须按 invalid data 处理、声明 communications fault 并按
+    §10.8 响应；作为设备读回值，表示值不可用；
+  - +Inf / -Inf：作为写入数据，设备分别解释为正 / 负满量程；作为设备读回值，分别表示
+    测量通道正 / 负方向饱和；
+  - 卡片同时列出两种解释（不猜测命令方向），并注明这是 PMBus 操作语义、不代表已发生
+    总线通信、binary16 数学换算保持不变；
+  - 量化误差分类不变：主动输入特殊值 = `special/warn`；有限 `65520` 溢出 =
+    `overflow/error`；有限溢出编码出的 +Inf word 同时显示 overflow/error 读数与
+    §7.6.2 卡（两个表面回答不同问题，不合并成一个状态）。
+- **VOUT_MODE 结构合法性与可计算性分离（P1/P2）**：Part II §8.4.2 Table 3 明列
+  `1Eh/1Fh` 为 PMBus 器件制造商自定义 VID Code Type——字节结构合法，电压映射必须来自
+  器件资料。此前领域层 `isLegal=false` 被 view-model 映射成 `structureLegal=false`，
+  正式页面给 `0x3E/0x3F` 配置摘要与状态 chip 加了代表非法结构的 alert 标志/class。
+  现在 requirement 判别式新增 `structureLegal` 字段（valid 与 profile-required 为
+  true；not-used/reserved/invalid 仍为 false），view-model 从中取值并新增正交的
+  `requiresExternalData` 字段；`0x3E/0x3F` 呈现为「制造商自定义（需器件资料）」，
+  不再复用非法 alert 标志；`00h`（未使用）、保留 code、relative+VID、DIRECT/Half
+  非零参数保持不可用分类；Normalize 对 `0x3E/0x3F` 保持 raw 不变；L16 页继续
+  fail closed，阻断原因保持「合法但缺 profile」。
+- **requirement「单一来源」真正收口（P2）**：v2.5.4 中
+  `resolveVoutModeRequirement` 实际只驱动 status 文本；InfoPanel 警告、说明与计算
+  步骤仍各自从 `format`/`status` 推导，已出现可观察分叉。现在四个表面全部 switch 在
+  同一判别式的 `req.id` 上（字段解析仍读取 format/parameter）：
+  - `0xC0` 的 InfoPanel 警告本身现在同时写明 m/b/R 系数与 VOUT_COMMAND 标称参考值
+    （§7.4 + §8.5.2），不再靠其他表面拼出；
+  - `0x3E/0x3F` 计算步骤不再落入 `vout-mode-invalid` 分支，改用专门的
+    `vout-mode-vid-profile` 步骤（not-used/reserved/invalid-combination/param-invalid
+    亦有独立步骤 id）；
+  - E2E helper 不再把所有表面拼接成单一字符串只检查一次——改为逐表面独立断言
+    （反向禁词与必含片段均按表面检查），unit 矩阵对 `0xC0`/`0xE0` 逐表面断言。
+
+### 文档
+
+- DOMAIN_MODEL §2.4 登记 §7.6.2 特殊值双向语义与展示合同；§3 登记
+  structureLegal / calculable / requiresExternalData 三维正交与四表面收口；
+  UI_CONVENTIONS §16 更新逐表面 E2E 合同与合法性正交状态、新增 §17 特殊值卡合同。
+
 ## [2.5.4] - 2026-08-27
 
 ### Fixed

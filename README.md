@@ -8,9 +8,9 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 > **Scope:** this tool converts numeric formats; it is **not** a PMBus/SMBus controller, bus-transport implementation, command executor, device-profile engine, or conformance test suite. It covers the common numeric-format semantics across multiple PMBus revisions and does **not** claim full PMBus 1.5 protocol compliance (including the 1.5 security extensions).
 >
-> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v2.5.4`)
+> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v2.5.5`)
 >
-> **Stable version:** [`v2.5.4`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v2.5.4) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v2.5.4/SHA256SUMS.txt)
+> **Stable version:** [`v2.5.5`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v2.5.5) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v2.5.5/SHA256SUMS.txt)
 
 ---
 
@@ -83,7 +83,7 @@ npm test         # runs Vitest
 
 **Static build package:** the production build in `dist/` is a static bundle and must be used through an HTTP static server (for example `npm run preview` or any static hosting service). Directly double-clicking `dist/index.html` via `file://` is not supported.
 
-**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys the immutable `v2.5.4` Release asset. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
+**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys the immutable `v2.5.5` Release asset. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
 
 **Workflow:**
 
