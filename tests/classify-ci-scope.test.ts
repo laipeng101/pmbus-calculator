@@ -16,6 +16,14 @@ const VALID_BASE = 'a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5'
 const VALID_HEAD = 'f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5'
 const ZERO_SHA = '0'.repeat(40)
 
+// Fixture repos and spawned scripts must be standalone: git exports GIT_DIR /
+// GIT_INDEX_FILE (and friends) to child processes, so under `git commit`
+// (simple-git-hooks pre-commit) they would address the OUTER repository.
+// Vitest runs each test file in its own worker, so this cleanup is scoped.
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith('GIT_')) delete process.env[key]
+}
+
 // Every exact allowlist entry, plus representative subtree paths.
 const ALL_LIGHT_EXACT_PATHS = [
   'AGENTS.md',

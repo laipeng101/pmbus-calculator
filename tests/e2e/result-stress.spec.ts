@@ -294,21 +294,30 @@ test.describe('M16 result stress geometry', () => {
     await expect(panel).toHaveCount(0)
   })
 
-  test('LINEAR16 fallback to 0x18 is labelled in the quantization readout', async ({ page }) => {
+  test('LINEAR16 non-LINEAR byte hides the readout; explicit 0x18 restores it', async ({
+    page,
+  }) => {
     await settle(page)
     await switchMode(page, /LINEAR16/)
 
-    // 0x20 = DIRECT format (non-LINEAR): the page computes on fallback 0x18.
+    // 0x20 = VID format (non-LINEAR): fail closed — no value input, no
+    // quantization panel, no fallback channel (v2.5.2, Part II §8.4).
     await page.locator('#vout-mode-input').fill('20')
     await page.locator('#vout-mode-input').press('Tab')
-    const panel = page.locator('[data-testid="quantization-error"]')
-    await expect(panel).toHaveCount(0)
+    await expect(page.locator('[data-testid="quantization-error"]')).toHaveCount(0)
+    await expect(page.locator('#value-input')).toHaveCount(0)
+
+    // Explicitly applying the default byte really writes 0x18 and restores
+    // the ULINEAR16 encoding channel and its quantization readout.
+    await page.getByRole('button', { name: '应用默认 VOUT_MODE' }).click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
+    await expect(page.locator('#value-input')).toHaveCount(1)
 
     const valueInput = page.locator('#value-input')
     await valueInput.fill('0.005')
     await valueInput.press('Tab')
+    const panel = page.locator('[data-testid="quantization-error"]')
     await expect(panel).toContainText('+0.001094 (21.8750%)')
-    await expect(panel).toContainText('按 fallback 0x18 计算')
   })
 
   test('copy feedback has role status and does not push layout', async ({ page }) => {

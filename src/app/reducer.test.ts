@@ -417,14 +417,30 @@ describe('appReducer — state transitions', () => {
       expect(s.voutMode.byte).toBe(withMode.voutMode.byte)
     })
 
-    it('非 LINEAR 共享字节 fallback 到 0x18，value/set 仍然编码且不改写共享字节', () => {
-      for (const hex of ['20', '40', '60', 'e0']) {
-        const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-        const withMode = appReducer(l16, { type: 'vout-mode/set-byte', hex })
-        const s = appReducer(withMode, { type: 'value/set', value: '12' })
-        expect(s.raw, `0x${hex}`).toBe(0x0c00)
-        expect(s.voutMode.byte, `0x${hex}`).toBe(withMode.voutMode.byte)
+    it('非 LINEAR 共享字节 fail-closed：value/set 不编码、不伪造 provenance', () => {
+      for (const hex of ['20', '40', '60', 'e0', '41', '61']) {
+        for (const payloadKind of ['ulinear16', 'slinear16-offset'] as const) {
+          const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+          const withKind = appReducer(l16, { type: 'l16/set-payload-kind', payloadKind })
+          const withMode = appReducer(withKind, { type: 'vout-mode/set-byte', hex })
+          const before = withMode.raw
+          const s = appReducer(withMode, { type: 'value/set', value: '12' })
+          expect(s.raw, `0x${hex}/${payloadKind}`).toBe(before)
+          expect(s.voutMode.byte, `0x${hex}/${payloadKind}`).toBe(withMode.voutMode.byte)
+          expect(s.valueRequest, `0x${hex}/${payloadKind}`).toBeNull()
+        }
       }
+    })
+
+    it('显式应用默认 0x18 后 value/set 恢复编码且 provenance 走显式路径', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const withMode = appReducer(l16, { type: 'vout-mode/set-byte', hex: '20' })
+      const applied = appReducer(withMode, { type: 'l16/apply-default-vout-mode' })
+      expect(applied.voutMode.byte).toBe(0x18)
+      expect(applied.valueRequest).toBeNull()
+      const s = appReducer(applied, { type: 'value/set', value: '12' })
+      expect(s.raw).toBe(0x0c00)
+      expect(s.valueRequest).toEqual({ mode: 'L16', value: 12 })
     })
 
     it('absolute LINEAR (0x18) 仍然编码', () => {

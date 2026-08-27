@@ -77,11 +77,14 @@ function encodeL11FromValue(state: AppState, value: number): AppState {
  *   relative ones such as 0x98.
  * - ULINEAR16 + relative LINEAR is a dimensionless ratio — no reverse encode.
  * - ULINEAR16 + absolute LINEAR keeps the V = X / 2^N behaviour.
- * - Non-LINEAR shared bytes never reach a payload decision: the effective
- *   byte falls back to 0x18 (see effectiveL16VoutMode), which is LINEAR.
+ * - Non-LINEAR shared bytes fail closed (v2.5.2): output-voltage-related
+ *   commands take their data format from the current VOUT_MODE (§8.4), so the
+ *   page must not encode through an implicit 0x18 substitution. Recovering
+ *   requires the explicit l16/apply-default-vout-mode write.
  */
 function encodeL16FromValue(state: AppState, value: number): AppState {
   const eff = effectiveL16VoutMode(state)
+  if (eff.source === 'non-linear') return state
   const a = analyzeVoutMode(eff.byte)
   if (a.format !== 0) return state
   const n = a.linearExponent ?? 0
@@ -126,13 +129,16 @@ function setVoutModeByte(state: AppState, byte: number): AppState {
 }
 
 /**
- * The byte that semantic VOUT_MODE controls operate on. On the L16 page this is
- * the effective byte (shared byte when LINEAR, otherwise the explicit 0x18
- * fallback); editing it writes a canonical LINEAR byte back to the shared
- * source and therefore flips the page into the linked state.
+ * The byte that semantic VOUT_MODE controls operate on. On the L16 page this
+ * is always the shared byte: the page no longer substitutes 0x18, so semantic
+ * edits stay lossless on the byte the user actually configured. When that
+ * byte is non-LINEAR the page fails closed instead of computing against a
+ * substituted default.
  */
 function voutSemanticBase(state: AppState): number {
-  return state.mode === 'L16' ? effectiveL16VoutMode(state).byte : state.voutMode.byte
+  // Always the shared byte: the L16 page no longer substitutes 0x18, so
+  // semantic edits stay lossless on the byte the user actually configured.
+  return state.voutMode.byte
 }
 
 export function appReducer(state: AppState, action: AppAction): AppState {

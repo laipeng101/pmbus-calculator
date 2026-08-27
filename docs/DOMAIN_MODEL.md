@@ -33,10 +33,12 @@
 - reducer/domain 层在 **relative LINEAR + ULINEAR16（比值语义）** 下必须拒绝 `value/set`
   生成 LINEAR16 编码——不能只靠隐藏 UI 输入阻止错误状态。拒绝按 payload 上下文判定，
   而非字节级 status：
-- 非 LINEAR 共享字节（VID / DIRECT / IEEE Half 格式）遵循 §3 的 fallback 契约：`value/set`
-  按回退后的 `DEFAULT_LINEAR_VOUT_MODE = 0x18`（N=-8）继续编码，不静默改写共享字节；
-  UI 必须同时显示 fallback 徽标/说明，量化误差读数必须标注「按 fallback 0x18 计算」。
-  因此「拒绝 non-LINEAR `value/set`」不是本仓库行为——拒绝仅发生在 relative LINEAR。
+- 非 LINEAR 共享字节（VID / DIRECT / IEEE Half 格式）遵循 §3 的 fail-closed 契约（v2.5.2）：
+  输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），`value/set` 对
+  非 LINEAR 共享字节**直接 no-op**——不生成 raw、不伪造 provenance、不回退到
+  `DEFAULT_LINEAR_VOUT_MODE`。UI 显示实际共享字节与非 LINEAR 说明；恢复 LINEAR16
+  编码的唯一路径是显式 `l16/apply-default-vout-mode`（真正写入 0x18 并清除旧
+  provenance）。「拒绝 non-LINEAR 与 relative `value/set`」都是本仓库行为。
 - 只有 **absolute LINEAR** 才显示绝对电压结果、V、N、2^N 与可表示电压范围；
   relative LINEAR 可以解释 VOUT_MODE 参数位的 exponent/ratio 语义，但不得把 raw 标成
   绝对电压；VID/DIRECT/IEEE Half 不得生成虚假的 LINEAR16 V/N/range/result。
@@ -46,9 +48,9 @@
     `X = V_NOM × R`（`raw=0` 时 `R=0`，规范要求 relative value 为正，标记为非符合性）。
   - `SLINEAR16 offset`：`X_offset = Y_s × 2^N`，`Y_s` 是 16 位二补码 `-32768..32767`
     （Part II §13.3 VOUT_TRIM / §13.4 VOUT_CAL_OFFSET）；bit7 不参与该 payload 的数学，
-    相对 + 有符号比例是伪标准组合，不提供。编码顺序契约（v2.5.1）：`value/set` 先判
-    **effective format 非 LINEAR 才拒绝**（non-LINEAR 共享字节仍按 §3 fallback 0x18 变为
-    effective LINEAR），再按 payload 判定——`slinear16-offset` 在**任意 LINEAR 字节**
+    相对 + 有符号比例是伪标准组合，不提供。编码顺序契约（v2.5.2）：`value/set` 先判
+    **共享字节非 LINEAR 即 fail-closed no-op**（不回退 0x18，见 §3），再按 payload 判定——
+    `slinear16-offset` 在**任意 LINEAR 字节**
     （含 bit7=1，如 0x98）下按 signed 16-bit 编码并记录 provenance；`ulinear16` + relative
     拒绝；absolute ULINEAR 保持 `0..65535` 行为。可编码范围（`encodableRange`）同样
     payload 优先：signed payload 适用 `-32768..32767 × 2^N`，与 bit7 无关——
@@ -97,11 +99,17 @@
 - **L16 exponent 单一事实源**：`AppState.voutMode.byte` 是共享字节；N 一律由
   `analyzeVoutMode(byte).linearExponent` 派生，不存在第二个 exponent 存储。
 - L16 页面使用 `effectiveL16VoutMode`：共享字节为 LINEAR 时直接 linked 使用；
-  非 LINEAR 时回退到 `DEFAULT_LINEAR_VOUT_MODE = 0x18`（`fallback-default`），不静默改写共享字节。
+  非 LINEAR 时返回 `source: 'non-linear'` 与**实际共享字节**（v2.5.2）——selector 不再
+  提供 0x18 替身，所有计算/编码路径（value text、range、quantization、calculation
+  steps、formula）必须对 `non-linear` fail closed。
 - L16 页面只在 **absolute LINEAR** 时计算并显示 `X = V \times 2^N`：
   - relative ULINEAR16：解出比值 `R`，有 nominal reference 时 `X = V_NOM × R`，否则只显示比值；
   - SLINEAR16 offset：始终按 `X_offset = Y_s × 2^N` 计算，bit7 不适用；
-  - 非 LINEAR 共享字节：回退到 0x18 计算，并显示 fallback 徽标与双语说明。
+  - 非 LINEAR 共享字节：fail closed——结果为 `—`、无物理值输入、无伪 LINEAR 范围、
+    `computeQuantizationOutcome` 返回 null、计算步骤无伪 N/伪 V/伪结果；显示非 LINEAR
+    说明与显式应用默认 0x18 的入口（`l16/apply-default-vout-mode` 真正改写共享字节）。
+    VID（§8.4 + §13.3/§13.4 禁止）与 DIRECT/IEEE Half（需要相应 profile/coefficients，
+    不猜测 N）有各自的阻断文案；invalid-parameter / invalid-combination 保持 error 级。
 - 独立 VOUT_MODE 计算器（第五个模式）是 8-bit 字节配置器：双 nibble 交互位网格、bit7
   Absolute/Relative、bits[6:5] format、bits[4:0] parameter；raw 位/Hex 编辑 lossless
   （可构造 `0xA0`/`0x41`/`0xE1`），语义控件 canonicalize，`Normalize` 显式规范化。
@@ -177,6 +185,7 @@
 - HALF 有限值溢出（`|value| ≥ 65520`，见 §2.4）必须以 overflow/error 展示，
   不得因表示值非有限而隐藏读数。
 - L16 SLINEAR16 offset 的量化计算不受 VOUT_MODE bit7 relative 影响（payload 语义
-  优先，见 §2.2 与 Part II §13.3/§13.4）；L16 fallback 0x18 时读数必须标注。
+  优先，见 §2.2 与 Part II §13.3/§13.4）；非 LINEAR 共享字节无量化读数
+  （`computeQuantizationOutcome` 返回 null，v2.5.2 fail-closed），显式应用 0x18 后恢复。
 - DIRECT 的量化只描述「当前用户给定系数下的编码量化」，不代表器件读/写方向的
   真实准确度（读写方向系数可能不同）。

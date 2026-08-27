@@ -17,13 +17,14 @@ describe('effectiveL16VoutMode (M38 single source)', () => {
     }
   })
 
-  it('returns fallback default 0x18 without mutating the shared byte', () => {
+  it('returns the shared byte as non-linear without substituting 0x18 (v2.5.2)', () => {
     for (const byte of [0x20, 0x40, 0x60, 0xe0, 0xa0, 0x41, 0xc1, 0xe1]) {
       const s = state({ voutMode: { byte } })
       const eff = effectiveL16VoutMode(s)
-      expect(eff.byte, `0x${byte.toString(16)}`).toBe(DEFAULT_LINEAR_VOUT_MODE)
-      expect(eff.source, `0x${byte.toString(16)}`).toBe('fallback-default')
+      expect(eff.byte, `0x${byte.toString(16)}`).toBe(byte)
+      expect(eff.source, `0x${byte.toString(16)}`).toBe('non-linear')
       expect(s.voutMode.byte, `0x${byte.toString(16)}`).toBe(byte)
+      expect(eff.byte, `0x${byte.toString(16)}`).not.toBe(DEFAULT_LINEAR_VOUT_MODE)
     }
   })
 

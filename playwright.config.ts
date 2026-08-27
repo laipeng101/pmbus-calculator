@@ -2,7 +2,9 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests/e2e',
-  testIgnore: ['**/release.spec.ts', '**/visual.spec.ts'],
+  // Deployment smoke tests run exclusively via playwright.deployment.config.ts
+  // against the live Pages URL; they must never inflate the default suite.
+  testIgnore: ['**/release.spec.ts', '**/visual.spec.ts', '**/deployment.spec.ts'],
   outputDir: './tests/e2e/output',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

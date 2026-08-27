@@ -93,7 +93,7 @@ describe('VOUT_MODE bit layout (PMBus Part II §8.3)', () => {
     })
   }
 
-  it('relative LINEAR VOUT_MODE shows no absolute result; non-LINEAR falls back to 0x18', () => {
+  it('relative LINEAR and non-LINEAR VOUT_MODE show no absolute result (fail closed, v2.5.2)', () => {
     const relative = toCalculatorViewModel({
       ...INITIAL_STATE,
       mode: 'L16',
@@ -102,6 +102,8 @@ describe('VOUT_MODE bit layout (PMBus Part II §8.3)', () => {
     })
     expect(relative.valueText).toBe('—')
 
+    // §8.4: a non-LINEAR shared byte never falls back to 0x18 — the page
+    // shows no derived value instead of computing against another byte.
     for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
       const vm = toCalculatorViewModel({
         ...INITIAL_STATE,
@@ -109,7 +111,7 @@ describe('VOUT_MODE bit layout (PMBus Part II §8.3)', () => {
         raw: 0x0c00,
         voutMode: { byte },
       })
-      expect(vm.valueText, `0x${byte.toString(16)}`).toBe('12')
+      expect(vm.valueText, `0x${byte.toString(16)}`).toBe('—')
     }
   })
 

@@ -149,10 +149,10 @@ describe('computeQuantizationOutcome — LINEAR16', () => {
     expect(high?.represented).toBe(255.99609375)
   })
 
-  it('computes against the fallback 0x18 for real non-LINEAR shared bytes', () => {
-    // 0x20 (DIRECT fmt) / 0x40 (IEEE Half fmt) / 0x60 (VID) fall back to 0x18;
-    // the outcome must use N=-8, not refuse to compute. UI labels the fallback.
-    for (const byte of [0x20, 0x40, 0x60]) {
+  it('returns no outcome for non-LINEAR shared bytes (fail closed, v2.5.2)', () => {
+    // §8.4: the output-voltage data format comes from the current VOUT_MODE,
+    // so no implicit 0x18 channel exists — no represented value, no outcome.
+    for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
       const q = computeQuantizationOutcome(
         make({
           mode: 'L16',
@@ -161,9 +161,24 @@ describe('computeQuantizationOutcome — LINEAR16', () => {
           valueRequest: { mode: 'L16', value: 0.005 },
         }),
       )
-      expect(q?.represented, `0x${byte.toString(16)}`).toBe(0.00390625)
-      expect(q?.status, `0x${byte.toString(16)}`).toBe('quantized')
+      expect(q, `0x${byte.toString(16)}`).toBeNull()
     }
+  })
+
+  it('restores the quantization outcome after an explicit apply of 0x18', () => {
+    // Same request shape as the fail-closed case above, but with the shared
+    // byte explicitly written to the LINEAR default: the normal ULINEAR16
+    // channel is back (N=-8).
+    const q = computeQuantizationOutcome(
+      make({
+        mode: 'L16',
+        raw: 0x0001,
+        voutMode: { byte: 0x18 },
+        valueRequest: { mode: 'L16', value: 0.005 },
+      }),
+    )
+    expect(q?.represented).toBe(0.00390625)
+    expect(q?.status).toBe('quantized')
   })
 
   it('SLINEAR16 offset + 0x98 clamps 200 to the signed boundary (saturated)', () => {

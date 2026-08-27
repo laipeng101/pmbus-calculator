@@ -28,6 +28,13 @@ export interface L16PayloadContextVM {
   signedOffset: boolean
   /** ULINEAR16 + relative byte: dimensionless ratio semantics. */
   relativeRatio: boolean
+  /** Shared VOUT_MODE is not LINEAR: the page fails closed (§8.4, v2.5.2). */
+  nonLinear: boolean
+  /** Format name of the non-LINEAR shared byte (VID / DIRECT / IEEE Half). */
+  nonLinearFormat?: string
+  /** VID format prohibits output-voltage commands (§8.4) and the offset
+   *  commands' two's-complement payloads (§13.3/§13.4). */
+  vidProhibited: boolean
   /** Physical-value input and reverse encoding are available on this page. */
   physicalInputAvailable: boolean
   /** Nominal VOUT_COMMAND reference input applies to this page state. */
@@ -84,7 +91,7 @@ export interface VoutModeInfoVM {
   structureLegal: boolean
   /** True only when the current calculator can produce a value for the byte. */
   calculable: boolean
-  source?: 'linked' | 'fallback-default'
+  source?: 'linked' | 'non-linear'
   explanations: VoutModeExplanation[]
   nibbles: VoutModeNibbleVM[]
 }
@@ -109,7 +116,7 @@ export interface CalculatorViewModel {
   steps: CalculationStepVM[]
   deltaText?: string
   deltaKind?: 'ok' | 'warn' | 'error'
-  /** Provenance/severity context for the readout (fallback, saturation…). */
+  /** Provenance/severity context for the readout (saturation, rounding…). */
   deltaNote?: string
   warnings: WarningVM[]
   bitGroups: BitGroupVM[]
@@ -240,7 +247,7 @@ function buildVoutModeNibbles(byte: number): VoutModeNibbleVM[] {
   ]
 }
 
-function buildVoutModeVM(byte: number, source?: 'linked' | 'fallback-default'): VoutModeInfoVM {
+function buildVoutModeVM(byte: number, source?: 'linked' | 'non-linear'): VoutModeInfoVM {
   const a = analyzeVoutMode(byte)
   const isLinear = a.format === 0
   const status: VoutModeInfoVM['status'] = !isLinear
@@ -250,16 +257,15 @@ function buildVoutModeVM(byte: number, source?: 'linked' | 'fallback-default'): 
       : 'ok'
 
   const explanations = buildVoutModeExplanations(a)
-  if (source === 'fallback-default') {
+  if (source === 'non-linear') {
     explanations.unshift({
-      id: 'l16-fallback',
+      id: 'l16-nonlinear',
       severity: 'warning',
-      title: 'L16 使用默认 LINEAR 0x18',
+      title: '共享 VOUT_MODE 非 LINEAR，本页不可计算',
       detail:
-        '当前共享 VOUT_MODE ' +
-        formatByteHex(byte) +
-        ' 非 LINEAR；本页暂用默认 0x18 计算，未改写共享字节。',
-      specRef: 'Part II §8.3',
+        '输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4）；' +
+        'LINEAR16 页不隐式替换字节。显式应用默认 0x18 后才恢复计算。',
+      specRef: 'Part II §8.3 / §8.4',
     })
   }
 
@@ -299,6 +305,9 @@ function computeValueText(state: AppState): string {
       }
       case 'L16': {
         const eff = effectiveL16VoutMode(state)
+        // Fail closed on a non-LINEAR shared byte (v2.5.2, §8.4): no value is
+        // derived from an implicit 0x18 substitution.
+        if (eff.source === 'non-linear') return '—'
         const a = analyzeVoutMode(eff.byte)
         const n = a.linearExponent ?? 0
         if (state.l16.payloadKind === 'slinear16-offset') {
@@ -366,11 +375,14 @@ function buildWarnings(state: AppState): WarningVM[] {
     const a = analyzeVoutMode(byte)
     const hex = formatByteHex(byte)
 
-    if (state.mode === 'L16' && eff.source === 'fallback-default') {
+    // §8.4 fail-closed notice applies to EVERY non-LINEAR shared byte; the
+    // format-specific warnings below (invalid-parameter / invalid-combination
+    // stay at error level, VID code notes stay warnings) coexist with it.
+    if (state.mode === 'L16' && eff.source === 'non-linear') {
       warnings.push({
-        id: 'l16-vout-mode-fallback',
+        id: 'l16-vout-mode-nonlinear',
         level: 'warning',
-        text: `当前共享 VOUT_MODE ${formatByteHex(state.voutMode.byte)} 非 LINEAR；本页暂用默认 0x18（Part II §8.3）。`,
+        text: `当前共享 VOUT_MODE ${formatByteHex(state.voutMode.byte)} 为 ${a.formatName}；输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），LINEAR16 页不隐式替换字节。显式应用默认 0x18 后才恢复计算。`,
       })
     }
 
@@ -523,9 +535,6 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   const decodedL11 = state.mode === 'L11' ? PMBusMath.decodeLinear11(raw) : null
 
-  // L16 only: whether the page is computing against a fallback VOUT_MODE.
-  const voutModeSource = state.mode === 'L16' ? effectiveL16VoutMode(state).source : undefined
-
   // Format-encoding quantization readout — shared by L11/L16/DIRECT/HALF via
   // the domain layer. Hidden entirely without an explicit request provenance
   // (error unknown, never fabricated zero); hidden for pages that cannot
@@ -541,11 +550,6 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       deltaText = presented.text
       const notes: string[] = []
       if (presented.note) notes.push(presented.note)
-      // Fallback provenance: when the shared byte is non-LINEAR the page is
-      // computing against the canonical 0x18, not the displayed byte.
-      if (state.mode === 'L16' && voutModeSource === 'fallback-default') {
-        notes.push('共享 VOUT_MODE 非 LINEAR；按 fallback 0x18 计算')
-      }
       if (notes.length > 0) deltaNote = notes.join('；')
     }
   }
@@ -571,14 +575,19 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   let l16Payload: L16PayloadContextVM | undefined
   if (state.mode === 'L16') {
-    const a = analyzeVoutMode(effectiveL16VoutMode(state).byte)
+    // Always analyze the shared byte — never a substituted 0x18 (v2.5.2).
+    const a = analyzeVoutMode(state.voutMode.byte)
     const signedOffset = state.l16.payloadKind === 'slinear16-offset'
+    const nonLinear = a.format !== 0
     l16Payload = {
       kind: state.l16.payloadKind,
       signedOffset,
-      relativeRatio: !signedOffset && a.isRelative,
-      physicalInputAvailable: a.format === 0 && (signedOffset || !a.isRelative),
-      requiresNominalReference: !signedOffset && a.isRelative,
+      relativeRatio: !nonLinear && !signedOffset && a.isRelative,
+      nonLinear,
+      ...(nonLinear ? { nonLinearFormat: a.formatName } : {}),
+      vidProhibited: nonLinear && a.format === 1,
+      physicalInputAvailable: !nonLinear && (signedOffset || !a.isRelative),
+      requiresNominalReference: !nonLinear && !signedOffset && a.isRelative,
     }
   }
 

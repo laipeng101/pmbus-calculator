@@ -219,7 +219,7 @@
 - 零分母（requested = 0 / −0）的相对误差显示 `—`，不显示 0%。
 - 绝对误差格式化必须保证非零差值绝不渲染为文本零：`|x| ≥ 1e-6` 用固定 6 位小数，
   更小的非零值用自适应有效数字（如 `+2.98023223877e-8`）。
-- `deltaNote` 承载上下文附注（fallback 0x18、饱和、溢出、特殊值说明），以小字渲染在
+- `deltaNote` 承载上下文附注（饱和、溢出、特殊值说明），以小字渲染在
   主值下方，不得挤占主值行或造成换行溢出。
 - 计算过程中的量化步骤（`<mode>-quantization` intermediate）与面板使用同一文案来源，
   label 为「格式编码量化误差（请求值 − 表示值）」。
@@ -230,3 +230,12 @@
   relative 警示与阻断卡，阻断卡不得宣称 signed offset 页「需要 nominal」。
 - 手动 `l16/set-slinear-y` 是 raw 变更：提交后面板隐藏（组件返回 null）、计算步骤
   不再包含量化 intermediate；非法/过渡输入不得改变 raw，也不得清除仍有效的请求。
+- 非 LINEAR 共享字节的 L16 页面 fail closed（v2.5.2，Part II §8.4）：无物理值输入、
+  无伪「可表示范围」、结果为 `—`、无量化面板与伪量化步骤；composer 显示实际字节与
+  `非 LINEAR` source 徽标。阻断卡按 payload/格式区分文案：VID 引用 §8.4 + §13.3/§13.4
+  禁止并声明不生成 word；DIRECT / IEEE Half 声明需要相应 format/profile/coefficients、
+  不猜测 N；invalid-parameter / invalid-combination 提示保持 error 级。恢复入口只有
+  显式「应用默认 VOUT_MODE」按钮（`l16/apply-default-vout-mode`）：点击后共享字节
+  真实变为 `0x18`、source 徽标回到「已关联」，输入/范围/结果/量化读数随之恢复，
+  旧 provenance 被清除。禁止重新引入任何隐式 fallback 通道或「按 fallback 0x18
+  计算」读数标注。

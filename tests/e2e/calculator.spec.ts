@@ -181,17 +181,20 @@ test.describe('计算器真实用户流程', () => {
     )
   })
 
-  test('L16 非 LINEAR 共享字节（0x20）fallback 到 0x18 且不伪造 VID 电压', async ({ page }) => {
+  test('L16 非 LINEAR 共享字节（0x20）fail closed：无物理输入、无伪 VID 电压', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const voutModeInput = page.locator('#vout-mode-input')
     await voutModeInput.fill('20')
     await voutModeInput.press('Tab')
 
-    await expect(page.locator('#value-input')).toHaveCount(1)
-    await expect(page.getByTestId('result-value')).toHaveText('0')
-    await expect(page.getByTestId('vout-mode-source')).toHaveText('默认回退')
-    await expect(page.getByText(/默认回退/).first()).toBeVisible()
+    // §8.4 fail-closed: the displayed byte is the actual 0x20 (no 0x18 swap),
+    // the physical-value input disappears, and the result is not computable.
+    await expect(page.locator('#value-input')).toHaveCount(0)
+    await expect(page.getByTestId('result-value')).toHaveText('—')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x20')
+    await expect(page.getByTestId('vout-mode-source')).toHaveText('非 LINEAR')
+    await expect(page.getByText(/显式应用默认 VOUT_MODE 0x18/).first()).toBeVisible()
   })
 
   test('L16 relative LINEAR（0x98）显示需要参考值且不给出绝对电压', async ({ page }) => {
