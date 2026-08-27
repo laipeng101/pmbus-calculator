@@ -350,11 +350,24 @@ function buildVoutModeSteps(state: AppState): CalculationStepVM[] {
       steps.push(
         warningStep('vout-mode-vid', `${a.vidCode?.label ?? 'VID code'}；需器件资料确定电压映射。`),
       )
-    } else {
+    } else if (a.format === 2) {
       steps.push(
         warningStep(
-          'vout-mode-nonlinear',
-          `${a.formatName} 参数为 0，结构合法；本计算器需要器件系数/数据才能计算。`,
+          'vout-mode-direct',
+          a.isRelative
+            ? 'DIRECT 参数为 0，结构合法；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能计算（Part II §7.4），最终电压还需 VOUT_COMMAND 标称参考值（§8.5.2）。'
+            : 'DIRECT 参数为 0，结构合法；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能计算（Part II §7.4）。',
+        ),
+      )
+    } else {
+      // IEEE Half is standard binary16 (Part II §7.6/§8.4.4): no device
+      // coefficients; the HALF page already performs the conversion.
+      steps.push(
+        warningStep(
+          'vout-mode-half',
+          a.isRelative
+            ? 'IEEE Half 参数为 0，结构合法；payload 是标准 IEEE 754 binary16，换算不需要器件系数，相对阈值还需 VOUT_COMMAND 标称参考值才能得到最终电压（Part II §8.5.2）。'
+            : 'IEEE Half 参数为 0，结构合法；word 是标准 IEEE 754 binary16，可在 HALF 模式页换算，不需要器件系数（Part II §7.6 / §8.4.4）。',
         ),
       )
     }

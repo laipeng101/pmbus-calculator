@@ -1,0 +1,224 @@
+import { test, expect, type Page } from '@playwright/test'
+
+/**
+ * v2.5.4: legal IEEE Half VOUT_MODE bytes (0x60 absolute / 0xE0 relative) are
+ * standard IEEE 754 binary16 (Part II §7.6 / §8.4.4). Their word↔value
+ * conversion never depends on device m/b/R coefficients, a VID table or a
+ * product profile — so NO user-visible surface may claim otherwise. Only a
+ * relative byte needs a VOUT_COMMAND nominal reference (§8.5.2). DIRECT
+ * (0x40/0xC0) genuinely needs device m/b/R (§7.4). The matrix drives the real
+ * standalone VOUT_MODE page plus the L16 fail-closed card, on both desktop and
+ * mobile projects.
+ */
+
+const HALF_BANNED = ['需器件资料', '器件 Profile', 'm/b/R', 'DIRECT 系数', '设备数据']
+
+async function settle(page: Page) {
+  await page.goto('/')
+  await page.evaluate(async () => {
+    await document.fonts.ready
+  })
+  await page.waitForTimeout(80)
+}
+
+async function switchToVoutMode(page: Page) {
+  await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+  await expect(page.getByTestId('vout-mode-canonical')).toBeVisible()
+}
+
+async function setVoutModeByte(page: Page, hex: string) {
+  const input = page.locator('#vout-mode-input')
+  await input.fill(hex)
+  await input.press('Tab')
+  await expect(page.getByTestId('vout-mode-byte')).toHaveText(`0x${hex}`)
+}
+
+async function expandDetails(page: Page) {
+  // Expand the explanation list and the calculation walkthrough so every
+  // collapsed surface is covered by the copy assertions below. Idempotent:
+  // clicking an already-open disclosure would close it again.
+  for (const details of [
+    page.locator('.vout-explanations-details'),
+    page.locator('[data-testid="calculation-steps-disclosure"]'),
+  ]) {
+    const open = await details.evaluate((el) => (el as HTMLDetailsElement).open)
+    if (!open) await details.locator('summary').click()
+  }
+  await expect(page.locator('[data-testid="calculation-steps"]')).toBeVisible()
+}
+
+/**
+ * Concatenate every user-visible VOUT_MODE-page surface for the byte: config
+ * summary, status chip, InfoPanel alerts, explanations and calculation steps.
+ */
+async function visibleSurfaces(page: Page): Promise<string> {
+  const parts: string[] = []
+  const summary = page.getByTestId('vout-mode-config-summary')
+  if ((await summary.count()) > 0) parts.push(await summary.innerText())
+  parts.push(await page.getByTestId('vout-mode-status').innerText())
+  parts.push(await page.getByTestId('vout-mode-canonical').innerText())
+  const alerts = page.getByRole('alert')
+  for (let i = 0; i < (await alerts.count()); i++) {
+    parts.push(await alerts.nth(i).innerText())
+  }
+  const explanations = page.locator('.vout-explanations-details')
+  if ((await explanations.count()) > 0) parts.push(await explanations.innerText())
+  const steps = page.getByTestId('calculation-steps')
+  if ((await steps.count()) > 0) parts.push(await steps.innerText())
+  return parts.join('\n')
+}
+
+function expectNoHalfProfileCopy(surface: string, label: string) {
+  for (const banned of HALF_BANNED) {
+    expect(surface, `${label} unexpected copy: ${banned}`).not.toContain(banned)
+  }
+}
+
+test.describe('v2.5.4 standalone VOUT_MODE page — IEEE Half vs DIRECT requirement matrix', () => {
+  test('0x60 absolute Half: every surface states standard binary16 without profile copy', async ({
+    page,
+  }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+    await setVoutModeByte(page, '60')
+    await expandDetails(page)
+
+    await expect(page.getByTestId('vout-mode-status')).toHaveText('IEEE Half（标准 binary16）')
+    await expect(page.getByTestId('vout-mode-canonical')).toContainText('0b01100000')
+    const surfaces = await visibleSurfaces(page)
+    expectNoHalfProfileCopy(surfaces, '0x60')
+    expect(surfaces).toContain('标准 IEEE 754 binary16')
+    expect(surfaces).toContain('§7.6')
+    expect(surfaces).toContain('HALF 模式页')
+    // Absolute Half needs no nominal reference.
+    expect(surfaces).not.toContain('标称参考值')
+
+    // The half-standard warning is informational (warning level), never an
+    // error: the byte is a legal configuration.
+    const halfAlert = page.getByRole('alert').filter({ hasText: '§8.4.4' }).first()
+    await expect(halfAlert).toBeAttached()
+    await expect(halfAlert).toHaveAttribute('data-level', 'warning')
+  })
+
+  test('0xE0 relative Half: nominal reference only — still no profile copy', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+    await setVoutModeByte(page, 'E0')
+    await expandDetails(page)
+
+    await expect(page.getByTestId('vout-mode-status')).toHaveText('相对 IEEE Half（需参考值）')
+    const surfaces = await visibleSurfaces(page)
+    expectNoHalfProfileCopy(surfaces, '0xE0')
+    expect(surfaces).toContain('标准 IEEE 754 binary16')
+    expect(surfaces).toContain('标称参考值')
+    expect(surfaces).toContain('§8.5.2')
+  })
+
+  test('0x40/0xC0 DIRECT: device m/b/R requirement stays; relative adds the reference', async ({
+    page,
+  }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+
+    await setVoutModeByte(page, '40')
+    await expandDetails(page)
+    await expect(page.getByTestId('vout-mode-status')).toHaveText('绝对 DIRECT（需 m/b/R 系数）')
+    const absolute = await visibleSurfaces(page)
+    expect(absolute).toContain('m/b/R')
+    expect(absolute).toContain('§7.4')
+    expect(absolute).not.toContain('标称参考值')
+
+    await setVoutModeByte(page, 'C0')
+    await expandDetails(page)
+    await expect(page.getByTestId('vout-mode-status')).toHaveText('相对 DIRECT（需系数与参考值）')
+    const relative = await visibleSurfaces(page)
+    expect(relative).toContain('m/b/R')
+    expect(relative).toContain('标称参考值')
+  })
+
+  test('0x61/0xE1: parameter-invalid error is preserved and no requirement branch fires', async ({
+    page,
+  }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+    for (const hex of ['61', 'E1']) {
+      await setVoutModeByte(page, hex)
+      await expandDetails(page)
+      await expect(page.getByTestId('vout-mode-status')).toContainText('参数必须为 0')
+      const invalid = page.getByRole('alert').filter({ hasText: '00000b' }).first()
+      await expect(invalid).toBeAttached()
+      await expect(invalid).toHaveAttribute('data-level', 'error')
+      const surfaces = await visibleSurfaces(page)
+      expectNoHalfProfileCopy(surfaces, `0x${hex}`)
+      expect(surfaces).not.toContain('标准 IEEE 754 binary16')
+    }
+  })
+
+  test('keyboard: the Half byte is reachable and editable through the hex input alone', async ({
+    page,
+  }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+    await page.locator('#vout-mode-input').focus()
+    await page.keyboard.insertText('60')
+    await page.keyboard.press('Tab') // HexInput commits on blur (Tab), not Enter
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x60')
+    await expect(page.getByTestId('vout-mode-status')).toHaveText('IEEE Half（标准 binary16）')
+
+    // And back to the default LINEAR byte through the keyboard.
+    await page.locator('#vout-mode-input').focus()
+    await page.keyboard.insertText('18')
+    await page.keyboard.press('Tab')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
+  })
+
+  test('no horizontal overflow at 1280/390/360 with the Half byte active', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+    for (const viewport of [
+      { width: 1280, height: 900 },
+      { width: 390, height: 844 },
+      { width: 360, height: 800 },
+    ]) {
+      await page.setViewportSize(viewport)
+      await setVoutModeByte(page, '60')
+      await expandDetails(page)
+      const result = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }))
+      expect(result.scrollWidth, `viewport ${viewport.width}`).toBeLessThanOrEqual(
+        result.clientWidth,
+      )
+    }
+  })
+})
+
+test.describe('v2.5.4 L16 page — IEEE Half block card never claims a profile', () => {
+  test('0x60/0xE0 fail closed and point at the HALF page without banned copy', async ({ page }) => {
+    await settle(page)
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    await expect(page.locator('#vout-mode-input')).toBeVisible()
+
+    for (const hex of ['60', 'E0'] as const) {
+      await page.locator('#vout-mode-input').fill(hex)
+      await page.locator('#vout-mode-input').press('Tab')
+      await expect(page.getByTestId('vout-mode-byte')).toHaveText(`0x${hex}`)
+
+      // Fail-closed baseline unchanged (v2.5.2).
+      await expect(page.locator('#value-input')).toHaveCount(0)
+      await expect(page.locator('[data-testid="result-value"]')).toContainText('—')
+      const card = page.locator('.workspace-l16-block')
+      await expect(card).toContainText('IEEE Half 是合法的输出电压数据格式')
+      await expect(card).toContainText('HALF 模式页')
+      // The v2.5.3 L16 card was already correct — pin it against regression.
+      expectNoHalfProfileCopy(await card.innerText(), `L16 block card 0x${hex}`)
+
+      // The InfoPanel warning for the shared byte must not smuggle profile
+      // copy in either.
+      const alerts = page.getByRole('alert')
+      const alertText = await alerts.allInnerTexts()
+      expectNoHalfProfileCopy(alertText.join('\n'), `L16 alerts 0x${hex}`)
+    }
+  })
+})

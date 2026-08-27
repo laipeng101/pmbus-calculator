@@ -13,6 +13,7 @@ import { computeQuantizationOutcome } from './quantization-error'
 import type { QuantizationOutcome } from './quantization-error'
 import { buildVoutModeExplanations } from './vout-mode-explanation'
 import type { VoutModeExplanation } from './vout-mode-explanation'
+import { resolveVoutModeRequirement } from './vout-mode-requirements'
 import { effectiveL16VoutMode } from './vout-mode-selector'
 import { resolveL16PayloadContext } from './l16-payload-contract'
 import type { L16FormatSemantics } from './l16-payload-contract'
@@ -216,23 +217,38 @@ function buildBitGroups(raw: number): BitGroupVM[] {
   return groups
 }
 
+/**
+ * Short status line per VOUT_MODE verdict, derived from the shared
+ * requirement source (v2.5.4). DIRECT keeps the device m/b/R wording
+ * (Part II §7.4); IEEE Half is standard binary16 — its status never claims
+ * a device profile (§7.6 / §8.4.4); a relative byte keeps the nominal
+ * reference wording (§8.5.2).
+ */
 function voutModeStatusText(byte: number): string {
   const a = analyzeVoutMode(byte)
-  switch (a.status) {
-    case 'valid':
-      if (a.format === 0) return a.isRelative ? '相对 LINEAR（需参考值）' : '绝对 LINEAR'
-      if (a.format === 2)
-        return a.isRelative ? '相对 DIRECT（需系数与参考值）' : '绝对 DIRECT（需系数）'
-      return a.isRelative ? '相对 IEEE Half（需参考值）' : 'IEEE Half（需器件资料）'
-    case 'invalid-combination':
+  const req = resolveVoutModeRequirement(a)
+  switch (req.id) {
+    case 'linear-absolute':
+      return '绝对 LINEAR'
+    case 'linear-relative':
+      return '相对 LINEAR（需参考值）'
+    case 'direct-absolute':
+      return '绝对 DIRECT（需 m/b/R 系数）'
+    case 'direct-relative':
+      return '相对 DIRECT（需系数与参考值）'
+    case 'half-absolute':
+      return 'IEEE Half（标准 binary16）'
+    case 'half-relative':
+      return '相对 IEEE Half（需参考值）'
+    case 'vid-relative-invalid':
       return '相对 VID — 非法组合（§8.5.3）'
-    case 'invalid-parameter':
+    case 'direct-or-half-param-invalid':
       return a.formatName + ' 参数必须为 0（§8.3 Table 2）'
-    case 'not-used':
+    case 'vid-not-used':
       return 'VID code 00h — 未使用'
-    case 'reserved':
+    case 'vid-reserved':
       return 'VID code 保留（规范未列出）'
-    case 'profile-required':
+    case 'vid-profile-required':
       return 'VID code 制造商自定义（需器件资料）'
     case 'invalid-input':
       return '无效 VOUT_MODE'
@@ -535,11 +551,24 @@ function buildWarnings(state: AppState): WarningVM[] {
         level: 'warning',
         text: `VOUT_MODE ${hex} 的 VID code 为制造商自定义；需要器件资料确定电压映射。`,
       })
-    } else if (a.format === 2 || a.format === 3) {
+    } else if (a.format === 2) {
+      // DIRECT genuinely needs device-specific m/b/R coefficients (§7.4/§8.4.3).
       warnings.push({
-        id: 'vout-mode-nonlinear',
+        id: 'vout-mode-direct-profile',
         level: 'warning',
-        text: `VOUT_MODE ${hex} 为 ${a.formatName} 格式；需要器件 Profile（DIRECT 系数/设备数据）。`,
+        text: `VOUT_MODE ${hex} 为 DIRECT 格式；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能换算 word ↔ 物理值（Part II §7.4）。`,
+      })
+    } else if (a.format === 3) {
+      // IEEE Half is standard IEEE 754 binary16 (§7.6/§8.4.4): the word ↔
+      // value conversion never depends on device numbers. Only a relative
+      // byte adds the nominal-reference requirement (§8.5.2). Copy stays
+      // positive — profile/系数 wording is banned for Half surfaces.
+      warnings.push({
+        id: 'vout-mode-half-standard',
+        level: 'warning',
+        text: a.isRelative
+          ? `VOUT_MODE ${hex} 为相对 IEEE Half 格式；payload 是标准 IEEE 754 binary16（Part II §7.6 / §8.4.4），word ↔ 数值换算不依赖器件数值，但相对阈值需要 VOUT_COMMAND 标称参考值才能得到最终电压（§8.5.2）。`
+          : `VOUT_MODE ${hex} 为 IEEE Half 格式；payload 是标准 IEEE 754 binary16（Part II §7.6 / §8.4.4），word ↔ 数值换算不依赖器件数值，可在 HALF 模式页换算。`,
       })
     }
   }

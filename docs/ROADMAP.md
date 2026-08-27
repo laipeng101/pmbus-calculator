@@ -3,7 +3,7 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-27（v2.5.3 VID scope discriminated contract + 中性 raw 位域 PATCH）
+最后更新：2026-08-27（v2.5.4 IEEE Half 语义纠偏：DIRECT 器件系数要求与标准 binary16 语义拆分 + §7.2 设备级互斥文档收口）
 
 ## 当前产品基线
 
@@ -28,7 +28,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.3；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.4；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -66,7 +66,12 @@ M0–M39 complete；stable release v2.5.3；production distribution: GitHub Page
 - v2.5.3（PATCH）：VID scope 纠偏（Part II §8.4.2 支持 VID，仅 VOUT_TRIM/VOUT_CAL_OFFSET
   在 VID 下由 §13.3/§13.4 禁止、相对 ×VID 由 §8.5.3 排除）——payload discriminated
   contract 取代全局 vidProhibited；非 LINEAR raw 位域改用中性图例；文档与测试矩阵同步。
-- 当前：v2.5.3 发布进行中；M40–M41 complete；无其他进行中的功能里程碑。
+- v2.5.4（PATCH）：IEEE Half 语义纠偏（Part II §7.6/§8.4.4 标准 binary16，换算不需要
+  m/b/R/VID 表/器件 profile；仅 relative 字节需 §8.5.2 标称参考值）——独立 VOUT_MODE
+  页面 status/warning/explanation/steps 由 `vout-mode-requirements.ts` discriminated
+  requirement 单一来源驱动；文档登记 §7.2 Half 与 LINEAR/DIRECT 设备级互斥。
+- 当前：无进行中的功能里程碑；v2.5.4 已完成发布（Release + Pages，2026-08-27），
+  M40–M41 complete。下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
 

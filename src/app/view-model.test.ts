@@ -489,6 +489,96 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
+  describe('v2.5.4 VOUT_MODE 状态/警告/说明/步骤的 Half↔DIRECT 对比矩阵', () => {
+    // IEEE Half is standard binary16 (Part II §7.6/§8.4.4): no user-visible
+    // surface may claim a device profile. DIRECT keeps the m/b/R requirement
+    // (§7.4); relative bytes keep the nominal-reference wording (§8.5.2).
+    const HALF_BANNED = ['需器件资料', '器件 Profile', 'm/b/R', 'DIRECT 系数', '设备数据']
+
+    function voutModePageSurfaces(byte: number) {
+      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte } }))
+      const page = vm.voutModePage
+      expect(page).toBeDefined()
+      const explanationCopy = (page?.explanations ?? [])
+        .map((e) => `${e.title} ${e.detail}`)
+        .join('\n')
+      const stepCopy = vm.steps.map((s) => s.plainText).join('\n')
+      const warningCopy = vm.warnings.map((w) => w.text).join('\n')
+      return { vm, page, explanationCopy, stepCopy, warningCopy }
+    }
+
+    test('0x60 绝对 Half：状态=标准 binary16；所有表面无 Profile/系数/器件资料语义，无参考值要求', () => {
+      const { page, explanationCopy, stepCopy, warningCopy } = voutModePageSurfaces(0x60)
+      expect(page?.statusText).toBe('IEEE Half（标准 binary16）')
+      expect(page?.structureLegal).toBe(true)
+      const everySurface = [page?.statusText ?? '', explanationCopy, stepCopy, warningCopy].join(
+        '\n',
+      )
+      for (const banned of HALF_BANNED) {
+        expect(everySurface, 'unexpected copy: ' + banned).not.toContain(banned)
+      }
+      expect(everySurface).not.toContain('标称参考值')
+      expect(warningCopy).toContain('标准 IEEE 754 binary16')
+      expect(warningCopy).toContain('§7.6')
+      expect(explanationCopy).toContain('标准 IEEE 754 binary16')
+      expect(stepCopy).toContain('标准 IEEE 754 binary16')
+      expect(stepCopy).toContain('HALF 模式页')
+    })
+
+    test('0xE0 相对 Half：需 VOUT_COMMAND 标称参考值（§8.5.2），但仍无 Profile/系数语义', () => {
+      const { page, explanationCopy, stepCopy, warningCopy } = voutModePageSurfaces(0xe0)
+      expect(page?.statusText).toBe('相对 IEEE Half（需参考值）')
+      const everySurface = [page?.statusText ?? '', explanationCopy, stepCopy, warningCopy].join(
+        '\n',
+      )
+      for (const banned of HALF_BANNED) {
+        expect(everySurface, 'unexpected copy: ' + banned).not.toContain(banned)
+      }
+      expect(everySurface).toContain('标称参考值')
+      expect(warningCopy).toContain('§8.5.2')
+    })
+
+    test('0x40/0xC0 DIRECT：继续要求器件 m/b/R；相对再加标称参考值', () => {
+      const absolute = voutModePageSurfaces(0x40)
+      expect(absolute.page?.statusText).toBe('绝对 DIRECT（需 m/b/R 系数）')
+      expect(absolute.warningCopy).toContain('m/b/R')
+      expect(absolute.warningCopy).toContain('§7.4')
+      expect(absolute.explanationCopy).toContain('m/b/R')
+      const absoluteSurface = [
+        absolute.page?.statusText ?? '',
+        absolute.explanationCopy,
+        absolute.stepCopy,
+        absolute.warningCopy,
+      ].join('\n')
+      expect(absoluteSurface).not.toContain('标称参考值')
+
+      const relative = voutModePageSurfaces(0xc0)
+      expect(relative.page?.statusText).toBe('相对 DIRECT（需系数与参考值）')
+      expect(relative.warningCopy).toContain('m/b/R')
+      const relativeSurface = [
+        relative.page?.statusText ?? '',
+        relative.explanationCopy,
+        relative.stepCopy,
+        relative.warningCopy,
+      ].join('\n')
+      expect(relativeSurface).toContain('标称参考值')
+    })
+
+    test('0x61/0xE1 参数非法：保持 error 级与 00000b 约束，不落入任何格式要求分支', () => {
+      for (const byte of [0x61, 0xe1]) {
+        const { vm, warningCopy } = voutModePageSurfaces(byte)
+        expect(vm.voutModePage?.structureLegal).toBe(false)
+        expect(
+          vm.warnings.some((w) => w.id === 'vout-mode-invalid-parameter' && w.level === 'error'),
+          `0x${byte.toString(16)}`,
+        ).toBe(true)
+        expect(warningCopy).toContain('00000b')
+        expect(vm.warnings.some((w) => w.id === 'vout-mode-half-standard')).toBe(false)
+        expect(vm.warnings.some((w) => w.id === 'vout-mode-direct-profile')).toBe(false)
+      }
+    })
+  })
+
   describe('mode=DIRECT', () => {
     test('default coefficients produce value 0', () => {
       const vm = toCalculatorViewModel(make({ mode: 'DIRECT' }))

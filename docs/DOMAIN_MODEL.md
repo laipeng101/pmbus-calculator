@@ -12,6 +12,15 @@
 | DIRECT   | $X = \frac{1}{m}\left(Y \times 10^{-R} - b\right)$ | Y 16-bit signed `-32768..32767`，m/b/R 器件相关         |
 | HALF     | IEEE 754 binary16 分段解码（见 §2.4）              | 1-bit sign，5-bit exponent，10-bit mantissa             |
 
+- **格式采用与设备级互斥（Part II §7.2 / §8.1.2）**：若器件对 numerical data 使用
+  IEEE Half，则该器件**所有**数值命令（含与输出电压无关的命令）只能使用 IEEE Half；
+  若器件对任一数值命令使用 LINEAR 或 DIRECT，则不得对任何命令使用 IEEE Half。
+  器件资料决定采用哪种格式，但**不改变** binary16 的数值解码公式——Half 的
+  word ↔ 数值换算是标准 IEEE 754 binary16（bit15 符号、bits[14:10] 指数、bits[9:0]
+  尾数，§7.6），不依赖任何 m/b/R 系数、VID 表或器件 profile；只有 DIRECT 需要
+  器件专属 m/b/R（§7.4）。本工具的四个 tab 是四个独立换算器，不代表某个器件同时
+  支持多种格式。
+
 ## 2. 饱和与错误处理
 
 ### 2.1 LINEAR11
@@ -125,6 +134,20 @@
   - `direct-profile-required` / `half-unsupported-in-l16`：DIRECT 需要 m/b/R（§7.4）、
     IEEE Half 是合法输出电压格式但本页不实现解释（§8.4.4）；均不借用 0x18 或猜测 N；
   - `reserved-or-invalid`：DIRECT/Half 参数非零等无解释合同的保留/非法配置。
+- **VOUT_MODE 格式 requirement 单一来源（v2.5.4）**：`src/app/vout-mode-requirements.ts` 的
+  `resolveVoutModeRequirement(analyzeVoutMode(byte))` 是独立 VOUT_MODE 页面 status 文本、
+  InfoPanel 警告、说明与计算步骤的共享判别来源。其语义按 Part II 固定：
+  - DIRECT（`0x40`/`0xC0` 等）：合法结构，word ↔ 物理量**需要**器件 m/b/R 系数
+    （§7.4，来自 COEFFICIENTS 或器件资料）；bit7=1 时最终电压还需 VOUT_COMMAND
+    标称参考值（§8.5.2）；
+  - IEEE Half（`0x60`/`0xE0` 等）：合法结构，payload 是**标准 IEEE 754 binary16**
+    （§7.6 / §8.4.4），换算**不需要** m/b/R、VID 表或器件 profile；bit7=1 时同样需要
+    标称参考值（§8.5.2）。任何用户可见表面不得把 Half 描述成需要器件 profile、
+    DIRECT 系数或设备数据；
+  - 参数非零（`0x41..0x5F`/`0x61..0x7F` 及对应 relative 组合）保持 invalid-parameter
+    error 级，不进入任何格式要求分支；
+  - 状态/警告/说明/步骤全部消费该来源，禁止在组件或测试中用 `format === 2 || 3`
+    这类散落布尔重新推导规范结论。
 - 独立 VOUT_MODE 计算器（第五个模式）是 8-bit 字节配置器：双 nibble 交互位网格、bit7
   Absolute/Relative、bits[6:5] format、bits[4:0] parameter；raw 位/Hex 编辑 lossless
   （可构造 `0xA0`/`0x41`/`0xE1`），语义控件 canonicalize，`Normalize` 显式规范化。

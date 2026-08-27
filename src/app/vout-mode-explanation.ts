@@ -123,16 +123,31 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
           'Part II §8.3 Table 2',
         ),
       )
-    } else {
+    } else if (a.format === 2) {
+      // DIRECT needs device-specific coefficients (Part II §7.4 / §8.4.3).
       out.push(
         explanation(
-          'nonlinear-profile-required',
+          'direct-profile-required',
           'warning',
-          a.formatName + '：结构合法但本页不可计算',
+          'DIRECT：结构合法，需要器件 m/b/R 系数',
           a.isRelative
-            ? '相对 DIRECT/Half 且参数为 0 的字节结构可以成立，但需要器件系数/格式与标称参考值；当前计算器不提供这些系数。'
-            : 'DIRECT/Half 参数为 0 的字节结构合法，但需要器件系数（DIRECT m/b/R）或设备数据；当前计算器不提供。',
-          'Part II §8.3 Table 2 / §8.4.3 / §8.4.4',
+            ? '相对 DIRECT 且参数为 0 的字节结构合法；word ↔ 物理量需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料），最终电压还需 VOUT_COMMAND 标称参考值。本计算器不内置任何系数。'
+            : 'DIRECT 参数为 0 的字节结构合法；word ↔ 物理量需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）。本计算器不内置任何系数。',
+          'Part II §7.4 / §8.4.3',
+        ),
+      )
+    } else {
+      // IEEE Half is standard binary16 (Part II §7.6 / §8.4.4): no device
+      // numbers are involved in the word ↔ value conversion.
+      out.push(
+        explanation(
+          'half-standard-format',
+          'warning',
+          'IEEE Half：标准 binary16，本页只配置格式字节',
+          a.isRelative
+            ? '相对 Half 且参数为 0 的字节结构合法；payload 是标准 IEEE 754 binary16（bit15 符号、bits[14:10] 指数、bits[9:0] 尾数），换算不需要任何器件系数。相对阈值要得到最终电压还需 VOUT_COMMAND 标称参考值（§8.5.2）。'
+            : 'Half 参数为 0 的字节结构合法；payload 是标准 IEEE 754 binary16（bit15 符号、bits[14:10] 指数、bits[9:0] 尾数），word ↔ 数值换算不需要任何器件系数。HALF 模式页可完成该换算。',
+          'Part II §7.6 / §8.4.4',
         ),
       )
     }
