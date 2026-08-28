@@ -4,6 +4,56 @@
 
 ## [Unreleased]
 
+## [2.5.7] - 2026-08-28
+
+### Fixed
+
+- **HALF 负零简写丢失符号（P1）**：`float-parse.ts` 的 `/^[+-]?\.0*$/` 分支直接
+  `return 0`，使 `-.0`、`-.00` 被解析为 `+0`（raw `0x0000`），并把裸 `.`、`+.`、`-.`
+  过早视为完整数值。IEEE 754 binary16 中 `+0` 与 `-0` 是不同原码（`0x0000` 与
+  `0x8000`，Part II §7.6），`Number('-.0')` 本就是 `-0`，解析器不得用字面量 `0`
+  覆盖其符号；§7.6.2 要求设备读回主机先前写入的精确 IEEE 编码。现在：
+  - `-0`、`-0.0`、`-.0`、`-.00`、`-0e3` 都解析为真正的 JavaScript `-0`
+    （`Object.is` 断言），HALF 编码为 `0x8000`、显示 `-0`；
+  - `0`、`+0`、`0.0`、`.0`、`+.0`、`0e3` 编码为 `0x0000`；
+  - 裸 `.`、`+.`、`-.` 是编辑过渡态，不立即提交 raw、不创建 provenance；blur
+    明确规范化：`.`/`+.` → `0`（`0x0000`），`-.` → `-0`（`0x8000`）；
+  - `encodeHalf` round-to-nearest-even 算法未改动。
+- **untouched-blur 事务语义推广到全部共享输入（P1）**：v2.5.6 只为物理值输入
+  增加了真实编辑事务检测；`HexInput`、`IntegerInput`（L11 Y/N、DIRECT Y/m/b/R、
+  SLINEAR16 Y_s、VOUT_MODE N）、`DecimalInput`（L16 V）与 `NominalVoutInput`
+  在 untouched blur 时仍无条件 `onCommit`——L16 输入物理值 `1`（raw `0100`、
+  provenance 存在）后只 focus/blur 原始 Hex，raw 不变但量化来源被清除。现在
+  全部共享输入在当前 focus 会话内没有任何真实 `onChange` 时，blur/Enter 严格
+  no-op：不派发 commit、不改写 raw/参数、不清除 provenance、不清除仍存在的
+  字段错误；dirty 依据真实编辑事务（共享 helper `src/app/input-transaction.ts`），
+  不以解析数值相等判断。显式清空后 blur、显式重输相同值、粘贴、非法文本修复
+  仍按既有合同提交。
+- **点击已选语义控件清除 provenance（P2）**：L16 输入物理值 `1` 后点击当前
+  已选中的「绝对值」radio，raw 不变但 provenance 消失——`vout-mode/set-relative`
+  无条件走 `setVoutModeByte` 清除请求来源。现在同字节写入幂等（reducer 返回
+  同一 state 引用），composer 的绝对值/相对值与格式 radio 仅在目标状态与当前
+  状态不同时才派发；重复选择现有 VOUT_MODE 语义、相同格式与相同参数保持幂等，
+  真正改变字节时仍清除失效 provenance。
+- **`0x18` 被表述为「标准默认值」误导（P2）**：`DEFAULT_LINEAR_VOUT_MODE` 的
+  注释仍声称它是 non-LINEAR 时的 fallback，UI 又称「应用默认 VOUT_MODE」——
+  与 v2.5.2 起 fail-closed 行为直接矛盾，也违背 Part II §8.3（只定义位布局与
+  合法组合，不存在 PMBus 标准默认字节；器件可固定 Mode/Parameter 并拒绝写入）。
+  现在：
+  - 常量更名为 `CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE`，action 更名为
+    `l16/apply-calculator-linear-example`，删除全部 stale fallback 说明；
+  - UI、warning、steps、说明统一表述「应用计算器 LINEAR 示例 0x18
+    （absolute、N=-8）」，并明示它不是 PMBus 规范默认值、不代表真实器件一定
+    接受 VOUT_MODE 写入；
+  - 反词测试（unit + E2E）禁止任何用户可见表面把 0x18 称为规范/器件默认或
+    声称 non-LINEAR 自动回退；初始化字节与显式恢复后的实际数值行为不变。
+
+### 文档
+
+- DOMAIN_MODEL §2.2/§3 登记 0x18 计算器示例值合同与同字节写入幂等；§6.1 的
+  untouched-blur no-op 合同推广到全部共享输入；UI_CONVENTIONS §8 登记共享输入
+  no-op 与 signed-zero 解析/blur 规范化、§15 更新恢复入口文案合同。
+
 ## [2.5.6] - 2026-08-28
 
 ### Fixed

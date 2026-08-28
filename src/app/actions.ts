@@ -23,7 +23,7 @@ export type AppAction =
   | { type: 'l16/set-payload-kind'; payloadKind: Linear16PayloadKind }
   | { type: 'l16/set-slinear-y'; y: string }
   | { type: 'l16/set-nominal-vout'; nominalVout: string }
-  | { type: 'l16/apply-default-vout-mode' }
+  | { type: 'l16/apply-calculator-linear-example' }
   | { type: 'direct/set-y'; y: string }
   | { type: 'direct/set-coeff'; name: 'm' | 'b' | 'r'; value: string }
   | { type: 'byte-order/set'; endian: Endian }

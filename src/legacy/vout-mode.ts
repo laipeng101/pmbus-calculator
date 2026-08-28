@@ -81,14 +81,19 @@ export const VOUT_MODE_FORMAT_NAMES: Record<VoutModeFormat, VoutModeFormatName> 
 }
 
 /**
- * Fallback LINEAR VOUT_MODE used by the LINEAR16 page when the shared byte is
- * not LINEAR (Part II §8.3: bits[6:5] must be 00b for LINEAR16 semantics).
+ * Calculator-level LINEAR VOUT_MODE example byte (v2.5.7 naming): the initial
+ * byte of the L16/VOUT_MODE pages and the single explicit recovery value of
+ * the `l16/apply-calculator-linear-example` action.
  *
  * 0x18 = absolute LINEAR, N = -8 (5-bit two's complement 0b11000).
- * This is the single definition; state initialization and the fallback selector
- * both consume it and no other copy exists.
+ *
+ * This is a TOOL example value, not a PMBus default: Part II §8.3 defines the
+ * VOUT_MODE bit layout and legal combinations only — no PMBus standard default
+ * byte exists, and a real device may hard-wire Mode/Parameter and refuse
+ * VOUT_MODE writes. There is no fallback channel: a non-LINEAR shared byte
+ * fails closed (Part II §8.4); recovery is always this explicit write.
  */
-export const DEFAULT_LINEAR_VOUT_MODE = 0x18
+export const CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE = 0x18
 
 function toSigned5(bits: number): number {
   return bits >= 16 ? bits - 32 : bits

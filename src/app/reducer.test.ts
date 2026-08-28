@@ -432,10 +432,10 @@ describe('appReducer — state transitions', () => {
       }
     })
 
-    it('显式应用默认 0x18 后 value/set 恢复编码且 provenance 走显式路径', () => {
+    it('显式应用计算器 LINEAR 示例 0x18 后 value/set 恢复编码且 provenance 走显式路径', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
       const withMode = appReducer(l16, { type: 'vout-mode/set-byte', hex: '20' })
-      const applied = appReducer(withMode, { type: 'l16/apply-default-vout-mode' })
+      const applied = appReducer(withMode, { type: 'l16/apply-calculator-linear-example' })
       expect(applied.voutMode.byte).toBe(0x18)
       expect(applied.valueRequest).toBeNull()
       const s = appReducer(applied, { type: 'value/set', value: '12' })
@@ -657,6 +657,61 @@ describe('appReducer — state transitions', () => {
     })
   })
 
+  describe('idempotent VOUT_MODE semantic writes preserve provenance (v2.5.7)', () => {
+    // L16 default byte 0x18: value 1 encodes raw 0x0100 with an explicit
+    // valueRequest provenance.
+    const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+    const withRequest = appReducer(l16, { type: 'value/set', value: '1' })
+    expect(withRequest.raw).toBe(0x0100)
+    expect(withRequest.valueRequest).not.toBeNull()
+
+    it('re-selecting absolute (already absolute) keeps the state and provenance', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-relative', relative: false })
+      expect(s).toBe(withRequest)
+    })
+
+    it('re-selecting relative (already relative) keeps the state and provenance', () => {
+      // SLINEAR16 offset encodes for any LINEAR byte (§13.3/§13.4), including
+      // relative 0x98 — the only way to hold provenance on a relative byte.
+      const relativeByte = appReducer(
+        appReducer(l16, { type: 'l16/set-payload-kind', payloadKind: 'slinear16-offset' }),
+        { type: 'vout-mode/set-relative', relative: true },
+      )
+      const withRelativeRequest = appReducer(relativeByte, { type: 'value/set', value: '1' })
+      expect(withRelativeRequest.raw).toBe(0x0100)
+      expect(withRelativeRequest.valueRequest).not.toBeNull()
+
+      const s = appReducer(withRelativeRequest, { type: 'vout-mode/set-relative', relative: true })
+      expect(s).toBe(withRelativeRequest)
+    })
+
+    it('re-selecting the same format keeps the state and provenance', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-format', format: 0 })
+      expect(s).toBe(withRequest)
+    })
+
+    it('re-entering the same LINEAR N keeps the state and provenance', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-linear-n', n: '-8' })
+      expect(s).toBe(withRequest)
+    })
+
+    it('re-selecting the same parameter keeps the state and provenance', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-parameter', parameter: 0x18 })
+      expect(s).toBe(withRequest)
+    })
+
+    it('expert hex edit with the same byte keeps the state and provenance', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-byte', hex: '18' })
+      expect(s).toBe(withRequest)
+    })
+
+    it('a real byte change still invalidates provenance (opposite path)', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-relative', relative: true })
+      expect(s.voutMode.byte).toBe(0x98)
+      expect(s.valueRequest).toBeNull()
+    })
+  })
+
   describe('byte-order/set', () => {
     it('sets byteOrder', () => {
       const s = appReducer(base, { type: 'byte-order/set', endian: 'be' })
@@ -830,6 +885,31 @@ describe('appReducer — state transitions', () => {
     it('Value -0 -> raw 0x8000 (preserves negative zero)', () => {
       const s = appReducer(halfMode, { type: 'value/set', value: '-0' })
       expect(s.raw).toBe(0x8000)
+    })
+
+    it('signed-zero decimal shorthand all encode 0x8000 (v2.5.7)', () => {
+      // IEEE 754 binary16 keeps -0 (0x8000) distinct from +0 (0x0000);
+      // Number('-.0') is -0 and the parser must preserve it (Part II §7.6).
+      for (const text of ['-0', '-0.0', '-.0', '-.00', '-0e3']) {
+        const s = appReducer(halfMode, { type: 'value/set', value: text })
+        expect(s.raw, text).toBe(0x8000)
+        expect(s.valueRequest?.mode, text).toBe('HALF')
+        expect(Object.is(s.valueRequest?.value, -0), text).toBe(true)
+      }
+    })
+
+    it('positive-zero shorthand variants all encode 0x0000', () => {
+      for (const text of ['0', '+0', '0.0', '.0', '+.0', '0e3']) {
+        expect(appReducer(halfMode, { type: 'value/set', value: text }).raw, text).toBe(0x0000)
+      }
+    })
+
+    it('bare dot drafts never reach the HALF encoder (transitional)', () => {
+      for (const text of ['.', '+.', '-.']) {
+        const s = appReducer(halfMode, { type: 'value/set', value: text })
+        expect(s.raw, text).toBe(halfMode.raw)
+        expect(s.valueRequest, text).toBe(halfMode.valueRequest)
+      }
     })
   })
 
@@ -1049,9 +1129,11 @@ describe('appReducer — state transitions', () => {
       ).toBeNull()
     })
 
-    it('l16/apply-default-vout-mode writes 0x18 to the shared byte', () => {
+    it('l16/apply-calculator-linear-example writes 0x18 to the shared byte', () => {
       const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '40' })
-      expect(appReducer(s, { type: 'l16/apply-default-vout-mode' }).voutMode.byte).toBe(0x18)
+      expect(appReducer(s, { type: 'l16/apply-calculator-linear-example' }).voutMode.byte).toBe(
+        0x18,
+      )
     })
   })
 

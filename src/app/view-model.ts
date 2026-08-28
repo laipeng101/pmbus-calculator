@@ -325,7 +325,7 @@ function buildVoutModeVM(byte: number, source?: 'linked' | 'non-linear'): VoutMo
       title: '共享 VOUT_MODE 非 LINEAR，本页不可计算',
       detail:
         '输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4）；' +
-        'LINEAR16 页不隐式替换字节。显式应用默认 0x18 后才恢复计算。',
+        'LINEAR16 页不隐式替换字节。显式应用计算器 LINEAR 示例 0x18（absolute、N=-8）后才恢复计算。',
       specRef: 'Part II §8.3 / §8.4',
     })
   }
@@ -517,7 +517,7 @@ function buildWarnings(state: AppState): WarningVM[] {
       warnings.push({
         id: 'l16-vout-mode-nonlinear',
         level: 'warning',
-        text: `当前共享 VOUT_MODE ${formatByteHex(state.voutMode.byte)} 为 ${a.formatName}；输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），LINEAR16 页不隐式替换字节。显式应用默认 0x18 后才恢复计算。`,
+        text: `当前共享 VOUT_MODE ${formatByteHex(state.voutMode.byte)} 为 ${a.formatName}；输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），LINEAR16 页不隐式替换字节。显式应用计算器 LINEAR 示例 0x18（absolute、N=-8）后才恢复计算。0x18 是本计算器的示例值，不是 PMBus 规范默认值，也不代表真实器件一定接受 VOUT_MODE 写入。`,
       })
       // The offset-command prohibition is a spec-level error (§13.3/§13.4:
       // devices must reject VOUT_TRIM / VOUT_CAL_OFFSET under VID), so it is

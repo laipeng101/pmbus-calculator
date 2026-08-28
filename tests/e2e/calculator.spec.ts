@@ -194,7 +194,9 @@ test.describe('计算器真实用户流程', () => {
     await expect(page.getByTestId('result-value')).toHaveText('—')
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x20')
     await expect(page.getByTestId('vout-mode-source')).toHaveText('非 LINEAR')
-    await expect(page.getByText(/显式应用默认 VOUT_MODE 0x18/).first()).toBeVisible()
+    await expect(page.locator('.workspace-l16-block')).toContainText(
+      '显式应用计算器 LINEAR 示例 0x18',
+    )
   })
 
   test('L16 relative LINEAR（0x98）显示需要参考值且不给出绝对电压', async ({ page }) => {

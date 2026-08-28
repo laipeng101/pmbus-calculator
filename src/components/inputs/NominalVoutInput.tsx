@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { parseFloatSafe, isTransitionalFloatText } from '../../app/float-parse'
+import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
   id: string
@@ -19,6 +20,7 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit }: Pro
   const [draft, setDraft] = useState(value == null ? '' : String(value))
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const transaction = useEditTransaction()
 
   useEffect(() => {
     if (!editing && !error) setDraft(value == null ? '' : String(value))
@@ -34,6 +36,7 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit }: Pro
   }
 
   const handleChange = (text: string) => {
+    transaction.markDirty()
     setDraft(text)
     const { valid, value: v } = classify(text)
     if (text.trim() === '' || isTransitionalFloatText(text)) {
@@ -49,6 +52,12 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit }: Pro
   }
 
   const handleBlur = () => {
+    // Untouched focus/blur (no onChange at all) is a strict no-op: no commit,
+    // no draft reset, no provenance loss, no field-error change (v2.5.7).
+    if (!transaction.shouldCommitOnBlur()) {
+      setEditing(false)
+      return
+    }
     const { valid, value: v } = classify(draft)
     if (!valid && draft.trim() !== '' && !isTransitionalFloatText(draft)) {
       setError(INVALID_MESSAGE)

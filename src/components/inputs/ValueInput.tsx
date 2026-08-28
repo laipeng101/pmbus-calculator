@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
 import { parseFloatSafe, isTransitionalFloatText } from '../../app/float-parse'
+import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
   vm: CalculatorViewModel
@@ -28,13 +29,23 @@ function classifyDraft(
   return { kind: 'invalid', value: null }
 }
 
-/** Mirrors legacy blur normalization: '-', '+', '' -> '0'; trailing 'e'/'.' stripped. */
+/**
+ * Blur normalization for incomplete drafts: '' / '-' / '+' -> '0'; trailing
+ * 'e' exponent stripped.  A bare trailing dot keeps its sign (v2.5.7): the
+ * sign is the only information the draft carries, and IEEE 754 binary16 keeps
+ * `-0` (0x8000) distinct from `+0` (0x0000), Part II §7.6.
+ */
 function fixFloatOnBlur(value: string): string {
   value = value.trim()
   if (!value) return '0'
   if (value === '-' || value === '+') return '0'
   if (/[eE][+-]?$/.test(value)) return value.replace(/[eE][+-]?$/, '') || '0'
-  if (value.endsWith('.')) return value.slice(0, -1) || '0'
+  if (value.endsWith('.')) {
+    const head = value.slice(0, -1)
+    if (head === '' || head === '+') return '0'
+    if (head === '-') return '-0'
+    return head
+  }
   return value
 }
 
@@ -53,17 +64,16 @@ export default function ValueInput({ vm, dispatch }: Props) {
   const [draft, setDraft] = useState(vm.valueText)
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // True once the user modified the draft during the current focus session.
-  // Dirty is tracked by real onChange transactions — never by comparing parsed
-  // numbers (NaN !== NaN, -0, alternate textual forms would all misreport).
-  const touchedRef = useRef(false)
+  // Dirty is tracked by real onChange transactions — never by comparing
+  // parsed numbers (NaN !== NaN, -0, alternate textual forms would misreport).
+  const transaction = useEditTransaction()
 
   useEffect(() => {
     if (!editing && !error) setDraft(vm.valueText)
   }, [vm.valueText, editing, error])
 
   const handleChange = (text: string) => {
-    touchedRef.current = true
+    transaction.markDirty()
     setDraft(text)
     const { kind, value } = classifyDraft(text, vm.mode === 'HALF')
     if (kind === 'invalid') {
@@ -84,11 +94,10 @@ export default function ValueInput({ vm, dispatch }: Props) {
     // Untouched focus/blur (no onChange at all) is a strict no-op: it must not
     // dispatch value/set, rewrite raw, fabricate an encoding request, or drop
     // a still-visible field error. Only a real edit transaction commits.
-    if (!touchedRef.current) {
+    if (!transaction.shouldCommitOnBlur()) {
       setEditing(false)
       return
     }
-    touchedRef.current = false
     const fixed = fixFloatOnBlur(draft)
     const { kind, value } = classifyDraft(fixed, vm.mode === 'HALF')
     if (kind === 'invalid' || kind === 'non-finite') {

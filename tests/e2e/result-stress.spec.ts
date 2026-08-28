@@ -309,7 +309,7 @@ test.describe('M16 result stress geometry', () => {
 
     // Explicitly applying the default byte really writes 0x18 and restores
     // the ULINEAR16 encoding channel and its quantization readout.
-    await page.getByRole('button', { name: '应用默认 VOUT_MODE' }).click()
+    await page.getByRole('button', { name: '应用计算器 LINEAR 示例 0x18' }).click()
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
     await expect(page.locator('#value-input')).toHaveCount(1)
 

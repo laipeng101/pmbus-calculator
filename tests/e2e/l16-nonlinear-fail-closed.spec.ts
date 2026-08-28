@@ -5,12 +5,12 @@ import { test, expect, type Page } from '@playwright/test'
  * closed on the LINEAR16 page, and the fail-closed copy must be
  * spec-accurate. Part II §8.4 — output-voltage-related commands take their
  * data format from the current VOUT_MODE, so the page must never substitute
- * the default 0x18 behind the user's back. §8.4.2 — VID is a SUPPORTED
+ * the calculator example 0x18 behind the user's back. §8.4.2 — VID is a SUPPORTED
  * output-voltage data format: the page may only say "legal but missing a
  * table/profile", NEVER "output-voltage commands prohibit VID". The spec's
  * own prohibitions are narrow: VOUT_TRIM / VOUT_CAL_OFFSET under VID
  * (§13.3/§13.4) and relative × VID (§8.5.3). Recovery requires the explicit
- * "应用默认 VOUT_MODE" action, which really writes 0x18.
+ * "应用计算器 LINEAR 示例 0x18" action, which really writes 0x18.
  * These cases drive the real UI on both desktop and mobile projects.
  */
 
@@ -189,13 +189,50 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
     await expect(page.locator('#value-input')).toHaveCount(0)
   })
 
-  test('explicit apply of the default byte writes 0x18 and restores encoding', async ({ page }) => {
+  test('0x18 反词：可见表面不得称规范/器件默认，必须表述为计算器示例（v2.5.7）', async ({
+    page,
+  }) => {
+    await settle(page)
+    await enterL16(page, '60', 'ulinear16')
+    await expect(blockCard(page)).toBeVisible()
+
+    // 旧按钮文案与自动回退措辞绝不允许出现；「默认」只允许出现在否定免责
+    // 语境（不是/并非/不代表）中。扫描范围是承载 0x18 文案的表面：阻断卡、
+    // composer 与提示面板（不含无关的字节序提示「默认低字节在前」）。
+    const scopeText = (
+      await Promise.all([
+        page.locator('.workspace-l16-block').innerText(),
+        page.locator('.vout-composer').innerText(),
+        page.locator('section[aria-label="提示信息"]').innerText(),
+      ])
+    ).join('\n')
+    expect(scopeText).not.toContain('应用默认 VOUT_MODE')
+    expect(scopeText).not.toContain('自动回退')
+    for (const m of scopeText.matchAll(/默认/g)) {
+      const index = m.index ?? 0
+      const before = scopeText.slice(Math.max(0, index - 14), index)
+      expect(
+        before,
+        `默认 without negation near: ${scopeText.slice(Math.max(0, index - 20), index + 10)}`,
+      ).toMatch(/不是|并非|不代表/)
+    }
+
+    // 阻断卡与恢复入口必须使用计算器示例表述并带免责声明。
+    await expect(blockCard(page)).toContainText('计算器 LINEAR 示例 0x18')
+    await expect(blockCard(page)).toContainText('不是 PMBus 规范默认值')
+    await expect(blockCard(page)).toContainText('不代表真实器件一定接受 VOUT_MODE 写入')
+    await expect(page.getByRole('button', { name: '应用计算器 LINEAR 示例 0x18' })).toBeVisible()
+  })
+
+  test('explicit apply of the calculator example byte writes 0x18 and restores encoding', async ({
+    page,
+  }) => {
     await settle(page)
     await enterL16(page, '20', 'slinear16-offset')
     await expect(page.locator('#value-input')).toHaveCount(0)
 
     // The explicit action really rewrites the shared byte.
-    await page.getByRole('button', { name: '应用默认 VOUT_MODE' }).click()
+    await page.getByRole('button', { name: '应用计算器 LINEAR 示例 0x18' }).click()
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
     await expect(page.getByTestId('vout-mode-source')).toHaveText('已关联')
     await expect(page.locator('#vout-mode-input')).toHaveValue(/18/i)
@@ -223,7 +260,7 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
     await enterL16(page, '3E', 'ulinear16')
     await expect(page.locator('#value-input')).toHaveCount(0)
 
-    await page.getByRole('button', { name: '应用默认 VOUT_MODE' }).click()
+    await page.getByRole('button', { name: '应用计算器 LINEAR 示例 0x18' }).click()
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
     await expect(page.locator('#value-input')).toBeVisible()
     await expect(legend(page)).toContainText('数值 V [15:0]')
@@ -265,7 +302,7 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
       // activates from the keyboard after applying.
       await page.locator('#vout-mode-input').focus()
       await page.keyboard.press('Tab')
-      const applyButton = page.getByRole('button', { name: '应用默认 VOUT_MODE' })
+      const applyButton = page.getByRole('button', { name: '应用计算器 LINEAR 示例 0x18' })
       await expect(applyButton).toBeAttached()
       await applyButton.focus()
       await page.keyboard.press('Enter')

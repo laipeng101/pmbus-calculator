@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { isTransitionalIntegerText, parseIntegerStrict } from '../../app/int-parse'
+import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
   id: string
@@ -29,12 +30,14 @@ export default function DecimalInput({
   const [draft, setDraft] = useState(String(value))
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const transaction = useEditTransaction()
 
   useEffect(() => {
     if (!editing && !error) setDraft(String(value))
   }, [value, editing, error])
 
   const handleChange = (text: string) => {
+    transaction.markDirty()
     setDraft(text)
     if (isTransitionalIntegerText(text)) {
       setError(null)
@@ -50,6 +53,12 @@ export default function DecimalInput({
   }
 
   const handleBlur = () => {
+    // Untouched focus/blur (no onChange at all) is a strict no-op: no commit,
+    // no raw rewrite, no provenance loss, no field-error change (v2.5.7).
+    if (!transaction.shouldCommitOnBlur()) {
+      setEditing(false)
+      return
+    }
     const trimmed = draft.trim()
     // Normalize unfinished states (empty / lone sign) to 0.
     const text = isTransitionalIntegerText(trimmed) ? '0' : trimmed

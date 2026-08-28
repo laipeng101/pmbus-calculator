@@ -220,7 +220,11 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                     {line}
                   </p>
                 ))}
-                <p>显式应用默认 VOUT_MODE 0x18 后才恢复 LINEAR16 编码。</p>
+                <p>
+                  显式应用计算器 LINEAR 示例 0x18（absolute、N=-8）后才恢复 LINEAR16 编码。0x18
+                  是本计算器的示例值，不是 PMBus 规范默认值，也不代表真实器件一定接受 VOUT_MODE
+                  写入。
+                </p>
               </div>
             ) : (
               <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">

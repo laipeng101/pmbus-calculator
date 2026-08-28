@@ -97,7 +97,14 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             type="button"
             role="radio"
             aria-checked={info.isRelative === false}
-            onClick={() => dispatch({ type: 'vout-mode/set-relative', relative: false })}
+            onClick={() => {
+              // Re-selecting the active semantic control must not dispatch a
+              // state write: the reducer would keep the byte, but not
+              // dispatching keeps the transaction contract explicit (v2.5.7).
+              if (info.isRelative !== false) {
+                dispatch({ type: 'vout-mode/set-relative', relative: false })
+              }
+            }}
             className="vout-seg-btn"
           >
             绝对值
@@ -109,7 +116,11 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             aria-disabled={isVid}
             disabled={isVid}
             title={isVid ? '相对值不适用于 VID（Part II §8.5.3）' : undefined}
-            onClick={() => dispatch({ type: 'vout-mode/set-relative', relative: true })}
+            onClick={() => {
+              if (info.isRelative !== true) {
+                dispatch({ type: 'vout-mode/set-relative', relative: true })
+              }
+            }}
             className="vout-seg-btn"
           >
             相对值
@@ -128,7 +139,11 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
                 type="button"
                 role="radio"
                 aria-checked={info.format === f.value}
-                onClick={() => dispatch({ type: 'vout-mode/set-format', format: f.value })}
+                onClick={() => {
+                  if (info.format !== f.value) {
+                    dispatch({ type: 'vout-mode/set-format', format: f.value })
+                  }
+                }}
                 className="vout-seg-btn"
               >
                 {f.label}
@@ -277,16 +292,22 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         />
       </div>
 
-      {/* Explicit canonicalization action */}
+      {/* Explicit recovery action: the calculator's LINEAR example byte. */}
       {embedded ? (
         info.source === 'non-linear' ? (
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'l16/apply-default-vout-mode' })}
-            className="vout-apply-default min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
-          >
-            应用默认 VOUT_MODE
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'l16/apply-calculator-linear-example' })}
+              className="vout-apply-default min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
+            >
+              应用计算器 LINEAR 示例 0x18
+            </button>
+            <p className="text-xs color-text-muted">
+              0x18（absolute、N=-8）是本计算器的初始/恢复示例值，不是 PMBus
+              规范默认值，也不代表真实器件一定接受 VOUT_MODE 写入。
+            </p>
+          </>
         ) : null
       ) : (
         <button

@@ -18,11 +18,11 @@ export interface EffectiveL16VoutMode {
  * - Shared byte LINEAR (bits[6:5] = 00b): used directly, including its bit7
  *   and N (linked).
  * - Anything else: `source: 'non-linear'`. The page must NOT substitute
- *   `DEFAULT_LINEAR_VOUT_MODE` behind the user's back — output-voltage-related
+ *   `CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE` behind the user's back — output-voltage-related
  *   commands take their data format from the current VOUT_MODE (Part II
  *   §8.4), so computing against 0x18 would fabricate values for VID / DIRECT
  *   / IEEE Half configurations. Recovering the LINEAR16 editor requires the
- *   explicit `l16/apply-default-vout-mode` action, which really writes 0x18
+ *   explicit `l16/apply-calculator-linear-example` action, which really writes 0x18
  *   into the shared byte (and invalidates stale provenance).
  */
 export function effectiveL16VoutMode(state: AppState): EffectiveL16VoutMode {

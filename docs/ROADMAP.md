@@ -3,8 +3,8 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-28（v2.5.6 物理值输入 untouched blur 事务化 + VID Table 3
-出处文案纠偏 + 结构合法性单一事实源）
+最后更新：2026-08-28（v2.5.7 HALF signed-zero 简写 + untouched blur 事务语义
+推广到全部共享输入 + 已选语义控件幂等 + 0x18 计算器示例表述纠偏）
 
 ## 当前产品基线
 
@@ -29,7 +29,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.6；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.7；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -85,7 +85,13 @@ M0–M39 complete；stable release v2.5.6；production distribution: GitHub Page
   `vid-reserved-listed`/`vid-reserved-unlisted`，五个表面消费单一来源，明列 code
   不再被写成「未列出」）——移除矛盾的双重结构合法性事实源
   `VoutModeAnalysis.isLegal`（结构合法性只由 `structureLegal` 输出）。
-- 当前：无进行中的功能里程碑；v2.5.6 已完成发布（Release + Pages，2026-08-28），
+- v2.5.7（PATCH）：HALF signed-zero 简写修复（`-.0` 等解析为真 `-0`、编码
+  `0x8000`，Part II §7.6/§7.6.2）——untouched-blur 事务语义推广到全部共享输入
+  （Hex/Integer/Decimal/NominalVoutInput，共享 `input-transaction.ts`）——
+  已选语义控件幂等（同字节写入不清除 provenance）——0x18 表述纠偏
+  （`CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE` / `l16/apply-calculator-linear-example`，
+  明示计算器示例值而非 PMBus 默认）。
+- 当前：无进行中的功能里程碑；v2.5.7 已完成发布（Release + Pages，2026-08-28），
   M40–M41 complete。下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

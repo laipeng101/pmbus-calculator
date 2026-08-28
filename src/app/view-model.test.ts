@@ -119,6 +119,38 @@ describe('toCalculatorViewModel', () => {
       }
     })
 
+    test('0x18 只表述为计算器示例；「默认/回退」只允许出现在否定免责语境（v2.5.7 反词）', () => {
+      // Surfaces must never CALL 0x18 a default or claim an auto-fallback.
+      // Negated disclaimers ("不是 PMBus 规范默认值") are the only allowed use
+      // of the word 默认 — every occurrence must sit in a negation context.
+      for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
+        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
+        const surfaces = [
+          ...(vm.voutModeInfo?.explanations ?? []).map((e) => `${e.title}\n${e.detail}`),
+          ...vm.warnings.map((w) => w.text),
+          vm.l16Payload?.blocked?.title ?? '',
+          ...(vm.l16Payload?.blocked?.detailLines ?? []),
+        ]
+        for (const text of surfaces) {
+          // The old standalone action phrasing must be gone entirely.
+          expect(text, `0x${byte.toString(16)}`).not.toContain('应用默认 VOUT_MODE')
+          expect(text, `0x${byte.toString(16)}`).not.toContain('回退')
+          expect(text, `0x${byte.toString(16)}`).not.toContain('fallback 0x18')
+          for (const m of text.matchAll(/默认/g)) {
+            const before = text.slice(Math.max(0, (m.index ?? 0) - 14), m.index ?? 0)
+            expect(before, `0x${byte.toString(16)}: 默认 without negation in ${text}`).toMatch(
+              /不是|并非|不代表|非 $|非$/,
+            )
+          }
+        }
+        // The recovery entry must name the byte as the calculator's example
+        // value with its absolute/N=-8 semantics and an explicit disclaimer.
+        const joined = surfaces.join('\n')
+        expect(joined).toContain('计算器 LINEAR 示例 0x18')
+        expect(joined).toContain('不是 PMBus 规范默认值')
+      }
+    })
+
     test('VID 0x20 + ULINEAR16：VID 合法但缺 profile（v2.5.3），绝不宣称输出电压命令总体禁止 VID', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x20 } }))
       expect(vm.voutModeInfo?.source).toBe('non-linear')
