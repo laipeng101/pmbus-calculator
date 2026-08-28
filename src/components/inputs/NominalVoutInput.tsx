@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { classifyFloatText, fixFloatTextOnBlur } from '../../app/float-parse'
+import { classifyFloatText, resolveFloatTextOnBlur } from '../../app/float-parse'
 import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
@@ -24,8 +24,9 @@ const OUT_OF_RANGE_MESSAGE =
  * v2.5.8 clearing contract: null is a real, reachable committed state.  A
  * user who deleted the entire content and blurs/Enter clears the reference
  * (`onClear`); null ≠ 0 — 0 stays a distinct decode-only value.  Non-empty
- * transitional drafts ('1e', '-', '.') blur-normalize via the shared
- * `fixFloatTextOnBlur` instead of silently restoring the previous value.
+ * transitional drafts ('1e', '-', '.') blur-normalize through the shared
+ * `resolveFloatTextOnBlur` decision (v2.5.9, classification-first) instead of
+ * silently restoring the previous value; invalid drafts keep their error.
  * Untouched focus/blur sessions (no onChange at all) remain strict no-ops.
  */
 export default function NominalVoutInput({ id, value, ariaLabel, onCommit, onClear }: Props) {
@@ -85,29 +86,31 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit, onCle
       setEditing(false)
       return
     }
-    if (draft.trim() === '') {
+    // Classification-first blur decision (v2.5.9), shared with ValueInput:
+    // the raw draft is classified before any normalization, so an invalid
+    // draft (`12..`, `NaNe`, `1ee`) keeps its error and its last committed
+    // value instead of being repaired into a commit on blur.
+    const resolution = resolveFloatTextOnBlur(draft)
+    if (resolution.kind === 'empty') {
       // Real deletion committed (v2.5.8): the reference becomes null — never
       // a silent restore of the previous value, and never coerced to 0.
       setError(null)
       setDraft('')
       onClear()
-      setEditing(false)
-      return
-    }
-    // Non-empty transitional draft ('1e', '-', '.'): normalize exactly like
-    // the physical-value input instead of silently restoring the old value.
-    const fixed = fixFloatTextOnBlur(draft)
-    const { kind, value: v } = classify(fixed)
-    if (kind === 'invalid') {
-      setError(INVALID_MESSAGE)
-      setDraft(fixed)
-    } else if (kind === 'out-of-range') {
-      setError(OUT_OF_RANGE_MESSAGE)
-      setDraft(fixed)
+    } else if (resolution.kind === 'commit') {
+      // Nominal references are finite non-negative voltages; NaN / ±Infinity
+      // literals are HALF first-class values and stay invalid here.
+      if (!Number.isFinite(resolution.value) || resolution.value < 0) {
+        setError(INVALID_MESSAGE)
+      } else {
+        setError(null)
+        setDraft(resolution.text)
+        onCommit(String(resolution.value))
+      }
     } else {
-      setError(null)
-      setDraft(fixed)
-      if (kind === 'valid' && v !== null) onCommit(String(v))
+      // Invalid / out-of-range raw draft (or a defensive fail-closed
+      // transitional): keep the original draft together with its error.
+      setError(resolution.raw.kind === 'out-of-range' ? OUT_OF_RANGE_MESSAGE : INVALID_MESSAGE)
     }
     setEditing(false)
   }
