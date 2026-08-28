@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { appReducer } from './reducer'
 import { INITIAL_STATE, type AppState } from './state'
+import { toCalculatorViewModel } from './view-model'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
 
@@ -242,6 +243,47 @@ describe('appReducer — state transitions', () => {
       const half = appReducer(base, { type: 'mode/set', mode: 'HALF' })
       const s = appReducer(half, { type: 'value/set', value: '12' })
       expect(s.raw).toBe(0x4a00)
+    })
+  })
+
+  describe('LINEAR11 strictly-nearest encoding (v2.5.10)', () => {
+    it('commits the strictly nearest code with consistent N/Y/provenance', () => {
+      const vectors = [
+        { text: '0.0000076293945313', raw: 0x8001, n: -16, y: 1 },
+        { text: '-0.0000076293945313', raw: 0x87ff, n: -16, y: -1 },
+        { text: '0.0000076293945312', raw: 0x0000, n: 0, y: 0 },
+        { text: '0.00000762939453125', raw: 0x0000, n: 0, y: 0 },
+      ]
+      for (const v of vectors) {
+        const s = appReducer(base, { type: 'value/set', value: v.text })
+        expect(s.raw, v.text).toBe(v.raw)
+        expect(s.l11.n, v.text).toBe(v.n)
+        expect(s.l11.y, v.text).toBe(v.y)
+        expect(s.l11.valueInput, v.text).toBe(Number(v.text))
+      }
+    })
+
+    it('keeps locked-N encoding untouched by the auto-N search', () => {
+      const manual: AppState = { ...base, l11: { ...base.l11, autoN: false, n: -16 } }
+      // Below the 2^-17 midpoint the locked-N path rounds Y to 0 (0x8000),
+      // while the auto-N search picks the strictly nearer zero code 0x0000 —
+      // the two paths must stay independent.
+      const s = appReducer(manual, { type: 'value/set', value: '0.0000076293945312' })
+      expect(s.l11.autoN).toBe(false)
+      expect(s.l11.n).toBe(-16)
+      expect(s.raw).toBe(0x8000)
+      expect(s.l11.y).toBe(0)
+    })
+
+    it('surfaces the committed delta through the view-model readout', () => {
+      const s = appReducer(base, { type: 'value/set', value: '0.0000076293945313' })
+      const vm = toCalculatorViewModel(s)
+      // Result is decoded from the raw word, not echoed from the request.
+      expect(vm.valueText).toBe('0.0000152587890625')
+      // requested − represented = 0.0000076293945313 − 2^-16 < 0; magnitude
+      // ≥ 1e-6 uses the fixed 6-decimal format, relative error ≈ −100%.
+      expect(vm.deltaKind).toBe('warn')
+      expect(vm.deltaText).toBe('-0.000008 (-100.0000%)')
     })
   })
 
