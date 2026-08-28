@@ -1,20 +1,27 @@
-// Offline tests for scripts/release-assets-verify.mjs (v2.5.8).
+// Offline tests for scripts/release-assets-verify.mjs (v2.5.8; v2.5.9 data
+// interface + URL contract).
 //
 // The v2.5.7 release race published a Release before its assets existed, so
 // the release-published Pages run failed inside "Download release assets"
 // (the jq asset selection exited 4 with no proof of which contract broke).
-// The verifier is now the single readiness gate consumed by BOTH the real
+// The verifier is the single readiness gate consumed by BOTH the real
 // Pages workflow (before any download/deploy) and the release operator
 // (against the draft, before publishing) — this file pins its exit codes,
-// diagnostics and the workflow wiring so the script can never become a
-// test-only implementation.
+// diagnostics, the workflow wiring and the DATA-ONLY output contract so the
+// script can never become a test-only implementation.
 //
-// Fixture matrix (per the v2.5.8 plan): empty assets; only SHA256SUMS; zip
-// uploading / zero-byte; duplicate / wrong asset names; valid complete;
-// draft / prerelease / tag mismatch. Checksum and zip-content failures are
-// pinned by tests/zip-helper-security.test.ts and tests/release-assets.test.ts.
+// v2.5.9: stdout is ONE JSON object and diagnostics live on stderr — the
+// previous `key=value` stdout was consumed with `source` in the Pages
+// workflow, which EXECUTED command substitutions embedded in metadata
+// strings (the audit's harmless-offline-fixture sentinel below). URLs are
+// validated with the URL parser against the canonical
+// github.com/<repo>/releases/download contract, never a string prefix.
+//
+// Checksum and zip-content failures are pinned by
+// tests/zip-helper-security.test.ts and tests/release-assets.test.ts;
+// the downloader consumer is pinned by tests/download-release-assets.test.ts.
 
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -23,6 +30,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 const SCRIPT = path.resolve(process.cwd(), 'scripts', 'release-assets-verify.mjs')
 const TAG = 'v1.2.3'
+const REPO = 'owner/repo'
 const ZIP_NAME = `pmbus-calculator-${TAG}-web.zip`
 
 const tmpDirs: string[] = []
@@ -43,7 +51,7 @@ function asset(name: string, overrides: Record<string, unknown> = {}) {
     name,
     state: 'uploaded',
     size: 1070107,
-    browser_download_url: `https://github.com/owner/repo/releases/download/${TAG}/${name}`,
+    browser_download_url: `https://github.com/${REPO}/releases/download/${TAG}/${name}`,
     ...overrides,
   }
 }
@@ -65,34 +73,54 @@ interface RunResult {
 }
 
 function runScript(file: string, extraArgs: string[] = []): RunResult {
-  try {
-    const stdout = execFileSync(process.execPath, [SCRIPT, file, '--tag', TAG, ...extraArgs], {
-      stdio: 'pipe',
+  const result = spawnSync(
+    process.execPath,
+    [SCRIPT, file, '--tag', TAG, '--repo', REPO, ...extraArgs],
+    {
+      stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 10_000,
       encoding: 'utf8',
-    })
-    return { status: 0, stdout, stderr: '' }
-  } catch (error) {
-    const err = error as { status?: number; stdout?: string; stderr?: string }
-    return {
-      status: err.status ?? -1,
-      stdout: err.stdout ?? '',
-      stderr: err.stderr ?? '',
-    }
+    },
+  )
+  return {
+    status: result.status ?? -1,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+  }
+}
+
+function parseOutput(stdout: string) {
+  return JSON.parse(stdout) as {
+    tag: string
+    mode: string
+    repo: string
+    zip: { name: string; size: number; url: string }
+    sums: { name: string; size: number; url: string }
   }
 }
 
 describe('release-assets-verify: asset readiness matrix', () => {
-  it('accepts a valid complete published release and resolves both assets', () => {
+  it('accepts a valid complete published release and resolves both assets as JSON', () => {
     const result = runScript(writeFixture(validRelease()))
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain(`zip_name=${ZIP_NAME}`)
-    expect(result.stdout).toContain('zip_size=1070107')
-    expect(result.stdout).toContain(
-      `zip_url=https://github.com/owner/repo/releases/download/${TAG}/${ZIP_NAME}`,
-    )
-    expect(result.stdout).toContain('sums_name=SHA256SUMS.txt')
-    expect(result.stdout).toContain('sums_size=165')
+    const parsed = parseOutput(result.stdout)
+    expect(parsed.tag).toBe(TAG)
+    expect(parsed.mode).toBe('published')
+    expect(parsed.repo).toBe(REPO)
+    expect(parsed.zip).toEqual({
+      name: ZIP_NAME,
+      size: 1070107,
+      url: `https://github.com/${REPO}/releases/download/${TAG}/${ZIP_NAME}`,
+    })
+    expect(parsed.sums).toEqual({
+      name: 'SHA256SUMS.txt',
+      size: 165,
+      url: `https://github.com/${REPO}/releases/download/${TAG}/SHA256SUMS.txt`,
+    })
+    // stdout is pure JSON — one document, no key=value shell assignments.
+    expect(result.stdout.trim().startsWith('{')).toBe(true)
+    expect(result.stdout).not.toMatch(/^\s*\w+=/m)
+    expect(result.stderr).toContain('assets ready')
   })
 
   it('rejects an empty asset list with the dedicated code', () => {
@@ -158,19 +186,59 @@ describe('release-assets-verify: asset readiness matrix', () => {
     )
     expect(result.status).toBe(6)
   })
+})
 
-  it('rejects an asset without a valid https download URL', () => {
+describe('release-assets-verify: URL contract (v2.5.9, exit 8)', () => {
+  const cases: Array<[string, string]> = [
+    ['plain http', 'http://github.com/owner/repo/releases/download/v1.2.3/x.zip'],
+    ['wrong host', 'https://evil.example/owner/repo/releases/download/v1.2.3/x.zip'],
+    ['host lookalike', 'https://github.com.evil.example/owner/repo/releases/download/v1.2.3/x.zip'],
+    ['userinfo', 'https://user:pass@github.com/owner/repo/releases/download/v1.2.3/x.zip'],
+    ['query string', `https://github.com/${REPO}/releases/download/${TAG}/${ZIP_NAME}?x=1`],
+    ['fragment', `https://github.com/${REPO}/releases/download/${TAG}/${ZIP_NAME}#frag`],
+    ['wrong repo path', `https://github.com/other/repo/releases/download/${TAG}/${ZIP_NAME}`],
+    ['wrong tag path', `https://github.com/${REPO}/releases/download/v9.9.9/${ZIP_NAME}`],
+    ['wrong name path', `https://github.com/${REPO}/releases/download/${TAG}/other.zip`],
+    ['path escape', `https://github.com/${REPO}/releases/download/${TAG}/../${ZIP_NAME}`],
+    ['encoded path segment', `https://github.com/${REPO}/releases/download/${TAG}/a%2Fb`],
+    // The audit sentinel: a harmless offline fixture whose URL carries a
+    // command substitution. It must be REJECTED as a non-canonical URL —
+    // never stored, never executed.
+    ['command substitution', 'https://example.invalid/$(printf PMBUS_AUDIT_SENTINEL)'],
+    ['backticks', 'https://example.invalid/`id`'],
+    ['semicolon chain', 'https://example.invalid/a;b'],
+    ['newline injection', 'https://github.com/owner/repo/releases/download/v1.2.3/x.zip\nX=1'],
+  ]
+
+  for (const [label, url] of cases) {
+    it(`rejects ${label}`, () => {
+      const result = runScript(
+        writeFixture(
+          validRelease({
+            assets: [asset(ZIP_NAME, { browser_download_url: url }), asset('SHA256SUMS.txt')],
+          }),
+        ),
+      )
+      expect(result.status, label).toBe(8)
+      expect(result.stderr, label).toContain(ZIP_NAME)
+    })
+  }
+
+  it('never emits the rejected URL on stdout', () => {
     const result = runScript(
       writeFixture(
         validRelease({
           assets: [
-            asset(ZIP_NAME, { browser_download_url: 'http://insecure.example/x' }),
+            asset(ZIP_NAME, {
+              browser_download_url: 'https://example.invalid/$(printf PMBUS_AUDIT_SENTINEL)',
+            }),
             asset('SHA256SUMS.txt'),
           ],
         }),
       ),
     )
     expect(result.status).toBe(8)
+    expect(result.stdout).toBe('')
   })
 })
 
@@ -198,6 +266,8 @@ describe('release-assets-verify: release metadata contract', () => {
     const draft = validRelease({ draft: true })
     const ok = runScript(writeFixture(draft), ['--mode', 'draft'])
     expect(ok.status).toBe(0)
+    const parsed = parseOutput(ok.stdout)
+    expect(parsed.mode).toBe('draft')
 
     const missingZip = runScript(writeFixture({ ...draft, assets: [asset('SHA256SUMS.txt')] }), [
       '--mode',
@@ -224,20 +294,29 @@ describe('release-assets-verify: usage and shape errors', () => {
     expect(result.status).toBe(2)
   })
 
-  it('rejects a missing --tag or a non-stable tag', () => {
+  it('rejects a missing --repo, a malformed slug, or a non-stable tag', () => {
     const file = writeFixture(validRelease())
-    const withoutTag = (() => {
-      try {
-        execFileSync(process.execPath, [SCRIPT, file], { stdio: 'pipe', timeout: 10_000 })
-        return 0
-      } catch (error) {
-        return (error as { status?: number }).status ?? -1
-      }
-    })()
-    expect(withoutTag).toBe(2)
+    const run = (args: string[]): number => {
+      const result = spawnSync(process.execPath, [SCRIPT, file, ...args], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 10_000,
+      })
+      return result.status ?? -1
+    }
+    expect(run(['--tag', TAG])).toBe(2)
+    expect(run(['--tag', TAG, '--repo', 'owner'])).toBe(2)
+    expect(run(['--tag', TAG, '--repo', 'owner/../repo'])).toBe(2)
+    expect(run(['--tag', 'not-semver', '--repo', REPO])).toBe(2)
+  })
 
-    const result = runScript(file, ['--tag', 'not-semver'])
-    expect(result.status).toBe(2)
+  it('rejects unsafe --zip-name/--sums-name values (path or shell fragments)', () => {
+    const file = writeFixture(validRelease())
+    const slash = runScript(file, ['--zip-name', '../evil.zip'])
+    expect(slash.status).toBe(2)
+    const fragment = runScript(file, ['--zip-name', 'x.zip; rm -rf /'])
+    expect(fragment.status).toBe(2)
+    const sums = runScript(file, ['--sums-name', 'a$(id).txt'])
+    expect(sums.status).toBe(2)
   })
 })
 
@@ -254,7 +333,7 @@ describe('release-assets-verify: the real Pages workflow consumes the script', (
     expect(downloadAt).toBeGreaterThan(verifyAt)
   })
 
-  it('keeps metadata and download network calls bounded with connect/total timeouts', () => {
+  it('keeps the metadata network call bounded with connect/total timeouts', () => {
     for (const match of workflow.matchAll(/curl -[^\n]*\\$/gm)) {
       expect(
         match[0],
@@ -268,6 +347,20 @@ describe('release-assets-verify: the real Pages workflow consumes the script', (
     expect(workflow).not.toMatch(/^\s*sleep\s+\d/m)
   })
 
+  it('passes the expected repository to the verifier and validates the JSON output', () => {
+    expect(workflow).toContain('--repo "${GITHUB_REPOSITORY}"')
+    expect(workflow).toContain('> release-assets.json')
+    expect(workflow).toContain("jq -e '.zip.url and .sums.url'")
+  })
+
+  it('downloads through the Node data consumer and never sources the verifier output', () => {
+    expect(workflow).toContain('scripts/download-release-assets.mjs release-assets.json')
+    // v2.5.9 regression pin: `source` executed command substitutions inside
+    // metadata strings; the workflow must never re-interpret them as code.
+    expect(workflow).not.toContain('source release-assets.env')
+    expect(workflow).not.toContain('release-assets.env')
+  })
+
   it('verifies checksum and zip contract before extraction and deployment', () => {
     const order = [
       'name: Verify SHA-256 checksum',
@@ -278,10 +371,5 @@ describe('release-assets-verify: the real Pages workflow consumes the script', (
     const positions = order.map((step) => workflow.indexOf(step))
     expect(positions.every((p) => p > -1)).toBe(true)
     expect([...positions].sort((a, b) => a - b)).toEqual(positions)
-  })
-
-  it('downloads only the URLs the verifier resolved and checks sizes against metadata', () => {
-    expect(workflow).toContain('source release-assets.env')
-    expect(workflow).toContain('metadata size')
   })
 })

@@ -79,13 +79,18 @@ jobs:
 
           # Asset readiness gate (v2.5.8, scripts/release-assets-verify.mjs):
           # draft/prerelease/tag contract, asset presence, uniqueness,
-          # uploaded state, positive size and valid URL — each failure class
-          # reports its own error and exit code (2-8). This must fail BEFORE
-          # any download or deploy action; the v2.5.7 publish-before-upload
+          # uploaded state, positive size and canonical URL — each failure
+          # class reports its own error and exit code (2-8). This must fail
+          # BEFORE any download or deploy action; the v2.5.7 publish-before-upload
           # race surfaces here as a clear contract error, not an exit 4.
+          # Since v2.5.9 stdout is ONE JSON object (data, not shell program):
+          # the previous key=value env file was consumed with `source`, which
+          # executed command substitutions embedded in metadata strings.
           node scripts/release-assets-verify.mjs release-metadata.json \
-            --tag "${RELEASE_TAG}" --mode published > release-assets.env
-          cat release-assets.env
+            --tag "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --mode published \
+            > release-assets.json
+          jq -e '.zip.url and .sums.url' release-assets.json >/dev/null
+          cat release-assets.json
 
           ref_json="$(curl -fsSL --connect-timeout 10 --max-time 60 --retry 3 \
             -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -97,32 +102,19 @@ jobs:
 
       - name: Download release assets
         env:
-          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
           # URLs and sizes were resolved and contract-validated by
-          # release-assets-verify.mjs in the previous step.
-          source release-assets.env
-
-          fetch_asset() {
-            curl -fsSL --connect-timeout 10 --max-time 300 --retry 3 -o "$2" "$1"
-          }
-          fetch_asset "${zip_url}" "${zip_name}"
-          fetch_asset "${sums_url}" "${sums_name}"
-
-          # Downloaded bytes must match the validated metadata exactly —
-          # a truncated download must never reach the checksum step.
-          check_size() {
-            local actual
-            actual="$(stat -c%s "$1")"
-            if [ "${actual}" != "${2}" ]; then
-              echo "::error::downloaded $1 is ${actual} bytes; release metadata size is $2"
-              exit 9
-            fi
-          }
-          check_size "${zip_name}" "${zip_size}"
-          check_size "${sums_name}" "${sums_size}"
+          # release-assets-verify.mjs; the JSON is consumed as DATA by the
+          # Node downloader (no source/eval), every URL is re-validated
+          # against the canonical github.com/<repo>/releases/download contract
+          # and downloaded bytes are checked against the verified metadata
+          # before anything is written (mismatch exits 9). Metadata text is
+          # never interpreted as code, so the v2.5.9 boundary defect class
+          # (command substitution inside metadata strings) cannot execute.
+          node scripts/download-release-assets.mjs release-assets.json \
+            --repo "${GITHUB_REPOSITORY}" --out-dir .
 
       - name: Verify SHA-256 checksum
         run: sha256sum -c SHA256SUMS.txt
