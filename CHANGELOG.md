@@ -4,6 +4,74 @@
 
 ## [Unreleased]
 
+## [2.5.9] - 2026-08-28
+
+### Fixed
+
+- **无效草稿在失焦时被"修复"成有效提交（P1）**：blur 归一化
+  `fixFloatTextOnBlur` 先于分类执行，把 `NaN.` 剥成 `NaN`、`NaNe` 剥成
+  `NaN`、`Infinitye` 剥成 `Infinity`、`2..` 剥成 `2.`——invalid 变成
+  `value` 并提交（HALF 下 raw `3C00 → 7E00/7C00/4000`），错误被清掉；
+  `1ee` 被降级成过渡态 `1e` 后静默恢复旧显示；relative 标称一次粘贴
+  `12..` 失焦后 nominal 从 5 变成 12。同时旧过渡态正则接受无有效尾数的
+  `e`、`e+`、`.e`、`-e+`，裸 `e` 在 blur 被归一成 0。现在：
+  - 过渡态严格限定为「空串、单独正负号、裸点简写、含数字的十进制尾数 +
+    未完成指数」；`e`/`.e`/`-e+`/`1ee`/`1e++`/`NaNe` 一律 invalid；
+  - 新增共享失焦决策 `resolveFloatTextOnBlur`（`src/app/float-parse.ts`）：
+    先分类原始草稿，再只对合法过渡态归一化，归一化必须得到完整值否则
+    fail-closed；`fixFloatTextOnBlur` 成为分类约束下的纯函数，不再给
+    无效文本提供有损修复；
+  - `ValueInput` / `NominalVoutInput` 的 blur/Enter 改为分类在先：
+    invalid / out-of-range 保留草稿与错误、不提交、不创建新 provenance、
+    不清掉原有 provenance；空串语义仍由字段决定（物理值提交 0，标称清除
+    为 null）；合法过渡态归一化合同不变（`.`/`+.`→0、`-.`→-0、
+    `1e`/`1e+`/`1e-`→1、`12.5e-`→12.5、`-0e+`→-0、`1.` 本就是完整值）；
+    untouched focus/blur/Enter 严格 no-op 与真实编辑事务语义不变；
+    合法 onChange 即时提交保留（逐键输入时合法前缀仍即时提交）。
+- **relative 电压派生结果缺少范围状态（P2）**：结果卡、公式、计算步骤、
+  复制四处直接相乘 `V_NOM × R`，无溢出/下溢诊断——nominal=`1e308`、
+  ratio=2 时显示 `Infinity`，`5e-324 × 2^-16` 下溢显示普通 0。现在新增
+  共享分类器 `resolveRelativeVoltage`（`src/app/relative-voltage.ts`），
+  区分缺参考值 / 有限结果 / 乘法溢出 / 非零因子下溢为零；溢出与下溢在
+  结果卡与计算步骤显示 `—` 并给出明确说明（"计算结果超出 JavaScript
+  Number 可表示范围" / "计算下溢：两个非零有限数相乘的结果被 Number
+  舍入为 0"），公式保留 nominal 与比值、不输出虚假的正常电压，C 宏注释
+  同样不输出虚假电压；「物理值」复制在范围错误时禁用并给出可访问原因，
+  原始 Hex/LE/BE 复制不受影响。真正的 nominal=0 或 ratio=0 仍得到 0，
+  不会被误判为下溢；大而有限（`1e308`、ratio=1）与非零 subnormal 参考值
+  不被拒绝；输入层 `1e-400 → 0` 的既有解析合同不变；SLINEAR16 offset 与
+  non-LINEAR fail-closed 分支不受影响。
+- **发布元数据被当作 shell 程序执行（P2 防御性加固）**：
+  `release-assets-verify.mjs` 对 URL 只检查 `startsWith('https://')` 并
+  输出未转义的 `key=value`，真实 Pages workflow 用 `source` 消费——无害
+  离线夹具证明 URL 中的 `$(…)` 命令替换会在 `source` 时实际执行。实际
+  `browser_download_url` 由 GitHub 生成，目前没有证据表明普通外部攻击者
+  能控制该字段，因此按数据/代码边界缺陷做防御性加固：
+  - verifier stdout 改为单一 JSON 数据对象，诊断走 stderr，不再输出可
+    source 的 shell 程序；新增 `--repo owner/repo` 参数；
+  - URL 用解析器按 canonical 合同校验（`https://github.com/<owner>/<repo>/
+releases/download/<tag>/<资产名>`，拒绝非 HTTPS、错误 host/repo/tag/
+    文件名、userinfo、query/fragment、控制字符、路径逃逸与非规范编码）；
+    `--zip-name`/`--sums-name` 必须是安全 basename；
+  - 新增 `scripts/download-release-assets.mjs`：静态 JSON 消费 + URL 二次
+    校验 + 字节数核对（错误码 9）+ 有界瞬时重试；Pages workflow 弃用
+    `source`，外部数据永远不经过 `source`/`eval`/拼接 shell 再次解释；
+  - 保留既有退出码合同（0/2–8），readiness 门禁之后仍执行下载字节数、
+    SHA-256 与 ZIP 合同检查，发布顺序仍依赖 draft→上传→回验→publish。
+
+### Test
+
+- 分类/归一化联合矩阵（非法样例、正负零、科学计数法、过渡态、溢出）、
+  reducer 对原始无效 action 的拒绝、HALF `NaN.`/`NaNe`/`Infinitye`/`2..`
+  的失焦与 Enter（真实键盘 + 真实剪贴板，参照时点断言合法前缀的即时
+  提交）、relative nominal `12..` 的粘贴与逐键对照、合法过渡态矩阵、
+  relative 派生全向量（overflow/underflow/finite/true-zero/null 与
+  `Number.MAX_VALUE` 邻接）、verifier URL 合同 15 例 + sentinel、下载
+  消费者离线矩阵。
+- Playwright 配置统一 `trace: 'retain-on-failure'`（本地 retries=0 的
+  首跑失败也保留产物）并新增 JSON reporter，便于按实际报告统计
+  passed/failed/skipped/flaky；nominal 清空测试改为真实键盘删除。
+
 ## [2.5.8] - 2026-08-28
 
 ### Fixed

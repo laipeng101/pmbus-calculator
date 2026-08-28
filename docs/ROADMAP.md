@@ -3,9 +3,10 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-28（v2.5.8 解析层静默限幅修复（共享 classifyFloatText，
-大有限请求按真实值提交、±1e400 显式范围错误）+ relative L16 标称参考值可
-清除为 null + 发布流程固定 draft→上传→回验→publish）
+最后更新：2026-08-28（v2.5.9 无效草稿失焦修复（共享 `resolveFloatTextOnBlur`
+分类在先，过渡态严格化）+ relative 派生溢出/下溢诊断（共享
+`resolveRelativeVoltage`，结果/公式/步骤/警告/复制一致）+ 发布元数据
+JSON 数据接口（弃用 `source`，canonical URL 合同）+ 验收证据留存纪律）
 
 ## 当前产品基线
 
@@ -30,7 +31,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.8；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.9；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -99,7 +100,18 @@ M0–M39 complete；stable release v2.5.8；production distribution: GitHub Page
   `l16/clear-nominal-vout`，null 与 0 区分，清除只影响标称通道）——发布
   流程 draft→上传→回验→publish（`release-assets-verify.mjs` 单一就绪门禁，
   Pages 侧 fail-closed 于部署前）。
-- 当前：无进行中的功能里程碑；v2.5.8 已完成发布准备，M40–M41 complete。
+- v2.5.9（PATCH）：无效草稿失焦修复（过渡态严格化：无数字尾数的指数碎片
+  不再是过渡态；共享 `resolveFloatTextOnBlur` 分类在先——invalid/out-of-range
+  失焦保留草稿与错误、不提交、不清 provenance；`fixFloatTextOnBlur` 成为
+  分类约束下的纯函数）——relative 派生范围诊断（共享
+  `resolveRelativeVoltage`：缺参考值/有限/乘法溢出/非零因子下溢；结果卡、
+  公式、步骤、警告、物理值复制五个表面一致，溢出/下溢显示 `—` 与共享
+  说明，真零不误判）——发布元数据只作为数据（verifier stdout 单一 JSON +
+  `--repo` + canonical URL 合同 `release-url-contract.mjs`；新增
+  `download-release-assets.mjs` 消费者；Pages workflow 弃用 `source`）——
+  验收证据留存（Playwright `trace: 'retain-on-failure'` + JSON reporter，
+  失败留存与真实退出码纪律入 CONTRIBUTING）。
+- 当前：无进行中的功能里程碑；v2.5.9 已完成发布准备，M40–M41 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
