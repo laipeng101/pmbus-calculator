@@ -138,3 +138,92 @@ test.describe('LINEAR11 untouched blur（360×800 light）', () => {
     await expect(hexInput(page)).toHaveValue('0002')
   })
 })
+
+test.describe('LINEAR16 untouched blur（390×844 dark）', () => {
+  test.beforeEach(async ({ page }) => {
+    await setTheme(page, 'dark')
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/')
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+  })
+
+  test('raw Hex 编辑后 untouched value blur：raw、结果、N 不变、误差隐藏', async ({ page }) => {
+    await hexInput(page).fill('0005')
+    await hexInput(page).press('Tab')
+    await expect(valueInput(page)).toHaveValue('0.01953125')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+
+    // 未编辑任何字符：focus -> blur 不创建 LINEAR16 编码请求
+    await valueInput(page).click()
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('0005')
+    await expect(valueInput(page)).toHaveValue('0.01953125')
+    await expect(page.getByLabel('L16 N（指数）')).toHaveValue('-8')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
+  test('显式编辑物理值仍提交（fill 1 -> raw 0100 且 exact provenance 出现）', async ({ page }) => {
+    await hexInput(page).fill('0005')
+    await hexInput(page).press('Tab')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+
+    // N=-8：Y_u = X / 2^N = 1 / 2^-8 = 256 -> raw 0x0100
+    await valueInput(page).fill('')
+    await valueInput(page).fill('1')
+    await expect(hexInput(page)).toHaveValue('0100')
+    await expect(valueInput(page)).toHaveValue('1')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(quantizationPanel(page)).toContainText('+0.000000')
+  })
+})
+
+test.describe('DIRECT untouched blur（768×1024 light）', () => {
+  test.beforeEach(async ({ page }) => {
+    await setTheme(page, 'light')
+    await page.setViewportSize({ width: 768, height: 1024 })
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+  })
+
+  test('raw Hex 编辑后 untouched value blur：raw、结果、Y 不变、误差隐藏', async ({ page }) => {
+    await hexInput(page).fill('000A')
+    await hexInput(page).press('Tab')
+    await expect(valueInput(page)).toHaveValue('10')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+
+    await valueInput(page).click()
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('000A')
+    await expect(valueInput(page)).toHaveValue('10')
+    await expect(page.getByLabel('Y（16 位有符号，−32768～32767）')).toHaveValue('10')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+  })
+
+  test('Y 编辑后 untouched value blur：raw 不变、误差隐藏；显式 value 编辑仍提交', async ({
+    page,
+  }) => {
+    const yInput = page.getByLabel('Y（16 位有符号，−32768～32767）')
+    await yInput.fill('7')
+    await yInput.press('Tab')
+    await expect(hexInput(page)).toHaveValue('0007')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+
+    // raw/Y 编辑路径之后：untouched value blur 不伪造编码请求
+    await valueInput(page).click()
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('0007')
+    await expect(valueInput(page)).toHaveValue('7')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+
+    // 相反路径：显式物理值编辑按 m=1,b=0,R=0 编码 Y=5 -> raw 0005
+    await valueInput(page).fill('')
+    await valueInput(page).fill('5')
+    await expect(hexInput(page)).toHaveValue('0005')
+    await expect(valueInput(page)).toHaveValue('5')
+    await expect(yInput).toHaveValue('5')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(quantizationPanel(page)).toContainText('+0.000000')
+    await expectNoBodyHorizontalOverflow(page)
+  })
+})
