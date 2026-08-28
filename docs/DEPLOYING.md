@@ -40,7 +40,17 @@ https://laipeng101.github.io/pmbus-calculator/
    `alpha`、`beta`、`rc`、draft 或 prerelease。
 3. 通过 GitHub API 验证 Release 存在、`draft == false`、`prerelease == false`、
    Release tag 与输入完全一致，且对应 Git tag 存在（annotated 或 lightweight）。
-4. 下载 Release 中的 `pmbus-calculator-<tag>-web.zip` 与 `SHA256SUMS.txt`。
+   资产就绪合同（存在、名称唯一、`state == uploaded`、`size > 0`、URL 有效）
+   由 `scripts/release-assets-verify.mjs --mode published` 在同一读取步骤内校验
+   （v2.5.8）；缺失、重复、上传中、零字节分别报出明确错误与退出码，失败发生在
+   任何下载/部署动作之前。v2.5.7 的 publish-before-upload 竞态（Pages 在资产
+   存在前触发下载）在该步骤表现为明确的资产合同错误；流程层修复见
+   `docs/RELEASING.md` §4（draft → 上传 → 回验 → publish）。
+4. 下载 Release 中的 `pmbus-calculator-<tag>-web.zip` 与 `SHA256SUMS.txt`：
+   只使用校验脚本解析出的 URL，网络调用带 connect/总 timeout 与仅针对瞬时
+   故障的有限重试；下载后先核对文件字节数与元数据一致，不一致立即停止部署
+   （错误码 9），不会到达 checksum 步骤。元数据请求失败、资产选择失败与
+   下载失败是三个可区分的失败面，保留真实退出码。
 5. 执行 `sha256sum -c SHA256SUMS.txt`，校验失败立即停止部署。
 6. 解压前检查 zip：不包含绝对路径、不包含 `../` 路径穿越、不包含符号链接；
    必须包含 `index.html` 和 `assets/`；`index.html` 必须包含 production CSP；

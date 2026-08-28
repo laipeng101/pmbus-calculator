@@ -80,7 +80,12 @@ npm run test:e2e:release
 
 以上任一步失败：停止发布并修复，不得带病打 tag。
 
-### 4. tag 与 GitHub Release
+### 4. tag 与 GitHub Release（draft → 上传 → 回验 → publish）
+
+> v2.5.8 起发布流程固定为 **先创建 draft，上传并回验全部资产，最后才 publish**。
+> 「最终态是非 draft」不等于「创建时就必须公开」：v2.5.7 曾按"先公开、后上传资产"
+> 执行，release-published 事件触发的 Pages 在资产尚未存在时读取失败。本节顺序
+> 是对该竞态的流程修复，不是可选优化。
 
 1. 全部验证成功后创建 annotated tag：
 
@@ -91,12 +96,41 @@ npm run test:e2e:release
 2. 推送 tag 前再次确认 `git rev-parse vX.Y.Z^{commit}` 等于已验证 merge SHA、
    `vX.Y.Z^{tree}` 等于已验证 tree，然后推送 tag。
    tag push 是 PR 合并后的独立发布动作，不是源代码分支的第二次 push。
-3. 创建 GitHub Release：
-   - tag `vX.Y.Z`；非 draft、非 prerelease；
-   - Release notes 使用 `docs/releases/vX.Y.Z.md`；
-   - 上传 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`。
-4. 下载刚发布的两个资产，重新校验 checksum 与预期名称。
-5. 若 tag 已存在或远端版本冲突：停止，不得移动或覆盖。
+3. 创建 **draft** Release（不勾选 prerelease；notes 使用 `docs/releases/vX.Y.Z.md`）：
+
+   ```bash
+   gh release create vX.Y.Z --draft --title "PMBus Calculator vX.Y.Z" \
+     --notes-file docs/releases/vX.Y.Z.md
+   ```
+
+4. 上传 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`（不使用 clobber）：
+
+   ```bash
+   gh release upload vX.Y.Z pmbus-calculator-vX.Y.Z-web.zip SHA256SUMS.txt
+   ```
+
+5. **publish 前强制回验 draft 资产**。draft 不可经 `/releases/tags/<tag>` 读取，
+   用 release list 过滤出 REST 形状的元数据后运行校验脚本：
+
+   ```bash
+   gh api repos/laipeng101/pmbus-calculator/releases \
+     --jq '.[] | select(.tag_name=="vX.Y.Z")' > draft-release.json
+   node scripts/release-assets-verify.mjs draft-release.json --tag vX.Y.Z --mode draft
+   ```
+
+   脚本校验：tag/prerelease 合同、资产存在且名称唯一、`state == "uploaded"`、
+   `size > 0`、URL 有效；缺失、重复、上传中分别以明确的错误与退出码报告
+   （见脚本头注释）。随后下载两个资产执行 `sha256sum -c SHA256SUMS.txt`
+   并核对 ZIP 内容合同。**任何一项失败都停止在 draft 状态，不得 publish。**
+
+6. 两项资产回验通过后，将 draft 公开为稳定 Release：
+
+   ```bash
+   gh release edit vX.Y.Z --draft=false
+   ```
+
+7. 下载刚发布的两个资产，重新校验 checksum 与预期名称（公开态复核）。
+8. 若 tag 已存在或远端版本冲突：停止，不得移动或覆盖。
 
 ### 5. Pages 部署与线上 smoke
 
