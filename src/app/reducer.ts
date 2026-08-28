@@ -123,9 +123,16 @@ function withRaw(state: AppState, raw: number): AppState {
 /**
  * Write a VOUT_MODE byte. On the L16 page every byte change can move the
  * effective exponent or format, so the previous value request goes stale.
+ *
+ * Writing the byte that is already configured is an idempotent no-op
+ * (v2.5.7): re-selecting the active semantic control (absolute/relative,
+ * format, parameter, N) must not invalidate a still-valid value request —
+ * only a real byte change can make the previous provenance stale.
  */
 function setVoutModeByte(state: AppState, byte: number): AppState {
-  return withoutValueRequest({ ...state, voutMode: { byte: byte & 0xff } })
+  const next = byte & 0xff
+  if (state.voutMode.byte === next) return state
+  return withoutValueRequest({ ...state, voutMode: { byte: next } })
 }
 
 /**

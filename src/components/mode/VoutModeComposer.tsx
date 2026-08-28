@@ -97,7 +97,14 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             type="button"
             role="radio"
             aria-checked={info.isRelative === false}
-            onClick={() => dispatch({ type: 'vout-mode/set-relative', relative: false })}
+            onClick={() => {
+              // Re-selecting the active semantic control must not dispatch a
+              // state write: the reducer would keep the byte, but not
+              // dispatching keeps the transaction contract explicit (v2.5.7).
+              if (info.isRelative !== false) {
+                dispatch({ type: 'vout-mode/set-relative', relative: false })
+              }
+            }}
             className="vout-seg-btn"
           >
             绝对值
@@ -109,7 +116,11 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             aria-disabled={isVid}
             disabled={isVid}
             title={isVid ? '相对值不适用于 VID（Part II §8.5.3）' : undefined}
-            onClick={() => dispatch({ type: 'vout-mode/set-relative', relative: true })}
+            onClick={() => {
+              if (info.isRelative !== true) {
+                dispatch({ type: 'vout-mode/set-relative', relative: true })
+              }
+            }}
             className="vout-seg-btn"
           >
             相对值
@@ -128,7 +139,11 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
                 type="button"
                 role="radio"
                 aria-checked={info.format === f.value}
-                onClick={() => dispatch({ type: 'vout-mode/set-format', format: f.value })}
+                onClick={() => {
+                  if (info.format !== f.value) {
+                    dispatch({ type: 'vout-mode/set-format', format: f.value })
+                  }
+                }}
                 className="vout-seg-btn"
               >
                 {f.label}

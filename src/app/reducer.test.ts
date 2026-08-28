@@ -657,6 +657,61 @@ describe('appReducer — state transitions', () => {
     })
   })
 
+  describe('idempotent VOUT_MODE semantic writes preserve provenance (v2.5.7)', () => {
+    // L16 default byte 0x18: value 1 encodes raw 0x0100 with an explicit
+    // valueRequest provenance.
+    const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+    const withRequest = appReducer(l16, { type: 'value/set', value: '1' })
+    expect(withRequest.raw).toBe(0x0100)
+    expect(withRequest.valueRequest).not.toBeNull()
+
+    it('re-selecting absolute (already absolute) keeps the state and provenance', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-relative', relative: false })
+      expect(s).toBe(withRequest)
+    })
+
+    it('re-selecting relative (already relative) keeps the state and provenance', () => {
+      // SLINEAR16 offset encodes for any LINEAR byte (§13.3/§13.4), including
+      // relative 0x98 — the only way to hold provenance on a relative byte.
+      const relativeByte = appReducer(
+        appReducer(l16, { type: 'l16/set-payload-kind', payloadKind: 'slinear16-offset' }),
+        { type: 'vout-mode/set-relative', relative: true },
+      )
+      const withRelativeRequest = appReducer(relativeByte, { type: 'value/set', value: '1' })
+      expect(withRelativeRequest.raw).toBe(0x0100)
+      expect(withRelativeRequest.valueRequest).not.toBeNull()
+
+      const s = appReducer(withRelativeRequest, { type: 'vout-mode/set-relative', relative: true })
+      expect(s).toBe(withRelativeRequest)
+    })
+
+    it('re-selecting the same format keeps the state and provenance', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-format', format: 0 })
+      expect(s).toBe(withRequest)
+    })
+
+    it('re-entering the same LINEAR N keeps the state and provenance', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-linear-n', n: '-8' })
+      expect(s).toBe(withRequest)
+    })
+
+    it('re-selecting the same parameter keeps the state and provenance', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-parameter', parameter: 0x18 })
+      expect(s).toBe(withRequest)
+    })
+
+    it('expert hex edit with the same byte keeps the state and provenance', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-byte', hex: '18' })
+      expect(s).toBe(withRequest)
+    })
+
+    it('a real byte change still invalidates provenance (opposite path)', () => {
+      const s = appReducer(withRequest, { type: 'vout-mode/set-relative', relative: true })
+      expect(s.voutMode.byte).toBe(0x98)
+      expect(s.valueRequest).toBeNull()
+    })
+  })
+
   describe('byte-order/set', () => {
     it('sets byteOrder', () => {
       const s = appReducer(base, { type: 'byte-order/set', endian: 'be' })

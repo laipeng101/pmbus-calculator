@@ -126,6 +126,36 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
     await expectNoBodyHorizontalOverflow(page)
   })
 
+  test('已选中的「绝对值」radio 点击是 no-op；实际切换仍使旧 provenance 失效', async ({ page }) => {
+    const absolute = page.getByRole('radio', { name: '绝对值' })
+    const relative = page.getByRole('radio', { name: '相对值' })
+
+    await valueInput(page).fill('1')
+    await expect(hexInput(page)).toHaveValue('0100')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+
+    // 点击当前已选中的「绝对值」：不得清除 provenance（v2.5.7）
+    await absolute.click()
+    await expect(absolute).toHaveAttribute('aria-checked', 'true')
+    await expect(hexInput(page)).toHaveValue('0100')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+
+    // 相反路径：真实切换到相对值 → 字节 0x98，旧 provenance 失效
+    await relative.click()
+    await expect(relative).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+
+    // 再次点击已选中的「相对值」同样 no-op；真实切回绝对值恢复 LINEAR 编码
+    await relative.click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+    await absolute.click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
   test('SLINEAR16 Y_s 的 untouched blur 不改写 raw、不清除 provenance', async ({ page }) => {
     const ysInput = page.getByLabel('Y_s（16 位二补码偏移，−32768～32767）')
     await page.getByLabel('L16 数据解释类型').selectOption('slinear16-offset')
@@ -278,6 +308,22 @@ test.describe('VOUT_MODE untouched blur（1280×900 light）', () => {
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x1E')
     await untouchedFocusBlur(page.locator('#vout-mode-n-input'))
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x1E')
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
+  test('已选中的格式 radio 点击幂等：字节与状态不变', async ({ page }) => {
+    // 默认字节 0x18（LINEAR）：重复点击 LINEAR 不产生任何状态写入
+    const linear = page.getByRole('radio', { name: 'LINEAR' })
+    await expect(linear).toHaveAttribute('aria-checked', 'true')
+    await linear.click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
+    await expect(page.getByTestId('vout-mode-status')).toBeVisible()
+
+    // 真实切换到 DIRECT 后再点一次 DIRECT（已选中），字节保持 0x40
+    await page.getByRole('radio', { name: 'DIRECT' }).click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x40')
+    await page.getByRole('radio', { name: 'DIRECT' }).click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x40')
     await expectNoBodyHorizontalOverflow(page)
   })
 
