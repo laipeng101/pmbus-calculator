@@ -15,6 +15,11 @@ import { resolveVoutModeRequirement } from './vout-mode-requirements'
 import { effectiveL16VoutMode } from './vout-mode-selector'
 import { computeQuantizationOutcome } from './quantization-error'
 import type { QuantizationOutcome } from './quantization-error'
+import {
+  resolveRelativeVoltage,
+  RELATIVE_VOLTAGE_OVERFLOW_NOTE,
+  RELATIVE_VOLTAGE_UNDERFLOW_NOTE,
+} from './relative-voltage'
 
 /** Step text mirrors the shared readout panel wording. */
 function quantizationStepValue(outcome: QuantizationOutcome): string {
@@ -172,20 +177,46 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
         ),
       )
     } else {
-      const final = state.l16.nominalVout * ratio
-      steps.push(
-        intermediate(
-          'l16-nominal',
-          'V_NOM（VOUT_COMMAND 标称值）',
-          formatNumber(state.l16.nominalVout),
-        ),
-        formula(
-          'l16-final',
-          '最终电压',
-          `X = ${formatNumber(state.l16.nominalVout)} × ${formatNumber(ratio)} = ${formatNumber(final)} V`,
-        ),
-        resultStep(formatNumber(final)),
-      )
+      // v2.5.9: the derivation is classified by the shared relative-voltage
+      // source. Overflow / nonzero-factor underflow keep the nominal and
+      // ratio visible and end in '—' with the shared diagnostic — never a
+      // fabricated Infinity / zero voltage (same classification as the
+      // result card, formula and copy contract).
+      const result = resolveRelativeVoltage(state.l16.nominalVout, ratio)
+      if (result.kind === 'overflow' || result.kind === 'underflow') {
+        const note =
+          result.kind === 'overflow'
+            ? RELATIVE_VOLTAGE_OVERFLOW_NOTE
+            : RELATIVE_VOLTAGE_UNDERFLOW_NOTE
+        steps.push(
+          intermediate(
+            'l16-nominal',
+            'V_NOM（VOUT_COMMAND 标称值）',
+            formatNumber(state.l16.nominalVout),
+          ),
+          formula(
+            'l16-final',
+            '最终电压',
+            `X = ${formatNumber(state.l16.nominalVout)} × ${formatNumber(ratio)} = —（${note}）`,
+          ),
+          resultStep('—'),
+        )
+      } else {
+        const final = result.kind === 'finite' ? result.value : NaN
+        steps.push(
+          intermediate(
+            'l16-nominal',
+            'V_NOM（VOUT_COMMAND 标称值）',
+            formatNumber(state.l16.nominalVout),
+          ),
+          formula(
+            'l16-final',
+            '最终电压',
+            `X = ${formatNumber(state.l16.nominalVout)} × ${formatNumber(ratio)} = ${formatNumber(final)} V`,
+          ),
+          resultStep(formatNumber(final)),
+        )
+      }
     }
     return steps
   }

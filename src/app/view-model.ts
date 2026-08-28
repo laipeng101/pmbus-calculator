@@ -19,6 +19,12 @@ import type { HalfSpecialSemantics } from './half-special-semantics'
 import { effectiveL16VoutMode } from './vout-mode-selector'
 import { resolveL16PayloadContext } from './l16-payload-contract'
 import type { L16FormatSemantics } from './l16-payload-contract'
+import {
+  resolveRelativeVoltage,
+  RELATIVE_VOLTAGE_OVERFLOW_NOTE,
+  RELATIVE_VOLTAGE_UNDERFLOW_NOTE,
+} from './relative-voltage'
+import type { RelativeVoltageResult } from './relative-voltage'
 
 export interface BitGroupVM {
   nibbleIndex: number
@@ -150,6 +156,13 @@ export interface CalculatorViewModel {
   bitGroups: BitGroupVM[]
   commandNote?: string
   nRangeText?: string
+  /**
+   * Present ONLY when the 物理值 copy must be disabled (v2.5.9): a relative
+   * ULINEAR16 derivation range error (overflow / nonzero-factor underflow)
+   * has no copyable physical value. Undefined means the copy stays enabled;
+   * raw Hex / LE / BE copies are never affected.
+   */
+  physicalValueCopy?: { available: false; reason: string }
   /**
    * L16 only: payload-context contract (v2.5.1). Byte-level VOUT_MODE
    * status alone cannot decide UI entry — the signed offset payload
@@ -431,6 +444,23 @@ function buildL16BlockVM(
   }
 }
 
+/**
+ * Shared relative-ULINEAR16 derivation classification (v2.5.9): null for
+ * every state that is not "relative ULINEAR16 with a LINEAR shared byte".
+ * The result card, warnings and the physical-value copy all answer the
+ * overflow/underflow question from this one resolution.
+ */
+function resolveL16RelativeResult(state: AppState): RelativeVoltageResult | null {
+  if (state.mode !== 'L16') return null
+  const eff = effectiveL16VoutMode(state)
+  if (eff.source === 'non-linear') return null
+  const a = analyzeVoutMode(eff.byte)
+  if (a.format !== 0 || !a.isRelative) return null
+  if (state.l16.payloadKind !== 'ulinear16') return null
+  const ratio = PMBusMath.decodeUlinear16(state.raw, a.linearExponent ?? 0).value
+  return resolveRelativeVoltage(state.l16.nominalVout, ratio)
+}
+
 function computeValueText(state: AppState): string {
   try {
     switch (state.mode) {
@@ -449,9 +479,14 @@ function computeValueText(state: AppState): string {
           return formatNumber(PMBusMath.decodeSlinear16(state.raw, n).value)
         }
         if (a.isRelative) {
-          if (state.l16.nominalVout == null) return '—'
-          const ratio = PMBusMath.decodeUlinear16(state.raw, n).value
-          return formatNumber(state.l16.nominalVout * ratio)
+          // v2.5.9: the derivation is classified — overflow / nonzero-factor
+          // underflow show '—' instead of a fabricated Infinity / 0 result.
+          const result = resolveRelativeVoltage(
+            state.l16.nominalVout,
+            PMBusMath.decodeUlinear16(state.raw, n).value,
+          )
+          if (result.kind !== 'finite') return '—'
+          return formatNumber(result.value)
         }
         return formatNumber(PMBusMath.decodeUlinear16(state.raw, n).value)
       }
@@ -546,6 +581,22 @@ function buildWarnings(state: AppState): WarningVM[] {
           ? `VOUT_MODE ${hex} 的 bit7 为相对值，但仅作用于 §8.5 相对阈值命令；当前 SLINEAR16 offset 是有符号命令 payload（§13.3/§13.4），bit7 不参与其数学，无需标称参考值。`
           : `VOUT_MODE ${hex} 为相对 LINEAR；需要 VOUT_COMMAND 标称参考值才能计算最终电压。`,
       })
+      // v2.5.9: derivation-range diagnostics come from the shared relative
+      // classifier — same source as the result card, formula and steps.
+      const relativeResult = resolveL16RelativeResult(state)
+      if (relativeResult?.kind === 'overflow') {
+        warnings.push({
+          id: 'l16-relative-overflow',
+          level: 'warning',
+          text: `${RELATIVE_VOLTAGE_OVERFLOW_NOTE}；最终电压显示为 —，标称值与比值仍按输入显示，原始 Hex/LE/BE 复制不受影响。`,
+        })
+      } else if (relativeResult?.kind === 'underflow') {
+        warnings.push({
+          id: 'l16-relative-underflow',
+          level: 'warning',
+          text: `${RELATIVE_VOLTAGE_UNDERFLOW_NOTE}；最终电压显示为 —，标称值与比值仍按输入显示，原始 Hex/LE/BE 复制不受影响。`,
+        })
+      }
     } else {
       // v2.5.5: every remaining branch is selected by the shared requirement
       // discriminator — no surface re-derives spec conclusions from format
@@ -849,6 +900,22 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     if (semantics.presentable) halfSpecial = semantics
   }
 
+  // v2.5.9: a relative-derivation range error disables the 物理值 copy with
+  // an accessible reason; every other state keeps the copy enabled.
+  let physicalValueCopyUnavailability: { available: false; reason: string } | undefined
+  const relativeResult = resolveL16RelativeResult(state)
+  if (relativeResult?.kind === 'overflow') {
+    physicalValueCopyUnavailability = {
+      available: false,
+      reason: `物理值复制不可用：${RELATIVE_VOLTAGE_OVERFLOW_NOTE}。原始 Hex/LE/BE 复制仍可用。`,
+    }
+  } else if (relativeResult?.kind === 'underflow') {
+    physicalValueCopyUnavailability = {
+      available: false,
+      reason: `物理值复制不可用：${RELATIVE_VOLTAGE_UNDERFLOW_NOTE}。原始 Hex/LE/BE 复制仍可用。`,
+    }
+  }
+
   return {
     mode: state.mode,
     steps: buildCalculationSteps(state),
@@ -879,6 +946,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     commandNote: getCommandConfig(state.commandKey)?.note,
     nRangeText,
     l16Payload,
+    physicalValueCopy: physicalValueCopyUnavailability,
     voutModeInfo,
     voutModePage,
     halfSpecial,

@@ -2,6 +2,11 @@ import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
 import { effectiveL16VoutMode } from './vout-mode-selector'
+import {
+  resolveRelativeVoltage,
+  RELATIVE_VOLTAGE_OVERFLOW_NOTE,
+  RELATIVE_VOLTAGE_UNDERFLOW_NOTE,
+} from './relative-voltage'
 
 export interface FormulaPresentation {
   /** Plain-text formula used for copy output and C macro comments. */
@@ -238,7 +243,26 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
             detailLines: singleExpansionLine(plainText, latex),
           }
         }
-        const final = state.l16.nominalVout * ratio
+        // v2.5.9: the derivation is classified by the shared relative-voltage
+        // source — overflow / underflow keep the nominal and ratio visible
+        // but never fabricate a final Infinity / zero voltage (the copy
+        // contract and the result card consume the same classification).
+        const result = resolveRelativeVoltage(state.l16.nominalVout, ratio)
+        if (result.kind === 'overflow' || result.kind === 'underflow') {
+          const note =
+            result.kind === 'overflow'
+              ? RELATIVE_VOLTAGE_OVERFLOW_NOTE
+              : RELATIVE_VOLTAGE_UNDERFLOW_NOTE
+          const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatNumber(state.l16.nominalVout)}×R=—（${note}）`
+          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatLatexNumber(ratio)}\\ (${formatLatexNumber(ratio * 100)}\\%) \\quad X = V_{NOM} \\times R = ${formatLatexNumber(state.l16.nominalVout)} \\times ${formatLatexNumber(ratio)} = \\text{—}`
+          return {
+            plainText,
+            latex,
+            genericLatex: 'R = Y_u \\times 2^N;\\ X = V_{NOM} \\times R',
+            detailLines: singleExpansionLine(plainText, latex),
+          }
+        }
+        const final = result.kind === 'finite' ? result.value : NaN
         const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatNumber(state.l16.nominalVout)}×R=${formatNumber(final)} V`
         const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatLatexNumber(ratio)}\\ (${formatLatexNumber(ratio * 100)}\\%) \\quad X = V_{NOM} \\times R = ${formatLatexNumber(state.l16.nominalVout)} \\times ${formatLatexNumber(ratio)} = ${formatLatexNumber(final)}`
         return {
