@@ -111,6 +111,11 @@
 - 数值范围合同：L11 N/Y、DIRECT Y、L16 V 超范围 clamp；DIRECT m/b/R 超范围拒绝
   并保留最后有效值；`m ≠ 0`（m=0 为显式存储的非法状态）。HALF 接受
   NaN/±Infinity，其他模式拒绝非有限值。
+- **未编辑的 focus/blur 是严格 no-op（v2.5.6）**：物理值输入在当前 focus 会话内
+  没有任何 `onChange` 编辑事务时，blur（含 Enter 触发的 blur）不派发 `value/set`、
+  不改写 raw、不伪造量化请求来源、不清除已有字段错误。真实编辑（含清空后 blur
+  规范化为 0）仍按既有合同提交；HALF 中显式重输 `NaN` 仍 canonical 化为 `0x7E00`
+  并出现 special/warn provenance。dirty 状态依据真实编辑事务，不用解析数值比较。
 - 模式切换后不得留下与当前显示值矛盾的 stale error（错误随字段所在 workspace
   卸载清除；DIRECT 系数错误随状态保留、只在 DIRECT 模式渲染）。
 - 全局快捷键 `Ctrl+1..4` 仅在非编辑上下文生效：`src/app/editable-target.ts` 判定
@@ -280,9 +285,19 @@
 - **合法性与可计算性正交（v2.5.5）**：VID Code Type `1Eh`/`1Fh` 是 §8.4.2 Table 3
   明列的制造商自定义 code——`structureLegal=true`、`requiresVidProfile=true`、
   当前不可换算，呈现为「制造商自定义（需器件资料）」，**不得**复用代表非法结构的
-  alert 标志/class 或「保留/非法」文案；`00h`（未使用）与未列出 code（保留）仍是
-  不可用配置。机器可测字段：`structureLegal`（结构合法）、`requiresExternalData`
-  （需器件数据 = m/b/R 或 VID 表）、`calculable`（当前计算器可算，仅绝对 LINEAR）。
+  alert 标志/class 或「保留/非法」文案；`00h`（未使用）与保留 code（Table 3 明列
+  保留与未列出保留，v2.5.6）仍是不可用配置。机器可测字段：`structureLegal`（结构
+  合法）、`requiresExternalData`（需器件数据 = m/b/R 或 VID 表）、`calculable`
+  （当前计算器可算，仅绝对 LINEAR）。
+- **VID Table 3 出处文案（v2.5.6）**：`01h..04h`（未来 Intel 处理器）、`10h..11h`
+  （未来 AMD 处理器）、`1Ch..1Dh`（留作未来使用）是 Table 3 **明列**的保留 code，
+  全部表面（status chip、InfoPanel、说明、计算步骤、结构化 VID code 下拉）必须
+  表述「Table 3 明列」与对应 family/reason，**绝不能含「未列出」**；`05h..0Fh`、
+  `12h..1Bh` 等其余 code 必须表述「Table 3 未列出，保留供未来使用」。出处判别与
+  reason 文本只来自 `classifyVidCode`（kind/family/reason/label）与
+  `resolveVoutModeRequirement`（`vid-reserved-listed` / `vid-reserved-unlisted`），
+  组件与 view-model 不得硬编码出处。结构合法性单一事实源是
+  `structureLegal`：旧 `VoutModeAnalysis.isLegal` 已删除（v2.5.6）。
 - E2E 反向禁词与逐表面合同在 `tests/e2e/vout-mode-half-matrix.spec.ts`；unit truth
   table（含 0..255 结构合法/可计算/外部数据三维穷举分离）在
   `src/app/vout-mode-requirements.test.ts`。

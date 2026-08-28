@@ -118,8 +118,16 @@
   绝不显示“相对 LINEAR”。
 - **DIRECT / IEEE Half 参数必须为 `00000b`（Part II §8.3 Table 2）**：`0x41..0x5F`、
   `0x61..0x7F` 及对应 bit7=1 的组合分类为 `invalid-parameter`，可解码但不可作为有效配置。
-- VID 参数是 unsigned VID Code Type（Part II §8.4.2 Table 3）：`00h` = not-used；
-  `1Eh/1Fh` = profile-required（制造商自定义）；其余未列 code = reserved。
+- VID 参数是 unsigned VID Code Type（Part II §8.4.2 Table 3；v2.5.6 起按 Table 3
+  出处机器区分五类）：`00h` = not-used；`01h..04h`（reserved for a future Intel
+  processor generation）、`10h..11h`（reserved for a future AMD processor generation）、
+  `1Ch..1Dh`（reserved for future use）= **Table 3 明列**的保留 code；
+  `05h..0Fh`、`12h..1Bh` 等其余 code = **Table 3 未列出**、保留供未来使用；
+  `1Eh/1Fh` = profile-required（Table 3 明列的制造商自定义）。明列保留与未列出保留
+  都不可作为通用电压 profile，但用户可见文案必须区分出处——不得把明列 code 写成
+  「未列出」，也不得反向合并。单一分类来源是 `classifyVidCode`（`kind` +
+  `reservedFamily`/`reservedReason`），requirement 判别式输出
+  `vid-reserved-listed` / `vid-reserved-unlisted` 两个 id，各表面不得再硬编码出处。
 - **L16 exponent 单一事实源**：`AppState.voutMode.byte` 是共享字节；N 一律由
   `analyzeVoutMode(byte).linearExponent` 派生，不存在第二个 exponent 存储。
 - L16 页面使用 `effectiveL16VoutMode`：共享字节为 LINEAR 时直接 linked 使用；
@@ -172,10 +180,13 @@
     `structureLegal=true`、`requiresVidProfile=true`、当前不可换算；「需要器件资料」
     不等于「VOUT_MODE 结构非法」，呈现不得复用非法结构的 alert 标志/class 或
     「保留/非法」文案；
-  - `00h`（not-used）与未列出 code（reserved）仍是不可用配置
-    （`structureLegal=false`）；relative+VID、DIRECT/Half 非零参数同样非法；
+  - `00h`（not-used）与保留 code（Table 3 明列保留与未列出保留，v2.5.6）仍是
+    不可用配置（`structureLegal=false`）；relative+VID、DIRECT/Half 非零参数同样非法；
   - view-model 的 `calculable` 表示当前计算器能否直接算出数值（仅绝对 LINEAR），
     与结构合法性独立（`0x60` 结构合法但本页不可算）。
+- **结构合法性单一事实源（v2.5.6）**：`VoutModeAnalysis` 不再携带旧 `isLegal`
+  字段（其旧定义 `status === 'valid'` 与 `structureLegal` 对 `0x3E/0x3F` 矛盾）；
+  结构合法性只由 `resolveVoutModeRequirement(...).structureLegal` 输出。
 - 独立 VOUT_MODE 计算器（第五个模式）是 8-bit 字节配置器：双 nibble 交互位网格、bit7
   Absolute/Relative、bits[6:5] format、bits[4:0] parameter；raw 位/Hex 编辑 lossless
   （可构造 `0xA0`/`0x41`/`0xE1`），语义控件 canonicalize，`Normalize` 显式规范化。
@@ -220,6 +231,13 @@
 - 量化误差仅在存在**显式且仍然有效**的编码请求时定义：请求 = 用户通过物理值输入
   最后一次成功提交的 `value/set`。L11 使用历史通道 `l11.valueInput`；L16/DIRECT/HALF
   共享模式标签的 `state.valueRequest`（`{ mode, value }`），防止跨页污染。
+- **只 focus 后 blur、未发生任何编辑不是显式请求（v2.5.6）**：物理值输入组件在当前
+  focus 会话内没有发生任何 `onChange` 编辑事务时，blur 必须是严格 no-op——不派发
+  `value/set`、不改写 raw、不伪造请求来源、不隐藏也不显示误差。dirty 判定依据真实
+  编辑事务，不得用解析数值比较（`NaN !== NaN`、`-0`、`1.0` vs `1` 等文本表示差异都
+  不可靠）。HALF raw `0x7C01`（非规范 NaN）在无操作 focus/blur 后必须保持
+  `0x7C01`——§7.6.2 要求设备精确返回主机写入的 IEEE 编码，显示层往返不得把
+  不同 NaN 原码合并成 canonical `0x7E00`。
 - 以下任一动作会使请求失效（provenance 清除，误差变为**未知**）：
   - 任何不经物理值输入的 raw 变更（Hex 输入、bit toggle、`raw/set`、DIRECT Y、
     SLINEAR16 手动 `l16/set-slinear-y`）；

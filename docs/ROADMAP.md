@@ -3,8 +3,8 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-28（v2.5.5 IEEE Half §7.6.2 特殊值操作语义 + VOUT_MODE 合法性/
-可计算性/外部数据三维正交 + requirement 单一来源真正收口）
+最后更新：2026-08-28（v2.5.6 物理值输入 untouched blur 事务化 + VID Table 3
+出处文案纠偏 + 结构合法性单一事实源）
 
 ## 当前产品基线
 
@@ -29,7 +29,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.5；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.6；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -78,7 +78,14 @@ M0–M39 complete；stable release v2.5.5；production distribution: GitHub Page
   与外部数据三维正交（§8.4.2 Table 3 明列的 1Eh/1Fh 为结构合法+需器件资料，不再
   复用非法 alert 标志）；status/InfoPanel/说明/步骤四个表面真正全部消费
   requirement 判别式，E2E 改为逐表面断言。
-- 当前：无进行中的功能里程碑；v2.5.5 已完成发布（Release + Pages，2026-08-28），
+- v2.5.6（PATCH）：物理值输入 untouched blur 事务化（无编辑的 focus/blur 严格
+  no-op——不改写 raw、不伪造 §6.1 请求来源，HALF `7C01` 等非规范 NaN 原码
+  raw-lossless）——VID Table 3 出处纠偏（`classifyVidCode` 机器区分 not-used/
+  listed-reserved+family/unlisted-reserved/profile-required，requirement 拆分
+  `vid-reserved-listed`/`vid-reserved-unlisted`，五个表面消费单一来源，明列 code
+  不再被写成「未列出」）——移除矛盾的双重结构合法性事实源
+  `VoutModeAnalysis.isLegal`（结构合法性只由 `structureLegal` 输出）。
+- 当前：无进行中的功能里程碑；v2.5.6 已完成发布（Release + Pages，2026-08-28），
   M40–M41 complete。下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
