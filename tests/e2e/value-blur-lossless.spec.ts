@@ -30,6 +30,15 @@ const valueInput = (page: Page) => page.locator('#value-input')
 const quantizationPanel = (page: Page) => page.getByTestId('quantization-error')
 const halfSpecialCard = (page: Page) => page.getByTestId('half-special-semantics')
 
+async function expectNoFieldErrorFor(page: Page, inputId: string) {
+  const input = page.locator(`#${inputId}`)
+  await expect(input).not.toHaveAttribute('aria-invalid', 'true')
+  const describedBy = await input.getAttribute('aria-describedby')
+  if (describedBy) {
+    expect(await page.locator(`#${describedBy}`).count()).toBe(0)
+  }
+}
+
 test.describe('HALF untouched blur（1280×900 dark）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
@@ -94,6 +103,81 @@ test.describe('HALF untouched blur（1280×900 dark）', () => {
     await valueInput(page).press('Enter')
     await expect(hexInput(page)).toHaveValue('7C01')
     await expect(quantizationPanel(page)).toHaveCount(0)
+  })
+})
+
+test.describe('HALF signed-zero shorthand（1280×900 dark）', () => {
+  test.beforeEach(async ({ page }) => {
+    await setTheme(page, 'dark')
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/')
+    await page.getByRole('tab', { name: /HALF/ }).click()
+  })
+
+  test('-.0 解析为 -0：raw 8000、显示 -0、exact provenance（v2.5.7 §7.6）', async ({ page }) => {
+    await valueInput(page).fill('-.0')
+    await expect(hexInput(page)).toHaveValue('8000')
+    await valueInput(page).press('Tab')
+    await expect(valueInput(page)).toHaveValue('-0')
+    await expect(hexInput(page)).toHaveValue('8000')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+  })
+
+  test('负零简写矩阵：-.00 / -0.0 / -0e3 全部编码 0x8000', async ({ page }) => {
+    for (const text of ['-.00', '-0.0', '-0e3']) {
+      await valueInput(page).fill(text)
+      await expect(hexInput(page), text).toHaveValue('8000')
+      await valueInput(page).press('Tab')
+      await expect(valueInput(page), text).toHaveValue('-0')
+    }
+  })
+
+  test('正零简写矩阵：.0 / +.0 / 0.0 编码 0x0000', async ({ page }) => {
+    for (const text of ['.0', '+.0', '0.0']) {
+      await valueInput(page).fill(text)
+      await expect(hexInput(page), text).toHaveValue('0000')
+      await valueInput(page).press('Tab')
+      await expect(valueInput(page), text).toHaveValue('0')
+    }
+  })
+
+  test('编辑中的 -. 是过渡态：raw 不动；blur 规范化为 -0（8000）', async ({ page }) => {
+    await hexInput(page).fill('7C01')
+    await hexInput(page).press('Tab')
+    await expect(valueInput(page)).toHaveValue('NaN')
+
+    // 真实逐键编辑：先清空（过渡态），再键入 -. —— 每一步都不得提交 raw。
+    await valueInput(page).fill('')
+    await valueInput(page).pressSequentially('-')
+    await expect(hexInput(page)).toHaveValue('7C01')
+    await valueInput(page).pressSequentially('.')
+    await expect(hexInput(page)).toHaveValue('7C01')
+    await expectNoFieldErrorFor(page, 'value-input')
+
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('8000')
+    await expect(valueInput(page)).toHaveValue('-0')
+  })
+
+  test('blur 规范化：. 与 +. 归一为 0（0000），-. 归一为 -0（8000）', async ({ page }) => {
+    await valueInput(page).fill('')
+    await valueInput(page).pressSequentially('.')
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('0000')
+    await expect(valueInput(page)).toHaveValue('0')
+
+    await valueInput(page).fill('')
+    await valueInput(page).pressSequentially('+.')
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('0000')
+    await expect(valueInput(page)).toHaveValue('0')
+
+    await valueInput(page).fill('')
+    await valueInput(page).pressSequentially('-.')
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('8000')
+    await expect(valueInput(page)).toHaveValue('-0')
   })
 })
 

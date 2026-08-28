@@ -831,6 +831,31 @@ describe('appReducer — state transitions', () => {
       const s = appReducer(halfMode, { type: 'value/set', value: '-0' })
       expect(s.raw).toBe(0x8000)
     })
+
+    it('signed-zero decimal shorthand all encode 0x8000 (v2.5.7)', () => {
+      // IEEE 754 binary16 keeps -0 (0x8000) distinct from +0 (0x0000);
+      // Number('-.0') is -0 and the parser must preserve it (Part II §7.6).
+      for (const text of ['-0', '-0.0', '-.0', '-.00', '-0e3']) {
+        const s = appReducer(halfMode, { type: 'value/set', value: text })
+        expect(s.raw, text).toBe(0x8000)
+        expect(s.valueRequest?.mode, text).toBe('HALF')
+        expect(Object.is(s.valueRequest?.value, -0), text).toBe(true)
+      }
+    })
+
+    it('positive-zero shorthand variants all encode 0x0000', () => {
+      for (const text of ['0', '+0', '0.0', '.0', '+.0', '0e3']) {
+        expect(appReducer(halfMode, { type: 'value/set', value: text }).raw, text).toBe(0x0000)
+      }
+    })
+
+    it('bare dot drafts never reach the HALF encoder (transitional)', () => {
+      for (const text of ['.', '+.', '-.']) {
+        const s = appReducer(halfMode, { type: 'value/set', value: text })
+        expect(s.raw, text).toBe(halfMode.raw)
+        expect(s.valueRequest, text).toBe(halfMode.valueRequest)
+      }
+    })
   })
 
   describe('DIRECT raw -> signed Y / Value sync', () => {

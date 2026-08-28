@@ -6,6 +6,12 @@
  * reducer stays the single commit authority.  `isTransitionalFloatText`
  * recognizes half-typed strings like "-", "1." or "1e" so the input component
  * does not flag them as errors on every keystroke.
+ *
+ * Signed zero (v2.5.7, Part II §7.6): `Number('-.0')` is `-0`, and IEEE 754
+ * binary16 keeps `0x8000` (−0) distinct from `0x0000` (+0).  The parser must
+ * never collapse the sign of a zero shorthand: `-0` / `-0.0` / `-.0` / `-.00`
+ * / `-0e3` all return true `-0`.  Bare dot drafts (`.`, `+.`, `-.`) are
+ * incomplete editing states and return `null` (transitional), not `+0`.
  */
 
 export function parseFloatSafe(s: string): number | null {
@@ -15,8 +21,6 @@ export function parseFloatSafe(s: string): number | null {
   if (lower === 'nan') return NaN
   if (lower === 'infinity' || lower === '+infinity') return Infinity
   if (lower === '-infinity') return -Infinity
-  // Allow transitional inputs like ".", ".0", "+.", "-."
-  if (/^[+-]?\.0*$/.test(s)) return 0
   if (!/^[+-]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[eE][+-]?\d+)?$/.test(s)) return null
   let n = Number(s)
   if (Number.isNaN(n)) return null
