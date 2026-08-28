@@ -118,8 +118,21 @@ whitespace 检查口径：
 
 - 每条质量命令与 exit code；
 - 单元测试实际数量与 coverage；
-- E2E 实际数量；
+- E2E 实际数量（default / release / visual / deployment 分开统计）；
 - CI URL、head SHA 与 conclusion。
+
+失败与 flaky 的留存纪律（v2.5.9 起）：
+
+- 命令退出码必须来自被测命令本身；pipeline 中 `tail`/`tee` 的成功不得当作
+  被测命令的成功（大日志按 `AGENTS.md` 第 9 节以 `rc=$?` 捕获后返回）。
+- Playwright 配置统一使用 `trace: 'retain-on-failure'`：首次失败（含本地
+  `retries: 0` 的首跑）即保留 trace 等产物，成功运行不额外上传 trace；
+  CI 上传的 HTML report 包含这些失败产物。
+- 一次失败先定位（完整日志、用例名、断言、commit/版本），再做有目的的
+  确认性重跑；不得以多轮全绿或"资源竞争"归因替代定位。无法定位的失败
+  属于未解释失败，阻塞发布。
+- 结果数字从当次运行的 report（Playwright JSON/list reporter、Vitest 汇总）
+  提取；skip/flaky/retry 必须单独列出，不把最终重试通过写成首跑通过。
 
 PR 统计必须来自 final committed HEAD，并通过 `npm run check:repo-hygiene` 与 `git ls-tree -r -l HEAD` 交叉验证；每次新增修复提交后必须重新采集。详细证据规则见 [`docs/REPOSITORY_HYGIENE.md`](docs/REPOSITORY_HYGIENE.md) 第 8 节。
 

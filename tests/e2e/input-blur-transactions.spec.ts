@@ -315,8 +315,13 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
     await expect(page.getByTestId('result-value')).toHaveText('5')
 
     // 真实清空后 blur：提交 null（v2.5.8）——字段保持空、结果为 '—'，
-    // raw 与 VOUT_MODE 不受影响；绝不静默恢复旧值，也不把清除混同于 0
-    await nominal.fill('')
+    // raw 与 VOUT_MODE 不受影响；绝不静默恢复旧值，也不把清除混同于 0。
+    // v2.5.9：真实键盘删除（全选 → Backspace），先读到真实删除后的空
+    // draft 再触发 blur——不依赖任何自动化封装的 fill('') 行为。
+    await nominal.click()
+    await nominal.press('ControlOrMeta+a')
+    await nominal.press('Backspace')
+    await expect(nominal).toHaveValue('')
     await nominal.press('Tab')
     await expect(nominal).toHaveValue('')
     await expect(page.getByTestId('result-value')).toHaveText('—')
