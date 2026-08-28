@@ -57,10 +57,12 @@ describe('resolveRelativeVoltage (v2.5.9 §7.3 matrix)', () => {
     expect(RELATIVE_VOLTAGE_UNDERFLOW_NOTE).toContain('非零')
   })
 
-  it('keeps the input-layer 1e-400 → 0 contract distinct from derivation underflow', () => {
-    // The parse layer accepts `1e-400` as +0 (documented v2.5.8 input
-    // contract): committed nominal 0 × nonzero ratio is a TRUE zero result,
-    // never reported as a derivation underflow.
+  it('keeps the input-layer zero contracts distinct from derivation underflow', () => {
+    // Since v2.5.10 the parse layer rejects non-zero decimals that binary64
+    // underflows to ±0 (`1e-400` is an input-underflow error, no longer a
+    // legal commit). A committed nominal 0 can only come from a TRUE zero
+    // text — and true zero × nonzero ratio is a finite result, never a
+    // derivation underflow.
     expect(resolveRelativeVoltage(0, 2).kind).toBe('finite')
   })
 })

@@ -18,13 +18,23 @@
  *   0  both assets downloaded, byte sizes match the verified metadata
  *   2  usage error or unreadable/invalid verified metadata
  *   9  a downloaded file's byte count does not match the verified metadata
- *  10  a download failed (network error or non-OK HTTP status)
+ *  10  a download failed (network error, timeout, or non-OK HTTP status)
  *
- * Network calls use a total timeout and a small bounded retry budget for
- * transient transport failures only; permanent HTTP contract errors fail
- * fast. The exported `downloadVerifiedAssets` throws typed errors instead of
- * exiting so offline tests can replace the network boundary (fetchImpl)
- * without replacing the parsing/consumption logic.
+ * Deadline contract (v2.5.10): the WHOLE download operation shares ONE
+ * cumulative budget of `TOTAL_DOWNLOAD_BUDGET_MS` (5 minutes) — retries and
+ * backoff consume the same budget, and no attempt ever starts with a fresh
+ * full timeout. Each fetch's AbortSignal is the REMAINING budget, so a hung
+ * request is cut off when the budget runs out and the operation exits with
+ * the stable code 10 / "deadline exhausted" diagnostic. The budget is
+ * deliberately far below the Pages job's `timeout-minutes: 20` so npm ci,
+ * verification, upload, deploy and the remote smoke keep their time; retrying
+ * is limited to transient transport failures (network errors, HTTP
+ * 408/429/5xx) with a bounded attempt count and a short backoff, while
+ * permanent HTTP contract errors fail fast. Files are written only after BOTH
+ * downloads finished and passed the size check. The exported
+ * `downloadVerifiedAssets` takes the budget/clock/sleep boundaries as
+ * injectable options so offline tests exercise the deadline deterministically
+ * without waiting real minutes.
  */
 
 import fs from 'node:fs'
@@ -37,8 +47,12 @@ import {
   assertValidRepoSlug,
 } from './release-url-contract.mjs'
 
-const DOWNLOAD_TIMEOUT_MS = 300_000
-const TRANSIENT_RETRIES = 3
+/** Shared budget for the WHOLE operation (both assets, retries, backoff). */
+const TOTAL_DOWNLOAD_BUDGET_MS = 5 * 60_000
+/** Maximum fetch attempts per asset — bounded, and every retry consumes budget. */
+const MAX_ATTEMPTS_PER_ASSET = 3
+/** Short backoff between transient-failure retries; consumed from the budget. */
+const RETRY_BACKOFF_MS = 2_000
 
 /** Typed failure so tests can assert codes while the CLI maps them to exits. */
 export class ReleaseDownloadError extends Error {
@@ -77,51 +91,87 @@ function parseArgs(argv) {
 }
 
 /**
- * Fetch one asset with a total timeout and bounded transient retries.
+ * Fetch one asset under the shared deadline. Every attempt receives the
+ * REMAINING budget as its AbortSignal; retries (network errors and transient
+ * 408/429/5xx only) consume the same budget via the shared deadline.
  * @param {string} url
- * @param {{ fetchImpl: typeof fetch }} io
+ * @param {{
+ *   fetchImpl: typeof fetch,
+ *   deadline: number,
+ *   nowImpl: () => number,
+ *   sleepImpl: (ms: number) => Promise<void>,
+ * }} io
  * @returns {Promise<Uint8Array>}
  */
 async function fetchAsset(url, io) {
   let lastError = new Error('unreachable')
-  for (let attempt = 1; attempt <= TRANSIENT_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_ASSET; attempt++) {
+    const remaining = io.deadline - io.nowImpl()
+    if (remaining <= 0) {
+      throw new ReleaseDownloadError(
+        10,
+        `download deadline exhausted before attempt ${attempt} for ${url}: the total budget is shared across assets, retries and backoff`,
+      )
+    }
     try {
       const response = await io.fetchImpl(url, {
-        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+        signal: AbortSignal.timeout(remaining),
         redirect: 'follow',
       })
       if (!response.ok) {
-        // 429/5xx are transport-side transients; 4xx contract errors fail fast.
-        const transient = response.status === 429 || response.status >= 500
-        if (!transient || attempt === TRANSIENT_RETRIES) {
+        // 408/429/5xx are transport-side transients; other 4xx contract
+        // errors fail fast.
+        const transient =
+          response.status === 408 || response.status === 429 || response.status >= 500
+        if (!transient || attempt === MAX_ATTEMPTS_PER_ASSET) {
           throw new ReleaseDownloadError(
             10,
             `download failed with HTTP ${response.status} for ${url}`,
           )
         }
         lastError = new Error(`HTTP ${response.status}`)
+        await io.sleepImpl(Math.min(RETRY_BACKOFF_MS, Math.max(0, io.deadline - io.nowImpl())))
         continue
       }
       return new Uint8Array(await response.arrayBuffer())
     } catch (error) {
       if (error instanceof ReleaseDownloadError) throw error
       lastError = /** @type {Error} */ (error)
-      if (attempt === TRANSIENT_RETRIES) break
+      if (attempt === MAX_ATTEMPTS_PER_ASSET) break
     }
   }
   throw new ReleaseDownloadError(
     10,
-    `download failed after ${TRANSIENT_RETRIES} attempts: ${lastError.message}`,
+    `download failed after ${MAX_ATTEMPTS_PER_ASSET} attempts: ${lastError.message}`,
   )
 }
 
 /**
  * Download both verified assets into `outDir`, checking byte sizes against
- * the verified metadata before anything is written.
+ * the verified metadata before anything is written. One deadline covers the
+ * whole operation; `budgetMs`, the clock and the sleep are injectable so
+ * tests can exhaust the budget deterministically.
  * @param {{ tag?: string, zip?: { name?: string, size?: number, url?: string }, sums?: { name?: string, size?: number, url?: string } }} verified
- * @param {{ repo: string, outDir?: string, fetchImpl?: typeof fetch }} options
+ * @param {{
+ *   repo: string,
+ *   outDir?: string,
+ *   fetchImpl?: typeof fetch,
+ *   budgetMs?: number,
+ *   nowImpl?: () => number,
+ *   sleepImpl?: (ms: number) => Promise<void>,
+ * }} options
  */
-export async function downloadVerifiedAssets(verified, { repo, outDir = '.', fetchImpl = fetch }) {
+export async function downloadVerifiedAssets(
+  verified,
+  {
+    repo,
+    outDir = '.',
+    fetchImpl = fetch,
+    budgetMs = TOTAL_DOWNLOAD_BUDGET_MS,
+    nowImpl = () => Date.now(),
+    sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  },
+) {
   if (!verified || typeof verified !== 'object' || Array.isArray(verified)) {
     throw new ReleaseDownloadError(2, 'verified release assets must be a JSON object')
   }
@@ -136,6 +186,7 @@ export async function downloadVerifiedAssets(verified, { repo, outDir = '.', fet
   ])
   /** @type {Array<{ name: string, bytes: Uint8Array }>} */
   const downloaded = []
+  const deadline = nowImpl() + budgetMs
   for (const target of targets) {
     if (
       typeof target.name !== 'string' ||
@@ -157,7 +208,7 @@ export async function downloadVerifiedAssets(verified, { repo, outDir = '.', fet
         `verified asset "${target.name}": ${error instanceof Error ? error.message : String(error)}`,
       )
     }
-    const bytes = await fetchAsset(target.url, { fetchImpl })
+    const bytes = await fetchAsset(target.url, { fetchImpl, deadline, nowImpl, sleepImpl })
     if (bytes.length !== target.size) {
       throw new ReleaseDownloadError(
         9,

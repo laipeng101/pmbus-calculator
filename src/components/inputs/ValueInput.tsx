@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
-import { classifyFloatText, resolveFloatTextOnBlur } from '../../app/float-parse'
+import {
+  classifyFloatText,
+  resolveFloatTextOnBlur,
+  type FloatTextClassification,
+} from '../../app/float-parse'
 import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
@@ -9,12 +13,26 @@ interface Props {
   dispatch: React.Dispatch<AppAction>
 }
 
-type DraftKind = 'valid' | 'transitional' | 'invalid' | 'non-finite' | 'out-of-range'
+type DraftKind = 'valid' | 'transitional' | 'invalid' | 'non-finite' | 'out-of-range' | 'underflow'
 
 const INVALID_MESSAGE = '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）'
 const NON_FINITE_MESSAGE = '当前模式不支持 NaN / Infinity，仅 HALF 模式支持这些特殊值'
 const OUT_OF_RANGE_MESSAGE =
   '数值超出可表示范围：该十进制文本会转换为 ±Infinity，请输入 JavaScript Number 可表示的有限值'
+const UNDERFLOW_MESSAGE =
+  '输入下溢：该非零十进制文本会转换为 ±0，请求的量级信息会丢失；请输入 JavaScript Number 可表示的非零有限值（最小到 5e-324），或真正的 0'
+
+/** Keep-error blur mapping: each rejected raw kind keeps its own message. */
+function errorForRawKind(kind: FloatTextClassification['kind']): string {
+  switch (kind) {
+    case 'out-of-range':
+      return OUT_OF_RANGE_MESSAGE
+    case 'underflow':
+      return UNDERFLOW_MESSAGE
+    default:
+      return INVALID_MESSAGE
+  }
+}
 
 function classifyDraft(
   text: string,
@@ -35,6 +53,8 @@ function classifyDraft(
       return { kind: 'transitional', value: null }
     case 'invalid':
       return { kind: 'invalid', value: null }
+    case 'underflow':
+      return { kind: 'underflow', value: null }
   }
 }
 
@@ -81,6 +101,12 @@ export default function ValueInput({ vm, dispatch }: Props) {
       setError(OUT_OF_RANGE_MESSAGE)
       return
     }
+    if (kind === 'underflow') {
+      // Non-zero decimal text that binary64 rounds to ±0 (e.g. 1e-400):
+      // explicit input-underflow error, no commit, no provenance change.
+      setError(UNDERFLOW_MESSAGE)
+      return
+    }
     setError(null)
     if (kind === 'valid' && value !== null) {
       dispatch({ type: 'value/set', value: text })
@@ -117,9 +143,10 @@ export default function ValueInput({ vm, dispatch }: Props) {
         dispatch({ type: 'value/set', value: resolution.text })
       }
     } else {
-      // Invalid / out-of-range raw draft (or a defensive fail-closed
-      // transitional): keep the original draft together with its error.
-      setError(resolution.raw.kind === 'out-of-range' ? OUT_OF_RANGE_MESSAGE : INVALID_MESSAGE)
+      // Invalid / out-of-range / input-underflow raw draft (or a defensive
+      // fail-closed transitional): keep the original draft together with its
+      // error.
+      setError(errorForRawKind(resolution.raw.kind))
     }
     setEditing(false)
   }

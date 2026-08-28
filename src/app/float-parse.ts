@@ -17,6 +17,14 @@
  * must report an explicit range error, keep the last committed state/raw and
  * never fabricate a new request from it.
  *
+ * Input underflow (v2.5.10, input truth): complete decimal text whose
+ * mathematically non-zero mantissa converts to ±0 (e.g. `1e-400`, `2e-324`)
+ * is `underflow` — an explicit input range error, not a legal zero. True
+ * zero texts (all-zero mantissa: `0`, `0e-400`, `-0.0e-999`, `-.0e-999`)
+ * keep the signed-zero contract (Part II §7.6), and the smallest subnormal
+ * `5e-324` / `3e-324` remain finite `value` results. This is a parse-layer
+ * fact about JavaScript Number, not a PMBus rule.
+ *
  * HALF literals are distinct from decimal overflow (Part II §7.6): the exact
  * texts `NaN` / `Infinity` / `+Infinity` / `-Infinity` are first-class values
  * (`kind: 'value'`), while `1e400` is an out-of-range decimal text in every
@@ -47,6 +55,7 @@ export type FloatTextClassification =
   | { kind: 'out-of-range' }
   | { kind: 'transitional' }
   | { kind: 'invalid' }
+  | { kind: 'underflow' }
 
 /** Complete float syntax: optional sign, digits with optional fraction, optional exponent. */
 const FLOAT_SYNTAX = /^[+-]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[eE][+-]?\d+)?$/
@@ -60,6 +69,17 @@ const FLOAT_SYNTAX = /^[+-]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[eE][+-]?\d+)?$/
  */
 const TRANSITIONAL_FLOAT = /^[+-]$|^[+-]?\.$|^[+-]?(?:\d+\.?\d*|\.\d+)[eE][+-]?$/
 
+/**
+ * True when the syntactically complete decimal text carries a mathematically
+ * non-zero mantissa (at least one digit 1-9 before any exponent). `0e-400`
+ * and `-0.0e-999` have all-zero mantissas and stay true ±0; `1e-400` carries
+ * a real non-zero magnitude that binary64 conversion loses.
+ */
+function hasNonZeroMantissaDigit(completeDecimal: string): boolean {
+  const mantissa = completeDecimal.toLowerCase().split('e')[0]!
+  return /[1-9]/.test(mantissa)
+}
+
 export function classifyFloatText(input: string): FloatTextClassification {
   const s = String(input).trim()
   if (s === '') return { kind: 'empty' }
@@ -72,10 +92,16 @@ export function classifyFloatText(input: string): FloatTextClassification {
   }
   const n = Number(s)
   // FLOAT_SYNTAX guarantees a numeric literal; Number() can only make it
-  // ±Infinity (magnitude overflow) or a finite double — underflow to ±0 is a
-  // finite conversion result, not a range error.
+  // ±Infinity (magnitude overflow) or a finite double.
   if (Number.isNaN(n)) return { kind: 'invalid' }
   if (!Number.isFinite(n)) return { kind: 'out-of-range' }
+  // Input underflow (v2.5.10, input-truth contract): a non-zero decimal
+  // magnitude that binary64 conversion rounds to ±0 loses the requested
+  // quantity entirely — committing it would fabricate a "user asked for
+  // zero" fact. This is an input range error, distinct from a true zero
+  // text (all-zero mantissa, e.g. `0e-400`, `-0.0e-999`) and from legal
+  // format-level quantization of representable requests (DOMAIN_MODEL §6.2).
+  if (n === 0 && hasNonZeroMantissaDigit(s)) return { kind: 'underflow' }
   return { kind: 'value', value: n }
 }
 
@@ -139,8 +165,8 @@ export type FloatBlurResolution =
    */
   | { kind: 'commit'; text: string; value: number }
   /**
-   * Invalid or out-of-range raw draft — or a transitional whose
-   * normalization failed to produce a complete value. Keep the ORIGINAL
+   * Invalid, out-of-range or input-underflow raw draft — or a transitional
+   * whose normalization failed to produce a complete value. Keep the ORIGINAL
    * draft and its error; never commit, never clear the error, never
    * restore a previous display value from here.
    */
@@ -172,6 +198,7 @@ export function resolveFloatTextOnBlur(rawDraft: string): FloatBlurResolution {
       return { kind: 'commit', text: normalized, value: normalizedClass.value }
     }
     case 'out-of-range':
+    case 'underflow':
     case 'invalid':
       return { kind: 'keep-error', raw }
   }

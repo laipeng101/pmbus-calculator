@@ -143,8 +143,35 @@ describe('downloadVerifiedAssets: failure contract', () => {
       }
       return new Response(SUMS_BYTES, { status: 200 })
     }) as unknown as typeof fetch
-    await downloadVerifiedAssets(verified(), { repo: REPO, outDir, fetchImpl: fetchImplByUrl })
+    await downloadVerifiedAssets(verified(), {
+      repo: REPO,
+      outDir,
+      fetchImpl: fetchImplByUrl,
+      sleepImpl: () => Promise.resolve(),
+    })
     expect(zipCalls).toBe(3)
+    expect(fs.readFileSync(path.join(outDir, ZIP_NAME))).toEqual(Buffer.from(ZIP_BYTES))
+  })
+
+  it('retries HTTP 408 as a transient status', async () => {
+    const outDir = newOutDir()
+    let zipCalls = 0
+    const fetchImplByUrl = (async (url: string | URL | Request) => {
+      const key = String(url instanceof Request ? url.url : url)
+      if (key === ZIP_URL) {
+        zipCalls++
+        if (zipCalls < 2) return new Response('timeout', { status: 408 })
+        return new Response(ZIP_BYTES, { status: 200 })
+      }
+      return new Response(SUMS_BYTES, { status: 200 })
+    }) as unknown as typeof fetch
+    await downloadVerifiedAssets(verified(), {
+      repo: REPO,
+      outDir,
+      fetchImpl: fetchImplByUrl,
+      sleepImpl: () => Promise.resolve(),
+    })
+    expect(zipCalls).toBe(2)
     expect(fs.readFileSync(path.join(outDir, ZIP_NAME))).toEqual(Buffer.from(ZIP_BYTES))
   })
 
@@ -156,7 +183,12 @@ describe('downloadVerifiedAssets: failure contract', () => {
       return new Response('boom', { status: 500 })
     }) as unknown as typeof fetch
     await expect(
-      downloadVerifiedAssets(verified(), { repo: REPO, outDir, fetchImpl }),
+      downloadVerifiedAssets(verified(), {
+        repo: REPO,
+        outDir,
+        fetchImpl,
+        sleepImpl: () => Promise.resolve(),
+      }),
     ).rejects.toMatchObject({ code: 10 })
     expect(calls).toBe(3)
   })
@@ -208,6 +240,96 @@ describe('downloadVerifiedAssets: failure contract', () => {
         fetchImpl: okFetch(() => ZIP_BYTES),
       }),
     ).rejects.toMatchObject({ code: 2 })
+  })
+})
+
+describe('downloadVerifiedAssets: cumulative deadline contract (v2.5.10)', () => {
+  /** Fake fetch that hangs until its AbortSignal fires, then rejects. */
+  function hangingFetch(): typeof fetch {
+    return (async (_url: string | URL | Request, init?: RequestInit) => {
+      return new Promise<never>((_, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError')),
+        )
+      })
+    }) as unknown as typeof fetch
+  }
+
+  const realSleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  it('cuts off a hung request at the remaining-budget signal (per-attempt deadline)', async () => {
+    const outDir = newOutDir()
+    await expect(
+      downloadVerifiedAssets(verified(), {
+        repo: REPO,
+        outDir,
+        fetchImpl: hangingFetch(),
+        budgetMs: 150,
+      }),
+    ).rejects.toMatchObject({
+      code: 10,
+      message: expect.stringContaining('deadline exhausted'),
+    })
+    expect(fs.readdirSync(outDir)).toEqual([])
+  })
+
+  it('shares one budget across both assets: a slow first asset exhausts the deadline', async () => {
+    const outDir = newOutDir()
+    const slowThenHanging = (async (url: string | URL | Request, init?: RequestInit) => {
+      const key = String(url instanceof Request ? url.url : url)
+      if (key === ZIP_URL) {
+        await realSleep(100)
+        return new Response(ZIP_BYTES, { status: 200 })
+      }
+      return hangingFetch()(url, init)
+    }) as unknown as typeof fetch
+    await expect(
+      downloadVerifiedAssets(verified(), {
+        repo: REPO,
+        outDir,
+        fetchImpl: slowThenHanging,
+        budgetMs: 200,
+      }),
+    ).rejects.toMatchObject({
+      code: 10,
+      message: expect.stringContaining('deadline exhausted'),
+    })
+    // The first asset was fully downloaded, but nothing may be written when
+    // the operation fails — no partial release inputs.
+    expect(fs.readdirSync(outDir)).toEqual([])
+  }, 10_000)
+
+  it('never grants a fresh timeout per attempt: consumed budget stays consumed', async () => {
+    const outDir = newOutDir()
+    let fakeNow = 0
+    let calls = 0
+    // Each fetch attempt burns 4 of the 5 fake-budget minutes, then 503s.
+    const fetchImpl = (async () => {
+      calls++
+      fakeNow += 240_000
+      return new Response('boom', { status: 503 })
+    }) as unknown as typeof fetch
+    await expect(
+      downloadVerifiedAssets(verified(), {
+        repo: REPO,
+        outDir,
+        fetchImpl,
+        budgetMs: 300_000,
+        nowImpl: () => fakeNow,
+        sleepImpl: (ms) => {
+          fakeNow += ms
+          return Promise.resolve()
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 10,
+      message: expect.stringContaining('deadline exhausted'),
+    })
+    // Attempt 3 never happened: with a per-attempt fresh timeout it would
+    // have received a new full budget, but the shared deadline was already
+    // gone after two 4-minute attempts.
+    expect(calls).toBe(2)
+    expect(fs.readdirSync(outDir)).toEqual([])
   })
 })
 

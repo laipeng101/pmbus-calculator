@@ -358,6 +358,33 @@ describe('release-assets-verify: release metadata contract', () => {
       ],
     })
     expect(runScript(writeFixture(junkTag), ['--mode', 'draft']).status).toBe(8)
+
+    // v2.5.10 tightened the placeholder from \w+ to the observed lowercase
+    // hex form: underscore and uppercase variants are rejected, so a
+    // placeholder-looking segment cannot smuggle other characters. (Not an
+    // observed attack — a consistency fix between comment, regex and
+    // fixtures, kept fail-closed.)
+    const underscoreTag = validRelease({
+      ...draftBase,
+      assets: [
+        asset(ZIP_NAME, {
+          browser_download_url: `https://github.com/${REPO}/releases/download/untagged-e2aca66_cb8e41dc389e5/${ZIP_NAME}`,
+        }),
+        asset('SHA256SUMS.txt'),
+      ],
+    })
+    expect(runScript(writeFixture(underscoreTag), ['--mode', 'draft']).status).toBe(8)
+
+    const uppercaseTag = validRelease({
+      ...draftBase,
+      assets: [
+        asset(ZIP_NAME, {
+          browser_download_url: `https://github.com/${REPO}/releases/download/untagged-E2ACA66CB8E41DC389E5/${ZIP_NAME}`,
+        }),
+        asset('SHA256SUMS.txt'),
+      ],
+    })
+    expect(runScript(writeFixture(uppercaseTag), ['--mode', 'draft']).status).toBe(8)
   })
 })
 

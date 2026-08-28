@@ -14,8 +14,10 @@
  * Input contract: `nominal` is a finite non-negative number or null (the
  * committed `l16.nominalVout`), `ratio` is a finite non-negative number
  * (ULINEAR16 decode). True zero (a zero factor) is a finite result, never
- * misread as underflow; the accepted parse-layer contract `1e-400 → 0` is an
- * input-layer decision and stays untouched by this derivation diagnostics.
+ * misread as underflow. Since v2.5.10 the parse layer rejects non-zero
+ * decimals that binary64 underflows to ±0, so a committed zero factor can
+ * only come from a true zero text — that input-layer decision is separate
+ * from this derivation diagnostics.
  */
 
 export type RelativeVoltageResult =

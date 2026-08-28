@@ -115,9 +115,12 @@ export function assertCanonicalAssetDownloadUrl(
   const { owner, name: repoName } = assertValidRepoSlug(repo, 'repository slug')
   const expectedPath = `/${owner}/${repoName}/releases/download/${tag}/${name}`
   // A regex is required for GitHub's draft placeholder; every interpolated
-  // value is escaped so the strict form stays a literal comparison.
+  // value is escaped so the strict form stays a literal comparison. The
+  // placeholder is `untagged-` followed by lowercase hex (observed live REST
+  // form, e.g. `untagged-e2aca66cb8e41dc389e5`); the hex-only pattern rejects
+  // underscore/uppercase variants instead of the looser \w+.
   const tagPattern = allowUntaggedPlaceholder
-    ? `${escapeRegExp(tag)}|untagged-\\w+`
+    ? `${escapeRegExp(tag)}|untagged-[0-9a-f]+`
     : escapeRegExp(tag)
   const pathPattern = new RegExp(
     `^/${escapeRegExp(owner)}/${escapeRegExp(repoName)}/releases/download/(?:${tagPattern})/${escapeRegExp(name)}$`,

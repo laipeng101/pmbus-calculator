@@ -142,10 +142,15 @@ export const PMBusMath = {
       if (y < -1024 || y > 1023) continue
       const represented = y * p
       const err = Math.abs(val - represented)
-      if (
-        err < bestErr - 1e-15 ||
-        (Math.abs(err - bestErr) < 1e-15 && Math.abs(n) < Math.abs(bestN))
-      ) {
+      // Strictly nearest code: every strictly smaller |X − Y×2^N| wins.
+      // Only a bit-exact error tie falls through to the deterministic
+      // repository tie policy of preferring the smaller |N| — this policy is
+      // a calculator-side choice (PMBus Part II §7.3 fixes only X = Y × 2^N,
+      // not any host-side selection rule). No fixed absolute epsilon is
+      // applied: strictly different errors must never be merged into a tie.
+      // (A 1e-15 epsilon used to encode X = 2^-17 + 1 ulp as 0x0000 even
+      // though 0x8001 was strictly nearer.)
+      if (err < bestErr || (err === bestErr && Math.abs(n) < Math.abs(bestN))) {
         bestErr = err
         bestN = n
         bestY = y
