@@ -175,7 +175,7 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
     await expect(hexInput(page)).toHaveValue('0101')
   })
 
-  test('relative ULINEAR16：nominal untouched blur 不重置标称值；显式重输仍提交', async ({
+  test('relative ULINEAR16：nominal untouched blur no-op；真实清空后 blur 提交 null（v2.5.8）', async ({
     page,
   }) => {
     const nominal = page.locator('#l16-nominal-vout')
@@ -185,19 +185,25 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
 
     await nominal.fill('5')
     await expect(nominal).toHaveValue('5')
+    await expect(page.getByTestId('result-value')).toHaveText('5')
 
     // untouched blur：严格 no-op
     await untouchedFocusBlur(nominal)
     await expect(nominal).toHaveValue('5')
+    await expect(page.getByTestId('result-value')).toHaveText('5')
 
-    // 显式清空后 blur：空串不是合法标称，blur 恢复已提交值 5（定义的完成态）
+    // 真实清空后 blur：提交 null（v2.5.8）——字段保持空、结果为 '—'，
+    // raw 与 VOUT_MODE 不受影响；绝不静默恢复旧值，也不把清除混同于 0
     await nominal.fill('')
     await nominal.press('Tab')
-    await expect(nominal).toHaveValue('5')
+    await expect(nominal).toHaveValue('')
+    await expect(page.getByTestId('result-value')).toHaveText('—')
+    await expect(hexInput(page)).toHaveValue('0100')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
 
-    // 显式重输相同值（粘贴路径）：真实事务仍提交
+    // 重新输入合法值后恢复计算（ratio=1 → 5）
     await nominal.fill('5')
-    await expect(nominal).toHaveValue('5')
+    await expect(page.getByTestId('result-value')).toHaveText('5')
   })
 
   test('显式 N 编辑清除 provenance 并改写 VOUT_MODE', async ({ page }) => {

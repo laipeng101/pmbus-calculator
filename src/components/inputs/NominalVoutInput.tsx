@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { classifyFloatText } from '../../app/float-parse'
+import { classifyFloatText, fixFloatTextOnBlur } from '../../app/float-parse'
 import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
@@ -7,6 +7,8 @@ interface Props {
   value: number | null
   ariaLabel: string
   onCommit: (text: string) => void
+  /** Fired when the user really deleted all content and blurs (v2.5.8). */
+  onClear: () => void
 }
 
 const INVALID_MESSAGE = '标称值无效：仅支持十进制非负数（可含小数与科学计数法）'
@@ -18,8 +20,15 @@ const OUT_OF_RANGE_MESSAGE =
  * Finite non-negative values commit; invalid/out-of-range drafts keep a
  * field-level error and never modify committed state.  Parse classification
  * comes from the shared `classifyFloatText` (v2.5.8) — no local rule set.
+ *
+ * v2.5.8 clearing contract: null is a real, reachable committed state.  A
+ * user who deleted the entire content and blurs/Enter clears the reference
+ * (`onClear`); null ≠ 0 — 0 stays a distinct decode-only value.  Non-empty
+ * transitional drafts ('1e', '-', '.') blur-normalize via the shared
+ * `fixFloatTextOnBlur` instead of silently restoring the previous value.
+ * Untouched focus/blur sessions (no onChange at all) remain strict no-ops.
  */
-export default function NominalVoutInput({ id, value, ariaLabel, onCommit }: Props) {
+export default function NominalVoutInput({ id, value, ariaLabel, onCommit, onClear }: Props) {
   const [draft, setDraft] = useState(value == null ? '' : String(value))
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -70,24 +79,35 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit }: Pro
 
   const handleBlur = () => {
     // Untouched focus/blur (no onChange at all) is a strict no-op: no commit,
-    // no draft reset, no provenance loss, no field-error change (v2.5.7).
+    // no clear, no draft reset, no provenance loss, no field-error change
+    // (v2.5.7).
     if (!transaction.shouldCommitOnBlur()) {
       setEditing(false)
       return
     }
-    const { kind, value: v } = classify(draft)
+    if (draft.trim() === '') {
+      // Real deletion committed (v2.5.8): the reference becomes null — never
+      // a silent restore of the previous value, and never coerced to 0.
+      setError(null)
+      setDraft('')
+      onClear()
+      setEditing(false)
+      return
+    }
+    // Non-empty transitional draft ('1e', '-', '.'): normalize exactly like
+    // the physical-value input instead of silently restoring the old value.
+    const fixed = fixFloatTextOnBlur(draft)
+    const { kind, value: v } = classify(fixed)
     if (kind === 'invalid') {
       setError(INVALID_MESSAGE)
+      setDraft(fixed)
     } else if (kind === 'out-of-range') {
       setError(OUT_OF_RANGE_MESSAGE)
+      setDraft(fixed)
     } else {
       setError(null)
-      if (kind === 'incomplete') {
-        setDraft('')
-      } else if (v !== null) {
-        setDraft(String(v))
-        onCommit(String(v))
-      }
+      setDraft(fixed)
+      if (kind === 'valid' && v !== null) onCommit(String(v))
     }
     setEditing(false)
   }
@@ -114,7 +134,7 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit }: Pro
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
         }}
         className="input-surface w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
-        placeholder="0"
+        placeholder="未设置（相对比值仍可计算）"
       />
       {error && (
         <p id={`${id}-error`} role="alert" className="mt-1 text-xs color-danger">

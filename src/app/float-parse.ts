@@ -75,3 +75,27 @@ export function isTransitionalFloatText(input: string): boolean {
   const kind = classifyFloatText(input).kind
   return kind === 'empty' || kind === 'transitional'
 }
+
+/**
+ * Blur normalization for incomplete float drafts (v2.5.7 contract, shared by
+ * ValueInput and NominalVoutInput since v2.5.8): '' / '-' / '+' -> '0';
+ * trailing 'e' exponent stripped.  A bare trailing dot keeps its sign: the
+ * sign is the only information the draft carries, and IEEE 754 keeps `-0`
+ * (0x8000) distinct from `+0` (0x0000), Part II §7.6.
+ *
+ * Callers decide what an empty draft means (ValueInput commits 0; the
+ * nominal reference clears to null) — normalize after that decision.
+ */
+export function fixFloatTextOnBlur(value: string): string {
+  value = value.trim()
+  if (!value) return '0'
+  if (value === '-' || value === '+') return '0'
+  if (/[eE][+-]?$/.test(value)) return value.replace(/[eE][+-]?$/, '') || '0'
+  if (value.endsWith('.')) {
+    const head = value.slice(0, -1)
+    if (head === '' || head === '+') return '0'
+    if (head === '-') return '-0'
+    return head
+  }
+  return value
+}

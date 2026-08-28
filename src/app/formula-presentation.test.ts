@@ -192,6 +192,24 @@ describe('formula presentation model', () => {
 })
 
 describe('M16 structured detail lines', () => {
+  it('relative ULINEAR16 without a nominal shows the ratio only, never a stale voltage (v2.5.8)', () => {
+    // raw 0x0100, N=-8 → ratio 1.0; no nominal reference committed.
+    const s = state({ mode: 'L16', raw: 0x0100, voutMode: { byte: 0x98 } })
+    const f = getFormulaPresentation(s)
+
+    expect(f.plainText).toBe('R=256 × 2^-8=1（需要 VOUT_COMMAND nominal）')
+    expect(f.plainText).not.toMatch(/X=/)
+    // The same contract with a committed reference, for contrast.
+    const withNominal = state({
+      mode: 'L16',
+      raw: 0x0100,
+      voutMode: { byte: 0x98 },
+      l16: { payloadKind: 'ulinear16', nominalVout: 12 },
+    })
+    const f2 = getFormulaPresentation(withNominal)
+    expect(f2.plainText).toBe('R=256 × 2^-8=1（100%）; X=12×R=12 V')
+  })
+
   it('DIRECT negative exponent renders as 10^{-12} and detail line is present', () => {
     const s = state({
       mode: 'DIRECT',

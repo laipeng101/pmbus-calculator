@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
-import { classifyFloatText } from '../../app/float-parse'
+import { classifyFloatText, fixFloatTextOnBlur } from '../../app/float-parse'
 import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
@@ -36,26 +36,6 @@ function classifyDraft(
     case 'invalid':
       return { kind: 'invalid', value: null }
   }
-}
-
-/**
- * Blur normalization for incomplete drafts: '' / '-' / '+' -> '0'; trailing
- * 'e' exponent stripped.  A bare trailing dot keeps its sign (v2.5.7): the
- * sign is the only information the draft carries, and IEEE 754 binary16 keeps
- * `-0` (0x8000) distinct from `+0` (0x0000), Part II §7.6.
- */
-function fixFloatOnBlur(value: string): string {
-  value = value.trim()
-  if (!value) return '0'
-  if (value === '-' || value === '+') return '0'
-  if (/[eE][+-]?$/.test(value)) return value.replace(/[eE][+-]?$/, '') || '0'
-  if (value.endsWith('.')) {
-    const head = value.slice(0, -1)
-    if (head === '' || head === '+') return '0'
-    if (head === '-') return '-0'
-    return head
-  }
-  return value
 }
 
 /**
@@ -115,7 +95,7 @@ export default function ValueInput({ vm, dispatch }: Props) {
       setEditing(false)
       return
     }
-    const fixed = fixFloatOnBlur(draft)
+    const fixed = fixFloatTextOnBlur(draft)
     const { kind, value } = classifyDraft(fixed, vm.mode === 'HALF')
     if (kind === 'invalid' || kind === 'non-finite' || kind === 'out-of-range') {
       // Keep the invalid draft visible together with its error.

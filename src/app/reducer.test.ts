@@ -1233,6 +1233,55 @@ describe('appReducer — state transitions', () => {
       ).toBeNull()
     })
 
+    it('l16/clear-nominal-vout resets the reference to null (v2.5.8)', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const relative = appReducer(l16, { type: 'vout-mode/set-relative', relative: true })
+      const withNominal = appReducer(relative, {
+        type: 'l16/set-nominal-vout',
+        nominalVout: '12',
+      })
+      expect(withNominal.l16.nominalVout).toBe(12)
+      const cleared = appReducer(withNominal, { type: 'l16/clear-nominal-vout' })
+      expect(cleared.l16.nominalVout).toBeNull()
+      // Re-entering a legal value restores the reference.
+      const restored = appReducer(cleared, { type: 'l16/set-nominal-vout', nominalVout: '5' })
+      expect(restored.l16.nominalVout).toBe(5)
+    })
+
+    it('l16/clear-nominal-vout touches only the nominal channel', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const relative = appReducer(l16, { type: 'vout-mode/set-relative', relative: true })
+      const withNominal = appReducer(relative, {
+        type: 'l16/set-nominal-vout',
+        nominalVout: '12',
+      })
+      const cleared = appReducer(withNominal, { type: 'l16/clear-nominal-vout' })
+      expect(cleared.raw).toBe(withNominal.raw)
+      expect(cleared.voutMode.byte).toBe(withNominal.voutMode.byte)
+      expect(cleared.l16.payloadKind).toBe(withNominal.l16.payloadKind)
+      expect(cleared.byteOrder).toBe(withNominal.byteOrder)
+      expect(cleared.mode).toBe(withNominal.mode)
+    })
+
+    it('l16/clear-nominal-vout is idempotent and null stays distinct from 0', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const alreadyNull = appReducer(l16, { type: 'l16/clear-nominal-vout' })
+      expect(alreadyNull).toBe(l16)
+      const zero = appReducer(l16, { type: 'l16/set-nominal-vout', nominalVout: '0' })
+      expect(zero.l16.nominalVout).toBe(0)
+      expect(appReducer(zero, { type: 'l16/clear-nominal-vout' }).l16.nominalVout).toBeNull()
+      // 0 keeps the decode-only contract: a 0 reference is a value, not "no
+      // reference" — the two states are observably different.
+      expect(zero.l16.nominalVout).not.toBeNull()
+    })
+
+    it('l16/set-nominal-vout rejects out-of-range decimal text (v2.5.8)', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const committed = appReducer(l16, { type: 'l16/set-nominal-vout', nominalVout: '12' })
+      const rejected = appReducer(committed, { type: 'l16/set-nominal-vout', nominalVout: '1e400' })
+      expect(rejected.l16.nominalVout).toBe(12)
+    })
+
     it('l16/apply-calculator-linear-example writes 0x18 to the shared byte', () => {
       const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '40' })
       expect(appReducer(s, { type: 'l16/apply-calculator-linear-example' }).voutMode.byte).toBe(

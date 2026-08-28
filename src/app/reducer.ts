@@ -399,6 +399,17 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, l16: { ...state.l16, nominalVout: value } }
     }
 
+    case 'l16/clear-nominal-vout':
+      // null is the explicit "no nominal reference" state (v2.5.8): a user
+      // who really deleted the field content must be able to get back to the
+      // missing-reference state instead of silently restoring the old value.
+      // Clearing touches ONLY the nominal channel — raw, VOUT_MODE byte,
+      // payload kind and byte order stay untouched, and 0 remains a distinct
+      // decode-only value (null ≠ 0).
+      return state.l16.nominalVout === null
+        ? state
+        : { ...state, l16: { ...state.l16, nominalVout: null } }
+
     case 'l16/apply-calculator-linear-example':
       return setVoutModeByte(state, CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE)
 
