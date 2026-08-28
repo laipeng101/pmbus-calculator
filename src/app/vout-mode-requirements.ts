@@ -38,7 +38,8 @@ export interface VoutModeRequirement {
     | 'vid-relative-invalid'
     | 'direct-or-half-param-invalid'
     | 'vid-not-used'
-    | 'vid-reserved'
+    | 'vid-reserved-listed'
+    | 'vid-reserved-unlisted'
     | 'vid-profile-required'
     | 'invalid-input'
   /**
@@ -131,9 +132,14 @@ const VID_NOT_USED: VoutModeRequirement = {
   standardBinary16: false,
 }
 
-const VID_RESERVED: VoutModeRequirement = {
+const VID_RESERVED_LISTED: VoutModeRequirement = {
   ...VID_NOT_USED,
-  id: 'vid-reserved',
+  id: 'vid-reserved-listed',
+}
+
+const VID_RESERVED_UNLISTED: VoutModeRequirement = {
+  ...VID_NOT_USED,
+  id: 'vid-reserved-unlisted',
 }
 
 const VID_PROFILE_REQUIRED: VoutModeRequirement = {
@@ -172,7 +178,11 @@ export function resolveVoutModeRequirement(a: VoutModeAnalysis): VoutModeRequire
     case 'not-used':
       return VID_NOT_USED
     case 'reserved':
-      return VID_RESERVED
+      // v2.5.6 provenance split: codes PRINTED in §8.4.2 Table 3 (01h..04h
+      // Intel, 10h..11h AMD, 1Ch..1Dh future use) are listed-reserved; every
+      // other code is absent from Table 3. Both stay non-usable
+      // configurations, but user-facing reason text must never conflate them.
+      return a.vidCode?.kind === 'listed-reserved' ? VID_RESERVED_LISTED : VID_RESERVED_UNLISTED
     case 'profile-required':
       return VID_PROFILE_REQUIRED
     case 'invalid-input':

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
 import { parseFloatSafe, isTransitionalFloatText } from '../../app/float-parse'
@@ -44,18 +44,26 @@ function fixFloatOnBlur(value: string): string {
  * - 过渡态（空串、单独符号、`1.`、`1e` 等）暂存不报错；
  * - 非法文本与非有限值（非 HALF 模式）不进入 committed state / raw / 结果；
  * - 非法最终值在字段级显示唯一可见错误，blur 不静默回滚；
- * - HALF 模式继续接受 NaN、+Infinity、Infinity、-Infinity。
+ * - HALF 模式继续接受 NaN、+Infinity、-Infinity；
+ * - 未发生任何编辑的 focus/blur 是严格 no-op：不 dispatch `value/set`、
+ *   不改写 raw、不伪造编码请求来源（raw-lossless，Part II §7.6.2 与
+ *   DOMAIN_MODEL §6.1 请求来源合同，v2.5.6）。
  */
 export default function ValueInput({ vm, dispatch }: Props) {
   const [draft, setDraft] = useState(vm.valueText)
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // True once the user modified the draft during the current focus session.
+  // Dirty is tracked by real onChange transactions — never by comparing parsed
+  // numbers (NaN !== NaN, -0, alternate textual forms would all misreport).
+  const touchedRef = useRef(false)
 
   useEffect(() => {
     if (!editing && !error) setDraft(vm.valueText)
   }, [vm.valueText, editing, error])
 
   const handleChange = (text: string) => {
+    touchedRef.current = true
     setDraft(text)
     const { kind, value } = classifyDraft(text, vm.mode === 'HALF')
     if (kind === 'invalid') {
@@ -73,6 +81,14 @@ export default function ValueInput({ vm, dispatch }: Props) {
   }
 
   const handleBlur = () => {
+    // Untouched focus/blur (no onChange at all) is a strict no-op: it must not
+    // dispatch value/set, rewrite raw, fabricate an encoding request, or drop
+    // a still-visible field error. Only a real edit transaction commits.
+    if (!touchedRef.current) {
+      setEditing(false)
+      return
+    }
+    touchedRef.current = false
     const fixed = fixFloatOnBlur(draft)
     const { kind, value } = classifyDraft(fixed, vm.mode === 'HALF')
     if (kind === 'invalid' || kind === 'non-finite') {

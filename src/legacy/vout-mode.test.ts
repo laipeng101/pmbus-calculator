@@ -124,8 +124,8 @@ describe('analyzeVoutMode — golden vectors (Part II §8.3 Table 2 / §8.4.2 Ta
       parameter: 1,
       linearExponent: null,
       status: 'reserved',
-      reason: 'absolute-vid-reserved',
-      vidKind: 'reserved',
+      reason: 'absolute-vid-listed-reserved',
+      vidKind: 'listed-reserved',
     },
     {
       byte: 0xa0,
@@ -250,7 +250,6 @@ describe('analyzeVoutMode — golden vectors (Part II §8.3 Table 2 / §8.4.2 Ta
       expect(a.linearExponent).toBe(c.linearExponent)
       expect(a.status).toBe(c.status)
       expect(a.reason).toBe(c.reason)
-      expect(a.isLegal).toBe(c.status === 'valid')
       if (c.vidKind) {
         expect(a.vidCode?.kind).toBe(c.vidKind)
       } else {
@@ -281,22 +280,30 @@ describe('analyzeVoutMode — exhaustive invariants (0x00..0xFF)', () => {
         expect(a.status).toBe('valid')
       } else if (a.format === 1) {
         expect(a.linearExponent).toBeNull()
-        expect(a.status).toBe(a.isRelative ? 'invalid-combination' : a.vidCode?.kind)
+        // Coarse status: listed/unlisted reserved codes share the 'reserved'
+        // verdict; the provenance split lives on vidCode.kind (v2.5.6).
+        const expectedStatus = a.isRelative
+          ? 'invalid-combination'
+          : a.vidCode?.kind === 'not-used'
+            ? 'not-used'
+            : a.vidCode?.kind === 'profile-required'
+              ? 'profile-required'
+              : 'reserved'
+        expect(a.status).toBe(expectedStatus)
       } else {
         expect(a.linearExponent).toBeNull()
         expect(a.status).toBe(a.parameter === 0 ? 'valid' : 'invalid-parameter')
       }
-    }
-  })
-
-  test('only absolute LINEAR is legal-computable and isLegal is derived from status', () => {
-    for (let byte = 0; byte <= 0xff; byte++) {
-      const a = analyzeVoutMode(byte)
-      expect(a.isLegal).toBe(a.status === 'valid')
-      // A valid byte is never a VID format (VID is classified, never "valid").
+      // A "valid" byte is never a VID format (VID is classified, never "valid").
       if (a.status === 'valid') expect(a.format).not.toBe(1)
     }
   })
+
+  // v2.5.6: the unused, contradictory `isLegal` field was removed. Structural
+  // legality is owned solely by resolveVoutModeRequirement().structureLegal
+  // (src/app/vout-mode-requirements.ts), which reads 'valid' AND
+  // 'profile-required' as legal — so 0x3E/0x3F can never again be reported
+  // illegal by one field and legal by another.
 })
 
 describe('analyzeVoutMode — non-byte inputs are explicit, never silently masked', () => {
@@ -305,20 +312,77 @@ describe('analyzeVoutMode — non-byte inputs are explicit, never silently maske
       const a = analyzeVoutMode(bad)
       expect(a.status).toBe('invalid-input')
       expect(a.reason).toBe('input-not-a-byte')
-      expect(a.isLegal).toBe(false)
     })
   }
 })
 
-describe('classifyVidCode', () => {
+describe('classifyVidCode — §8.4.2 Table 3 provenance classes (v2.5.6)', () => {
   test('00h is not-used', () => expect(classifyVidCode(0).kind).toBe('not-used'))
   test('1Eh/1Fh are profile-required', () => {
     expect(classifyVidCode(0x1e).kind).toBe('profile-required')
     expect(classifyVidCode(0x1f).kind).toBe('profile-required')
   })
-  test('01h-04h / 10h-11h / 1Ch-1Dh and all other unlisted codes are reserved', () => {
-    for (const code of [0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x1c, 0x1d, 0x05, 0x0f, 0x12, 0x1b]) {
-      expect(classifyVidCode(code).kind, '0x' + code.toString(16)).toBe('reserved')
+  test('01h..04h are listed-reserved for a future Intel processor generation', () => {
+    for (const code of [0x01, 0x02, 0x03, 0x04]) {
+      const info = classifyVidCode(code)
+      expect(info.kind, '0x' + code.toString(16)).toBe('listed-reserved')
+      expect(info.reservedFamily, '0x' + code.toString(16)).toBe('intel-future')
+      expect(info.reservedReason, '0x' + code.toString(16)).toBe('留给未来 Intel 处理器')
+    }
+  })
+  test('10h..11h are listed-reserved for a future AMD processor generation', () => {
+    for (const code of [0x10, 0x11]) {
+      const info = classifyVidCode(code)
+      expect(info.kind, '0x' + code.toString(16)).toBe('listed-reserved')
+      expect(info.reservedFamily, '0x' + code.toString(16)).toBe('amd-future')
+      expect(info.reservedReason, '0x' + code.toString(16)).toBe('留给未来 AMD 处理器')
+    }
+  })
+  test('1Ch..1Dh are listed-reserved for future use', () => {
+    for (const code of [0x1c, 0x1d]) {
+      const info = classifyVidCode(code)
+      expect(info.kind, '0x' + code.toString(16)).toBe('listed-reserved')
+      expect(info.reservedFamily, '0x' + code.toString(16)).toBe('future-use')
+      expect(info.reservedReason, '0x' + code.toString(16)).toBe('留作未来使用')
+    }
+  })
+  test('05h..0Fh and 12h..1Bh are unlisted-reserved (absent from Table 3)', () => {
+    for (const code of [
+      0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x12, 0x13, 0x14, 0x15,
+      0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b,
+    ]) {
+      const info = classifyVidCode(code)
+      expect(info.kind, '0x' + code.toString(16)).toBe('unlisted-reserved')
+      expect(info.reservedFamily, '0x' + code.toString(16)).toBeUndefined()
+      expect(info.reservedReason, '0x' + code.toString(16)).toBeUndefined()
+    }
+  })
+  test('exhaustive 0..31: every code lands in exactly one provenance class', () => {
+    for (let code = 0; code <= 31; code++) {
+      const info = classifyVidCode(code)
+      const expected: string =
+        code === 0x00
+          ? 'not-used'
+          : code === 0x1e || code === 0x1f
+            ? 'profile-required'
+            : (code >= 0x01 && code <= 0x04) ||
+                (code >= 0x10 && code <= 0x11) ||
+                (code >= 0x1c && code <= 0x1d)
+              ? 'listed-reserved'
+              : 'unlisted-reserved'
+      expect(info.kind, '0x' + code.toString(16)).toBe(expected)
+    }
+  })
+  test('labels never call a listed-reserved code unlisted and vice versa', () => {
+    for (let code = 0; code <= 31; code++) {
+      const info = classifyVidCode(code)
+      if (info.kind === 'listed-reserved') {
+        expect(info.label, '0x' + code.toString(16)).toContain('Table 3 明列')
+        expect(info.label, '0x' + code.toString(16)).not.toContain('未列出')
+      }
+      if (info.kind === 'unlisted-reserved') {
+        expect(info.label, '0x' + code.toString(16)).toContain('Table 3 未列出')
+      }
     }
   })
   test('VID_CODE_TABLE has exactly 32 entries 0..31 with stable kinds', () => {

@@ -23,7 +23,16 @@
 
 export type VoutModeFormat = 0 | 1 | 2 | 3
 export type VoutModeFormatName = 'LINEAR' | 'VID' | 'DIRECT' | 'IEEE Half'
-export type VidCodeKind = 'not-used' | 'reserved' | 'profile-required'
+/**
+ * Machine distinction of the five §8.4.2 Table 3 provenance classes (v2.5.6):
+ * `listed-reserved` codes ARE printed in Table 3 (Intel / AMD / future-use
+ * rows) while `unlisted-reserved` codes are absent from it — both are
+ * reserved and unusable as a generic voltage profile, but the reason text
+ * shown to users must never conflate the two.
+ */
+export type VidCodeKind = 'not-used' | 'listed-reserved' | 'unlisted-reserved' | 'profile-required'
+/** Which Table 3 row lists a listed-reserved code. */
+export type VidReservedFamily = 'intel-future' | 'amd-future' | 'future-use'
 export type VoutModeStatus =
   | 'valid'
   | 'invalid-combination'
@@ -37,6 +46,10 @@ export interface VidCodeInfo {
   /** Unsigned VID Code Type, 0..31. */
   code: number
   kind: VidCodeKind
+  /** Present only for listed-reserved codes: which Table 3 row lists them. */
+  reservedFamily?: VidReservedFamily
+  /** Table 3 provenance sentence fragment, e.g. 留给未来 Intel 处理器. */
+  reservedReason?: string
   /** Short, stable Chinese label (UI data; never a component judgement). */
   label: string
 }
@@ -58,8 +71,6 @@ export interface VoutModeAnalysis {
   status: VoutModeStatus
   /** Machine-testable reason code. */
   reason: string
-  /** True only for a legal, usable PMBus VOUT_MODE configuration. */
-  isLegal: boolean
 }
 
 export const VOUT_MODE_FORMAT_NAMES: Record<VoutModeFormat, VoutModeFormatName> = {
@@ -83,24 +94,66 @@ function toSigned5(bits: number): number {
   return bits >= 16 ? bits - 32 : bits
 }
 
-function vidCodeKindLabel(code: number, kind: VidCodeKind): string {
+function vidCodeKindLabel(code: number, info: Omit<VidCodeInfo, 'label'>): string {
   const hex = code.toString(16).toUpperCase().padStart(2, '0')
-  if (kind === 'not-used') return hex + 'h — 未使用'
-  if (kind === 'profile-required') return hex + 'h — 制造商自定义（需器件资料）'
-  if (code >= 0x01 && code <= 0x04) return hex + 'h — 保留（留给未来 Intel 处理器）'
-  if (code >= 0x10 && code <= 0x11) return hex + 'h — 保留（留给未来 AMD 处理器）'
-  if (code >= 0x1c && code <= 0x1d) return hex + 'h — 保留（留作未来使用）'
-  return hex + 'h — 保留（规范未列出）'
+  if (info.kind === 'not-used') return hex + 'h — 未使用'
+  if (info.kind === 'profile-required') return hex + 'h — 制造商自定义（需器件资料）'
+  if (info.kind === 'listed-reserved')
+    return hex + 'h — 保留（Table 3 明列，' + info.reservedReason + '）'
+  return hex + 'h — 保留（Table 3 未列出，保留供未来使用）'
 }
 
 /**
- * Classify an unsigned VID Code Type per Part II §8.4.2 Table 3.
- * Any code not listed in Table 3 is reserved for future use.
+ * Classify an unsigned VID Code Type per Part II §8.4.2 Table 3 (v2.5.6
+ * provenance split): 00h Not Used; 01h..04h reserved for a future Intel
+ * processor generation; 10h..11h reserved for a future AMD processor
+ * generation; 1Ch..1Dh reserved for future use; 1Eh/1Fh PMBus device
+ * manufacturer specific. Every other code is NOT listed in Table 3 and
+ * reserved for future use.
  */
 export function classifyVidCode(code: number): VidCodeInfo {
-  const kind: VidCodeKind =
-    code === 0x00 ? 'not-used' : code === 0x1e || code === 0x1f ? 'profile-required' : 'reserved'
-  return { code, kind, label: vidCodeKindLabel(code, kind) }
+  if (code === 0x00) {
+    return { code, kind: 'not-used', label: vidCodeKindLabel(code, { code, kind: 'not-used' }) }
+  }
+  if (code === 0x1e || code === 0x1f) {
+    return {
+      code,
+      kind: 'profile-required',
+      label: vidCodeKindLabel(code, { code, kind: 'profile-required' }),
+    }
+  }
+  if (code >= 0x01 && code <= 0x04) {
+    const info = {
+      code,
+      kind: 'listed-reserved',
+      reservedFamily: 'intel-future',
+      reservedReason: '留给未来 Intel 处理器',
+    } as const
+    return { ...info, label: vidCodeKindLabel(code, info) }
+  }
+  if (code >= 0x10 && code <= 0x11) {
+    const info = {
+      code,
+      kind: 'listed-reserved',
+      reservedFamily: 'amd-future',
+      reservedReason: '留给未来 AMD 处理器',
+    } as const
+    return { ...info, label: vidCodeKindLabel(code, info) }
+  }
+  if (code >= 0x1c && code <= 0x1d) {
+    const info = {
+      code,
+      kind: 'listed-reserved',
+      reservedFamily: 'future-use',
+      reservedReason: '留作未来使用',
+    } as const
+    return { ...info, label: vidCodeKindLabel(code, info) }
+  }
+  return {
+    code,
+    kind: 'unlisted-reserved',
+    label: vidCodeKindLabel(code, { code, kind: 'unlisted-reserved' }),
+  }
 }
 
 /** Full 5-bit VID code lookup (0..31) for structured UI options. */
@@ -128,7 +181,6 @@ export function analyzeVoutMode(byte: number): VoutModeAnalysis {
       linearExponent: null,
       status: 'invalid-input',
       reason: 'input-not-a-byte',
-      isLegal: false,
     }
   }
 
@@ -148,7 +200,15 @@ export function analyzeVoutMode(byte: number): VoutModeAnalysis {
       reason = 'relative-vid'
     } else {
       vidCode = classifyVidCode(parameter)
-      status = vidCode.kind
+      // Coarse status keeps the historical verdict vocabulary; the listed vs
+      // unlisted provenance lives on vidCode.kind and the requirement
+      // discriminator (v2.5.6).
+      status =
+        vidCode.kind === 'profile-required'
+          ? 'profile-required'
+          : vidCode.kind === 'not-used'
+            ? 'not-used'
+            : 'reserved'
       reason = 'absolute-vid-' + vidCode.kind
     }
   } else if ((format === 2 || format === 3) && parameter !== 0) {
@@ -179,7 +239,6 @@ export function analyzeVoutMode(byte: number): VoutModeAnalysis {
     ...(vidCode ? { vidCode } : {}),
     status,
     reason,
-    isLegal: status === 'valid',
   }
 }
 

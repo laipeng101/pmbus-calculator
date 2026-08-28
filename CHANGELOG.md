@@ -4,6 +4,54 @@
 
 ## [Unreleased]
 
+## [2.5.6] - 2026-08-28
+
+### Fixed
+
+- **物理值输入无操作 focus/blur 重编码 raw 并伪造量化请求来源（P1）**：共享
+  `ValueInput` 的 blur 无条件派发 `value/set`，用户只获得焦点再离开（未编辑任何
+  字符）就会静默重编码 raw word 并伪造一次显式编码请求：
+  - HALF raw `0x7C01`（非规范 NaN payload）被改写为 canonical `0x7E00`——违反
+    §7.6.2「设备必须精确返回主机写入的 IEEE 编码」与本工具的 raw-lossless 承诺，
+    signaling/quiet NaN 等 2,046 个非规范 NaN 原码都可能被显示层往返合并；
+  - LINEAR11 raw `0801`（N=1,Y=1,X=2）被规范化为 `0002`（N=0,Y=2），数值不变但
+    raw word 改变，并出现伪造的 `0%` 量化误差；
+  - 所有模式即使 raw 恰好不变也会伪造 `valueRequest`/`l11.valueInput`，使本应
+    隐藏的量化误差变成 `0%/特殊值` 读数（DOMAIN_MODEL §6.1 请求来源合同）。
+    现在 blur 是事务化的：当前 focus 会话内没有任何 `onChange` 编辑事务时，blur
+    （含 Enter 触发）是严格 no-op——不派发、不改 raw、不伪造 provenance、不清除
+    已有错误；dirty 判定依据真实编辑事务，不用解析数值比较（`NaN !== NaN`、`-0`、
+    文本表示差异都不可靠）。显式编辑合同不变：即时提交、blur 规范化（空/符号/尾随
+    点/尾随 exponent）、HALF 显式重输 `NaN` 仍 canonical 化为 `0x7E00` 并出现
+    special/warn provenance。回归矩阵在
+    `tests/e2e/value-blur-lossless.spec.ts`（HALF/L11/L16/DIRECT 真实用户路径，
+    同时锁定「无操作 blur 无副作用」与「显式编辑仍提交」两条相反路径）。
+- **VID Table 3 明列保留 code 被写成「未列出」（P2）**：Part II §8.4.2 Table 3
+  明列 `01h..04h`（保留给未来 Intel 处理器）、`10h..11h`（未来 AMD）、
+  `1Ch..1Dh`（留作未来使用）与 `1Eh/1Fh`（制造商自定义），其余 code 才是
+  「Table 3 未列出」。此前 `view-model.ts` 把所有 reserved code 一律写成
+  「Part II §8.4.2 Table 3 未列出」（如 `0x21`/code `01h`），出处错误。现在：
+  - `classifyVidCode` 机器区分 not-used / listed-reserved（含 Table 3 family 与
+    reason）/ unlisted-reserved / profile-required（单一分类来源）；
+  - `resolveVoutModeRequirement` 把 `vid-reserved` 拆分为
+    `vid-reserved-listed` / `vid-reserved-unlisted`；状态文本、InfoPanel 警告、
+    说明、计算步骤与结构化 VID code 下拉全部消费该判别式与分类来源，明列 code
+    的文案表述「Table 3 明列」及对应 family，绝不含「未列出」；
+  - 明列保留与未列出保留仍都不可作为通用电压 profile（`structureLegal=false`），
+    仅用户可见出处文案被纠正。
+- **移除矛盾的双重合法性事实源（P2）**：未使用的旧字段 `VoutModeAnalysis.isLegal`
+  （`status === 'valid'`）与权威的 `requirement.structureLegal` 对 `0x3E/0x3F`
+  给出矛盾结论（`isLegal=false` 而 `structureLegal=true`）。字段及其旧测试已删除，
+  结构合法性只由 `resolveVoutModeRequirement().structureLegal` 输出。
+- **VID code 下拉不再撑破 360px 视口**：更长的出处文案使无宽度约束的
+  `<select>` 固有宽度超过容器，补 `w-full min-w-0` 与同级输入一致。
+
+### 文档
+
+- DOMAIN_MODEL §3 登记 Table 3 五类 VID code 出处（明列保留 vs 未列出保留）、
+  §6.1 登记 untouched blur no-op 与事务化 dirty 判定、结构合法性单一事实源；
+  UI_CONVENTIONS §8 新增未编辑 blur no-op 合同、§16 更新 VID 出处文案合同。
+
 ## [2.5.5] - 2026-08-28
 
 ### Fixed
