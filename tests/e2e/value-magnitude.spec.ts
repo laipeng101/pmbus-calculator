@@ -121,3 +121,61 @@ test.describe('HALF 字面量与十进制溢出区分（1280×900 dark）', () =
     await expectNoBodyHorizontalOverflow(page)
   })
 })
+
+test.describe('新错误文案与极值在 360×800 的排版与键盘可达性（v2.5.8）', () => {
+  test.beforeEach(async ({ page }) => {
+    await setTheme(page, 'light')
+    await page.setViewportSize({ width: 360, height: 800 })
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+  })
+
+  async function expectErrorNotClipped(page: Page, errorId: string) {
+    const el = page.locator(`#${errorId}`)
+    await expect(el).toBeVisible()
+    const info = await el.evaluate((node) => {
+      const cs = getComputedStyle(node)
+      return {
+        scrollWidth: node.scrollWidth,
+        clientWidth: node.clientWidth,
+        whiteSpace: cs.whiteSpace,
+      }
+    })
+    expect(info.scrollWidth).toBeLessThanOrEqual(info.clientWidth + 1)
+    expect(info.whiteSpace).not.toBe('nowrap')
+  }
+
+  test('1e400 范围错误在 360px 可见、换行、无横向溢出；键盘修复恢复提交', async ({ page }) => {
+    await page.locator('#direct-coeff-r-input').fill('-21')
+    await valueInput(page).fill('1e21')
+    await expect(hexInput(page)).toHaveValue('0001')
+
+    await valueInput(page).fill('1e400')
+    await expect(valueInput(page)).toHaveAttribute('aria-invalid', 'true')
+    await expect(page.locator(`#${VALUE_ERROR_ID}`)).toContainText(RANGE_MESSAGE)
+    await expectErrorNotClipped(page, VALUE_ERROR_ID)
+    await expectNoBodyHorizontalOverflow(page)
+
+    // 键盘可达的恢复路径：选中全部 → 删除 → 逐键重输 → Tab
+    await valueInput(page).click()
+    await valueInput(page).press('ControlOrMeta+a')
+    await valueInput(page).press('Backspace')
+    await valueInput(page).pressSequentially('2e21')
+    await valueInput(page).press('Tab')
+    await expect(valueInput(page)).not.toHaveAttribute('aria-invalid', 'true')
+    await expect(hexInput(page)).toHaveValue('0002')
+  })
+
+  test('极小数 1e-127（R=127）与极大数 1e128（R=-128）的显示与恢复无溢出', async ({ page }) => {
+    await page.locator('#direct-coeff-r-input').fill('127')
+    await valueInput(page).fill('1e-127')
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(page.getByTestId('result-value')).toHaveText('1e-127')
+    await expectNoBodyHorizontalOverflow(page)
+
+    await page.locator('#direct-coeff-r-input').fill('-128')
+    await valueInput(page).fill('1e128')
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expectNoBodyHorizontalOverflow(page)
+  })
+})
