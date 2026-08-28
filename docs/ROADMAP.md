@@ -3,8 +3,9 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-28（v2.5.7 HALF signed-zero 简写 + untouched blur 事务语义
-推广到全部共享输入 + 已选语义控件幂等 + 0x18 计算器示例表述纠偏）
+最后更新：2026-08-28（v2.5.8 解析层静默限幅修复（共享 classifyFloatText，
+大有限请求按真实值提交、±1e400 显式范围错误）+ relative L16 标称参考值可
+清除为 null + 发布流程固定 draft→上传→回验→publish）
 
 ## 当前产品基线
 
@@ -29,7 +30,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.7；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.8；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -91,8 +92,15 @@ M0–M39 complete；stable release v2.5.7；production distribution: GitHub Page
   已选语义控件幂等（同字节写入不清除 provenance）——0x18 表述纠偏
   （`CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE` / `l16/apply-calculator-linear-example`，
   明示计算器示例值而非 PMBus 默认）。
-- 当前：无进行中的功能里程碑；v2.5.7 已完成发布（Release + Pages，2026-08-28），
-  M40–M41 complete。下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
+- v2.5.8（PATCH）：解析层静默限幅修复（共享 `classifyFloatText` 单一来源：
+  有限值不限幅，DIRECT m=1/b=0/R=-21 下 `1e21→0x0001`、`-1e21→0xFFFF`；
+  ±1e400 等十进制溢出文本在所有模式报明确范围错误、不改旧 raw；HALF 显式
+  字面量与十进制溢出区分）——relative L16 标称参考值可清除（
+  `l16/clear-nominal-vout`，null 与 0 区分，清除只影响标称通道）——发布
+  流程 draft→上传→回验→publish（`release-assets-verify.mjs` 单一就绪门禁，
+  Pages 侧 fail-closed 于部署前）。
+- 当前：无进行中的功能里程碑；v2.5.8 已完成发布准备，M40–M41 complete。
+  下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
 

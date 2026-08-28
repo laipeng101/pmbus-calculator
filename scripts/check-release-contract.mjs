@@ -222,8 +222,11 @@ export function expectedArtifactNames(version) {
 // ---------------------------------------------------------------------------
 
 /**
- * Read the artifact naming template from the Pages workflow and verify
- * it matches the shared contract.
+ * Read the artifact naming template used by the Pages deploy flow and verify
+ * it matches the shared contract. Since v2.5.8 the workflow resolves asset
+ * names through scripts/release-assets-verify.mjs, so the template lives in
+ * that script (`pmbus-calculator-${args.tag}-web.zip`); a literal
+ * `zip_name = "..."` assignment in the workflow itself is still accepted.
  * @param {string} repoRoot
  * @returns {Promise<{ zipTemplate: string | null, hasSums: boolean, matchesSharedContract: boolean }>}
  */
@@ -232,7 +235,19 @@ async function readPagesArtifactTemplate(repoRoot) {
     path.join(repoRoot, '.github/workflows/pages.yml'),
     'utf8',
   )
-  const zipMatch = pagesWorkflow.match(/zip_name\s*=\s*"([^"]+)"/)
+  let zipMatch = pagesWorkflow.match(/zip_name\s*=\s*"([^"]+)"/)
+  if (!zipMatch) {
+    const verifier = await fs.readFile(
+      path.join(repoRoot, 'scripts/release-assets-verify.mjs'),
+      'utf8',
+    )
+    // Normalize the tag variable so `pmbus-calculator-${args.tag}-web.zip`
+    // compares equal to the shared ${RELEASE_TAG} template.
+    const scriptMatch = verifier.match(/`pmbus-calculator-\$\{([^}]+)\}-web\.zip`/)
+    if (scriptMatch) {
+      zipMatch = [``, 'pmbus-calculator-${RELEASE_TAG}-web.zip']
+    }
+  }
   const hasSums = /SHA256SUMS\.txt/.test(pagesWorkflow)
   const zipTemplate = zipMatch ? zipMatch[1] : null
   return {

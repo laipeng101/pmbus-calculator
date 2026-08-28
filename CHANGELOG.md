@@ -4,6 +4,61 @@
 
 ## [Unreleased]
 
+## [2.5.8] - 2026-08-28
+
+### Fixed
+
+- **解析器静默限幅，大值请求被改写（P1）**：`parseFloatSafe` 把绝对值超过
+  `1e20` 的有限值截断到 `±1e20`，`1e400` 也被改写成 `1e20`。DIRECT m=1、b=0、
+  R=-21 下输入 `1e21` 得到错误 raw `0000`（正确 `0001`），`-1e21` 得到
+  `0000`（正确 `FFFF`），且量化误差基线被改写为假请求。现在共享解析分类
+  `classifyFloatText`（`src/app/float-parse.ts`）是 ValueInput、
+  NominalVoutInput 与 reducer 的单一来源：
+  - 语法完整且可由 JavaScript Number 表示的有限值不再被解析层限幅，
+    `1e21 → 0x0001`、`-1e21 → 0xFFFF`（m=1,b=0,R=-21）；m=-1 时 `1e21 → 0xFFFF`；
+    R=-128/R=127 的可表示向量（`1e128`、`1e-127`）可精确往返；
+  - L11/L16/DIRECT 饱和读数保留用户真实提交的请求值作为误差基线
+    （例如 `1e30` 不再以 `1e20` 冒充请求）；
+  - 完整但转换为非有限值的十进制文本（如 `±1e400`）在包括 HALF 在内的所有
+    模式显示明确的数值范围错误：不提交、不改写旧 raw、不生成新请求，也
+    不会被误判为「尚未输完」的过渡态；
+  - HALF 显式字面量 `NaN` / `±Infinity`（Part II §7.6 一等特殊值）与十进制
+    溢出文本是两类不同的输入，前者仍编码 `0x7E00` / `0x7C00` / `0xFC00`。
+- **relative L16 标称参考值无法回到缺失状态（P1）**：`nominalVout` 输入
+  全选删除后 blur/Enter 会静默恢复旧值，null 状态在 UI/reducer 没有清除
+  路径。现在真实删除全部内容后 blur/Enter 派发新增的
+  `l16/clear-nominal-vout`：提交 null（幂等），最终电压显示 `—` 与缺失
+  说明，公式、计算步骤与复制不再输出由旧标称推出的电压；重新输入合法值
+  恢复计算。`null`（未提供参考值）与显式输入 `0`（decode-only 合同的合法
+  显示值）是两个状态；清除只影响标称通道，不改 raw、VOUT_MODE、payload
+  kind 与字节序。非空非法文本不得悄悄变为 0 或清除；非空过渡态
+  （`1e`、`-` 等）blur 经共享 `fixFloatTextOnBlur` 归一化后按其值提交，
+  不以静默恢复旧值掩盖未完成输入。其他数值输入的空串归零合同不变。
+- **发布资产就绪竞态（P1，v2.5.7 证据）**：v2.5.7 按「先公开 Release、后
+  上传资产」执行，release-published 事件触发的 Pages 在 ZIP 尚未存在时读取
+  失败（日志只有步骤 exit 4；`jq -er` 在资产未找到时同样返回 4，未证实是
+  runner 瞬时故障）。修复：
+  - 发布流程固定为 **draft → 上传全部资产 → 回验 → publish**；
+  - 新增 `scripts/release-assets-verify.mjs` 单一就绪门禁（`--mode draft`
+    供 publish 前回验、`--mode published` 供 Pages 入口校验），缺失、重复、
+    上传中、零字节、URL 无效、draft/prerelease/tag 不匹配分别报出明确错误
+    与退出码（2–8）；
+  - Pages workflow 只下载校验脚本解析出的 URL，下载后先核对字节数与元数据
+    一致（不一致 exit 9），再执行 `sha256sum -c` 与 ZIP 合同校验，全部
+    fail-closed 于部署动作之前；网络调用带 connect/总 timeout 与仅针对瞬时
+    故障的有限重试；不以长 sleep 等资产齐备，不恢复锁/journal/状态机。
+
+### Test
+
+- 事务测试改用真实键盘事务（选中全部 → 删除 → 逐键重输 → Tab）证明同值
+  重输的提交来源；需要粘贴时使用真实异步剪贴板 API，环境不支持则如实标注
+  未覆盖；`fill()` 不再被当作同值提交或剪贴板粘贴的证据。断言最终 raw、
+  参数、错误、结果与 provenance，而不只断言输入框外观。覆盖 L11、L16 两种
+  payload、relative 标称、DIRECT m/b/R、HALF（NaN canonical 化）与
+  VOUT_MODE expert Hex 幂等；新增 360px 下范围错误文案换行/溢出与极值
+  （`1e-127`/`1e128`）恢复检查。原「清空后恢复 5」的 nominal 测试改写为
+  新清除合同（其旧断言未先建立 ratio=1，已在同批修正）。
+
 ## [2.5.7] - 2026-08-28
 
 ### Fixed
