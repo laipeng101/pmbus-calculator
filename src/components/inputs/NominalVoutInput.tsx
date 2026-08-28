@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
-import { classifyFloatText, resolveFloatTextOnBlur } from '../../app/float-parse'
+import {
+  classifyFloatText,
+  resolveFloatTextOnBlur,
+  type FloatTextClassification,
+} from '../../app/float-parse'
 import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
@@ -14,6 +18,20 @@ interface Props {
 const INVALID_MESSAGE = '标称值无效：仅支持十进制非负数（可含小数与科学计数法）'
 const OUT_OF_RANGE_MESSAGE =
   '数值超出可表示范围：该十进制文本会转换为 ±Infinity，请输入 JavaScript Number 可表示的有限值'
+const UNDERFLOW_MESSAGE =
+  '输入下溢：该非零十进制文本会转换为 ±0，请求的量级信息会丢失；请输入 JavaScript Number 可表示的非零有限值（最小到 5e-324），或真正的 0'
+
+/** Keep-error blur mapping: each rejected raw kind keeps its own message. */
+function errorForRawKind(kind: FloatTextClassification['kind']): string {
+  switch (kind) {
+    case 'out-of-range':
+      return OUT_OF_RANGE_MESSAGE
+    case 'underflow':
+      return UNDERFLOW_MESSAGE
+    default:
+      return INVALID_MESSAGE
+  }
+}
 
 /**
  * VOUT_COMMAND nominal reference input for ULINEAR16 Relative mode.
@@ -41,7 +59,10 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit, onCle
 
   const classify = (
     text: string,
-  ): { kind: 'incomplete' | 'valid' | 'invalid' | 'out-of-range'; value: number | null } => {
+  ): {
+    kind: 'incomplete' | 'valid' | 'invalid' | 'out-of-range' | 'underflow'
+    value: number | null
+  } => {
     const parsed = classifyFloatText(text)
     switch (parsed.kind) {
       case 'empty':
@@ -59,6 +80,8 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit, onCle
         return { kind: 'out-of-range', value: null }
       case 'invalid':
         return { kind: 'invalid', value: null }
+      case 'underflow':
+        return { kind: 'underflow', value: null }
     }
   }
 
@@ -72,6 +95,12 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit, onCle
     }
     if (kind === 'out-of-range') {
       setError(OUT_OF_RANGE_MESSAGE)
+      return
+    }
+    if (kind === 'underflow') {
+      // Non-zero decimal text that binary64 rounds to ±0 (v2.5.10): explicit
+      // input-underflow error; the last valid nominal stays committed.
+      setError(UNDERFLOW_MESSAGE)
       return
     }
     setError(null)
@@ -108,9 +137,10 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit, onCle
         onCommit(String(resolution.value))
       }
     } else {
-      // Invalid / out-of-range raw draft (or a defensive fail-closed
-      // transitional): keep the original draft together with its error.
-      setError(resolution.raw.kind === 'out-of-range' ? OUT_OF_RANGE_MESSAGE : INVALID_MESSAGE)
+      // Invalid / out-of-range / input-underflow raw draft (or a defensive
+      // fail-closed transitional): keep the original draft together with its
+      // error and the last committed value.
+      setError(errorForRawKind(resolution.raw.kind))
     }
     setEditing(false)
   }

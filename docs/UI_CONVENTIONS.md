@@ -138,6 +138,16 @@
   `1e400`）在包括 HALF 在内的所有模式都是明确的数值范围错误——不提交、不生成
   新请求、保留旧 raw，且不得被误判为"尚未输完"的过渡态；HALF 显式字面量
   `NaN` / `±Infinity` 与十进制溢出文本是两类不同的输入。
+- **输入下溢不是零（v2.5.10）**：语法完整、十进制尾数含非零数字、但 `Number(text)`
+  结果为 ±0 的文本（`1e-400`、`2e-324`）在 `classifyFloatText` 中分类为输入下溢
+  （`underflow`），是明确的输入范围错误——不提交、不改写旧 raw / 请求 / 标称、
+  不创建 provenance；blur/Enter 保留原始草稿与错误（共享 `resolveFloatTextOnBlur`
+  分类在先，reducer 直接 dispatch 同样 no-op）。真零文本（`0`、`0e-400`、
+  `-0e400`、`-0.0e-999`、`-.0e-999`）继续按 signed-zero 合同接受；最小 subnormal
+  `5e-324` / `3e-324` 是合法有限请求，由编码格式做量化（不是输入错误）；HALF
+  `2^-25` 等「请求本身可表示、编码量化为零」的量化合同不变。输入下溢错误与
+  relative L16 的派生下溢（`resolveRelativeVoltage`）是两类不同错误来源，文案、
+  状态与测试不得混用。这是 JavaScript Number 的事实合同，不是 PMBus 规范要求。
 - 模式切换后不得留下与当前显示值矛盾的 stale error（错误随字段所在 workspace
   卸载清除；DIRECT 系数错误随状态保留、只在 DIRECT 模式渲染）。
 - 全局快捷键 `Ctrl+1..4` 仅在非编辑上下文生效：`src/app/editable-target.ts` 判定

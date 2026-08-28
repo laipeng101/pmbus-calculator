@@ -74,10 +74,17 @@ describe('parseFloatSafe', () => {
     expect(parseFloatSafe('1e400')).toBeNull()
   })
 
-  it('treats decimal underflow to zero as a finite conversion result', () => {
-    // Number('1e-400') is +0 — finite, so it is a value, not a range error.
-    expect(Object.is(parseFloatSafe('1e-400'), 0)).toBe(true)
-    expect(Object.is(parseFloatSafe('-1e-400'), -0)).toBe(true)
+  it('rejects non-zero decimals that binary64 underflows to ±0 (v2.5.10 contract change)', () => {
+    // v2.5.9 and earlier treated Number('1e-400') = +0 as a legal value,
+    // silently rewriting a non-zero request into a zero fact. v2.5.10 makes
+    // that an explicit input-underflow range error (see the dedicated
+    // describe below); true zero texts and the smallest subnormal keep the
+    // signed-zero value contract.
+    expect(parseFloatSafe('1e-400')).toBeNull()
+    expect(parseFloatSafe('-1e-400')).toBeNull()
+    expect(Object.is(parseFloatSafe('0e-400'), 0)).toBe(true)
+    expect(Object.is(parseFloatSafe('-0e400'), -0)).toBe(true)
+    expect(parseFloatSafe('5e-324')).toBe(5e-324)
   })
 })
 
@@ -286,5 +293,77 @@ describe('resolveFloatTextOnBlur (v2.5.9 shared blur decision)', () => {
     // fail-closed behavior instead of clearing the error.
     const resolution = resolveFloatTextOnBlur('1e')
     expect(resolution.kind).toBe('commit')
+  })
+
+  it('keeps input-underflow drafts as errors (v2.5.10)', () => {
+    for (const input of ['1e-400', '-1e-400', '1e-324', '2e-324']) {
+      const resolution = resolveFloatTextOnBlur(input)
+      expect(resolution.kind, input).toBe('keep-error')
+      if (resolution.kind === 'keep-error') {
+        expect(resolution.raw.kind, input).toBe('underflow')
+      }
+    }
+  })
+})
+
+describe('input underflow classification (v2.5.10)', () => {
+  it('classifies non-zero decimals that binary64 rounds to ±0 as underflow', () => {
+    for (const input of ['1e-400', '-1e-400', '1e-324', '2e-324', '-2e-324', '1e-4000']) {
+      expect(classifyFloatText(input).kind, input).toBe('underflow')
+    }
+    // 1e-320 itself IS representable (a subnormal far above the rounding
+    // threshold), so it stays a finite value; its negative too.
+    expect(classifyFloatText('1e-320')).toEqual({ kind: 'value', value: Number('1e-320') })
+    expect(classifyFloatText('-1e-320').kind).toBe('value')
+  })
+
+  it('accepts the smallest subnormal as a finite value', () => {
+    const minSubnormal = 5e-324
+    expect(classifyFloatText('5e-324')).toEqual({ kind: 'value', value: minSubnormal })
+    expect(classifyFloatText('-5e-324')).toEqual({ kind: 'value', value: -minSubnormal })
+    // 3e-324 rounds to the minimum subnormal (above half-ulp), not to zero.
+    expect(classifyFloatText('3e-324')).toEqual({ kind: 'value', value: minSubnormal })
+    expect(Number('3e-324')).toBe(minSubnormal)
+  })
+
+  it('keeps true zero texts as signed-zero values, never underflow', () => {
+    const plusZeros = ['0', '0.0', '0e-400', '0e999999', '000.000e-999', '+0e-400']
+    for (const input of plusZeros) {
+      const parsed = classifyFloatText(input)
+      expect(parsed.kind, input).toBe('value')
+      if (parsed.kind === 'value') {
+        expect(parsed.value === 0, input).toBe(true)
+        expect(Object.is(parsed.value, -0), `${input} must be +0`).toBe(false)
+      }
+    }
+    const minusZeros = ['-0', '-0.0', '-0e400', '-0e999999', '-0.0e-999', '-.0e-999']
+    for (const input of minusZeros) {
+      const parsed = classifyFloatText(input)
+      expect(parsed.kind, input).toBe('value')
+      if (parsed.kind === 'value') {
+        expect(Object.is(parsed.value, -0), `${input} must be true -0`).toBe(true)
+      }
+    }
+  })
+
+  it('distinguishes underflow from overflow, literals and invalid fragments', () => {
+    expect(classifyFloatText('1e400').kind).toBe('out-of-range')
+    expect(classifyFloatText('-1e400').kind).toBe('out-of-range')
+    expect(classifyFloatText('NaN').kind).toBe('value')
+    expect(classifyFloatText('Infinity').kind).toBe('value')
+    expect(classifyFloatText('-Infinity').kind).toBe('value')
+    expect(classifyFloatText('1e').kind).toBe('transitional')
+    expect(classifyFloatText('-.').kind).toBe('transitional')
+    expect(classifyFloatText('NaN.').kind).toBe('invalid')
+    expect(classifyFloatText('2..').kind).toBe('invalid')
+  })
+
+  it('never hard-codes an exponent threshold: mantissa digits decide', () => {
+    // Same exponent, different mantissas: the all-zero mantissa is a true
+    // zero while any 1-9 digit carries a non-zero magnitude.
+    expect(classifyFloatText('0e-400').kind).toBe('value')
+    expect(classifyFloatText('1e-400').kind).toBe('underflow')
+    expect(classifyFloatText('00.00e-400').kind).toBe('value')
+    expect(classifyFloatText('00.01e-400').kind).toBe('underflow')
   })
 })

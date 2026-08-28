@@ -287,6 +287,45 @@ describe('appReducer — state transitions', () => {
     })
   })
 
+  describe('input-underflow fail-closed (v2.5.10)', () => {
+    it('ignores underflow value/set in every mode, keeping raw and provenance', () => {
+      const modes = ['L11', 'L16', 'DIRECT', 'HALF'] as const
+      for (const mode of modes) {
+        const entered = appReducer(base, { type: 'mode/set', mode })
+        // Establish a committed request; the underflow draft must change nothing.
+        const committed = appReducer(entered, { type: 'value/set', value: '2' })
+        const s = appReducer(committed, { type: 'value/set', value: '1e-400' })
+        expect(s, `${mode} must stay bit-identical`).toBe(committed)
+      }
+    })
+
+    it('ignores underflow nominal reference text without clearing the old nominal', () => {
+      const rel = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const set = appReducer(rel, { type: 'l16/set-nominal-vout', nominalVout: '5' })
+      const s = appReducer(set, { type: 'l16/set-nominal-vout', nominalVout: '1e-400' })
+      expect(s.l16.nominalVout).toBe(5)
+    })
+
+    it('still commits true zero texts with their sign (HALF −0 → 0x8000)', () => {
+      const half = appReducer(base, { type: 'mode/set', mode: 'HALF' })
+      const minusZero = appReducer(half, { type: 'value/set', value: '-0e400' })
+      expect(minusZero.raw).toBe(0x8000)
+      const plusZero = appReducer(half, { type: 'value/set', value: '0e-400' })
+      expect(plusZero.raw).toBe(0x0000)
+    })
+
+    it('accepts 5e-324 as a finite request and quantizes to HALF zero with a real delta', () => {
+      const half = appReducer(base, { type: 'mode/set', mode: 'HALF' })
+      const s = appReducer(half, { type: 'value/set', value: '5e-324' })
+      // Format-level quantization of a legal request — not an input error.
+      expect(s.raw).toBe(0x0000)
+      expect(s.valueRequest).toEqual({ mode: 'HALF', value: 5e-324 })
+      const vm = toCalculatorViewModel(s)
+      expect(vm.deltaKind).toBe('warn')
+      expect(vm.deltaText).toBe('+5e-324 (100.0000%)')
+    })
+  })
+
   describe('valueRequest lifecycle (L16/DIRECT/HALF quantization-error parity)', () => {
     const enterMode = (mode: AppState['mode']) => appReducer(base, { type: 'mode/set', mode })
 
