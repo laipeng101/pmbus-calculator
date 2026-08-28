@@ -115,13 +115,17 @@ npm run test:e2e:release
    ```bash
    gh api repos/laipeng101/pmbus-calculator/releases \
      --jq '.[] | select(.tag_name=="vX.Y.Z")' > draft-release.json
-   node scripts/release-assets-verify.mjs draft-release.json --tag vX.Y.Z --mode draft
+   node scripts/release-assets-verify.mjs draft-release.json \
+     --tag vX.Y.Z --repo laipeng101/pmbus-calculator --mode draft > draft-assets.json
    ```
 
    脚本校验：tag/prerelease 合同、资产存在且名称唯一、`state == "uploaded"`、
-   `size > 0`、URL 有效；缺失、重复、上传中分别以明确的错误与退出码报告
-   （见脚本头注释）。随后下载两个资产执行 `sha256sum -c SHA256SUMS.txt`
-   并核对 ZIP 内容合同。**任何一项失败都停止在 draft 状态，不得 publish。**
+   `size > 0`、URL 为本仓库本 tag 的 canonical GitHub 下载地址；缺失、重复、
+   上传中分别以明确的错误与退出码报告（见脚本头注释）。stdout 只输出一个
+   JSON 对象（数据），诊断走 stderr——不要把它的输出交给 `source`/`eval`
+   等会再次解释文本的机制（v2.5.9：元数据只作为数据）。随后下载两个资产
+   执行 `sha256sum -c SHA256SUMS.txt` 并核对 ZIP 内容合同。**任何一项失败
+   都停止在 draft 状态，不得 publish。**
 
 6. 两项资产回验通过后，将 draft 公开为稳定 Release：
 

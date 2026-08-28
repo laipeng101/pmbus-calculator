@@ -210,6 +210,36 @@ describe('M16 structured detail lines', () => {
     expect(f2.plainText).toBe('R=256 × 2^-8=1（100%）; X=12×R=12 V')
   })
 
+  it('relative ULINEAR16 overflow keeps nominal and ratio but never fabricates a final voltage (v2.5.9)', () => {
+    // 98 / 0200 | 1e308: ratio=2, product +Infinity → '—' with the shared
+    // diagnostic, never 'Infinity V'.
+    const s = state({
+      mode: 'L16',
+      raw: 0x0200,
+      voutMode: { byte: 0x98 },
+      l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
+    })
+    const f = getFormulaPresentation(s)
+    expect(f.plainText).toBe(
+      'R=512 × 2^-8=2（200%）; X=1e+308×R=—（计算结果超出 JavaScript Number 可表示范围）',
+    )
+    expect(f.plainText).not.toContain('Infinity')
+    expect(f.latex).toContain('= \\text{—}')
+  })
+
+  it('relative ULINEAR16 underflow reports the shared underflow diagnostic (v2.5.9)', () => {
+    const s = state({
+      mode: 'L16',
+      raw: 0x0001,
+      voutMode: { byte: 0x90 },
+      l16: { payloadKind: 'ulinear16', nominalVout: 5e-324 },
+    })
+    const f = getFormulaPresentation(s)
+    expect(f.plainText).toContain('=—（计算下溢')
+    // The underflowed product must never masquerade as an exact zero result.
+    expect(f.plainText).not.toMatch(/=0 V/)
+  })
+
   it('DIRECT negative exponent renders as 10^{-12} and detail line is present', () => {
     const s = state({
       mode: 'DIRECT',

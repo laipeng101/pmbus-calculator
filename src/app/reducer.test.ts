@@ -222,6 +222,17 @@ describe('appReducer — state transitions', () => {
       expect(s.l11.valueInput).toBeNull()
     })
 
+    it('ignores invalid drafts even when blur-style repair could make them valid (v2.5.9)', () => {
+      // Regression for the invalid-blur defect: the reducer is not the repair
+      // layer — text like `NaN.` / `2..` / `NaNe` must never become a commit,
+      // no matter which component produced the action string.
+      for (const text of ['NaN.', 'NaNe', 'Infinitye', '2..', '12..', '1ee', '1e400']) {
+        const s = appReducer(base, { type: 'value/set', value: text })
+        expect(s.raw, text).toBe(base.raw)
+        expect(s.l11.valueInput, text).toBeNull()
+      }
+    })
+
     it('ignores non-finite values', () => {
       const s = appReducer(base, { type: 'value/set', value: 'Infinity' })
       expect(s.raw).toBe(base.raw)
@@ -366,6 +377,23 @@ describe('appReducer — state transitions', () => {
       // Nominal reference channel stays available for the ratio semantics.
       const withNominal = appReducer(s, { type: 'l16/set-nominal-vout', nominalVout: '3.3' })
       expect(withNominal.l16.nominalVout).toBe(3.3)
+    })
+
+    it('l16/set-nominal-vout rejects invalid drafts the blur path used to repair (v2.5.9)', () => {
+      // The invalid-blur defect turned a pasted `12..` into nominal 12 on
+      // blur. The reducer never accepted such text; pin it against the exact
+      // counterexample so no future layer can reintroduce the commit.
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const withMode = appReducer(l16, { type: 'vout-mode/set-byte', hex: '98' })
+      const withNominal = appReducer(withMode, {
+        type: 'l16/set-nominal-vout',
+        nominalVout: '5',
+      })
+      expect(withNominal.l16.nominalVout).toBe(5)
+      for (const text of ['12..', 'NaN.', 'NaNe', '2..', '1ee']) {
+        const s = appReducer(withNominal, { type: 'l16/set-nominal-vout', nominalVout: text })
+        expect(s.l16.nominalVout, text).toBe(5)
+      }
     })
 
     it('SLINEAR16 offset + 0x98 encodes 3.3 as signed 0x034D and records provenance', () => {

@@ -62,6 +62,9 @@ export default function CopyToolbar({
 
   const copyHex = copyPrefs.endian === 'be' ? vm.rawBytesBE : vm.rawBytesLE
   const copyHexLabel = getCopyHexLabel(copyPrefs.endian)
+  // v2.5.9: a relative-derivation range error disables the 物理值 copy with
+  // an accessible, visible reason; raw Hex / LE / BE copies stay available.
+  const physicalCopyUnavailable = vm.physicalValueCopy?.available === false
 
   return (
     <div className="copy-toolbar space-y-3">
@@ -83,8 +86,12 @@ export default function CopyToolbar({
         />
         <CopyButton
           className="col-span-3"
-          onClick={() => copy(vm.valueText, '物理值')}
+          onClick={() => {
+            if (!physicalCopyUnavailable) void copy(vm.valueText, '物理值')
+          }}
           label="物理值"
+          disabled={physicalCopyUnavailable}
+          describedBy={physicalCopyUnavailable ? 'physical-value-copy-reason' : undefined}
         />
         <CopyButton
           className="col-span-3"
@@ -92,6 +99,12 @@ export default function CopyToolbar({
           label="C 代码"
         />
       </div>
+
+      {physicalCopyUnavailable && vm.physicalValueCopy && (
+        <p id="physical-value-copy-reason" role="status" className="text-xs color-text-secondary">
+          {vm.physicalValueCopy.reason}
+        </p>
+      )}
 
       <div className="copy-prefs space-y-2 rounded-lg px-3 py-2 text-xs panel-surface-muted color-text-secondary">
         <div
@@ -150,16 +163,22 @@ function CopyButton({
   onClick,
   label,
   className = '',
+  disabled = false,
+  describedBy,
 }: {
   onClick: () => void
   label: string
   className?: string
+  disabled?: boolean
+  describedBy?: string
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`surface-muted border-default color-text-primary flex min-h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-xs font-medium ${className}`}
+      disabled={disabled}
+      aria-describedby={describedBy}
+      className={`surface-muted border-default color-text-primary flex min-h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
       <CopyIcon size={14} />
       <span>{label}</span>

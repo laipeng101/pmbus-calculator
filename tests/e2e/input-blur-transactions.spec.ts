@@ -315,8 +315,13 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
     await expect(page.getByTestId('result-value')).toHaveText('5')
 
     // 真实清空后 blur：提交 null（v2.5.8）——字段保持空、结果为 '—'，
-    // raw 与 VOUT_MODE 不受影响；绝不静默恢复旧值，也不把清除混同于 0
-    await nominal.fill('')
+    // raw 与 VOUT_MODE 不受影响；绝不静默恢复旧值，也不把清除混同于 0。
+    // v2.5.9：真实键盘删除（全选 → Backspace），先读到真实删除后的空
+    // draft 再触发 blur——不依赖任何自动化封装的 fill('') 行为。
+    await nominal.click()
+    await nominal.press('ControlOrMeta+a')
+    await nominal.press('Backspace')
+    await expect(nominal).toHaveValue('')
     await nominal.press('Tab')
     await expect(nominal).toHaveValue('')
     await expect(page.getByTestId('result-value')).toHaveText('—')
@@ -522,5 +527,314 @@ test.describe('VOUT_MODE untouched blur（1280×900 light）', () => {
     await untouchedFocusBlur(page.locator('#vout-mode-n-input'))
     await expect(hex).toHaveAttribute('aria-invalid', 'true')
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
+  })
+})
+
+test.describe('invalid draft blur 事务（v2.5.9）', () => {
+  /**
+   * v2.5.9 invalid-blur defect contract: blur normalization used to run
+   * BEFORE classification, repairing invalid drafts into commits —
+   * `NaN.` became NaN (raw 7E00), `NaNe` became NaN, `Infinitye` became
+   * +Infinity (7C00), `2..` became 2, and a pasted nominal `12..` committed
+   * 12. The fixed contract: an invalid draft keeps its error through blur
+   * and Enter, the last legally committed state stays untouched, and a
+   * second untouched blur still keeps both (§6.2 reference time: only the
+   * invalid event's blur is asserted, never a session rollback).
+   */
+
+  async function expectKeptInvalidDraft(
+    page: Page,
+    inputId: string,
+    draft: string,
+    errorText: string,
+  ) {
+    const input = page.locator(`#${inputId}`)
+    await expect(input).toHaveValue(draft)
+    await expect(input).toHaveAttribute('aria-invalid', 'true')
+    const describedBy = await input.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    if (describedBy) {
+      await expect(page.locator(`#${describedBy}`)).toHaveText(errorText)
+    }
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await setTheme(page, 'dark')
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/')
+  })
+
+  test('HALF：NaN./NaNe/Infinitye/2.. 失焦与 Enter 都保留草稿与错误，raw 不变（3C00 起点）', async ({
+    page,
+  }) => {
+    await page.getByRole('tab', { name: /HALF/ }).click()
+    await hexInput(page).fill('3C00')
+    await hexInput(page).press('Tab')
+    await expect(valueInput(page)).toHaveValue('1')
+
+    // 参照时点（§6.2）：逐键输入时合法前缀（NaN / Infinity / 2.）按既有
+    // 合同即时提交；断言的是「非法事件及其失焦不提交」，不是整个会话回滚。
+    const prefixCommit: Record<string, string> = {
+      'NaN.': '7E00',
+      NaNe: '7E00',
+      Infinitye: '7C00',
+      '2..': '4000',
+    }
+
+    // 路径一：一次替换（fill 是单次 onChange 编辑事务），没有合法前缀提交
+    for (const draft of ['NaN.', 'NaNe', 'Infinitye', '2..']) {
+      await hexInput(page).fill('3C00')
+      await hexInput(page).press('Tab')
+      await valueInput(page).fill(draft)
+      await expect(valueInput(page)).toHaveAttribute('aria-invalid', 'true', { timeout: 2000 })
+      await expect(hexInput(page), `${draft} onChange 后 raw 仍为 3C00`).toHaveValue('3C00')
+
+      // 失焦：草稿与错误保留，raw 不因失焦改写，结果仍显示旧值 1
+      await valueInput(page).press('Tab')
+      await expectKeptInvalidDraft(
+        page,
+        'value-input',
+        draft,
+        '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）',
+      )
+      await expect(hexInput(page), `${draft} blur 后 raw 不变`).toHaveValue('3C00')
+      await expect(page.getByTestId('result-value')).toHaveText('1')
+      await expect(quantizationPanel(page)).toHaveCount(0)
+    }
+
+    // 路径二：真实键盘逐键 + Enter——前缀的合法即时提交之后，末尾碎片
+    // 报错，Enter 失焦不提交、不清错，raw 保持最后合法提交值
+    for (const draft of ['NaN.', 'NaNe', 'Infinitye', '2..']) {
+      await hexInput(page).fill('3C00')
+      await hexInput(page).press('Tab')
+      await valueInput(page).click()
+      await valueInput(page).press('ControlOrMeta+a')
+      await valueInput(page).pressSequentially(draft)
+      await valueInput(page).press('Enter')
+      await expectKeptInvalidDraft(
+        page,
+        'value-input',
+        draft,
+        '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）',
+      )
+      await expect(hexInput(page), `${draft} Enter 后 raw 保持前缀提交值`).toHaveValue(
+        prefixCommit[draft]!,
+      )
+    }
+
+    // 对照：合法特殊值仍工作（NaN → 7E00；Infinity → 7C00）
+    await valueInput(page).fill('')
+    await valueInput(page).pressSequentially('NaN')
+    await expect(hexInput(page)).toHaveValue('7E00')
+    await valueInput(page).fill('')
+    await valueInput(page).pressSequentially('Infinity')
+    await expect(hexInput(page)).toHaveValue('7C00')
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
+  test('HALF：非法草稿报错 → blur 保持 → 未编辑再次 blur 保持 → 真实修复后清错', async ({
+    page,
+  }) => {
+    await page.getByRole('tab', { name: /HALF/ }).click()
+    await hexInput(page).fill('3C00')
+    await hexInput(page).press('Tab')
+
+    await valueInput(page).fill('2..')
+    await expect(valueInput(page)).toHaveAttribute('aria-invalid', 'true')
+
+    await valueInput(page).press('Tab')
+    await expectKeptInvalidDraft(
+      page,
+      'value-input',
+      '2..',
+      '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）',
+    )
+
+    // 未编辑再次 blur：仍是严格 no-op，错误不被吞掉
+    await untouchedFocusBlur(valueInput(page))
+    await expectKeptInvalidDraft(
+      page,
+      'value-input',
+      '2..',
+      '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）',
+    )
+    await expect(hexInput(page)).toHaveValue('3C00')
+
+    // 真实修复事务（真实键盘：全选 → 删除 → 逐键输入 → Tab）：错误清除
+    await realKeyboardRetype(valueInput(page), '2')
+    await expect(valueInput(page)).not.toHaveAttribute('aria-invalid', 'true')
+    await expect(hexInput(page)).toHaveValue('4000')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
+  test('HALF：真实剪贴板粘贴非法草稿，失焦后 raw 与错误保持（真实粘贴路径）', async ({ page }) => {
+    await page.getByRole('tab', { name: /HALF/ }).click()
+    await hexInput(page).fill('3C00')
+    await hexInput(page).press('Tab')
+
+    const pasted = await realClipboardPaste(page, valueInput(page), 'Infinitye')
+    if (!pasted) {
+      test.skip(true, '此环境不支持剪贴板权限——真实粘贴路径未覆盖，不以 fill 冒充')
+    }
+    await expect(valueInput(page)).toHaveAttribute('aria-invalid', 'true')
+    await valueInput(page).press('Tab')
+    await expectKeptInvalidDraft(
+      page,
+      'value-input',
+      'Infinitye',
+      '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）',
+    )
+    await expect(hexInput(page)).toHaveValue('3C00')
+    await expect(page.getByTestId('result-value')).toHaveText('1')
+  })
+
+  test('L11 / absolute L16 / DIRECT：2.. 失焦保留错误与旧 raw', async ({ page }) => {
+    // L11
+    await hexInput(page).fill('0002')
+    await hexInput(page).press('Tab')
+    await valueInput(page).fill('2..')
+    await expect(valueInput(page)).toHaveAttribute('aria-invalid', 'true')
+    await valueInput(page).press('Tab')
+    await expectKeptInvalidDraft(
+      page,
+      'value-input',
+      '2..',
+      '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）',
+    )
+    await expect(hexInput(page)).toHaveValue('0002')
+
+    // absolute L16
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    await hexInput(page).fill('0100')
+    await hexInput(page).press('Tab')
+    await valueInput(page).fill('2..')
+    await expect(valueInput(page)).toHaveAttribute('aria-invalid', 'true')
+    await valueInput(page).press('Tab')
+    await expectKeptInvalidDraft(
+      page,
+      'value-input',
+      '2..',
+      '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）',
+    )
+    await expect(hexInput(page)).toHaveValue('0100')
+
+    // DIRECT
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    await hexInput(page).fill('000A')
+    await hexInput(page).press('Tab')
+    await valueInput(page).fill('2..')
+    await expect(valueInput(page)).toHaveAttribute('aria-invalid', 'true')
+    await valueInput(page).press('Tab')
+    await expectKeptInvalidDraft(
+      page,
+      'value-input',
+      '2..',
+      '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）',
+    )
+    await expect(hexInput(page)).toHaveValue('000A')
+    await expect(page.getByTestId('result-value')).toHaveText('10')
+  })
+
+  test('L11：1ee 等指数碎片失焦不变成 0/1，错误保持', async ({ page }) => {
+    await hexInput(page).fill('0002')
+    await hexInput(page).press('Tab')
+    for (const draft of ['1ee', 'e', '.e', '-e+']) {
+      await valueInput(page).fill(draft)
+      await expect(valueInput(page)).toHaveAttribute('aria-invalid', 'true', { timeout: 2000 })
+      await valueInput(page).press('Tab')
+      await expectKeptInvalidDraft(
+        page,
+        'value-input',
+        draft,
+        '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）',
+      )
+      await expect(hexInput(page), `${draft} blur 后 raw 不变`).toHaveValue('0002')
+    }
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
+  test('relative nominal：粘贴 12.. 失焦后 nominal 保持 5 并保留错误', async ({ page }) => {
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    const nominal = page.locator('#l16-nominal-vout')
+    await page.getByRole('radio', { name: '相对值' }).click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
+    await hexInput(page).fill('0100')
+    await expect(hexInput(page)).toHaveValue('0100')
+
+    await nominal.fill('5')
+    await expect(page.getByTestId('result-value')).toHaveText('5')
+
+    // 一次粘贴完整 12..：没有合法前缀提交，nominal=5 不变（§6.2）
+    const pasted = await realClipboardPaste(page, nominal, '12..')
+    if (!pasted) {
+      test.skip(true, '此环境不支持剪贴板权限——真实粘贴路径未覆盖，不以 fill 冒充')
+    }
+    await expect(nominal).toHaveAttribute('aria-invalid', 'true')
+    await nominal.press('Tab')
+    await expectKeptInvalidDraft(
+      page,
+      'l16-nominal-vout',
+      '12..',
+      '标称值无效：仅支持十进制非负数（可含小数与科学计数法）',
+    )
+    await expect(page.getByTestId('result-value')).toHaveText('5')
+    await expect(hexInput(page)).toHaveValue('0100')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
+  })
+
+  test('relative nominal：逐键 12.. 按参照时点断言——前缀合法提交、末点报错、blur 保持最后合法状态', async ({
+    page,
+  }) => {
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    const nominal = page.locator('#l16-nominal-vout')
+    await page.getByRole('radio', { name: '相对值' }).click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
+    await hexInput(page).fill('0100')
+
+    await nominal.click()
+    await nominal.press('ControlOrMeta+a')
+    await nominal.press('Backspace')
+    // 空草稿只是过渡态：nominal 状态仍为 5，结果仍显示 5（真实清空的
+    // null 提交发生在 blur/Enter，这里不触发）
+    await expect(nominal).toHaveValue('')
+
+    // 逐键：'1'、'12'、'12.' 都是完整合法值，即时提交（§6.1.9）
+    await nominal.pressSequentially('1')
+    await expect(page.getByTestId('result-value')).toHaveText('1')
+    await nominal.pressSequentially('2')
+    await expect(page.getByTestId('result-value')).toHaveText('12')
+    await nominal.pressSequentially('.')
+    await expect(page.getByTestId('result-value')).toHaveText('12')
+
+    // 末点：错误出现，最后合法状态 12 保持
+    await nominal.pressSequentially('.')
+    await expect(nominal).toHaveAttribute('aria-invalid', 'true')
+    await expect(page.getByTestId('result-value')).toHaveText('12')
+
+    // 失焦：保留错误草稿与最后合法提交（12），不回到 focus 开始时的 5
+    await nominal.press('Tab')
+    await expectKeptInvalidDraft(
+      page,
+      'l16-nominal-vout',
+      '12..',
+      '标称值无效：仅支持十进制非负数（可含小数与科学计数法）',
+    )
+    await expect(page.getByTestId('result-value')).toHaveText('12')
+
+    // 未编辑再次 blur：保持
+    await untouchedFocusBlur(nominal)
+    await expectKeptInvalidDraft(
+      page,
+      'l16-nominal-vout',
+      '12..',
+      '标称值无效：仅支持十进制非负数（可含小数与科学计数法）',
+    )
+
+    // 真实修复：错误清除，新值提交
+    await realKeyboardRetype(nominal, '13')
+    await expect(nominal).not.toHaveAttribute('aria-invalid', 'true')
+    await expect(page.getByTestId('result-value')).toHaveText('13')
+    await expectNoBodyHorizontalOverflow(page)
   })
 })

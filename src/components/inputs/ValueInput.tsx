@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
-import { classifyFloatText, fixFloatTextOnBlur } from '../../app/float-parse'
+import { classifyFloatText, resolveFloatTextOnBlur } from '../../app/float-parse'
 import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
@@ -95,21 +95,31 @@ export default function ValueInput({ vm, dispatch }: Props) {
       setEditing(false)
       return
     }
-    const fixed = fixFloatTextOnBlur(draft)
-    const { kind, value } = classifyDraft(fixed, vm.mode === 'HALF')
-    if (kind === 'invalid' || kind === 'non-finite' || kind === 'out-of-range') {
-      // Keep the invalid draft visible together with its error.
-      setError(
-        kind === 'invalid'
-          ? INVALID_MESSAGE
-          : kind === 'non-finite'
-            ? NON_FINITE_MESSAGE
-            : OUT_OF_RANGE_MESSAGE,
-      )
-    } else {
+    // Classification-first blur decision (v2.5.9): the raw draft is
+    // classified BEFORE any normalization, so an invalid draft (`NaN.`,
+    // `2..`, `1ee`) keeps its error and never becomes a commit, and only a
+    // strictly legal transitional draft normalizes — through the shared
+    // decision, never a per-component rewrite.
+    const resolution = resolveFloatTextOnBlur(draft)
+    if (resolution.kind === 'empty') {
+      // Real deletion committed: the physical-value field commits 0.
       setError(null)
-      setDraft(fixed)
-      if (value !== null) dispatch({ type: 'value/set', value: fixed })
+      setDraft('0')
+      dispatch({ type: 'value/set', value: '0' })
+    } else if (resolution.kind === 'commit') {
+      if (!Number.isFinite(resolution.value) && vm.mode !== 'HALF') {
+        // HALF literals stay rejected outside HALF mode: keep the draft and
+        // the error, no commit.
+        setError(NON_FINITE_MESSAGE)
+      } else {
+        setError(null)
+        setDraft(resolution.text)
+        dispatch({ type: 'value/set', value: resolution.text })
+      }
+    } else {
+      // Invalid / out-of-range raw draft (or a defensive fail-closed
+      // transitional): keep the original draft together with its error.
+      setError(resolution.raw.kind === 'out-of-range' ? OUT_OF_RANGE_MESSAGE : INVALID_MESSAGE)
     }
     setEditing(false)
   }

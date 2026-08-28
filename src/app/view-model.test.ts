@@ -409,6 +409,108 @@ describe('toCalculatorViewModel', () => {
     expect(vm.steps.some((s) => s.kind === 'result')).toBe(false)
   })
 
+  test('relative ULINEAR16 derivation overflow is diagnosed everywhere (v2.5.9)', () => {
+    // 98 / 0200 | 1e308: ratio=2, product = +Infinity → no fabricated result.
+    const vm = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0200,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
+      }),
+    )
+    expect(vm.valueText).toBe('—')
+    expect(vm.steps.some((s) => s.id === 'result' && s.value === '—')).toBe(true)
+    expect(vm.steps.some((s) => s.plainText.includes('Infinity'))).toBe(false)
+    expect(vm.formulaText).toContain('计算结果超出 JavaScript Number 可表示范围')
+    expect(vm.formulaText).toContain('1e+308')
+    expect(vm.formulaText).not.toContain('Infinity')
+    expect(vm.warnings.some((w) => w.id === 'l16-relative-overflow' && w.level === 'warning')).toBe(
+      true,
+    )
+    expect(vm.physicalValueCopy?.available).toBe(false)
+    expect(vm.physicalValueCopy?.reason).toContain('Number')
+    // Nominal and ratio stay visible on every surface.
+    expect(vm.steps.some((s) => s.id === 'l16-nominal' && s.value === '1e+308')).toBe(true)
+    expect(vm.steps.some((s) => s.id === 'l16-ratio')).toBe(true)
+  })
+
+  test('relative ULINEAR16 derivation underflow is diagnosed, not shown as exact zero (v2.5.9)', () => {
+    // 90 / 0001 | 5e-324: ratio=2^-16, product rounds to 0 with nonzero factors.
+    const vm = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0001,
+        voutMode: { byte: 0x90 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 5e-324 },
+      }),
+    )
+    expect(vm.valueText).toBe('—')
+    expect(vm.steps.some((s) => s.id === 'result' && s.value === '—')).toBe(true)
+    expect(vm.formulaText).toContain('计算下溢')
+    expect(vm.warnings.some((w) => w.id === 'l16-relative-underflow')).toBe(true)
+    expect(vm.physicalValueCopy?.available).toBe(false)
+  })
+
+  test('relative ULINEAR16 true zeros stay finite and copyable (v2.5.9)', () => {
+    // 98 / 0000 | 1e308: ratio=0 → true zero, never underflow.
+    const zeroRatio = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0000,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
+      }),
+    )
+    expect(zeroRatio.valueText).toBe('0')
+    expect(zeroRatio.physicalValueCopy).toBeUndefined()
+    expect(zeroRatio.warnings.some((w) => w.id === 'l16-relative-overflow')).toBe(false)
+    expect(zeroRatio.warnings.some((w) => w.id === 'l16-relative-underflow')).toBe(false)
+    // 98 / FFFF | 0: nominal=0 (decode-only) → true zero.
+    const zeroNominal = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0xffff,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 0 },
+      }),
+    )
+    expect(zeroNominal.valueText).toBe('0')
+    expect(zeroNominal.physicalValueCopy).toBeUndefined()
+  })
+
+  test('huge finite nominal with ratio=1 stays fully computed and copyable (v2.5.9)', () => {
+    // 98 / 0100 | 1e308: finite result — a large committed reference is not a
+    // range error and must not disable the physical-value copy.
+    const vm = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0100,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
+      }),
+    )
+    expect(vm.valueText).toBe('1e+308')
+    expect(vm.physicalValueCopy).toBeUndefined()
+    expect(vm.steps.some((s) => s.id === 'result' && s.value === '1e+308')).toBe(true)
+  })
+
+  test('SLINEAR16 offset under relative byte keeps its signed result and copy (v2.5.9)', () => {
+    const vm = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0200,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'slinear16-offset', nominalVout: 1e308 },
+      }),
+    )
+    // Y_s = 512, N = -8 → X_offset = 2 — the signed payload ignores bit7 and
+    // the nominal channel entirely; no derivation-range diagnostics appear.
+    expect(vm.valueText).toBe('2')
+    expect(vm.physicalValueCopy).toBeUndefined()
+    expect(vm.warnings.some((w) => w.id === 'l16-relative-overflow')).toBe(false)
+  })
+
   test('SLINEAR16 offset ignores VOUT_MODE bit7 (raw 0xFF00 stays -1 V at N=-8)', () => {
     for (const byte of [0x18, 0x98]) {
       const vm = toCalculatorViewModel(

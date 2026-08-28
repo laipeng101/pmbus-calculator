@@ -94,6 +94,7 @@ tests/e2e/output/
 tests/e2e/output-*/
 tests/e2e/report/
 tests/e2e/report-*/
+tests/e2e/e2e-results*.json
 
 # =========================================================
 # IDE / Editor

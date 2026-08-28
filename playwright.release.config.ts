@@ -8,10 +8,14 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: [['list'], ['html', { outputFolder: './tests/e2e/report-release', open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { outputFolder: './tests/e2e/report-release', open: 'never' }],
+    ['json', { outputFile: './tests/e2e/e2e-results-release.json' }],
+  ],
   use: {
     baseURL: 'http://localhost:4173',
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   projects: [

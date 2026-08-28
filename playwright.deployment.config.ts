@@ -10,10 +10,14 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: [['list'], ['html', { outputFolder: './tests/e2e/report-deployment', open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { outputFolder: './tests/e2e/report-deployment', open: 'never' }],
+    ['json', { outputFile: './tests/e2e/e2e-results-deployment.json' }],
+  ],
   use: {
     ...(deploymentUrl ? { baseURL: deploymentUrl } : {}),
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   projects: [

@@ -128,6 +128,40 @@ describe('buildCalculationSteps — unified four-mode skeleton', () => {
     expect(steps.some((s) => s.id === 'l16-v')).toBe(false)
   })
 
+  it('L16 relative derivation overflow ends in — with the shared note, never Infinity (v2.5.9)', () => {
+    const steps = buildCalculationSteps(
+      state({
+        mode: 'L16',
+        raw: 0x0200,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
+      }),
+    )
+    const final = steps.find((s) => s.id === 'l16-final')
+    expect(final?.plainText).toBe('X = 1e+308 × 2 = —（计算结果超出 JavaScript Number 可表示范围）')
+    const result = steps.find((s) => s.kind === 'result')
+    expect(result?.value).toBe('—')
+    expect(steps.some((s) => s.plainText.includes('Infinity'))).toBe(false)
+    // Nominal and ratio intermediates stay visible.
+    expect(steps.some((s) => s.id === 'l16-nominal' && s.value === '1e+308')).toBe(true)
+    expect(steps.some((s) => s.id === 'l16-ratio' && s.value === '2')).toBe(true)
+  })
+
+  it('L16 relative derivation underflow ends in — and is not presented as exact zero (v2.5.9)', () => {
+    const steps = buildCalculationSteps(
+      state({
+        mode: 'L16',
+        raw: 0x0001,
+        voutMode: { byte: 0x90 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 5e-324 },
+      }),
+    )
+    const result = steps.find((s) => s.kind === 'result')
+    expect(result?.value).toBe('—')
+    expect(steps.some((s) => s.plainText.includes('计算下溢'))).toBe(true)
+    expect(steps.some((s) => s.plainText.includes('= 0 V'))).toBe(false)
+  })
+
   it('L16 非 LINEAR 共享字节 fail closed：无伪 N、无伪结果（v2.5.2）', () => {
     for (const byte of [0x40, 0x60, 0xe0, 0x20, 0xa0, 0x41, 0xc1, 0xe1]) {
       const steps = buildCalculationSteps(state({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))

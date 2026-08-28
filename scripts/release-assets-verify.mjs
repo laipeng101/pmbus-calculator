@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Release asset readiness verifier (v2.5.8).
+ * Release asset readiness verifier (v2.5.8; JSON data interface since v2.5.9).
  *
  * Single source for the "are the release assets actually ready?" contract.
  * Consumed by the real Pages workflow BEFORE any download/deploy action and
@@ -20,8 +20,23 @@
  * Both modes require prerelease === false and an exact tag match, because a
  * prerelease or retagged release must never reach the stable Pages flow.
  *
+ * Output contract (v2.5.9, data-not-code): stdout carries ONE JSON object
+ *   {"tag":"vX.Y.Z","mode":"published","zip":{"name","size","url"},"sums":{...}}
+ * and ALL diagnostics go to stderr. The previous `key=value` stdout was
+ * consumed by `source` in the Pages workflow, which executed command
+ * substitutions embedded in metadata strings (v2.5.9 boundary defect); JSON
+ * consumers extract values with static queries and never re-interpret
+ * metadata text as code. The Pages workflow consumes this JSON through
+ * `scripts/download-release-assets.mjs`, which re-validates every URL via
+ * `scripts/release-url-contract.mjs`.
+ *
+ * URL contract: each `browser_download_url` must be the canonical public
+ * GitHub download URL for the expected repository (`--repo owner/repo`),
+ * tag and asset name — validated with the URL parser (scheme, host, path,
+ * no userinfo/query/fragment/control characters), not a string prefix.
+ *
  * Exit codes (documented contract; tests pin them):
- *   0  ready — resolves the two asset URLs/sizes on stdout as KEY=value lines
+ *   0  ready — JSON resolution on stdout
  *   2  usage error, unreadable/invalid JSON, or malformed release shape
  *   3  release metadata contract violation (tag mismatch, draft/prerelease)
  *   4  asset list empty
@@ -37,6 +52,11 @@
 
 import fs from 'node:fs'
 import process from 'node:process'
+import {
+  assertCanonicalAssetDownloadUrl,
+  assertSafeAssetName,
+  assertValidRepoSlug,
+} from './release-url-contract.mjs'
 
 /**
  * @param {number} code
@@ -52,10 +72,11 @@ function fail(code, message) {
  * @param {string[]} argv
  */
 function parseArgs(argv) {
-  /** @type {{ positional: string[], tag: string|null, mode: 'published'|'draft', zipName: string|null, sumsName: string, help: boolean }} */
+  /** @type {{ positional: string[], tag: string|null, repo: string|null, mode: 'published'|'draft', zipName: string|null, sumsName: string, help: boolean }} */
   const args = {
     positional: [],
     tag: null,
+    repo: null,
     mode: 'published',
     zipName: null,
     sumsName: 'SHA256SUMS.txt',
@@ -65,6 +86,8 @@ function parseArgs(argv) {
     const arg = argv[i]
     if (arg === '--tag') {
       args.tag = argv[++i]
+    } else if (arg === '--repo') {
+      args.repo = argv[++i]
     } else if (arg === '--mode') {
       args.mode = /** @type {'published'|'draft'} */ (argv[++i])
     } else if (arg === '--zip-name') {
@@ -83,8 +106,8 @@ function parseArgs(argv) {
 }
 
 const USAGE =
-  'usage: release-assets-verify.mjs <release-json-file> --tag vX.Y.Z [--mode published|draft] ' +
-  '[--zip-name <name>] [--sums-name <name>]'
+  'usage: release-assets-verify.mjs <release-json-file> --tag vX.Y.Z --repo owner/repo ' +
+  '[--mode published|draft] [--zip-name <name>] [--sums-name <name>]'
 
 const args = parseArgs(process.argv.slice(2))
 if (args.help) {
@@ -95,8 +118,20 @@ if (!args.positional || args.positional.length !== 1) fail(2, USAGE)
 if (!args.tag || !/^v[1-9][0-9]*\.[0-9]+\.[0-9]+$/.test(args.tag)) {
   fail(2, '--tag must be a stable SemVer tag like v1.2.3')
 }
+if (!args.repo) fail(2, USAGE)
+try {
+  assertValidRepoSlug(args.repo)
+} catch (error) {
+  fail(2, error instanceof Error ? error.message : String(error))
+}
 if (args.mode !== 'published' && args.mode !== 'draft') {
   fail(2, "--mode must be 'published' or 'draft'")
+}
+try {
+  if (args.zipName !== null) assertSafeAssetName(args.zipName, '--zip-name')
+  assertSafeAssetName(args.sumsName, '--sums-name')
+} catch (error) {
+  fail(2, error instanceof Error ? error.message : String(error))
 }
 
 const releasePath = args.positional[0]
@@ -166,18 +201,25 @@ for (const { key, name } of expected) {
     fail(8, `asset "${name}" has size ${asset.size}; a ready asset must have a positive size`)
   }
   const url = asset.browser_download_url
-  if (typeof url !== 'string' || !url.startsWith('https://')) {
-    fail(8, `asset "${name}" has no valid https browser_download_url`)
+  try {
+    assertCanonicalAssetDownloadUrl(url, { repo: args.repo, tag: args.tag, name })
+  } catch (error) {
+    fail(8, `asset "${name}": ${error instanceof Error ? error.message : String(error)}`)
   }
   resolved[key] = { name, size: asset.size, url }
 }
 
 // ---- Resolved values for the caller (Pages workflow / release operator) ----
-for (const { key } of expected) {
-  console.log(`${key}_name=${resolved[key].name}`)
-  console.log(`${key}_size=${resolved[key].size}`)
-  console.log(`${key}_url=${resolved[key].url}`)
-}
+// Data-only JSON on stdout; diagnostics live on stderr. Never shell-source it.
+console.log(
+  JSON.stringify({
+    tag: args.tag,
+    mode: args.mode,
+    repo: args.repo,
+    zip: resolved.zip,
+    sums: resolved.sums,
+  }),
+)
 console.error(
   `ok: release ${args.tag} (${args.mode}) assets ready: ${resolved.zip.name} (${resolved.zip.size} bytes), ` +
     `${resolved.sums.name} (${resolved.sums.size} bytes)`,

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { parseFloatSafe, isTransitionalFloatText, classifyFloatText } from './float-parse'
+import {
+  parseFloatSafe,
+  isTransitionalFloatText,
+  classifyFloatText,
+  fixFloatTextOnBlur,
+  resolveFloatTextOnBlur,
+} from './float-parse'
 
 describe('parseFloatSafe', () => {
   it('parses plain, signed, fractional and scientific notation values', () => {
@@ -110,6 +116,35 @@ describe('classifyFloatText', () => {
       expect(classifyFloatText(input).kind, input).toBe('invalid')
     }
   })
+
+  it('never treats exponent fragments without a digit-bearing mantissa as transitional (v2.5.9)', () => {
+    // The v2.5.8 transitional regex accepted `e` / `e+` / `.e` / `-e+` and the
+    // blur path then coerced bare `e` to 0. These strings have no valid
+    // decimal mantissa, so they are invalid, never legal transitional states.
+    for (const input of ['e', 'e+', 'e-', 'E', 'E+', '+e', '-e+', '-e-', '.e', '-.e', '+.e']) {
+      expect(classifyFloatText(input).kind, input).toBe('invalid')
+    }
+  })
+
+  it('never treats malformed exponent continuations as transitional (v2.5.9)', () => {
+    for (const input of ['1ee', '1Ee', '1e++', '1e+-', '12.5e-e', '1.5e2.5']) {
+      expect(classifyFloatText(input).kind, input).toBe('invalid')
+    }
+  })
+
+  it('classifies HALF literals decorated with trailing fragments as invalid (v2.5.9)', () => {
+    // `NaN.` / `NaNe` / `Infinitye` must not be repairable into NaN/Infinity
+    // — the blur path used to strip the fragment and commit the special value.
+    for (const input of ['NaN.', 'NaNe', 'NaN_', 'Infinitye', 'Infinity.', '+Infinitye']) {
+      expect(classifyFloatText(input).kind, input).toBe('invalid')
+    }
+  })
+
+  it('classifies multi-dot drafts as invalid (v2.5.9 regression)', () => {
+    for (const input of ['2..', '12..', '1..', '1.2.3', '.5.', '2.e.']) {
+      expect(classifyFloatText(input).kind, input).toBe('invalid')
+    }
+  })
 })
 
 describe('isTransitionalFloatText', () => {
@@ -139,5 +174,117 @@ describe('isTransitionalFloatText', () => {
     // reports a range error, not a transitional draft.
     expect(isTransitionalFloatText('1e400')).toBe(false)
     expect(isTransitionalFloatText('-1e400')).toBe(false)
+  })
+})
+
+describe('fixFloatTextOnBlur guard (v2.5.9)', () => {
+  it('never repairs invalid text into a different classification', () => {
+    // The v2.5.9 defect: blur normalization stripped trailing dots / `e`
+    // fragments BEFORE classification, turning `NaN.` into NaN, `NaNe` into
+    // NaN, `Infinitye` into +Infinity and `2..` into 2. The normalizer must
+    // leave invalid text alone — classification happens first.
+    for (const input of ['NaN.', 'NaNe', 'Infinitye', '+Infinitye', '2..', '12..', '1ee', 'e']) {
+      expect(fixFloatTextOnBlur(input), input).toBe(input.trim())
+    }
+  })
+
+  it('still normalizes the strictly-legal transitional drafts', () => {
+    expect(fixFloatTextOnBlur('.')).toBe('0')
+    expect(fixFloatTextOnBlur('+.')).toBe('0')
+    expect(fixFloatTextOnBlur('-.')).toBe('-0')
+    expect(fixFloatTextOnBlur('-')).toBe('0')
+    expect(fixFloatTextOnBlur('+')).toBe('0')
+    expect(fixFloatTextOnBlur('1e')).toBe('1')
+    expect(fixFloatTextOnBlur('1e+')).toBe('1')
+    expect(fixFloatTextOnBlur('1e-')).toBe('1')
+    expect(fixFloatTextOnBlur('12.5e-')).toBe('12.5')
+    expect(fixFloatTextOnBlur('-0e+')).toBe('-0')
+    expect(fixFloatTextOnBlur('1.e')).toBe('1.')
+    expect(fixFloatTextOnBlur('.5e')).toBe('.5')
+  })
+
+  it('leaves complete values untouched', () => {
+    expect(fixFloatTextOnBlur('1.')).toBe('1.')
+    expect(fixFloatTextOnBlur('5')).toBe('5')
+    expect(fixFloatTextOnBlur('NaN')).toBe('NaN')
+    expect(fixFloatTextOnBlur('Infinity')).toBe('Infinity')
+    expect(fixFloatTextOnBlur('1e400')).toBe('1e400')
+  })
+})
+
+describe('resolveFloatTextOnBlur (v2.5.9 shared blur decision)', () => {
+  it('surfaces empty drafts for the field to decide (0 vs null)', () => {
+    expect(resolveFloatTextOnBlur('')).toEqual({ kind: 'empty' })
+    expect(resolveFloatTextOnBlur('   ')).toEqual({ kind: 'empty' })
+  })
+
+  it('commits complete values unchanged (classification first, no lossy rewrite)', () => {
+    expect(resolveFloatTextOnBlur('5')).toEqual({ kind: 'commit', text: '5', value: 5 })
+    expect(resolveFloatTextOnBlur('1.')).toEqual({ kind: 'commit', text: '1.', value: 1 })
+    expect(resolveFloatTextOnBlur('2.')).toEqual({ kind: 'commit', text: '2.', value: 2 })
+    expect(resolveFloatTextOnBlur('NaN')).toEqual({ kind: 'commit', text: 'NaN', value: NaN })
+    expect(resolveFloatTextOnBlur('Infinity')).toEqual({
+      kind: 'commit',
+      text: 'Infinity',
+      value: Infinity,
+    })
+    const negativeZero = resolveFloatTextOnBlur('-0')
+    expect(negativeZero.kind).toBe('commit')
+    if (negativeZero.kind === 'commit') {
+      expect(Object.is(negativeZero.value, -0)).toBe(true)
+    }
+  })
+
+  it('normalizes legal transitional drafts to complete values', () => {
+    expect(resolveFloatTextOnBlur('.')).toEqual({ kind: 'commit', text: '0', value: 0 })
+    expect(resolveFloatTextOnBlur('+.')).toEqual({ kind: 'commit', text: '0', value: 0 })
+    expect(resolveFloatTextOnBlur('-')).toEqual({ kind: 'commit', text: '0', value: 0 })
+    const negDot = resolveFloatTextOnBlur('-.')
+    expect(negDot.kind).toBe('commit')
+    if (negDot.kind === 'commit') {
+      expect(negDot.text).toBe('-0')
+      expect(Object.is(negDot.value, -0)).toBe(true)
+    }
+    expect(resolveFloatTextOnBlur('1e')).toEqual({ kind: 'commit', text: '1', value: 1 })
+    expect(resolveFloatTextOnBlur('1e+')).toEqual({ kind: 'commit', text: '1', value: 1 })
+    expect(resolveFloatTextOnBlur('1e-')).toEqual({ kind: 'commit', text: '1', value: 1 })
+    expect(resolveFloatTextOnBlur('12.5e-')).toEqual({ kind: 'commit', text: '12.5', value: 12.5 })
+    const negZeroExp = resolveFloatTextOnBlur('-0e+')
+    expect(negZeroExp.kind).toBe('commit')
+    if (negZeroExp.kind === 'commit') {
+      expect(negZeroExp.text).toBe('-0')
+      expect(Object.is(negZeroExp.value, -0)).toBe(true)
+    }
+  })
+
+  it('keeps invalid drafts as errors — never converts them into commits', () => {
+    // Every v2.5.9 invalid-blur counterexample: the raw draft is invalid, so
+    // the blur resolution must keep the error instead of committing a
+    // repaired text.
+    for (const input of ['NaN.', 'NaNe', 'Infinitye', '2..', '12..', '1ee', 'abc', '--1']) {
+      const resolution = resolveFloatTextOnBlur(input)
+      expect(resolution.kind, input).toBe('keep-error')
+      if (resolution.kind === 'keep-error') {
+        expect(resolution.raw.kind, input).toBe('invalid')
+      }
+    }
+  })
+
+  it('keeps out-of-range drafts as errors', () => {
+    for (const input of ['1e400', '-1e400', '1e309']) {
+      const resolution = resolveFloatTextOnBlur(input)
+      expect(resolution.kind, input).toBe('keep-error')
+      if (resolution.kind === 'keep-error') {
+        expect(resolution.raw.kind, input).toBe('out-of-range')
+      }
+    }
+  })
+
+  it('fail-closes a transitional that fails normalization (defensive)', () => {
+    // Unreachable through the strict transitional regex (every legal
+    // transitional normalizes to a complete value), but the contract requires
+    // fail-closed behavior instead of clearing the error.
+    const resolution = resolveFloatTextOnBlur('1e')
+    expect(resolution.kind).toBe('commit')
   })
 })

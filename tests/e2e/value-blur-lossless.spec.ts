@@ -179,6 +179,37 @@ test.describe('HALF signed-zero shorthand（1280×900 dark）', () => {
     await expect(hexInput(page)).toHaveValue('8000')
     await expect(valueInput(page)).toHaveValue('-0')
   })
+
+  test('合法指数过渡态 1e / 1e+ / 1e- blur 归一为 1（3C00，v2.5.9 合同）', async ({ page }) => {
+    await hexInput(page).fill('7C01')
+    await hexInput(page).press('Tab')
+    for (const draft of ['1e', '1e+', '1e-']) {
+      await valueInput(page).fill('')
+      await valueInput(page).pressSequentially(draft)
+      // 尾数 '1' 是完整合法值，键入时即时提交（3C00）；'e' 只是过渡尾巴
+      await expect(hexInput(page), draft).toHaveValue('3C00')
+      await valueInput(page).press('Tab')
+      await expect(hexInput(page), draft).toHaveValue('3C00')
+      await expect(valueInput(page), draft).toHaveValue('1')
+      await expect(valueInput(page), draft).not.toHaveAttribute('aria-invalid', 'true')
+    }
+  })
+
+  test('非法碎片 e / .e / -e+ / 1ee / NaNe / 2.. blur 报错且 raw 不变（v2.5.9 合同）', async ({
+    page,
+  }) => {
+    await hexInput(page).fill('7C01')
+    await hexInput(page).press('Tab')
+    for (const draft of ['e', '.e', '-e+', '1ee', 'NaNe', '2..']) {
+      await valueInput(page).fill(draft)
+      await expect(valueInput(page), draft).toHaveAttribute('aria-invalid', 'true')
+      await valueInput(page).press('Tab')
+      await expect(valueInput(page), draft).toHaveAttribute('aria-invalid', 'true')
+      await expect(valueInput(page), draft).toHaveValue(draft)
+      await expect(hexInput(page), `${draft} blur 后 raw 不变`).toHaveValue('7C01')
+    }
+    await expectNoBodyHorizontalOverflow(page)
+  })
 })
 
 test.describe('LINEAR11 untouched blur（360×800 light）', () => {
