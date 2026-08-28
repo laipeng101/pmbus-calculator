@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseFloatSafe, isTransitionalFloatText } from './float-parse'
+import { parseFloatSafe, isTransitionalFloatText, classifyFloatText } from './float-parse'
 
 describe('parseFloatSafe', () => {
   it('parses plain, signed, fractional and scientific notation values', () => {
@@ -41,9 +41,74 @@ describe('parseFloatSafe', () => {
     }
   })
 
-  it('clamps magnitudes beyond 1e20', () => {
-    expect(parseFloatSafe('1e400')).toBe(1e20)
-    expect(parseFloatSafe('-1e400')).toBe(-1e20)
+  it('keeps finite values beyond ±1e20 unclamped (v2.5.8, no silent clipping)', () => {
+    // 1e21 and larger finite doubles pass through unchanged; range handling
+    // belongs to the encoders (saturation / overflow), not the parse layer.
+    expect(parseFloatSafe('1e20')).toBe(1e20)
+    expect(parseFloatSafe('-1e20')).toBe(-1e20)
+    expect(parseFloatSafe('1e21')).toBe(1e21)
+    expect(parseFloatSafe('-1e21')).toBe(-1e21)
+    expect(parseFloatSafe('1e128')).toBe(1e128)
+    expect(parseFloatSafe('1e308')).toBe(1e308)
+    expect(parseFloatSafe('-1e308')).toBe(-1e308)
+  })
+
+  it('rejects complete decimal text that overflows to ±Infinity (v2.5.8)', () => {
+    // ±1e400 is syntactically complete but Number() renders it non-finite:
+    // it is an explicit range error, never a silently clamped 1e20 request.
+    expect(parseFloatSafe('1e400')).toBeNull()
+    expect(parseFloatSafe('-1e400')).toBeNull()
+  })
+
+  it('keeps HALF explicit literals distinct from decimal overflow (v2.5.8)', () => {
+    // The exact texts NaN / ±Infinity are first-class values (Part II §7.6);
+    // decimal overflow text is a range error in every mode including HALF.
+    expect(parseFloatSafe('Infinity')).toBe(Infinity)
+    expect(parseFloatSafe('-Infinity')).toBe(-Infinity)
+    expect(parseFloatSafe('1e400')).toBeNull()
+  })
+
+  it('treats decimal underflow to zero as a finite conversion result', () => {
+    // Number('1e-400') is +0 — finite, so it is a value, not a range error.
+    expect(Object.is(parseFloatSafe('1e-400'), 0)).toBe(true)
+    expect(Object.is(parseFloatSafe('-1e-400'), -0)).toBe(true)
+  })
+})
+
+describe('classifyFloatText', () => {
+  it('classifies complete finite values', () => {
+    expect(classifyFloatText('12')).toEqual({ kind: 'value', value: 12 })
+    expect(classifyFloatText(' 1e21 ')).toEqual({ kind: 'value', value: 1e21 })
+    expect(classifyFloatText('-1e21')).toEqual({ kind: 'value', value: -1e21 })
+    expect(classifyFloatText('.5')).toEqual({ kind: 'value', value: 0.5 })
+    const zero = classifyFloatText('-0')
+    expect(zero.kind).toBe('value')
+    expect(Object.is(zero.kind === 'value' ? zero.value : null, -0)).toBe(true)
+  })
+
+  it('classifies HALF literals as values, not range errors', () => {
+    expect(classifyFloatText('NaN').kind).toBe('value')
+    expect(classifyFloatText('Infinity')).toEqual({ kind: 'value', value: Infinity })
+    expect(classifyFloatText('-Infinity')).toEqual({ kind: 'value', value: -Infinity })
+  })
+
+  it('classifies decimal overflow as out-of-range', () => {
+    expect(classifyFloatText('1e400')).toEqual({ kind: 'out-of-range' })
+    expect(classifyFloatText('-1e400')).toEqual({ kind: 'out-of-range' })
+    expect(classifyFloatText('1e309')).toEqual({ kind: 'out-of-range' })
+  })
+
+  it('classifies empty and half-typed drafts as incomplete', () => {
+    expect(classifyFloatText('').kind).toBe('empty')
+    for (const input of ['-', '+', '.', '+.', '-.', '1e', '1e+', '12.5e-', '1E-']) {
+      expect(classifyFloatText(input).kind, input).toBe('transitional')
+    }
+  })
+
+  it('classifies definitively invalid text', () => {
+    for (const input of ['abc', '1.2.3', '12a', '--1', '1e2.5', 'nan_', 'infinity2']) {
+      expect(classifyFloatText(input).kind, input).toBe('invalid')
+    }
   })
 })
 
@@ -66,5 +131,13 @@ describe('isTransitionalFloatText', () => {
     for (const input of ['abc', '1.2.3', '12a', '--1', '1e2.5']) {
       expect(isTransitionalFloatText(input), input).toBe(false)
     }
+  })
+
+  it('treats out-of-range decimal text as complete, never as a draft (v2.5.8)', () => {
+    // Regression guard: removing the magnitude clamp must not make complete
+    // overflow text look like "still typing" — 1e400 is a finished input that
+    // reports a range error, not a transitional draft.
+    expect(isTransitionalFloatText('1e400')).toBe(false)
+    expect(isTransitionalFloatText('-1e400')).toBe(false)
   })
 })
