@@ -123,7 +123,10 @@ npm run test:e2e:release
    `size > 0`、URL 为本仓库本 tag 的 canonical GitHub 下载地址；缺失、重复、
    上传中分别以明确的错误与退出码报告（见脚本头注释）。stdout 只输出一个
    JSON 对象（数据），诊断走 stderr——不要把它的输出交给 `source`/`eval`
-   等会再次解释文本的机制（v2.5.9：元数据只作为数据）。随后下载两个资产
+   等会再次解释文本的机制（v2.5.9：元数据只作为数据）。Pages 侧的下载消费
+   由 `scripts/download-release-assets.mjs` 在 5 分钟共享总预算内完成
+   （v2.5.10：预算覆盖两项资产、重试与 backoff，不因重试重置，远小于
+   Pages job 的 20 分钟上限）。随后下载两个资产
    执行 `sha256sum -c SHA256SUMS.txt` 并核对 ZIP 内容合同。**任何一项失败
    都停止在 draft 状态，不得 publish。**
 

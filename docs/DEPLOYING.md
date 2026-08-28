@@ -51,11 +51,19 @@ https://laipeng101.github.io/pmbus-calculator/
    自 v2.5.9 起 verifier 的 stdout 是一个 JSON 数据对象（诊断走 stderr），
    下载由 `scripts/download-release-assets.mjs` 以静态 JSON 读取消费——每个
    URL 先经 `scripts/release-url-contract.mjs` 重新校验（scheme/host/path、
-   无 userinfo/query/fragment），网络调用带总 timeout 与仅针对瞬时故障的
-   有限重试；下载后先核对文件字节数与元数据一致，不一致立即停止部署
-   （错误码 9），不会到达 checksum 步骤。元数据请求失败、资产选择失败与
-   下载失败是三个可区分的失败面，保留真实退出码。元数据文本永远只作为
-   数据传递，不被 `source`/`eval`/拼接 shell 再次解释（v2.5.9 数据边界）。
+   无 userinfo/query/fragment），下载受**真实累计总预算**约束
+   （v2.5.10）：整个下载操作（两项资产、重试与 backoff）共享
+   `TOTAL_DOWNLOAD_BUDGET_MS = 5 分钟` 预算，重试不重置时限；每次 fetch 的
+   AbortSignal 取剩余预算，预算耗尽立即以退出码 10 与「deadline exhausted」
+   诊断终止。该预算刻意远小于 Pages job 的 `timeout-minutes: 20`，为
+   npm ci、校验、上传、部署与 remote smoke 留足时间。重试仅针对瞬时故障
+   （网络错误与 HTTP 408/429/5xx），次数有界（每资产最多 3 次）且 backoff
+   短小并计入预算；其他 4xx 与元数据/URL/size 合同错误立即失败。下载后先
+   核对文件字节数与元数据一致，不一致立即停止部署（错误码 9），不会到达
+   checksum 步骤；两项资产全部下载并通过 size 校验后才会写盘，不产生部分
+   下载的发布输入。元数据请求失败、资产选择失败与下载失败是三个可区分的
+   失败面，保留真实退出码。元数据文本永远只作为数据传递，不被
+   `source`/`eval`/拼接 shell 再次解释（v2.5.9 数据边界）。
 5. 执行 `sha256sum -c SHA256SUMS.txt`，校验失败立即停止部署。
 6. 解压前检查 zip：不包含绝对路径、不包含 `../` 路径穿越、不包含符号链接；
    必须包含 `index.html` 和 `assets/`；`index.html` 必须包含 production CSP；
