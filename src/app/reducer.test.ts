@@ -432,10 +432,10 @@ describe('appReducer — state transitions', () => {
       }
     })
 
-    it('显式应用默认 0x18 后 value/set 恢复编码且 provenance 走显式路径', () => {
+    it('显式应用计算器 LINEAR 示例 0x18 后 value/set 恢复编码且 provenance 走显式路径', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
       const withMode = appReducer(l16, { type: 'vout-mode/set-byte', hex: '20' })
-      const applied = appReducer(withMode, { type: 'l16/apply-default-vout-mode' })
+      const applied = appReducer(withMode, { type: 'l16/apply-calculator-linear-example' })
       expect(applied.voutMode.byte).toBe(0x18)
       expect(applied.valueRequest).toBeNull()
       const s = appReducer(applied, { type: 'value/set', value: '12' })
@@ -1129,9 +1129,11 @@ describe('appReducer — state transitions', () => {
       ).toBeNull()
     })
 
-    it('l16/apply-default-vout-mode writes 0x18 to the shared byte', () => {
+    it('l16/apply-calculator-linear-example writes 0x18 to the shared byte', () => {
       const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '40' })
-      expect(appReducer(s, { type: 'l16/apply-default-vout-mode' }).voutMode.byte).toBe(0x18)
+      expect(appReducer(s, { type: 'l16/apply-calculator-linear-example' }).voutMode.byte).toBe(
+        0x18,
+      )
     })
   })
 

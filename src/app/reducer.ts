@@ -2,7 +2,11 @@ import { INITIAL_STATE } from './state'
 import type { AppState } from './state'
 import type { AppAction } from './actions'
 import { PMBusMath } from '../legacy/pmbus-math'
-import { analyzeVoutMode, composeVoutMode, DEFAULT_LINEAR_VOUT_MODE } from '../legacy/vout-mode'
+import {
+  analyzeVoutMode,
+  composeVoutMode,
+  CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE,
+} from '../legacy/vout-mode'
 import { getCommandConfig } from '../legacy/command-metadata'
 import { parseHexStrict } from './hex-parse'
 import { parseIntegerStrict } from './int-parse'
@@ -80,7 +84,7 @@ function encodeL11FromValue(state: AppState, value: number): AppState {
  * - Non-LINEAR shared bytes fail closed (v2.5.2): output-voltage-related
  *   commands take their data format from the current VOUT_MODE (§8.4), so the
  *   page must not encode through an implicit 0x18 substitution. Recovering
- *   requires the explicit l16/apply-default-vout-mode write.
+ *   requires the explicit l16/apply-calculator-linear-example write.
  */
 function encodeL16FromValue(state: AppState, value: number): AppState {
   const eff = effectiveL16VoutMode(state)
@@ -387,8 +391,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, l16: { ...state.l16, nominalVout: value } }
     }
 
-    case 'l16/apply-default-vout-mode':
-      return setVoutModeByte(state, DEFAULT_LINEAR_VOUT_MODE)
+    case 'l16/apply-calculator-linear-example':
+      return setVoutModeByte(state, CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE)
 
     // ---- DIRECT ----
 

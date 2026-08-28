@@ -292,16 +292,22 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         />
       </div>
 
-      {/* Explicit canonicalization action */}
+      {/* Explicit recovery action: the calculator's LINEAR example byte. */}
       {embedded ? (
         info.source === 'non-linear' ? (
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'l16/apply-default-vout-mode' })}
-            className="vout-apply-default min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
-          >
-            应用默认 VOUT_MODE
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'l16/apply-calculator-linear-example' })}
+              className="vout-apply-default min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
+            >
+              应用计算器 LINEAR 示例 0x18
+            </button>
+            <p className="text-xs color-text-muted">
+              0x18（absolute、N=-8）是本计算器的初始/恢复示例值，不是 PMBus
+              规范默认值，也不代表真实器件一定接受 VOUT_MODE 写入。
+            </p>
+          </>
         ) : null
       ) : (
         <button

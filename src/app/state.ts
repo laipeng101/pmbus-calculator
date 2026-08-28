@@ -4,7 +4,7 @@
  * Phase 1: React useReducer only. No external state libraries.
  */
 
-import { DEFAULT_LINEAR_VOUT_MODE } from '../legacy/vout-mode'
+import { CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE } from '../legacy/vout-mode'
 
 export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF' | 'VOUT_MODE'
 export type Endian = 'le' | 'be'
@@ -93,7 +93,7 @@ export const INITIAL_STATE: AppState = {
   byteOrder: 'le',
 
   voutMode: {
-    byte: DEFAULT_LINEAR_VOUT_MODE,
+    byte: CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE,
   },
 
   l11: {

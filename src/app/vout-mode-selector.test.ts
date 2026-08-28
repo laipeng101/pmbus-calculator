@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { effectiveL16VoutMode } from './vout-mode-selector'
-import { DEFAULT_LINEAR_VOUT_MODE } from '../legacy/vout-mode'
+import { CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE } from '../legacy/vout-mode'
 import type { AppState } from './state'
 import { INITIAL_STATE } from './state'
 
@@ -24,11 +24,11 @@ describe('effectiveL16VoutMode (M38 single source)', () => {
       expect(eff.byte, `0x${byte.toString(16)}`).toBe(byte)
       expect(eff.source, `0x${byte.toString(16)}`).toBe('non-linear')
       expect(s.voutMode.byte, `0x${byte.toString(16)}`).toBe(byte)
-      expect(eff.byte, `0x${byte.toString(16)}`).not.toBe(DEFAULT_LINEAR_VOUT_MODE)
+      expect(eff.byte, `0x${byte.toString(16)}`).not.toBe(CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE)
     }
   })
 
-  it('DEFAULT_LINEAR_VOUT_MODE is defined once as 0x18', () => {
-    expect(DEFAULT_LINEAR_VOUT_MODE).toBe(0x18)
+  it('CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE is defined once as 0x18', () => {
+    expect(CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE).toBe(0x18)
   })
 })

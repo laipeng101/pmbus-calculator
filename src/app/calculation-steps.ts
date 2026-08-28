@@ -125,7 +125,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
     steps.push(
       warningStep(
         'l16-nonlinear',
-        `共享 VOUT_MODE ${hex} 为 ${a.formatName}；输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），本页不隐式替换字节。显式应用默认 0x18 后才恢复计算。`,
+        `共享 VOUT_MODE ${hex} 为 ${a.formatName}；输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），本页不隐式替换字节。显式应用计算器 LINEAR 示例 0x18（absolute、N=-8）后才恢复计算。`,
       ),
     )
     return steps

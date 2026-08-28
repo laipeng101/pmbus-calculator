@@ -45,9 +45,9 @@
 - 非 LINEAR 共享字节（VID / DIRECT / IEEE Half 格式）遵循 §3 的 fail-closed 契约（v2.5.2）：
   输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），`value/set` 对
   非 LINEAR 共享字节**直接 no-op**——不生成 raw、不伪造 provenance、不回退到
-  `DEFAULT_LINEAR_VOUT_MODE`。UI 显示实际共享字节与非 LINEAR 说明；恢复 LINEAR16
-  编码的唯一路径是显式 `l16/apply-default-vout-mode`（真正写入 0x18 并清除旧
-  provenance）。「拒绝 non-LINEAR 与 relative `value/set`」都是本仓库行为。
+  `CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE`。UI 显示实际共享字节与非 LINEAR 说明；恢复
+  LINEAR16 编码的唯一路径是显式 `l16/apply-calculator-linear-example`（真正写入
+  0x18 并清除旧 provenance）。「拒绝 non-LINEAR 与 relative `value/set`」都是本仓库行为。
 - 只有 **absolute LINEAR** 才显示绝对电压结果、V、N、2^N 与可表示电压范围；
   relative LINEAR 可以解释 VOUT_MODE 参数位的 exponent/ratio 语义，但不得把 raw 标成
   绝对电压；VID/DIRECT/IEEE Half 不得生成虚假的 LINEAR16 V/N/range/result。
@@ -139,8 +139,14 @@
   - SLINEAR16 offset：始终按 `X_offset = Y_s × 2^N` 计算，bit7 不适用；
   - 非 LINEAR 共享字节：fail closed——结果为 `—`、无物理值输入、无伪 LINEAR 范围、
     `computeQuantizationOutcome` 返回 null、计算步骤无伪 N/伪 V/伪结果；显示非 LINEAR
-    说明与显式应用默认 0x18 的入口（`l16/apply-default-vout-mode` 真正改写共享字节）。
+    说明与显式应用计算器 LINEAR 示例 0x18 的入口（`l16/apply-calculator-linear-example`
+    真正改写共享字节）。
     invalid-parameter / invalid-combination 保持 error 级。
+- **0x18 是计算器示例值，不是规范默认值（v2.5.7）**：Part II §8.3 只定义 VOUT_MODE
+  位布局与合法组合，不存在 PMBus 标准默认字节；器件可在制造时固定 Mode/Parameter
+  并拒绝写入。`CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE = 0x18`（absolute、N=-8）仅是
+  计算器的初始/恢复示例值，任何用户可见表面不得称其为「PMBus 规范默认/器件默认」，
+  也不得声称 non-LINEAR 会自动回退。
 - **L16 × VOUT_MODE payload 合同为 discriminated union（v2.5.3）**：单一来源是
   `src/app/l16-payload-contract.ts` 的 `resolveL16PayloadContext(byte, payloadKind)`，
   view-model 文案、输入可用性、warning 级别与测试共同消费它，禁止在组件或测试里用
@@ -245,6 +251,10 @@
     SLINEAR16 手动 `l16/set-slinear-y`）；
   - 改变编码解释的状态变更（DIRECT m/b/R、L16 payload kind、任何 VOUT_MODE 字节变更）；
   - 切换到另一个模式。重复选择当前模式是幂等 no-op，**不清除**请求。
+- **同字节写入幂等（v2.5.7）**：重复选择当前 VOUT_MODE 语义（absolute/relative）、
+  相同格式、相同参数或相同 N——即目标字节与当前字节完全相同的写入——是幂等 no-op，
+  **不清除**请求；已选中的语义控件点击不派发会失效 provenance 的状态写入。只有
+  真正改变字节的状态变更才使旧请求失效。
 - 没有请求来源时 UI **必须隐藏**误差读数——禁止伪造 `+0.000000 (0.0000%)`。
   「未输入请求」与「误差为零」是两个不同的领域状态。
 
@@ -272,6 +282,7 @@
   不得因表示值非有限而隐藏读数。
 - L16 SLINEAR16 offset 的量化计算不受 VOUT_MODE bit7 relative 影响（payload 语义
   优先，见 §2.2 与 Part II §13.3/§13.4）；非 LINEAR 共享字节无量化读数
-  （`computeQuantizationOutcome` 返回 null，v2.5.2 fail-closed），显式应用 0x18 后恢复。
+  （`computeQuantizationOutcome` 返回 null，v2.5.2 fail-closed），显式应用计算器
+  LINEAR 示例 0x18 后恢复。
 - DIRECT 的量化只描述「当前用户给定系数下的编码量化」，不代表器件读/写方向的
   真实准确度（读写方向系数可能不同）。

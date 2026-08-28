@@ -261,10 +261,13 @@
     且 Half 是合法输出电压数据格式。**禁止出现「需要器件 profile / DIRECT 系数 /
     设备数据」类表述**——Half 的换算不依赖任何器件数值；
   - invalid-parameter / invalid-combination 提示保持 error 级。
-    恢复入口只有显式「应用默认 VOUT_MODE」按钮（`l16/apply-default-vout-mode`）：点击后共享字节
-    真实变为 `0x18`、source 徽标回到「已关联」，输入/范围/结果/量化读数随之恢复，
-    旧 provenance 被清除。禁止重新引入任何隐式 fallback 通道或「按 fallback 0x18
-    计算」读数标注。
+    恢复入口只有显式「应用计算器 LINEAR 示例 0x18」按钮（`l16/apply-calculator-linear-example`，
+    v2.5.7 更名）：点击后共享字节真实变为 `0x18`、source 徽标回到「已关联」，
+    输入/范围/结果/量化读数随之恢复，旧 provenance 被清除。0x18（absolute、N=-8）
+    必须表述为**计算器初始/恢复示例值**并附免责声明（不是 PMBus 规范默认值、不代表
+    真实器件一定接受 VOUT_MODE 写入）；禁止称其为规范/器件默认，禁止重新引入任何
+    隐式 fallback 通道或「按 fallback 0x18 计算」读数标注。反词回归在
+    `tests/e2e/l16-nonlinear-fail-closed.spec.ts` 与 `src/app/view-model.test.ts`。
 - 非 LINEAR 共享字节下，L16 的 16 位位域图例必须是中性 raw word 文案
   （`RAW_WORD_NEUTRAL_LABEL = "raw word [15:0]（未按 LINEAR16 解释）"`，v2.5.3）：
   `getBitRegions('L16', payloadKind, state.voutMode.byte)` 以实际共享字节为准，任何
