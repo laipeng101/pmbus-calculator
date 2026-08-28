@@ -864,6 +864,110 @@ describe('appReducer — state transitions', () => {
     })
   })
 
+  describe('large finite requests without parse-layer clipping (v2.5.8)', () => {
+    const directWith = (m: number, b: number, r: number) => {
+      let s = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+      for (const [name, v] of [
+        ['m', m],
+        ['b', b],
+        ['r', r],
+      ] as const) {
+        s = appReducer(s, { type: 'direct/set-coeff', name, value: String(v) })
+      }
+      return s
+    }
+
+    it('DIRECT m=1,b=0,R=-21: 1e21 encodes 0x0001 with the true request', () => {
+      const s = appReducer(directWith(1, 0, -21), { type: 'value/set', value: '1e21' })
+      // y = round(1e21 × 10^-21) = 1 → raw 0x0001 (was 0x0000 under the
+      // removed ±1e20 parse clamp).
+      expect(s.raw).toBe(0x0001)
+      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e21 })
+      // raw 0x0001 decodes back to exactly the committed double 1e21.
+      expect(PMBusMath.decodeDirect(1, 1, 0, -21).value).toBe(1e21)
+    })
+
+    it('DIRECT m=1,b=0,R=-21: -1e21 encodes 0xFFFF', () => {
+      const s = appReducer(directWith(1, 0, -21), { type: 'value/set', value: '-1e21' })
+      expect(s.raw).toBe(0xffff)
+      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: -1e21 })
+    })
+
+    it('DIRECT m=-1 keeps the sign contrast (1e21 -> y=-1 -> 0xFFFF)', () => {
+      const s = appReducer(directWith(-1, 0, -21), { type: 'value/set', value: '1e21' })
+      expect(s.raw).toBe(0xffff)
+      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e21 })
+    })
+
+    it('R=-128 and R=127 boundary exponents round-trip representable vectors', () => {
+      // R=-128: y = round(1e128 × 10^-128) = 1
+      const lo = appReducer(directWith(1, 0, -128), { type: 'value/set', value: '1e128' })
+      expect(lo.raw).toBe(0x0001)
+      expect(lo.valueRequest).toEqual({ mode: 'DIRECT', value: 1e128 })
+      // R=127: y = round(1e-127 × 10^127) = 1
+      const hi = appReducer(directWith(1, 0, 127), { type: 'value/set', value: '1e-127' })
+      expect(hi.raw).toBe(0x0001)
+      expect(hi.valueRequest).toEqual({ mode: 'DIRECT', value: 1e-127 })
+      expect(PMBusMath.decodeDirect(1, 1, 0, 127).value).toBe(1e-127)
+    })
+
+    it('1e20 boundary stays finite and quantizes without parse clipping', () => {
+      const s = appReducer(directWith(1, 0, -21), { type: 'value/set', value: '1e20' })
+      // y = round(1e20 × 1e-21) = round(0.1) = 0 → 0x0000 (quantized step,
+      // not saturation: 1e20 lies inside the ±32767×10^21 encodable range).
+      expect(s.raw).toBe(0x0000)
+      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e20 })
+    })
+
+    it('DIRECT saturation keeps the original request as the error baseline', () => {
+      const s = appReducer(directWith(1, 0, -21), { type: 'value/set', value: '1e30' })
+      // y = round(1e30 × 1e-21) = 1e9 → clamp 32767 → 0x7FFF saturated; the
+      // provenance must keep the committed 1e30, never a clamped 1e20.
+      expect(s.raw).toBe(0x7fff)
+      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e30 })
+    })
+
+    it('L11 saturation uses the original unclamped request', () => {
+      const s = appReducer(base, { type: 'value/set', value: '1e9' })
+      // 1e9 exceeds the N=15 format maximum → N=15, Y=1023 saturated.
+      expect(s.l11.n).toBe(15)
+      expect(s.l11.y).toBe(1023)
+      expect(s.l11.valueInput).toBe(1e9)
+    })
+
+    it('L16 saturation uses the original unclamped request', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s = appReducer(l16, { type: 'value/set', value: '1e9' })
+      // V = round(1e9 × 2^8) = 2.56e11 → clamp 65535 → 0xFFFF.
+      expect(s.raw).toBe(0xffff)
+      expect(s.valueRequest).toEqual({ mode: 'L16', value: 1e9 })
+    })
+
+    it('±1e400 is out of range: no commit, old raw and request preserved', () => {
+      const committed = appReducer(directWith(1, 0, -21), { type: 'value/set', value: '1e21' })
+      expect(committed.raw).toBe(0x0001)
+      for (const text of ['1e400', '-1e400']) {
+        const s = appReducer(committed, { type: 'value/set', value: text })
+        expect(s.raw, text).toBe(0x0001)
+        expect(s.valueRequest, text).toEqual({ mode: 'DIRECT', value: 1e21 })
+      }
+    })
+
+    it('HALF treats decimal overflow as out of range but keeps ±Infinity literals', () => {
+      const half = appReducer(base, { type: 'mode/set', mode: 'HALF' })
+      const committed = appReducer(half, { type: 'value/set', value: '1' })
+      expect(committed.raw).toBe(0x3c00)
+      // 1e400 is not an HALF literal — it must not become an Infinity request.
+      const overflow = appReducer(committed, { type: 'value/set', value: '1e400' })
+      expect(overflow.raw).toBe(0x3c00)
+      expect(overflow.valueRequest).toEqual({ mode: 'HALF', value: 1 })
+      // The explicit literal stays a first-class value.
+      const inf = appReducer(committed, { type: 'value/set', value: 'Infinity' })
+      expect(inf.raw).toBe(0x7c00)
+      expect(inf.valueRequest).toEqual({ mode: 'HALF', value: Infinity })
+    })
+  })
+
   describe('HALF value -> raw encode', () => {
     const halfMode = appReducer(base, { type: 'mode/set', mode: 'HALF' })
 
@@ -1127,6 +1231,55 @@ describe('appReducer — state transitions', () => {
       expect(
         appReducer(l16, { type: 'l16/set-nominal-vout', nominalVout: 'abc' }).l16.nominalVout,
       ).toBeNull()
+    })
+
+    it('l16/clear-nominal-vout resets the reference to null (v2.5.8)', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const relative = appReducer(l16, { type: 'vout-mode/set-relative', relative: true })
+      const withNominal = appReducer(relative, {
+        type: 'l16/set-nominal-vout',
+        nominalVout: '12',
+      })
+      expect(withNominal.l16.nominalVout).toBe(12)
+      const cleared = appReducer(withNominal, { type: 'l16/clear-nominal-vout' })
+      expect(cleared.l16.nominalVout).toBeNull()
+      // Re-entering a legal value restores the reference.
+      const restored = appReducer(cleared, { type: 'l16/set-nominal-vout', nominalVout: '5' })
+      expect(restored.l16.nominalVout).toBe(5)
+    })
+
+    it('l16/clear-nominal-vout touches only the nominal channel', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const relative = appReducer(l16, { type: 'vout-mode/set-relative', relative: true })
+      const withNominal = appReducer(relative, {
+        type: 'l16/set-nominal-vout',
+        nominalVout: '12',
+      })
+      const cleared = appReducer(withNominal, { type: 'l16/clear-nominal-vout' })
+      expect(cleared.raw).toBe(withNominal.raw)
+      expect(cleared.voutMode.byte).toBe(withNominal.voutMode.byte)
+      expect(cleared.l16.payloadKind).toBe(withNominal.l16.payloadKind)
+      expect(cleared.byteOrder).toBe(withNominal.byteOrder)
+      expect(cleared.mode).toBe(withNominal.mode)
+    })
+
+    it('l16/clear-nominal-vout is idempotent and null stays distinct from 0', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const alreadyNull = appReducer(l16, { type: 'l16/clear-nominal-vout' })
+      expect(alreadyNull).toBe(l16)
+      const zero = appReducer(l16, { type: 'l16/set-nominal-vout', nominalVout: '0' })
+      expect(zero.l16.nominalVout).toBe(0)
+      expect(appReducer(zero, { type: 'l16/clear-nominal-vout' }).l16.nominalVout).toBeNull()
+      // 0 keeps the decode-only contract: a 0 reference is a value, not "no
+      // reference" — the two states are observably different.
+      expect(zero.l16.nominalVout).not.toBeNull()
+    })
+
+    it('l16/set-nominal-vout rejects out-of-range decimal text (v2.5.8)', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const committed = appReducer(l16, { type: 'l16/set-nominal-vout', nominalVout: '12' })
+      const rejected = appReducer(committed, { type: 'l16/set-nominal-vout', nominalVout: '1e400' })
+      expect(rejected.l16.nominalVout).toBe(12)
     })
 
     it('l16/apply-calculator-linear-example writes 0x18 to the shared byte', () => {

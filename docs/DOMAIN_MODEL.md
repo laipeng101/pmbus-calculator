@@ -55,6 +55,10 @@
   - `ULINEAR16`：`X = Y_u × 2^N`，`Y_u` 是无符号 16 位整数 `0..65535`；absolute LINEAR
     直接解出电压，relative LINEAR 解出无量纲正比例 `R = Y_u × 2^N`，最终电压
     `X = V_NOM × R`（`raw=0` 时 `R=0`，规范要求 relative value 为正，标记为非符合性）。
+    标称参考值缺失是可达的提交状态（v2.5.8）：真实清空标称输入并 blur/Enter 通过
+    `l16/clear-nominal-vout` 把 `l16.nominalVout` 置回 `null`（幂等，只影响该通道，
+    不改 raw / VOUT_MODE / payload kind / 字节序）；`null`（未提供参考值，只显示比值，
+    最终电压为 `—`）与显式输入 `0`（decode-only 合同的合法显示值）是两个不同状态。
   - `SLINEAR16 offset`：`X_offset = Y_s × 2^N`，`Y_s` 是 16 位二补码 `-32768..32767`
     （Part II §13.3 VOUT_TRIM / §13.4 VOUT_CAL_OFFSET）；bit7 不参与该 payload 的数学，
     相对 + 有符号比例是伪标准组合，不提供。编码顺序契约（v2.5.2）：`value/set` 先判

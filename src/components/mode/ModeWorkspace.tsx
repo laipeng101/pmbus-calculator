@@ -192,6 +192,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 value={state.l16.nominalVout}
                 ariaLabel="VOUT_COMMAND 标称参考值（V）"
                 onCommit={(text) => dispatch({ type: 'l16/set-nominal-vout', nominalVout: text })}
+                onClear={() => dispatch({ type: 'l16/clear-nominal-vout' })}
               />
             )}
 

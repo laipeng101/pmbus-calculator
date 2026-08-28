@@ -10,7 +10,7 @@ import {
 import { getCommandConfig } from '../legacy/command-metadata'
 import { parseHexStrict } from './hex-parse'
 import { parseIntegerStrict } from './int-parse'
-import { parseFloatSafe } from './float-parse'
+import { classifyFloatText } from './float-parse'
 import { effectiveL16VoutMode } from './vout-mode-selector'
 
 /**
@@ -208,8 +208,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'value/set': {
-      const value = parseFloatSafe(action.value)
-      if (value === null) return state
+      // Shared parse classification (v2.5.8): only a complete value commits.
+      // Empty/transitional/invalid text never reaches here from the UI, and
+      // out-of-range decimal text (e.g. 1e400 → ±Infinity) keeps the old
+      // committed state/raw instead of fabricating a clamped request.  Finite
+      // values are passed through unclamped — format-range handling (saturation
+      // / overflow) belongs to the encoders, not the parse layer.
+      const parsed = classifyFloatText(action.value)
+      if (parsed.kind !== 'value') return state
+      const value = parsed.value
       if (state.mode === 'L11') {
         if (Number.isNaN(value) || !Number.isFinite(value)) return state
         return encodeL11FromValue(state, value)
@@ -382,14 +389,26 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'l16/set-nominal-vout': {
-      const value = parseFloatSafe(action.nominalVout)
-      if (value === null) return state
+      const parsed = classifyFloatText(action.nominalVout)
+      if (parsed.kind !== 'value') return state
+      const value = parsed.value
       // Decode accepts finite non-negative nominal references. Reverse encode
       // from a final voltage would require a strict divisor > 0, but this
       // slice is decode-only, so 0 is still accepted as a displayed nominal.
       if (!Number.isFinite(value) || value < 0) return state
       return { ...state, l16: { ...state.l16, nominalVout: value } }
     }
+
+    case 'l16/clear-nominal-vout':
+      // null is the explicit "no nominal reference" state (v2.5.8): a user
+      // who really deleted the field content must be able to get back to the
+      // missing-reference state instead of silently restoring the old value.
+      // Clearing touches ONLY the nominal channel — raw, VOUT_MODE byte,
+      // payload kind and byte order stay untouched, and 0 remains a distinct
+      // decode-only value (null ≠ 0).
+      return state.l16.nominalVout === null
+        ? state
+        : { ...state, l16: { ...state.l16, nominalVout: null } }
 
     case 'l16/apply-calculator-linear-example':
       return setVoutModeByte(state, CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE)

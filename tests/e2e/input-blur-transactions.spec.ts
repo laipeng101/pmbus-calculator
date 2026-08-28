@@ -1,7 +1,7 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 
 /**
- * Shared-input blur transaction contract (v2.5.7):
+ * Shared-input blur transaction contract (v2.5.7, extended v2.5.8):
  *
  * v2.5.6 只把 untouched-blur 事务化带到物理值输入；本规格把同一合同推广到
  * HexInput / IntegerInput / DecimalInput / NominalVoutInput 的所有实例：
@@ -10,8 +10,14 @@ import { test, expect, type Page } from '@playwright/test'
  *   不派发 commit、不改写 raw/参数、不清除 provenance（quantization panel）、
  *   不清除仍然存在的字段错误（DOMAIN_MODEL §6.1 / UI_CONVENTIONS §8）；
  * - dirty 依据真实编辑事务，不以解析数值相等判断；
- * - 显式清空后 blur、显式重输相同值、粘贴（fill 单次 onChange）、非法文本
- *   修复都是真实事务，仍按既有合同提交。
+ * - 显式清空后 blur、显式重输相同值、非法文本修复都是真实事务，仍按既有
+ *   合同提交。同值重输的真实性由真实键盘事务（选中全部 → 删除 → 逐键
+ *   重输 → Tab）证明：fill() 在字段已显示相同值时不触发 React onChange，
+ *   因此不得用作同值提交的证据；
+ * - 粘贴路径使用真实异步剪贴板 API（授权后 writeText + Ctrl/Cmd+V）；
+ *   fill() 只是单次 onChange，不被称作粘贴。环境不支持剪贴板权限时该用例
+ *   显式 skip 并注明「未覆盖」，不冒充；
+ * - 断言最终 raw / 参数 / 错误 / 结果 / provenance，而不只是输入框外观。
  */
 
 async function setTheme(page: Page, theme: 'light' | 'dark') {
@@ -35,6 +41,39 @@ const quantizationPanel = (page: Page) => page.getByTestId('quantization-error')
 async function untouchedFocusBlur(locator: ReturnType<Page['locator']>) {
   await locator.click()
   await locator.press('Tab')
+}
+
+/**
+ * Real keyboard re-entry: click, select all, delete, retype the text
+ * key-by-key, then blur with Tab.  Always produces real keydown/input/blur
+ * events even when the field already shows the same value — the transaction
+ * source is the keyboard, never a value diff.
+ */
+async function realKeyboardRetype(locator: Locator, text: string) {
+  await locator.click()
+  await locator.press('ControlOrMeta+a')
+  await locator.press('Backspace')
+  await locator.pressSequentially(text)
+  await locator.press('Tab')
+}
+
+/**
+ * Real clipboard paste through the async Clipboard API: select all, then
+ * Ctrl/Cmd+V replaces the displayed content.  Returns false when the
+ * environment refuses clipboard access — the caller must skip with an
+ * explicit "not covered" annotation instead of presenting fill() as paste.
+ */
+async function realClipboardPaste(page: Page, locator: Locator, text: string): Promise<boolean> {
+  try {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.evaluate((t) => navigator.clipboard.writeText(t), text)
+  } catch {
+    return false
+  }
+  await locator.click()
+  await locator.press('ControlOrMeta+a')
+  await locator.press('ControlOrMeta+v')
+  return true
 }
 
 test.describe('L11 untouched blur（1280×900 dark）', () => {
@@ -91,6 +130,49 @@ test.describe('L11 untouched blur（1280×900 dark）', () => {
     await valueInput(page).fill('2')
     await expect(hexInput(page)).toHaveValue('0002')
     await expect(quantizationPanel(page)).toHaveCount(1)
+  })
+
+  test('同值真实键盘重输重建请求来源，并断言 raw 与 provenance（v2.5.8）', async ({ page }) => {
+    await valueInput(page).fill('2')
+    await expect(hexInput(page)).toHaveValue('0002')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+
+    // raw 路径编辑清除旧 provenance
+    await hexInput(page).fill('0003')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+
+    // 字段此时显示 3 而请求值是 3 的误差未知；真实键盘重输相同值 3：
+    // 选中全部 → 删除 → 逐键输入 → Tab。每个事件都真实发生，提交来源
+    // 是键盘事务而非 fill 的值差异。
+    await realKeyboardRetype(valueInput(page), '3')
+    await expect(hexInput(page)).toHaveValue('0003')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+
+    // 再对已显示 2 的字段真实重输 2：证明同值请求被重新建立而非沿用
+    await hexInput(page).fill('0004')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+    await valueInput(page).fill('2')
+    await realKeyboardRetype(valueInput(page), '2')
+    await expect(hexInput(page)).toHaveValue('0002')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
+  test('真实剪贴板粘贴是显式编辑事务（不支持时如实标记未覆盖）', async ({ page }) => {
+    await valueInput(page).fill('7')
+    await expect(hexInput(page)).toHaveValue('0007')
+    await hexInput(page).fill('0003')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+
+    const pasted = await realClipboardPaste(page, valueInput(page), '2')
+    if (!pasted) {
+      test.skip(true, '此环境不支持剪贴板权限——真实粘贴路径未覆盖，不以 fill 冒充')
+    }
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('0002')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
   })
 })
 
@@ -173,9 +255,44 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
     await ysInput.fill('257')
     await expect(quantizationPanel(page)).toHaveCount(0)
     await expect(hexInput(page)).toHaveValue('0101')
+
+    // v2.5.8：对已显示 257 的 Y_s 同值真实键盘重输——raw 路径合同下这仍
+    // 是一次真实编辑事务，提交后 provenance 保持失效（无数值去重），
+    // raw 不变；断言最终 raw 与面板而非字段外观。
+    await realKeyboardRetype(ysInput, '257')
+    await expect(hexInput(page)).toHaveValue('0101')
+    await expect(quantizationPanel(page)).toHaveCount(0)
   })
 
-  test('relative ULINEAR16：nominal untouched blur 不重置标称值；显式重输仍提交', async ({
+  test('V 编辑器走 raw 路径：同值键盘重输不重建请求；物理值重输才重建（v2.5.8）', async ({
+    page,
+  }) => {
+    const vInput = page.locator('#l16-v-input')
+    await valueInput(page).fill('1')
+    await expect(hexInput(page)).toHaveValue('0100')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+
+    // Hex 编辑清除 provenance；此时 V 字段显示 259（raw 0x0103）
+    await hexInput(page).fill('0103')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+    await expect(vInput).toHaveValue('259')
+
+    // V 编辑器经 raw/set 提交（raw 路径）：真实键盘重输 256 是真实事务，
+    // raw 回到 0100，但请求来源已被 raw 路径清除，面板保持隐藏
+    await realKeyboardRetype(vInput, '256')
+    await expect(hexInput(page)).toHaveValue('0100')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+
+    // 对照路径：物理值输入的显式重输重新建立编码请求（ValueInput 的
+    // 显式请求语义不被数值去重破坏）
+    await realKeyboardRetype(valueInput(page), '1')
+    await expect(hexInput(page)).toHaveValue('0100')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
+  test('relative ULINEAR16：nominal untouched blur no-op；真实清空后 blur 提交 null（v2.5.8）', async ({
     page,
   }) => {
     const nominal = page.locator('#l16-nominal-vout')
@@ -183,21 +300,39 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
     await expect(nominal).toBeVisible()
 
+    // 先建立 ratio=1 的 raw：hex 0x0100 → R = 256×2^-8 = 1（relative 页无
+    // 物理值输入，fail-closed；此后 result-value 是「标称值 × 1」）
+    await hexInput(page).fill('0100')
+    await expect(hexInput(page)).toHaveValue('0100')
+
     await nominal.fill('5')
     await expect(nominal).toHaveValue('5')
+    await expect(page.getByTestId('result-value')).toHaveText('5')
 
     // untouched blur：严格 no-op
     await untouchedFocusBlur(nominal)
     await expect(nominal).toHaveValue('5')
+    await expect(page.getByTestId('result-value')).toHaveText('5')
 
-    // 显式清空后 blur：空串不是合法标称，blur 恢复已提交值 5（定义的完成态）
+    // 真实清空后 blur：提交 null（v2.5.8）——字段保持空、结果为 '—'，
+    // raw 与 VOUT_MODE 不受影响；绝不静默恢复旧值，也不把清除混同于 0
     await nominal.fill('')
     await nominal.press('Tab')
-    await expect(nominal).toHaveValue('5')
+    await expect(nominal).toHaveValue('')
+    await expect(page.getByTestId('result-value')).toHaveText('—')
+    await expect(hexInput(page)).toHaveValue('0100')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
 
-    // 显式重输相同值（粘贴路径）：真实事务仍提交
+    // 重新输入合法值后恢复计算（5 × ratio 1 → 5）
     await nominal.fill('5')
-    await expect(nominal).toHaveValue('5')
+    await expect(page.getByTestId('result-value')).toHaveText('5')
+
+    // v2.5.8 键盘可达性：全程键盘事务在 0 ↔ 5 之间切换结果
+    // （0 是 decode-only 合法值，与清除后的 null 不同）
+    await realKeyboardRetype(nominal, '0')
+    await expect(page.getByTestId('result-value')).toHaveText('0')
+    await realKeyboardRetype(nominal, '5')
+    await expect(page.getByTestId('result-value')).toHaveText('5')
   })
 
   test('显式 N 编辑清除 provenance 并改写 VOUT_MODE', async ({ page }) => {
@@ -246,6 +381,22 @@ test.describe('DIRECT untouched blur（1280×900 light）', () => {
     await expect(quantizationPanel(page)).toHaveCount(0)
   })
 
+  test('系数同值真实键盘重输仍使旧请求失效（direct/set-coeff 无数值去重，v2.5.8）', async ({
+    page,
+  }) => {
+    const mInput = page.locator('#direct-coeff-m-input')
+    await valueInput(page).fill('5')
+    await expect(hexInput(page)).toHaveValue('0005')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+
+    // 字段已显示 1（当前 m）；真实键盘重输相同值 1 是一次真实提交事务，
+    // 系数通道按既有合同使请求失效，raw 不变。
+    await realKeyboardRetype(mInput, '1')
+    await expect(hexInput(page)).toHaveValue('0005')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
   test('非法系数错误在无关字段 untouched blur 后保持；修复后清除', async ({ page }) => {
     const mInput = page.locator('#direct-coeff-m-input')
     const yInput = page.locator('#direct-y-input')
@@ -282,6 +433,28 @@ test.describe('HALF untouched blur（360×800 dark）', () => {
     await untouchedFocusBlur(hexInput(page))
     await expect(hexInput(page)).toHaveValue('7E00')
     await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(page.getByTestId('half-special-semantics')).toHaveCount(1)
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
+  test('同值真实键盘重输 NaN：7C01 → canonical 7E00 + special provenance（v2.5.8）', async ({
+    page,
+  }) => {
+    await valueInput(page).fill('NaN')
+    await expect(hexInput(page)).toHaveValue('7E00')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+
+    // raw Hex 编辑：7C01 是非规范 NaN，raw-lossless，provenance 失效
+    await hexInput(page).fill('7C01')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+    await expect(page.getByTestId('half-special-semantics')).toHaveCount(1)
+
+    // 值字段此时显示 NaN——真实键盘重输相同文本仍是一次真实编辑事务：
+    // 显式 NaN 请求 canonical 化为 0x7E00 并重建 special/warn provenance
+    await realKeyboardRetype(valueInput(page), 'NaN')
+    await expect(hexInput(page)).toHaveValue('7E00')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'warn')
     await expect(page.getByTestId('half-special-semantics')).toHaveCount(1)
     await expectNoBodyHorizontalOverflow(page)
   })
@@ -324,6 +497,20 @@ test.describe('VOUT_MODE untouched blur（1280×900 light）', () => {
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x40')
     await page.getByRole('radio', { name: 'DIRECT' }).click()
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x40')
+    await expectNoBodyHorizontalOverflow(page)
+  })
+
+  test('expert Hex 同值真实键盘重输是幂等 no-op（同字节写入不产生新状态，v2.5.8）', async ({
+    page,
+  }) => {
+    const hex = page.locator('#vout-mode-input')
+    await hex.fill('3E')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x3E')
+
+    // 字段已显示 3E：真实键盘重输相同字节——vout-mode/set-byte 的同字节
+    // 写入是幂等 no-op，字节保持 0x3E（语义控件幂等合同，非数值去重）
+    await realKeyboardRetype(hex, '3E')
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x3E')
     await expectNoBodyHorizontalOverflow(page)
   })
 

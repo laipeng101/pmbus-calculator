@@ -122,6 +122,22 @@
   文本修复）仍按既有合同提交；HALF 中显式重输 `NaN` 仍 canonical 化为 `0x7E00`
   并出现 special/warn provenance。dirty 状态依据真实编辑事务（共享 helper
   `src/app/input-transaction.ts`），不用解析数值比较。
+- **标称参考值可回到缺失状态（v2.5.8）**：relative ULINEAR16 的标称输入真实删除
+  全部内容后 blur/Enter 提交 `l16/clear-nominal-vout`（`nominalVout = null`）——
+  字段保持空、最终电压显示 `—`、公式与计算步骤不再输出由旧标称推出的电压；
+  `null` 与显式输入 `0` 是两个状态，清除不改 raw/VOUT_MODE/payload/字节序，
+  重新输入合法值后恢复计算。非空非法文本不得悄悄变为 0 或清除：保留字段错误与
+  最后有效 committed 值；非空过渡态（`1e`、`-` 等）blur 经共享
+  `fixFloatTextOnBlur` 归一化后按其值提交（与物理值输入一致），不以静默恢复
+  旧值掩盖未完成输入。其他数值输入的空串归零合同不变。
+- **解析层不做静默限幅（v2.5.8）**：物理值解析统一走共享分类
+  `classifyFloatText`（`src/app/float-parse.ts`，ValueInput / NominalVoutInput /
+  reducer 单一来源）。语法完整且可由 JavaScript Number 表示的有限值按真实值提交
+  （旧 ±1e20 clamp 移除），编码格式超范围由既有编码器的饱和/溢出读数呈现，
+  provenance 保留真实提交的请求值；完整但溢出为 ±Infinity 的十进制文本（如
+  `1e400`）在包括 HALF 在内的所有模式都是明确的数值范围错误——不提交、不生成
+  新请求、保留旧 raw，且不得被误判为"尚未输完"的过渡态；HALF 显式字面量
+  `NaN` / `±Infinity` 与十进制溢出文本是两类不同的输入。
 - 模式切换后不得留下与当前显示值矛盾的 stale error（错误随字段所在 workspace
   卸载清除；DIRECT 系数错误随状态保留、只在 DIRECT 模式渲染）。
 - 全局快捷键 `Ctrl+1..4` 仅在非编辑上下文生效：`src/app/editable-target.ts` 判定

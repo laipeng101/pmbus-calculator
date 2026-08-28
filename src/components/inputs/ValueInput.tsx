@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
-import { parseFloatSafe, isTransitionalFloatText } from '../../app/float-parse'
+import { classifyFloatText, fixFloatTextOnBlur } from '../../app/float-parse'
 import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
@@ -9,44 +9,33 @@ interface Props {
   dispatch: React.Dispatch<AppAction>
 }
 
-type DraftKind = 'valid' | 'transitional' | 'invalid' | 'non-finite'
+type DraftKind = 'valid' | 'transitional' | 'invalid' | 'non-finite' | 'out-of-range'
 
 const INVALID_MESSAGE = '物理值输入无效：仅支持十进制数字（可含小数与科学计数法）'
 const NON_FINITE_MESSAGE = '当前模式不支持 NaN / Infinity，仅 HALF 模式支持这些特殊值'
+const OUT_OF_RANGE_MESSAGE =
+  '数值超出可表示范围：该十进制文本会转换为 ±Infinity，请输入 JavaScript Number 可表示的有限值'
 
 function classifyDraft(
   text: string,
   allowNonFinite: boolean,
 ): { kind: DraftKind; value: number | null } {
-  const trimmed = text.trim()
-  if (trimmed === '') return { kind: 'transitional', value: null }
-  const value = parseFloatSafe(trimmed)
-  if (value !== null) {
-    if (!Number.isFinite(value) && !allowNonFinite) return { kind: 'non-finite', value }
-    return { kind: 'valid', value }
+  const parsed = classifyFloatText(text)
+  switch (parsed.kind) {
+    case 'empty':
+      return { kind: 'transitional', value: null }
+    case 'value':
+      if (!Number.isFinite(parsed.value) && !allowNonFinite) {
+        return { kind: 'non-finite', value: parsed.value }
+      }
+      return { kind: 'valid', value: parsed.value }
+    case 'out-of-range':
+      return { kind: 'out-of-range', value: null }
+    case 'transitional':
+      return { kind: 'transitional', value: null }
+    case 'invalid':
+      return { kind: 'invalid', value: null }
   }
-  if (isTransitionalFloatText(trimmed)) return { kind: 'transitional', value: null }
-  return { kind: 'invalid', value: null }
-}
-
-/**
- * Blur normalization for incomplete drafts: '' / '-' / '+' -> '0'; trailing
- * 'e' exponent stripped.  A bare trailing dot keeps its sign (v2.5.7): the
- * sign is the only information the draft carries, and IEEE 754 binary16 keeps
- * `-0` (0x8000) distinct from `+0` (0x0000), Part II §7.6.
- */
-function fixFloatOnBlur(value: string): string {
-  value = value.trim()
-  if (!value) return '0'
-  if (value === '-' || value === '+') return '0'
-  if (/[eE][+-]?$/.test(value)) return value.replace(/[eE][+-]?$/, '') || '0'
-  if (value.endsWith('.')) {
-    const head = value.slice(0, -1)
-    if (head === '' || head === '+') return '0'
-    if (head === '-') return '-0'
-    return head
-  }
-  return value
 }
 
 /**
@@ -54,6 +43,8 @@ function fixFloatOnBlur(value: string): string {
  *
  * - 过渡态（空串、单独符号、`1.`、`1e` 等）暂存不报错；
  * - 非法文本与非有限值（非 HALF 模式）不进入 committed state / raw / 结果；
+ * - 完整但超出双精度范围的十进制文本（如 1e400）显示明确的数值范围错误：
+ *   不解析、不提交、不改写旧 raw / 请求（v2.5.8，解析层不做静默限幅）；
  * - 非法最终值在字段级显示唯一可见错误，blur 不静默回滚；
  * - HALF 模式继续接受 NaN、+Infinity、-Infinity；
  * - 未发生任何编辑的 focus/blur 是严格 no-op：不 dispatch `value/set`、
@@ -84,6 +75,12 @@ export default function ValueInput({ vm, dispatch }: Props) {
       setError(NON_FINITE_MESSAGE)
       return
     }
+    if (kind === 'out-of-range') {
+      // Complete decimal text beyond the double range (e.g. 1e400): explicit
+      // field error, no commit, last committed state/raw stays untouched.
+      setError(OUT_OF_RANGE_MESSAGE)
+      return
+    }
     setError(null)
     if (kind === 'valid' && value !== null) {
       dispatch({ type: 'value/set', value: text })
@@ -98,11 +95,17 @@ export default function ValueInput({ vm, dispatch }: Props) {
       setEditing(false)
       return
     }
-    const fixed = fixFloatOnBlur(draft)
+    const fixed = fixFloatTextOnBlur(draft)
     const { kind, value } = classifyDraft(fixed, vm.mode === 'HALF')
-    if (kind === 'invalid' || kind === 'non-finite') {
+    if (kind === 'invalid' || kind === 'non-finite' || kind === 'out-of-range') {
       // Keep the invalid draft visible together with its error.
-      setError(kind === 'invalid' ? INVALID_MESSAGE : NON_FINITE_MESSAGE)
+      setError(
+        kind === 'invalid'
+          ? INVALID_MESSAGE
+          : kind === 'non-finite'
+            ? NON_FINITE_MESSAGE
+            : OUT_OF_RANGE_MESSAGE,
+      )
     } else {
       setError(null)
       setDraft(fixed)
