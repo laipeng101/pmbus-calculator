@@ -34,6 +34,10 @@
  * GitHub download URL for the expected repository (`--repo owner/repo`),
  * tag and asset name — validated with the URL parser (scheme, host, path,
  * no userinfo/query/fragment/control characters), not a string prefix.
+ * `--mode draft` additionally accepts GitHub's draft placeholder tag
+ * segment (`releases/download/untagged-<hex>/<name>` — a draft release's
+ * asset URLs keep that form until publish); `--mode published` (the Pages
+ * gate) requires the exact tag path.
  *
  * Exit codes (documented contract; tests pin them):
  *   0  ready — JSON resolution on stdout
@@ -202,7 +206,16 @@ for (const { key, name } of expected) {
   }
   const url = asset.browser_download_url
   try {
-    assertCanonicalAssetDownloadUrl(url, { repo: args.repo, tag: args.tag, name })
+    assertCanonicalAssetDownloadUrl(url, {
+      repo: args.repo,
+      tag: args.tag,
+      name,
+      // GitHub draft releases carry a placeholder `untagged-<hex>` tag
+      // segment in browser_download_url until publish (live REST behavior):
+      // the operator's draft check must accept it, while the published
+      // Pages gate keeps the strict tag form.
+      allowUntaggedPlaceholder: args.mode === 'draft',
+    })
   } catch (error) {
     fail(8, `asset "${name}": ${error instanceof Error ? error.message : String(error)}`)
   }

@@ -26,6 +26,15 @@ const SAFE_ASSET_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const CONTROL_OR_WHITESPACE = /[\u0000-\u001f\u007f\s]/
 
 /**
+ * Escape a literal string for use inside a RegExp.
+ * @param {string} value
+ * @returns {string}
+ */
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
  * Parse and validate an `owner/repo` repository slug (trusted CLI config).
  * @param {string} repo
  * @param {string} [label]
@@ -63,11 +72,22 @@ export function assertSafeAssetName(name, label = 'asset name') {
  * Validate one `browser_download_url` against the canonical public GitHub
  * form for `/{owner}/{repo}/releases/download/{tag}/{name}`. Throws an Error
  * describing the violated rule; callers map that onto their exit contract.
+ *
+ * `allowUntaggedPlaceholder` accepts GitHub's DRAFT-release asset URL form
+ * `/{owner}/{repo}/releases/download/untagged-<hex>/{name}` — a draft
+ * Release's `browser_download_url` carries a placeholder tag segment until
+ * publish (verified against live REST metadata 2026-08-29). The published
+ * Pages gate must keep the strict tag form; only the operator's
+ * `--mode draft` check enables the placeholder.
+ *
  * @param {string} url
- * @param {{ repo: string, tag: string, name: string }} expected
+ * @param {{ repo: string, tag: string, name: string, allowUntaggedPlaceholder?: boolean }} expected
  * @returns {URL}
  */
-export function assertCanonicalAssetDownloadUrl(url, { repo, tag, name }) {
+export function assertCanonicalAssetDownloadUrl(
+  url,
+  { repo, tag, name, allowUntaggedPlaceholder = false },
+) {
   if (typeof url !== 'string' || url.length === 0) {
     throw new Error('browser_download_url is missing or not a string')
   }
@@ -94,10 +114,21 @@ export function assertCanonicalAssetDownloadUrl(url, { repo, tag, name }) {
   }
   const { owner, name: repoName } = assertValidRepoSlug(repo, 'repository slug')
   const expectedPath = `/${owner}/${repoName}/releases/download/${tag}/${name}`
-  if (parsed.pathname !== expectedPath) {
+  // A regex is required for GitHub's draft placeholder; every interpolated
+  // value is escaped so the strict form stays a literal comparison.
+  const tagPattern = allowUntaggedPlaceholder
+    ? `${escapeRegExp(tag)}|untagged-\\w+`
+    : escapeRegExp(tag)
+  const pathPattern = new RegExp(
+    `^/${escapeRegExp(owner)}/${escapeRegExp(repoName)}/releases/download/(?:${tagPattern})/${escapeRegExp(name)}$`,
+  )
+  if (!pathPattern.test(parsed.pathname)) {
+    const expected = allowUntaggedPlaceholder
+      ? `${expectedPath} (or GitHub's draft placeholder /${owner}/${repoName}/releases/download/untagged-<hex>/${name})`
+      : expectedPath
     throw new Error(
       `browser_download_url must be the canonical https://github.com/${owner}/${repoName}/releases/download/... path ` +
-        `(expected ${expectedPath}, got ${parsed.pathname})`,
+        `(expected ${expected}, got ${parsed.pathname})`,
     )
   }
   return parsed
