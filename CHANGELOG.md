@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **draft 回验的 URL 合同过严（发布链路工具修复）**：对真实 GitHub REST
+  元数据回验 v2.5.9 draft Release 时发现，draft 状态的
+  `browser_download_url` 在 publish 前使用占位 tag 段
+  （`releases/download/untagged-<hex>/<资产名>`）。`--mode draft` 的
+  canonical URL 检查现在接受该占位形式（repo/资产名仍严格匹配），published
+  模式（Pages 部署门禁）保持严格 tag 路径；离线夹具按此行为补齐。
+
 ## [2.5.9] - 2026-08-28
 
 ### Fixed

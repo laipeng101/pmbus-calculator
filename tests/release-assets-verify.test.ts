@@ -281,6 +281,84 @@ describe('release-assets-verify: release metadata contract', () => {
     expect(result.status).toBe(3)
     expect(result.stderr).toContain('not a draft')
   })
+
+  it('draft mode accepts GitHub placeholder-tag asset URLs (live REST behavior)', () => {
+    // A draft Release's browser_download_url keeps an `untagged-<hex>` tag
+    // segment until publish — observed against live REST metadata when the
+    // v2.5.9 draft was verified. The operator's draft check must accept it;
+    // repo/name still stay canonical.
+    const draft = validRelease({
+      draft: true,
+      assets: [
+        asset(ZIP_NAME, {
+          browser_download_url: `https://github.com/${REPO}/releases/download/untagged-e2aca66cb8e41dc389e5/${ZIP_NAME}`,
+        }),
+        asset('SHA256SUMS.txt', {
+          size: 165,
+          browser_download_url: `https://github.com/${REPO}/releases/download/untagged-e2aca66cb8e41dc389e5/SHA256SUMS.txt`,
+        }),
+      ],
+    })
+    const ok = runScript(writeFixture(draft), ['--mode', 'draft'])
+    expect(ok.status).toBe(0)
+    const parsed = parseOutput(ok.stdout)
+    expect(parsed.zip.url).toContain('/releases/download/untagged-e2aca66cb8e41dc389e5/')
+  })
+
+  it('published mode rejects the draft placeholder tag form (strict Pages gate)', () => {
+    const result = runScript(
+      writeFixture(
+        validRelease({
+          assets: [
+            asset(ZIP_NAME, {
+              browser_download_url: `https://github.com/${REPO}/releases/download/untagged-e2aca66cb8e41dc389e5/${ZIP_NAME}`,
+            }),
+            asset('SHA256SUMS.txt'),
+          ],
+        }),
+      ),
+    )
+    expect(result.status).toBe(8)
+    expect(result.stderr).toContain('canonical')
+  })
+
+  it('draft placeholder acceptance stays scoped to the expected repo and asset name', () => {
+    const draftBase = { draft: true }
+    const wrongRepo = validRelease({
+      ...draftBase,
+      assets: [
+        asset(ZIP_NAME, {
+          browser_download_url: `https://github.com/other/repo/releases/download/untagged-e2aca66cb8e41dc389e5/${ZIP_NAME}`,
+        }),
+        asset('SHA256SUMS.txt'),
+      ],
+    })
+    expect(runScript(writeFixture(wrongRepo), ['--mode', 'draft']).status).toBe(8)
+
+    const wrongName = validRelease({
+      ...draftBase,
+      assets: [
+        asset(ZIP_NAME, {
+          browser_download_url: `https://github.com/${REPO}/releases/download/untagged-e2aca66cb8e41dc389e5/other.zip`,
+        }),
+        asset('SHA256SUMS.txt'),
+      ],
+    })
+    expect(runScript(writeFixture(wrongName), ['--mode', 'draft']).status).toBe(8)
+
+    // The placeholder form is a segment shape, not a free wildcard: a
+    // partially-untagged path (arbitrary junk) stays rejected.
+    const junkTag = validRelease({
+      ...draftBase,
+      assets: [
+        asset(ZIP_NAME, {
+          browser_download_url: `https://github.com/${REPO}/releases/download/not-a-placeholder/${ZIP_NAME}`,
+        }),
+        asset('SHA256SUMS.txt'),
+      ],
+    })
+    expect(runScript(writeFixture(junkTag), ['--mode', 'draft']).status).toBe(8)
+  })
 })
 
 describe('release-assets-verify: usage and shape errors', () => {
