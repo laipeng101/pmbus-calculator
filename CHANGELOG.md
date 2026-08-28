@@ -4,14 +4,49 @@
 
 ## [Unreleased]
 
+## [2.5.10] - 2026-08-29
+
 ### Fixed
 
-- **draft 回验的 URL 合同过严（发布链路工具修复）**：对真实 GitHub REST
-  元数据回验 v2.5.9 draft Release 时发现，draft 状态的
+- **LINEAR11 自动编码偏离严格最近值（P1）**：`findBestLinear11` 用固定绝对
+  容差 `1e-15` 把严格不同的误差归并为并列，再偏向较小 `|N|`，导致恰在
+  2^-17 中点之上的值（如 `0.0000076293945313`）被编码成 `0x0000`，而严格
+  更近的是 `0x8001`（误差小约 1.0000071e-16）；负向对称输入同样错误地落在
+  `0x0000` 而非 `0x87FF`。现在每个严格更小的 `|X − Y×2^N|` 都会胜出；
+  bit 级完全相等的误差并列采用显式确定性 tie policy（偏好更小 `|N|`，同
+  `|N|` 取 N 升序先见者）——这是计算器侧策略，PMBus Part II §7.3 只规定
+  表示关系 `X = Y × 2^N`，不规定 host-side 选码规则。锁定 N 的手动编码
+  路径、全局饱和边界与既有常规值不变（DOMAIN_MODEL §2.1）。
+- **非零十进制输入下溢不得静默提交为 ±0（P2 输入真实性）**：
+  `Number('1e-400')` 是 `+0`，旧解析层把这类文本当作合法零提交——raw 变成
+  `0x0000`/`0x8000`、provenance 改写、量化误差伪造成零，用户请求的非零
+  量级信息丢失。现在 `classifyFloatText` 增加可判别的 `underflow` 分类
+  （语法完整 + 十进制尾数含非零数字 + Number 结果为 ±0）：
+  ValueInput / NominalVoutInput 显示明确的输入范围错误并保留原始草稿，
+  不提交、不清旧 raw / 请求 / 标称；reducer 直接 dispatch 同样 no-op。
+  真零文本（`0e-400`、`-0e400`、`-0.0e-999`、`-.0e-999`）与最小 subnormal
+  （`5e-324`、`3e-324`）的 signed-zero / 有限值合同不变；HALF `2^-25` 等
+  「请求本身可表示、编码量化为零」的量化合同不变；relative L16 的派生
+  下溢诊断（v2.5.9 已有）是另一错误来源，不受影响。
+- **发布下载器缺少真实总时限（P2 运维）**：下载器每次 fetch 都新建
+  5 分钟 `AbortSignal.timeout`，两项资产 × 3 次重试的最坏累计约 30 分钟，
+  而 Pages job 自身 `timeout-minutes: 20` 可能先被平台终止，脚本定义的
+  退出码 10 与诊断来不及返回。现在整个下载操作共享一个 5 分钟累计预算
+  （重试与 backoff 消耗同一预算，不因重试重置），每次 fetch 的
+  AbortSignal 取剩余预算，预算耗尽立即以退出码 10 与可识别诊断终止；
+  重试仅限瞬时故障（网络错误与 HTTP 408/429/5xx），其他 4xx 与
+  元数据/URL/size 合同错误立即失败；两项资产全部通过 size 校验后才写盘。
+  发布元数据仍只作为数据（v2.5.9 数据边界不变）。
+- **draft 回验的 URL 占位段合同收紧（发布链路工具修复，PR #70）**：对真实
+  GitHub REST 元数据回验 v2.5.9 draft Release 时发现，draft 状态的
   `browser_download_url` 在 publish 前使用占位 tag 段
   （`releases/download/untagged-<hex>/<资产名>`）。`--mode draft` 的
-  canonical URL 检查现在接受该占位形式（repo/资产名仍严格匹配），published
-  模式（Pages 部署门禁）保持严格 tag 路径；离线夹具按此行为补齐。
+  canonical URL 检查接受该占位形式（repo/资产名仍严格匹配），published
+  模式（Pages 部署门禁）保持严格 tag 路径；v2.5.10 另把占位段正则从
+  `untagged-\w+` 收紧为实际观察到的十六进制形式 `untagged-[0-9a-f]+`，
+  实现、注释与夹具一致（保持 fail-closed；非已证实的外部攻击）。
+  该修复在 v2.5.9 publish 前已合入 main（PR #70），但不在不可变的
+  v2.5.9 tag 产品树中；本版本正式纳入发布源码。
 
 ## [2.5.9] - 2026-08-28
 

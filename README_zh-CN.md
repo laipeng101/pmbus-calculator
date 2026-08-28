@@ -8,9 +8,9 @@
 
 > **范围声明：** 本工具只做数值格式换算；它**不是** PMBus/SMBus 控制器、总线传输实现、命令执行器、设备 Profile 引擎或一致性测试套件。它覆盖 PMBus 多个修订版本中通用的数值格式语义，且**不声明**完整 PMBus 1.5 协议一致性（含 1.5 安全扩展）。
 >
-> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （当前部署版本 `v2.5.9`）
+> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （当前部署版本 `v2.5.10`）
 >
-> **Stable version：** [`v2.5.9`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v2.5.9) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v2.5.9/SHA256SUMS.txt)
+> **Stable version：** [`v2.5.10`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v2.5.10) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v2.5.10/SHA256SUMS.txt)
 
 ---
 
@@ -85,7 +85,7 @@ npm test         # 运行 Vitest 测试
 
 **静态构建包：** `dist/` 是静态构建产物，必须通过 HTTP 静态服务器使用（例如 `npm run preview` 或任意静态托管服务），不承诺直接双击 `dist/index.html` 以 `file://` 方式打开。
 
-**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 部署的是不可变的 `v2.5.9` Release 资产。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
+**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 部署的是不可变的 `v2.5.10` Release 资产。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
 
 **操作流程：**
 

@@ -3,10 +3,11 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-28（v2.5.9 无效草稿失焦修复（共享 `resolveFloatTextOnBlur`
-分类在先，过渡态严格化）+ relative 派生溢出/下溢诊断（共享
-`resolveRelativeVoltage`，结果/公式/步骤/警告/复制一致）+ 发布元数据
-JSON 数据接口（弃用 `source`，canonical URL 合同）+ 验收证据留存纪律）
+最后更新：2026-08-29（v2.5.10 LINEAR11 自动编码严格最近值修复（移除
+固定 1e-15 epsilon，exact tie 显式 smaller-|N| policy 入 DOMAIN_MODEL
+§2.1）+ 非零十进制输入下溢拒绝（`classifyFloatText` 可判别 `underflow`
+分类，输入真实性合同入 UI_CONVENTIONS §8）+ 发布下载器 5 分钟真实累计
+预算 + draft 占位 URL hex 合同收紧（PR #70 正式纳入发布源码））
 
 ## 当前产品基线
 
@@ -31,7 +32,7 @@ JSON 数据接口（弃用 `source`，canonical URL 合同）+ 验收证据留�
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.9；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.10；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -111,7 +112,17 @@ M0–M39 complete；stable release v2.5.9；production distribution: GitHub Page
   `download-release-assets.mjs` 消费者；Pages workflow 弃用 `source`）——
   验收证据留存（Playwright `trace: 'retain-on-failure'` + JSON reporter，
   失败留存与真实退出码纪律入 CONTRIBUTING）。
-- 当前：无进行中的功能里程碑；v2.5.9 已完成发布准备，M40–M41 complete。
+- v2.5.10（PATCH）：LINEAR11 自动编码严格最近值修复（`findBestLinear11`
+  移除固定 1e-15 epsilon——严格不同误差不再被归并为 tie；bit-exact tie
+  采用显式 smaller-`|N|` 确定性策略，DOMAIN_MODEL §2.1；65536 全码
+  oracle + 中点邻接矩阵锁定）——非零十进制输入下溢拒绝（
+  `classifyFloatText` 新增可判别 `underflow`：尾数数学非零而 binary64
+  结果为 ±0 的文本报明确输入范围错误，不提交、不清旧 raw/请求/标称；
+  真零与最小 subnormal 合同不变，UI_CONVENTIONS §8）——发布下载器
+  5 分钟真实累计预算（重试/backoff 消耗同一预算，不再出现 30 分钟
+  最坏累计对 20 分钟 job 的矛盾）——draft 占位 URL `untagged-<hex>`
+  合同收紧（PR #70 修复正式纳入发布源码）。
+- 当前：无进行中的功能里程碑；v2.5.10 已完成发布准备，M40–M41 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
