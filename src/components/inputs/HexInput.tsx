@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { parseHexStrict } from '../../app/hex-parse'
+import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
   id: string
@@ -25,7 +26,8 @@ function isTransitionalHex(input: string): boolean {
  * a fixed, non-editable element outside the input. Pasting `18`, `0x18` or
  * `0X18` is accepted and normalized to the digit-only draft `18`. Empty drafts
  * commit to 0 on blur/Enter; illegal characters and over-long drafts keep a
- * field-level error and never modify committed state.
+ * field-level error and never modify committed state. An untouched focus/blur
+ * (no onChange at all) is a strict no-op (v2.5.7).
  */
 export default function HexInput({
   id,
@@ -40,6 +42,7 @@ export default function HexInput({
   const [draft, setDraft] = useState(value)
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const transaction = useEditTransaction()
 
   useEffect(() => {
     if (!editing && !error) setDraft(value)
@@ -53,6 +56,7 @@ export default function HexInput({
   }
 
   const handleChange = (raw: string) => {
+    transaction.markDirty()
     const text = normalizeDigits(raw)
     setDraft(text)
     if (isTransitionalHex(text)) {
@@ -69,6 +73,12 @@ export default function HexInput({
   }
 
   const handleBlur = () => {
+    // Untouched focus/blur (no onChange at all) is a strict no-op: no commit,
+    // no raw rewrite, no provenance loss, no field-error change (v2.5.7).
+    if (!transaction.shouldCommitOnBlur()) {
+      setEditing(false)
+      return
+    }
     const text = normalizeDigits(draft)
     if (text === '') {
       setError(null)

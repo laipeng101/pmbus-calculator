@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { isTransitionalIntegerText, parseIntegerStrict } from '../../app/int-parse'
+import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
   id: string
@@ -45,6 +46,7 @@ export default function IntegerInput({
   const [draft, setDraft] = useState(String(value))
   const [editing, setEditing] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const transaction = useEditTransaction()
 
   // 过渡态击键期间不显示 reducer 错误，避免把未完成的输入当最终值逐键报错。
   const suppressStateError = editing && isTransitionalIntegerText(draft)
@@ -55,6 +57,7 @@ export default function IntegerInput({
   }, [value, editing, error])
 
   const handleChange = (text: string) => {
+    transaction.markDirty()
     setDraft(text)
     if (rangeBehavior === 'reject') {
       // The reducer owns validation for reject-mode fields; per-field errors
@@ -77,6 +80,13 @@ export default function IntegerInput({
   }
 
   const handleBlur = () => {
+    // Untouched focus/blur (no onChange at all) is a strict no-op: no commit,
+    // no raw/parameter rewrite, no provenance loss, and a still-visible
+    // field error stays (v2.5.7).
+    if (!transaction.shouldCommitOnBlur()) {
+      setEditing(false)
+      return
+    }
     // Normalize unfinished states (empty / lone sign) to 0 — a defined
     // completion, not a silent rollback of an invalid final value.
     const trimmed = draft.trim()

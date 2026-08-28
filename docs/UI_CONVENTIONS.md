@@ -99,7 +99,10 @@
 - 整数语法统一为「可选正负号 + 十进制数字」；`src/app/int-parse.ts` 是 reducer 与
   所有整数输入组件的唯一解析来源，拒绝 `1e2`、`1.5`、`12abc`、`0x10`、仅正负号与
   unsafe integer。物理值解析统一走 `src/app/float-parse.ts`（`parseFloatSafe` +
-  过渡态分类），reducer 与组件不得各自维护规则。
+  过渡态分类），reducer 与组件不得各自维护规则。signed zero（v2.5.7，Part II §7.6）：
+  `-0`、`-0.0`、`-.0`、`-.00`、`-0e3` 解析为真正的 `-0`（HALF 编码 `0x8000`），
+  `0`、`+0`、`0.0`、`.0`、`+.0`、`0e3` 为 `+0`（`0x0000`）；裸 `.`/`+.`/`-.` 是
+  编辑过渡态，blur 归一化保留符号（`.`/`+.` → `0`，`-.` → `-0`）。
 - 统一编辑模型：编辑中的过渡态（空串、单独正负号、`1e`、`1.`、`0x` 等）暂存，
   不逐键重置、不逐键报错；非法文本不得修改 committed state、raw、公式或结果。
 - 非法最终值必须有字段级、可见、唯一的错误，不得静默回滚；blur 后非法 draft
@@ -111,11 +114,14 @@
 - 数值范围合同：L11 N/Y、DIRECT Y、L16 V 超范围 clamp；DIRECT m/b/R 超范围拒绝
   并保留最后有效值；`m ≠ 0`（m=0 为显式存储的非法状态）。HALF 接受
   NaN/±Infinity，其他模式拒绝非有限值。
-- **未编辑的 focus/blur 是严格 no-op（v2.5.6）**：物理值输入在当前 focus 会话内
-  没有任何 `onChange` 编辑事务时，blur（含 Enter 触发的 blur）不派发 `value/set`、
-  不改写 raw、不伪造量化请求来源、不清除已有字段错误。真实编辑（含清空后 blur
-  规范化为 0）仍按既有合同提交；HALF 中显式重输 `NaN` 仍 canonical 化为 `0x7E00`
-  并出现 special/warn provenance。dirty 状态依据真实编辑事务，不用解析数值比较。
+- **未编辑的 focus/blur 是严格 no-op（v2.5.6 起；v2.5.7 推广到全部共享输入）**：
+  所有共享输入（物理值、raw Hex、整数/十进制编辑器、VOUT_MODE expert Hex 与 N、
+  标称参考值）在当前 focus 会话内没有任何 `onChange` 编辑事务时，blur（含 Enter
+  触发的 blur）不派发 commit、不改写 raw/参数/VOUT_MODE 字节、不伪造量化请求来源、
+  不清除已有字段错误。真实编辑（含清空后 blur 规范化、显式重输相同值、粘贴、非法
+  文本修复）仍按既有合同提交；HALF 中显式重输 `NaN` 仍 canonical 化为 `0x7E00`
+  并出现 special/warn provenance。dirty 状态依据真实编辑事务（共享 helper
+  `src/app/input-transaction.ts`），不用解析数值比较。
 - 模式切换后不得留下与当前显示值矛盾的 stale error（错误随字段所在 workspace
   卸载清除；DIRECT 系数错误随状态保留、只在 DIRECT 模式渲染）。
 - 全局快捷键 `Ctrl+1..4` 仅在非编辑上下文生效：`src/app/editable-target.ts` 判定

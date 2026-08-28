@@ -231,9 +231,11 @@
 - 量化误差仅在存在**显式且仍然有效**的编码请求时定义：请求 = 用户通过物理值输入
   最后一次成功提交的 `value/set`。L11 使用历史通道 `l11.valueInput`；L16/DIRECT/HALF
   共享模式标签的 `state.valueRequest`（`{ mode, value }`），防止跨页污染。
-- **只 focus 后 blur、未发生任何编辑不是显式请求（v2.5.6）**：物理值输入组件在当前
-  focus 会话内没有发生任何 `onChange` 编辑事务时，blur 必须是严格 no-op——不派发
-  `value/set`、不改写 raw、不伪造请求来源、不隐藏也不显示误差。dirty 判定依据真实
+- **只 focus 后 blur、未发生任何编辑不是显式请求（v2.5.6 起；v2.5.7 推广到全部共享输入）**：
+  所有共享输入（物理值、raw Hex、L11/L16/DIRECT 的 Y/N/V/m/b/R、SLINEAR16 Y_s、
+  VOUT_MODE expert Hex/N、标称参考值）在当前 focus 会话内没有发生任何 `onChange`
+  编辑事务时，blur/Enter 必须是严格 no-op——不派发 commit、不改写 raw/参数/VOUT_MODE
+  字节、不伪造请求来源、不隐藏也不显示误差、不清除仍存在的字段错误。dirty 判定依据真实
   编辑事务，不得用解析数值比较（`NaN !== NaN`、`-0`、`1.0` vs `1` 等文本表示差异都
   不可靠）。HALF raw `0x7C01`（非规范 NaN）在无操作 focus/blur 后必须保持
   `0x7C01`——§7.6.2 要求设备精确返回主机写入的 IEEE 编码，显示层往返不得把
