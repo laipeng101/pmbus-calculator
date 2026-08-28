@@ -365,13 +365,25 @@ test.describe('v2.5.5 VOUT_MODE legality — structural validity is separate fro
     await settle(page)
     await switchToVoutMode(page)
 
-    // 00h Not Used and an unlisted reserved code: not valid profiles.
+    // 00h Not Used, a Table-3-LISTED reserved code (04h Intel, v2.5.6) and
+    // an unlisted reserved code (25h): not valid profiles, but listed codes
+    // must state their listing and never read "未列出".
     for (const [hex, expected] of [
       ['20', 'VID code 00h — 未使用'],
-      ['24', 'VID code 保留'],
+      ['21', 'VID code 保留（Table 3 明列，留给未来 Intel 处理器）'],
+      ['24', 'VID code 保留（Table 3 明列，留给未来 Intel 处理器）'],
+      ['25', 'VID code 保留（Table 3 未列出，保留供未来使用）'],
     ] as const) {
       await setVoutModeByte(page, hex)
       await expect(page.getByTestId('vout-mode-status')).toContainText(expected)
+      if (hex === '21' || hex === '24') {
+        // Listed-reserved provenance: the listing must be stated and
+        // "未列出" must not appear anywhere in the surfaces.
+        await expect(page.getByTestId('vout-mode-status')).not.toContainText('未列出')
+        const alert = page.getByRole('alert').filter({ hasText: 'VID code' }).first()
+        await expect(alert).toBeAttached()
+        await expect(alert).not.toContainText('未列出')
+      }
       await expect(page.getByTestId('vout-mode-config-summary')).toHaveAttribute(
         'data-alert',
         'true',

@@ -107,13 +107,28 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
             'Part II §8.4.2 Table 3',
           ),
         )
-      } else if (req.id === 'vid-reserved') {
+      } else if (req.id === 'vid-reserved-listed') {
+        const reason = a.vidCode?.reservedReason
         out.push(
           explanation(
-            'vid-reserved',
+            'vid-reserved-listed',
             'warning',
-            'VID code ' + codeHex + 'h：保留',
-            '该 VID Code Type 保留（01h..04h 留给未来 Intel、10h..11h 留给未来 AMD、1Ch..1Dh 保留未来使用，其余未列出 code 也保留）；不得当作有通用电压映射的 profile。',
+            'VID code ' + codeHex + 'h：保留（Table 3 明列）',
+            reason
+              ? '该 VID Code Type 是 Part II §8.4.2 Table 3 明列的保留值（' +
+                  reason +
+                  '）；不得当作有通用电压映射的 profile。'
+              : '该 VID Code Type 是 Part II §8.4.2 Table 3 明列的保留值；不得当作有通用电压映射的 profile。',
+            'Part II §8.4.2 Table 3',
+          ),
+        )
+      } else if (req.id === 'vid-reserved-unlisted') {
+        out.push(
+          explanation(
+            'vid-reserved-unlisted',
+            'warning',
+            'VID code ' + codeHex + 'h：保留（Table 3 未列出）',
+            'Table 3 未列出该 VID Code Type；规范将未列出类型保留供未来使用，不得当作有通用电压映射的 profile。',
             'Part II §8.4.2 Table 3',
           ),
         )

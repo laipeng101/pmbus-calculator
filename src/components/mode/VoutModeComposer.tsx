@@ -39,11 +39,18 @@ const FORMAT_TERM_ID: Record<VoutModeFormat, TermId> = {
   3: 'binary16',
 }
 
-function vidOptionLabel(code: number, kind: string): string {
-  const hex = code.toString(16).toUpperCase().padStart(2, '0')
-  if (kind === 'not-used') return hex + 'h · 未使用'
-  if (kind === 'profile-required') return hex + 'h · 制造商自定义'
-  return hex + 'h · 保留'
+function vidOptionLabel(v: { code: number; kind: string; reservedReason?: string }): string {
+  const hex = v.code.toString(16).toUpperCase().padStart(2, '0')
+  if (v.kind === 'not-used') return hex + 'h · 未使用'
+  if (v.kind === 'profile-required') return hex + 'h · 制造商自定义'
+  // Listed-reserved options must state the Table 3 listing and never read
+  // "未列出"; unlisted ones state their absence (v2.5.6 provenance split).
+  if (v.kind === 'listed-reserved') {
+    return v.reservedReason
+      ? hex + 'h · 保留（Table 3 明列，' + v.reservedReason + '）'
+      : hex + 'h · 保留（Table 3 明列）'
+  }
+  return hex + 'h · 保留（Table 3 未列出）'
 }
 
 const byteDigits = (byte: number) => (byte & 0xff).toString(16).toUpperCase().padStart(2, '0')
@@ -214,11 +221,11 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             onChange={(e) =>
               dispatch({ type: 'vout-mode/set-parameter', parameter: Number(e.target.value) })
             }
-            className="panel-surface-muted rounded-lg px-3 py-2 text-sm outline-none"
+            className="panel-surface-muted w-full min-w-0 rounded-lg px-3 py-2 text-sm outline-none"
           >
             {VID_CODE_TABLE.map((v) => (
               <option key={v.code} value={v.code}>
-                {vidOptionLabel(v.code, v.kind)}
+                {vidOptionLabel(v)}
               </option>
             ))}
           </select>

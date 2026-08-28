@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { AppState, AppMode } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
-import type { VoutModeFormat, VoutModeStatus } from '../legacy/vout-mode'
+import type { VoutModeFormat, VoutModeStatus, VidCodeKind } from '../legacy/vout-mode'
 import { getCommandConfig } from '../legacy/command-metadata'
 import { buildCMacro } from './copy-utils'
 import { getFormulaPresentation } from './formula-presentation'
@@ -106,7 +106,7 @@ export interface VoutModeInfoVM {
   /** Machine-testable reason code. */
   reason: string
   /** VID code classification, present only for the VID format. */
-  vidCodeKind?: 'not-used' | 'reserved' | 'profile-required'
+  vidCodeKind?: VidCodeKind
   /** Short UI classification text derived from the domain analysis. */
   statusText: string
   /** 8-bit binary rendering of the byte. */
@@ -258,8 +258,15 @@ function voutModeStatusText(byte: number): string {
       return a.formatName + ' 参数必须为 0（§8.3 Table 2）'
     case 'vid-not-used':
       return 'VID code 00h — 未使用'
-    case 'vid-reserved':
-      return 'VID code 保留（规范未列出）'
+    case 'vid-reserved-listed': {
+      // Table 3 provenance text comes from the classifier single source; a
+      // listed-reserved code must never be described as unlisted (v2.5.6).
+      const a = analyzeVoutMode(byte)
+      const reason = a.vidCode?.reservedReason
+      return reason ? `VID code 保留（Table 3 明列，${reason}）` : 'VID code 保留（Table 3 明列）'
+    }
+    case 'vid-reserved-unlisted':
+      return 'VID code 保留（Table 3 未列出，保留供未来使用）'
     case 'vid-profile-required':
       return 'VID code 制造商自定义（需器件资料）'
     case 'invalid-input':
@@ -607,13 +614,30 @@ function buildWarnings(state: AppState): WarningVM[] {
             text: `VOUT_MODE ${hex} 的 VID code 00h 为未使用，不构成有效 VID profile。`,
           })
           break
-        case 'vid-reserved':
+        case 'vid-reserved-listed': {
+          // Table-3-listed reserved code (01h..04h / 10h..11h / 1Ch..1Dh):
+          // provenance wording comes from the classifier single source and
+          // must state the listing, never "unlisted" (v2.5.6).
+          const codeHex = a.parameter.toString(16).toUpperCase().padStart(2, '0')
+          const reason = a.vidCode?.reservedReason
           warnings.push({
             id: 'vout-mode-vid-reserved',
             level: 'warning',
-            text: `VOUT_MODE ${hex} 的 VID code ${a.parameter.toString(16).toUpperCase().padStart(2, '0')}h 为保留值（Part II §8.4.2 Table 3 未列出）。`,
+            text: reason
+              ? `VOUT_MODE ${hex} 的 VID code ${codeHex}h 为保留值（Part II §8.4.2 Table 3 明列，${reason}）。`
+              : `VOUT_MODE ${hex} 的 VID code ${codeHex}h 为保留值（Part II §8.4.2 Table 3 明列）。`,
           })
           break
+        }
+        case 'vid-reserved-unlisted': {
+          const codeHex = a.parameter.toString(16).toUpperCase().padStart(2, '0')
+          warnings.push({
+            id: 'vout-mode-vid-reserved',
+            level: 'warning',
+            text: `VOUT_MODE ${hex} 的 VID code ${codeHex}h 为保留值（Part II §8.4.2 Table 3 未列出，保留供未来使用）。`,
+          })
+          break
+        }
         case 'vid-profile-required':
           warnings.push({
             id: 'vout-mode-vid-profile',

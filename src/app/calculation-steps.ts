@@ -403,11 +403,23 @@ function buildVoutModeSteps(state: AppState): CalculationStepVM[] {
         ),
       )
       break
-    case 'vid-reserved':
+    case 'vid-reserved-listed': {
+      const reason = a.vidCode?.reservedReason
       steps.push(
         warningStep(
           'vout-mode-vid-reserved',
-          `${a.vidCode?.label ?? 'VID code 保留'}；该 code 保留，不得当作有通用电压映射的 profile（Part II §8.4.2 Table 3）。`,
+          `${a.vidCode?.label ?? 'VID code 保留'}；该 code 是 Part II §8.4.2 Table 3 明列的保留值${
+            reason ? `（${reason}）` : ''
+          }，不得当作有通用电压映射的 profile。`,
+        ),
+      )
+      break
+    }
+    case 'vid-reserved-unlisted':
+      steps.push(
+        warningStep(
+          'vout-mode-vid-reserved',
+          `${a.vidCode?.label ?? 'VID code 保留'}；Table 3 未列出该 code，保留供未来使用，不得当作有通用电压映射的 profile（Part II §8.4.2 Table 3）。`,
         ),
       )
       break

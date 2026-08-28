@@ -92,7 +92,7 @@ const TRUTH_ROWS: Array<{
     requiresNominalReference: false,
     standardBinary16: false,
   },
-  // VID classifications
+  // VID classifications — 01h is a Table-3-LISTED reserved code (v2.5.6)
   {
     byte: 0x20,
     id: 'vid-not-used',
@@ -103,7 +103,15 @@ const TRUTH_ROWS: Array<{
   },
   {
     byte: 0x21,
-    id: 'vid-reserved',
+    id: 'vid-reserved-listed',
+    requiresDeviceCoefficients: false,
+    requiresVidProfile: false,
+    requiresNominalReference: false,
+    standardBinary16: false,
+  },
+  {
+    byte: 0x25,
+    id: 'vid-reserved-unlisted',
     requiresDeviceCoefficients: false,
     requiresVidProfile: false,
     requiresNominalReference: false,
@@ -182,15 +190,19 @@ describe('resolveVoutModeRequirement structureLegal vs calculability (v2.5.5)', 
   })
 
   it('00h Not Used and reserved codes remain non-usable configurations', () => {
-    // VID-format bytes 0x20|code: 00h not-used; 01h..04h, 10h..11h and
-    // 1Ch..1Dh reserved; unlisted codes reserved as well.
-    for (const byte of [0x20, 0x21, 0x24, 0x30, 0x3c, 0x3d]) {
+    // VID-format bytes 0x20|code: 00h not-used; listed-reserved codes
+    // (01h..04h Intel, 10h..11h AMD, 1Ch..1Dh future use) and unlisted codes
+    // are all reserved, non-usable configurations (v2.5.6 provenance split).
+    for (const byte of [0x20, 0x21, 0x24, 0x30, 0x31, 0x3c, 0x3d, 0x25, 0x32, 0x3b]) {
       const req = resolveVoutModeRequirement(analyzeVoutMode(byte))
       expect(req.structureLegal, `byte 0x${byte.toString(16)}`).toBe(false)
       expect(req.requiresVidProfile, `byte 0x${byte.toString(16)}`).toBe(false)
-      expect(req.id === 'vid-not-used' || req.id === 'vid-reserved', `0x${byte.toString(16)}`).toBe(
-        true,
-      )
+      expect(
+        req.id === 'vid-not-used' ||
+          req.id === 'vid-reserved-listed' ||
+          req.id === 'vid-reserved-unlisted',
+        `0x${byte.toString(16)}`,
+      ).toBe(true)
     }
   })
 
@@ -219,6 +231,35 @@ describe('resolveVoutModeRequirement structureLegal vs calculability (v2.5.5)', 
       expect(req.standardBinary16, hex).toBe(
         req.id === 'half-absolute' || req.id === 'half-relative',
       )
+    }
+  })
+
+  it('absolute VID bytes 0x20..0x3F map every Table 3 code to its provenance id', () => {
+    const expectedId = (code: number): string => {
+      if (code === 0x00) return 'vid-not-used'
+      if (code === 0x1e || code === 0x1f) return 'vid-profile-required'
+      if (
+        (code >= 0x01 && code <= 0x04) ||
+        (code >= 0x10 && code <= 0x11) ||
+        (code >= 0x1c && code <= 0x1d)
+      ) {
+        return 'vid-reserved-listed'
+      }
+      return 'vid-reserved-unlisted'
+    }
+    for (let code = 0; code <= 0x1f; code++) {
+      const byte = 0x20 | code
+      const req = resolveVoutModeRequirement(analyzeVoutMode(byte))
+      expect(req.id, `byte 0x${byte.toString(16).padStart(2, '0')}`).toBe(expectedId(code))
+      // Listed-reserved text surfaces must never be able to claim "unlisted":
+      // the machine kind carries the provenance.
+      const kind = analyzeVoutMode(byte).vidCode?.kind
+      if (expectedId(code) === 'vid-reserved-listed') {
+        expect(kind, `byte 0x${byte.toString(16).padStart(2, '0')}`).toBe('listed-reserved')
+      }
+      if (expectedId(code) === 'vid-reserved-unlisted') {
+        expect(kind, `byte 0x${byte.toString(16).padStart(2, '0')}`).toBe('unlisted-reserved')
+      }
     }
   })
 })
