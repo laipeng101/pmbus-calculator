@@ -43,7 +43,7 @@ describe('computeQuantizationOutcome — provenance contract (all modes)', () =>
     const mZero = make({
       mode: 'DIRECT',
       direct: { ...BASE.direct, m: 0 },
-      valueRequest: { mode: 'DIRECT', value: 1 },
+      valueRequest: { mode: 'DIRECT', value: 1, text: '1' },
     })
     expect(computeQuantizationOutcome(mZero)).toBeNull()
   })
@@ -222,7 +222,7 @@ describe('computeQuantizationOutcome — DIRECT', () => {
         mode: 'DIRECT',
         raw: 1235,
         direct: { m: 1000, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-        valueRequest: { mode: 'DIRECT', value: 1.2345 },
+        valueRequest: { mode: 'DIRECT', value: 1.2345, text: '1.2345' },
       }),
     )
     expect(q).toMatchObject({ status: 'quantized', represented: 1.235 })
@@ -235,7 +235,7 @@ describe('computeQuantizationOutcome — DIRECT', () => {
         mode: 'DIRECT',
         raw: PMBusMath.fromSigned(-1234, 16),
         direct: { m: 1000, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-        valueRequest: { mode: 'DIRECT', value: -1.2345 },
+        valueRequest: { mode: 'DIRECT', value: -1.2345, text: '-1.2345' },
       }),
     )
     expect(q?.represented).toBe(-1.234)
@@ -252,7 +252,7 @@ describe('computeQuantizationOutcome — DIRECT', () => {
         mode: 'DIRECT',
         raw: 0,
         direct: { m: 1, b: 1, r: -1, errors: { m: null, b: null, r: null } },
-        valueRequest: { mode: 'DIRECT', value: 0 },
+        valueRequest: { mode: 'DIRECT', value: 0, text: '0' },
       }),
     )
     expect(q).toMatchObject({ status: 'quantized', requested: 0, represented: -1 })
@@ -266,11 +266,186 @@ describe('computeQuantizationOutcome — DIRECT', () => {
         mode: 'DIRECT',
         raw: 0x7fff,
         direct: { m: 1000, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-        valueRequest: { mode: 'DIRECT', value: 1e9 },
+        valueRequest: { mode: 'DIRECT', value: 1e9, text: '1e9' },
       }),
     )
     expect(q?.status).toBe('saturated')
     expect(q?.represented).toBe(32.767)
+  })
+})
+
+describe('computeQuantizationOutcome — DIRECT exact request provenance (v2.5.12)', () => {
+  // Hand-built fixture mirroring a reducer transaction: `value` is the
+  // classify-float Number of the same lexeme stored in `text`.
+  const directExactState = (raw: number, m: number, b: number, r: number, text: string): AppState =>
+    make({
+      mode: 'DIRECT',
+      raw,
+      direct: { m, b, r, errors: { m: null, b: null, r: null } },
+      valueRequest: { mode: 'DIRECT', value: Number(text), text },
+    })
+
+  it('counterexample A: integer request beyond binary64 resolution is quantized with exact +1 delta', () => {
+    // m=1, b=0, R=-17: Y = round(100000000000000001 × 10^-17) = 1 → raw 0001.
+    // binary64 folds both sides to 1e17 (Number delta 0) — the exact pipeline
+    // must still report requested − represented = +1.
+    const q = computeQuantizationOutcome(directExactState(0x0001, 1, 0, -17, '100000000000000001'))
+    expect(q?.status).toBe('quantized')
+    expect(q?.directExact?.requested).toEqual({ numerator: 100000000000000001n, denominator: 1n })
+    expect(q?.directExact?.represented).toEqual({ numerator: 100000000000000000n, denominator: 1n })
+    expect(q?.directExact?.absoluteError).toEqual({ numerator: 1n, denominator: 1n })
+    // relative percent = 100 / (1e17 + 1) — never textual zero.
+    expect(q?.directExact?.relativePercent).toEqual({
+      numerator: 100n,
+      denominator: 100000000000000001n,
+    })
+    // The Number fields stay folded approximations; they must not decide status.
+    expect(q?.absoluteError).toBe(0)
+  })
+
+  it('counterexample A negative symmetric: exact −1 delta', () => {
+    const q = computeQuantizationOutcome(directExactState(0xffff, 1, 0, -17, '-100000000000000001'))
+    expect(q?.status).toBe('quantized')
+    expect(q?.directExact?.absoluteError).toEqual({ numerator: -1n, denominator: 1n })
+    expect(q?.directExact?.represented).toEqual({
+      numerator: -100000000000000000n,
+      denominator: 1n,
+    })
+  })
+
+  it('true exact control: 100000000000000000 re-encodes exactly', () => {
+    const q = computeQuantizationOutcome(directExactState(0x0001, 1, 0, -17, '100000000000000000'))
+    expect(q?.status).toBe('exact')
+    expect(q?.directExact?.absoluteError).toEqual({ numerator: 0n, denominator: 1n })
+    expect(q?.directExact?.relativePercent).toEqual({ numerator: 0n, denominator: 1n })
+  })
+
+  it('counterexample B: −1.0000000000000000001 → exact −1e-19 delta, quantized', () => {
+    // m=1, b=1, R=17: Y = round((−1.0000000000000000001 + 1) × 10^17) =
+    // round(−0.01) = 0 → raw 0000, represented −1; the binary64 request
+    // folds to −1 and the legacy readout showed a zero error.
+    const q = computeQuantizationOutcome(
+      directExactState(0x0000, 1, 1, 17, '-1.0000000000000000001'),
+    )
+    expect(q?.status).toBe('quantized')
+    expect(q?.directExact?.requested).toEqual({
+      numerator: -10000000000000000001n,
+      denominator: 10n ** 19n,
+    })
+    expect(q?.directExact?.represented).toEqual({ numerator: -1n, denominator: 1n })
+    expect(q?.directExact?.absoluteError).toEqual({ numerator: -1n, denominator: 10n ** 19n })
+  })
+
+  it('counterexample C upper: 32767.0000000000000001 saturates with exact +1e-16 delta', () => {
+    const q = computeQuantizationOutcome(
+      directExactState(0x7fff, 1, 0, 0, '32767.0000000000000001'),
+    )
+    expect(q?.status).toBe('saturated')
+    expect(q?.represented).toBe(32767)
+    expect(q?.directExact?.absoluteError).toEqual({ numerator: 1n, denominator: 10n ** 16n })
+  })
+
+  it('counterexample C lower: −32768.0000000000000001 saturates with exact −1e-16 delta', () => {
+    const q = computeQuantizationOutcome(
+      directExactState(0x8000, 1, 0, 0, '-32768.0000000000000001'),
+    )
+    expect(q?.status).toBe('saturated')
+    expect(q?.represented).toBe(-32768)
+    expect(q?.directExact?.absoluteError).toEqual({ numerator: -1n, denominator: 10n ** 16n })
+  })
+
+  it('inside-boundary 32766.9999999999999999 is quantized, never saturated', () => {
+    const q = computeQuantizationOutcome(
+      directExactState(0x7fff, 1, 0, 0, '32766.9999999999999999'),
+    )
+    expect(q?.status).toBe('quantized')
+    expect(q?.directExact?.absoluteError).toEqual({ numerator: -1n, denominator: 10n ** 16n })
+  })
+
+  it('exact endpoints 32767 and −32768 classify exact', () => {
+    const hi = computeQuantizationOutcome(directExactState(0x7fff, 1, 0, 0, '32767'))
+    expect(hi?.status).toBe('exact')
+    expect(hi?.directExact?.relativePercent).toEqual({ numerator: 0n, denominator: 1n })
+    const lo = computeQuantizationOutcome(directExactState(0x8000, 1, 0, 0, '-32768'))
+    expect(lo?.status).toBe('exact')
+  })
+
+  it('Math.round half-up ties stay repository policy: 0.5 → Y=1, −0.5 → Y=0', () => {
+    const up = computeQuantizationOutcome(directExactState(0x0001, 1, 0, 0, '0.5'))
+    expect(up?.status).toBe('quantized')
+    expect(up?.directExact?.absoluteError).toEqual({ numerator: -1n, denominator: 2n })
+    // Math.round(−0.5) is −0: the half-toward-+∞ contract encodes Y=0.
+    const down = computeQuantizationOutcome(directExactState(0x0000, 1, 0, 0, '-0.5'))
+    expect(down?.status).toBe('quantized')
+    expect(down?.directExact?.absoluteError).toEqual({ numerator: -1n, denominator: 2n })
+  })
+
+  it('negative m orders the exact range endpoints (min −32767, max 32768)', () => {
+    const above = computeQuantizationOutcome(directExactState(0x8000, -1, 0, 0, '40000'))
+    expect(above?.status).toBe('saturated')
+    expect(above?.represented).toBe(32768)
+    expect(above?.directExact?.absoluteError).toEqual({ numerator: 7232n, denominator: 1n })
+    const below = computeQuantizationOutcome(directExactState(0x7fff, -1, 0, 0, '-40000'))
+    expect(below?.status).toBe('saturated')
+    expect(below?.represented).toBe(-32767)
+    expect(below?.directExact?.absoluteError).toEqual({ numerator: -7233n, denominator: 1n })
+  })
+
+  it('R extreme −128: 1e38 quantizes with exact 1e38 delta and 100% relative', () => {
+    // Encode (m·X + b)·10^R = 1e38 × 10^−128 → round(1e-90) = 0 → raw 0000.
+    const q = computeQuantizationOutcome(directExactState(0x0000, 1, 0, -128, '1e38'))
+    expect(q?.status).toBe('quantized')
+    expect(q?.directExact?.absoluteError).toEqual({ numerator: 10n ** 38n, denominator: 1n })
+    expect(q?.directExact?.relativePercent).toEqual({ numerator: 100n, denominator: 1n })
+  })
+
+  it('b≠0 shifts the exact encodable range: request 1 with b=−5, R=127 saturates', () => {
+    // Y = round((1−5) × 10^127) clamps to −32768; the exact range sits at
+    // 5 ± 3.3e-123, so the request is strictly below the exact minimum.
+    const q = computeQuantizationOutcome(directExactState(0x8000, 1, -5, 127, '1'))
+    expect(q?.status).toBe('saturated')
+    // binary64 collapses the represented value to exactly 5 (5 − 3.3e-123).
+    expect(q?.represented).toBe(5)
+  })
+
+  it('repeating-decimal error stays exact as a rational (m=3: 0.5 → 2/3, delta −1/6)', () => {
+    const q = computeQuantizationOutcome(directExactState(0x0002, 3, 0, 0, '0.5'))
+    expect(q?.status).toBe('quantized')
+    expect(q?.directExact?.represented).toEqual({ numerator: 2n, denominator: 3n })
+    expect(q?.directExact?.absoluteError).toEqual({ numerator: -1n, denominator: 6n })
+    expect(q?.directExact?.relativePercent).toEqual({ numerator: -100n, denominator: 3n })
+  })
+
+  it('exact-zero requests keep relativePercent null (true zero and signed −0)', () => {
+    const zero = computeQuantizationOutcome(directExactState(0x0000, 1, 1, -1, '0'))
+    expect(zero?.status).toBe('quantized')
+    expect(zero?.directExact?.requested.numerator).toBe(0n)
+    expect(zero?.directExact?.relativePercent).toBeNull()
+    const signedZero = computeQuantizationOutcome(directExactState(0x0000, 1, 0, 0, '-0'))
+    expect(signedZero?.status).toBe('exact')
+    expect(signedZero?.directExact?.relativePercent).toBeNull()
+  })
+
+  it('m=0 and non-parsing provenance fail closed with no fabricated outcome', () => {
+    const mZero = computeQuantizationOutcome(
+      make({
+        mode: 'DIRECT',
+        raw: 1,
+        direct: { m: 0, b: 0, r: 0, errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null } },
+        valueRequest: { mode: 'DIRECT', value: 1, text: '1' },
+      }),
+    )
+    expect(mZero).toBeNull()
+    // A provenance whose lexeme no longer parses is unreachable through the
+    // reducer (deterministic parse of the stored lexeme); fail closed anyway.
+    const stale = computeQuantizationOutcome(
+      make({
+        mode: 'DIRECT',
+        raw: 1,
+        valueRequest: { mode: 'DIRECT', value: 1, text: 'not-a-number' },
+      }),
+    )
+    expect(stale).toBeNull()
   })
 })
 

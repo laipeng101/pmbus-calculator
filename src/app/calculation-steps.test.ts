@@ -36,7 +36,11 @@ describe('buildCalculationSteps — quantization-error step (LINEAR11 parity)', 
 
   it('appends the quantization intermediate for DIRECT and HALF requests', () => {
     const direct = buildCalculationSteps(
-      state({ mode: 'DIRECT', raw: 1235, valueRequest: { mode: 'DIRECT', value: 1.2345 } }),
+      state({
+        mode: 'DIRECT',
+        raw: 1235,
+        valueRequest: { mode: 'DIRECT', value: 1.2345, text: '1.2345' },
+      }),
     )
     expect(direct.some((s) => s.id === 'direct-quantization' && s.kind === 'intermediate')).toBe(
       true,

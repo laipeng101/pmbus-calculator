@@ -41,16 +41,21 @@ function parseIntegerRange(s: string, min: number, max: number): number | null {
  * Math.round + signed-16-bit clamp contract in exact arithmetic), so a
  * re-entered value can never silently fold through a lossy binary64
  * intermediate and land on a different payload. `value` is the classify-
- * float Number kept for the request provenance; the raw comes from the
- * exact lexeme. Fails closed when the lexeme is not a complete decimal —
- * unreachable through the UI because `classifyFloatText` only passes
- * complete finite decimals here.
+ * float Number kept for approximate display; the raw comes from the exact
+ * lexeme. v2.5.12: the same lexeme is stored in the request provenance, so
+ * the quantization readout and raw share one lexical truth. Fails closed
+ * when the lexeme is not a complete decimal — unreachable through the UI
+ * because `classifyFloatText` only passes complete finite decimals here.
  */
 function encodeDirectFromValue(state: AppState, value: number, text: string): AppState {
   const exact = parseDecimalExactRational(text)
   if (!exact) return state
   const y = encodeDirectExactFromRational(exact, state.direct.m, state.direct.b, state.direct.r)
-  return { ...state, raw: PMBusMath.fromSigned(y, 16), valueRequest: { mode: 'DIRECT', value } }
+  return {
+    ...state,
+    raw: PMBusMath.fromSigned(y, 16),
+    valueRequest: { mode: 'DIRECT', value, text },
+  }
 }
 
 /**

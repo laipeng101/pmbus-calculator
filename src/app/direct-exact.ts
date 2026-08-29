@@ -162,6 +162,65 @@ export function encodeDirectExactFromRational(
   return Number(clamped)
 }
 
+// ---- Exact rational arithmetic (v2.5.12) ----
+// Closed helper set for the DIRECT quantization domain: every status and
+// error value for a committed DIRECT request is derived from these instead
+// of binary64 comparisons. Inputs are normalized rationals (denominator > 0,
+// gcd 1) as produced by decodeDirectExact / parseDecimalExactRational, and
+// outputs are renormalized.
+
+const HUNDRED: ExactRational = { numerator: 100n, denominator: 1n }
+
+export function subtractExact(a: ExactRational, b: ExactRational): ExactRational {
+  return normalize(
+    a.numerator * b.denominator - b.numerator * a.denominator,
+    a.denominator * b.denominator,
+  )
+}
+
+export function multiplyExact(a: ExactRational, b: ExactRational): ExactRational {
+  return normalize(a.numerator * b.numerator, a.denominator * b.denominator)
+}
+
+export function divideExact(a: ExactRational, b: ExactRational): ExactRational {
+  if (b.numerator === 0n) throw new TypeError('exact rational division by zero')
+  return normalize(a.numerator * b.denominator, a.denominator * b.numerator)
+}
+
+export function absExact(a: ExactRational): ExactRational {
+  return a.numerator < 0n ? { numerator: -a.numerator, denominator: a.denominator } : a
+}
+
+/** Three-way comparison of two normalized rationals: −1, 0 or 1. */
+export function compareExact(a: ExactRational, b: ExactRational): -1 | 0 | 1 {
+  const left = a.numerator * b.denominator
+  const right = b.numerator * a.denominator
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+/** Percent scale (×100) as an exact rational — shared by the relative error. */
+export function exactPercentScale(): ExactRational {
+  return HUNDRED
+}
+
+/**
+ * Exact encodable physical-value range of one coefficient combination: the
+ * §7.4 decodes of the signed-16-bit Y extremes, ordered by the sign of m
+ * (the decode is strictly monotonic in Y for m ≠ 0). Null for m=0 — no
+ * fabricated range.
+ */
+export function directEncodableRangeExact(
+  m: number,
+  b: number,
+  r: number,
+): { min: ExactRational; max: ExactRational } | null {
+  if (m === 0) return null
+  const lo = decodeDirectExact(-32768, m, b, r)
+  const hi = decodeDirectExact(32767, m, b, r)
+  if (!lo || !hi) return null
+  return m > 0 ? { min: lo, max: hi } : { min: hi, max: lo }
+}
+
 /**
  * Exact parse of one complete decimal lexeme into a normalized rational.
  * Accepts the same complete-syntax class `classifyFloatText` treats as a

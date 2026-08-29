@@ -817,7 +817,7 @@ describe('toCalculatorViewModel', () => {
           mode: 'DIRECT',
           raw: 1235,
           direct: { m: 1000, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-          valueRequest: { mode: 'DIRECT', value: 1.2345 },
+          valueRequest: { mode: 'DIRECT', value: 1.2345, text: '1.2345' },
         }),
       )
       expect(vm.valueText).toBe('1.235')
@@ -1314,14 +1314,18 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     // Committing the exact lexeme keeps FFFF: requested Number -1 vs
     // represented -1 is binary64-exact, but the folded state must not read
     // as a clean ok/exact result.
-    const vm = toCalculatorViewModel(directWith(0xffff, 1, 1, 17, { mode: 'DIRECT', value: -1 }))
+    const vm = toCalculatorViewModel(
+      directWith(0xffff, 1, 1, 17, { mode: 'DIRECT', value: -1, text: '-1' }),
+    )
     expect(vm.deltaText).toBe('+0.000000 (0.0000%)')
     expect(vm.deltaKind).toBe('warn')
     expect(vm.deltaNote).toContain('精度折叠')
   })
 
   test('safe ordinary vector keeps ok kind and no fold note', () => {
-    const vm = toCalculatorViewModel(directWith(12, 1, 0, 0, { mode: 'DIRECT', value: 12 }))
+    const vm = toCalculatorViewModel(
+      directWith(12, 1, 0, 0, { mode: 'DIRECT', value: 12, text: '12' }),
+    )
     expect(vm.deltaText).toBe('+0.000000 (0.0000%)')
     expect(vm.deltaKind).toBe('ok')
     expect(vm.deltaNote).toBeUndefined()
