@@ -316,9 +316,17 @@ describe('ci.yml Playwright report upload gating', () => {
     expect(stepId(findStepByRun('npm run test:e2e:release'))).toBe('release_smoke')
   })
 
+  it('gives the v2.5.13 mobile-contract step the stable id e2e_mobile behind the full tier', () => {
+    expect(stepId(findStepByName('Run Playwright mobile contract E2E'))).toBe('e2e_mobile')
+    const block = findStepByRun('npm run test:e2e:mobile')
+    expect(stepId(block)).toBe('e2e_mobile')
+    expect(normalize(block)).toContain(`if: ${FULL_TIER_CONDITION}`)
+  })
+
   it('keeps Playwright steps in the e2e job', () => {
     const e2eSection = workflow.split(/^ {2}e2e:/m)[1] ?? ''
     expect(e2eSection).toContain('Run Playwright E2E')
+    expect(e2eSection).toContain('Run Playwright mobile contract E2E')
     expect(e2eSection).toContain('Run production release smoke')
   })
 
@@ -340,5 +348,16 @@ describe('ci.yml Playwright report upload gating', () => {
     expect(normalized).not.toContain('steps.e2e.outcome')
     expect(normalized).toContain('name: playwright-report-release ')
     expect(normalized).toContain('path: tests/e2e/report-release ')
+  })
+
+  it('uploads the mobile contract report only when that step itself ran and failed', () => {
+    const normalized = normalize(findUploadStep('playwright-report-mobile'))
+    expect(normalized).toContain('failure() &&')
+    expect(normalized).toContain(`${FULL_TIER_CONDITION} &&`)
+    expect(normalized).toContain("steps.e2e_mobile.outcome == 'failure'")
+    expect(normalized).not.toContain('steps.e2e.outcome')
+    expect(normalized).not.toContain('steps.release_smoke.outcome')
+    expect(normalized).toContain('name: playwright-report-mobile ')
+    expect(normalized).toContain('path: tests/e2e/report-mobile ')
   })
 })

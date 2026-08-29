@@ -1,10 +1,24 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// v2.5.13: the default suite runs the semantic flows ONCE (single
+// chromium-desktop project). It deliberately ignores the dedicated suites
+// that own their configs: release/deployment smokes and the visual baselines
+// (unchanged), plus the v2.5.13 explicit mobile-contract suite
+// (playwright.mobile.config.ts, Pixel 7 emulation) — the former
+// chromium-mobile project re-ran all 292 logical tests with no project-specific
+// selection, doubling CI cost without dedicated coverage.
 export default defineConfig({
   testDir: './tests/e2e',
   // Deployment smoke tests run exclusively via playwright.deployment.config.ts
-  // against the live Pages URL; they must never inflate the default suite.
-  testIgnore: ['**/release.spec.ts', '**/visual.spec.ts', '**/deployment.spec.ts'],
+  // against the live Pages URL; visual baselines via playwright.visual.config.ts;
+  // the mobile contract via playwright.mobile.config.ts. None may inflate the
+  // default suite.
+  testIgnore: [
+    '**/release.spec.ts',
+    '**/visual.spec.ts',
+    '**/deployment.spec.ts',
+    '**/mobile-contract.spec.ts',
+  ],
   outputDir: './tests/e2e/output',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -26,12 +40,6 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1440, height: 900 },
-      },
-    },
-    {
-      name: 'chromium-mobile',
-      use: {
-        ...devices['Pixel 7'],
       },
     },
   ],
