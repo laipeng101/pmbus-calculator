@@ -812,6 +812,8 @@ describe('toCalculatorViewModel', () => {
 
     test('quantization error reports the legacy DIRECT rounding error', () => {
       // m=1000: requested 1.2345 → Y=round(1234.5)=1235 → represented 1.235.
+      // v2.5.12: the delta and percent render from the exact rational; the
+      // note distinguishes the committed request from the represented value.
       const vm = toCalculatorViewModel(
         make({
           mode: 'DIRECT',
@@ -821,8 +823,10 @@ describe('toCalculatorViewModel', () => {
         }),
       )
       expect(vm.valueText).toBe('1.235')
-      expect(vm.deltaText).toBe('-0.000500 (-0.0405%)')
+      expect(vm.deltaText).toBe('-0.0005（约 -0.0405%）')
       expect(vm.deltaKind).toBe('warn')
+      expect(vm.deltaNote).toContain('用户请求 1.2345')
+      expect(vm.deltaNote).toContain('raw 精确表示 1.235')
     })
 
     test('m=0 hides the quantization panel together with the value', () => {
@@ -833,6 +837,24 @@ describe('toCalculatorViewModel', () => {
         }),
       )
       expect(vm.deltaText).toBeUndefined()
+    })
+
+    test('exact boundary overshoot renders saturated with a non-zero scientific delta', () => {
+      // Counterexample C: 32767.0000000000000001 folds to 32767 in binary64
+      // (the legacy readout claimed exact/0); the exact pipeline reports a
+      // strictly out-of-range request with an exact +1e-16 delta.
+      const vm = toCalculatorViewModel(
+        make({
+          mode: 'DIRECT',
+          raw: 0x7fff,
+          direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
+          valueRequest: { mode: 'DIRECT', value: 32767, text: '32767.0000000000000001' },
+        }),
+      )
+      expect(vm.deltaText).toBe('+1e-16（已编码到边界值）')
+      expect(vm.deltaKind).toBe('error')
+      expect(vm.deltaNote).toContain('用户请求 32767.0000000000000001')
+      expect(vm.deltaNote).toContain('已饱和')
     })
   })
 
@@ -1312,12 +1334,12 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
 
   test('quantization readout flags the folded state even with a zero binary64 delta', () => {
     // Committing the exact lexeme keeps FFFF: requested Number -1 vs
-    // represented -1 is binary64-exact, but the folded state must not read
-    // as a clean ok/exact result.
+    // represented -1 is binary64-exact, but the exact pipeline reports the
+    // real +1e-17 delta and the folded state never reads as clean ok/exact.
     const vm = toCalculatorViewModel(
       directWith(0xffff, 1, 1, 17, { mode: 'DIRECT', value: -1, text: '-1' }),
     )
-    expect(vm.deltaText).toBe('+0.000000 (0.0000%)')
+    expect(vm.deltaText).toBe('+1e-17（约 1e-15%）')
     expect(vm.deltaKind).toBe('warn')
     expect(vm.deltaNote).toContain('精度折叠')
   })

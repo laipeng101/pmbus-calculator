@@ -26,7 +26,9 @@ export default function ErrorDelta({ vm }: Props) {
       <span className="error-delta-value font-semibold font-mono" data-kind={vm.deltaKind ?? 'ok'}>
         {vm.deltaText}
       </span>
-      {vm.deltaNote && <div className="mt-1 text-xs color-text-muted">{vm.deltaNote}</div>}
+      {vm.deltaNote && (
+        <div className="mt-1 text-xs break-all color-text-muted">{vm.deltaNote}</div>
+      )}
     </div>
   )
 }

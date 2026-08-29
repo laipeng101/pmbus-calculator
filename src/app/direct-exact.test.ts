@@ -4,7 +4,11 @@ import {
   analyzeDirectRoundTrip,
   decodeDirectExact,
   encodeDirectExactFromRational,
+  formatExactDelta,
+  formatExactPercent,
   formatExactRational,
+  formatSignedRationalFixed,
+  formatSignedRationalScientific,
   generateSafeDirectReentryText,
   parseDecimalExactRational,
   roundRationalHalfUp,
@@ -437,5 +441,53 @@ describe('round-trip analysis pinned to the real binary64 pipeline', () => {
       }
     }
     console.log(`sampled grid + 5000-sample fuzz (seed ${SEED}): ${Date.now() - startedAt}ms`)
+  })
+})
+
+describe('exact-rational presentation (v2.5.12)', () => {
+  it('formatExactDelta: integer, scientific, terminating, and fraction bands', () => {
+    expect(formatExactDelta({ numerator: 1n, denominator: 1n })).toBe('+1')
+    expect(formatExactDelta({ numerator: -7233n, denominator: 1n })).toBe('-7233')
+    expect(formatExactDelta({ numerator: 0n, denominator: 1n })).toBe('+0.000000')
+    // Tiny magnitudes go scientific — never textual zero.
+    expect(formatExactDelta({ numerator: 1n, denominator: 10n ** 16n })).toBe('+1e-16')
+    expect(formatExactDelta({ numerator: -1n, denominator: 10n ** 19n })).toBe('-1e-19')
+    // Very large magnitudes go scientific too.
+    expect(formatExactDelta({ numerator: 10n ** 38n, denominator: 1n })).toBe('+1e38')
+    // In-band terminating decimal renders exactly.
+    expect(formatExactDelta({ numerator: 1n, denominator: 4n })).toBe('+0.25')
+    expect(formatExactDelta({ numerator: -1n, denominator: 2000n })).toBe('-0.0005')
+    // Repeating rational falls back to the exact fraction.
+    expect(formatExactDelta({ numerator: -1n, denominator: 6n })).toBe('-1/6')
+  })
+
+  it('formatSignedRationalScientific: exact exponent placement and half-up carry', () => {
+    // 100/(1e17+1) ≈ 1e-15 — the counterexample A relative percent.
+    expect(formatSignedRationalScientific({ numerator: 100n, denominator: 10n ** 17n + 1n })).toBe(
+      '+1e-15',
+    )
+    expect(formatSignedRationalScientific({ numerator: -1n, denominator: 10n ** 19n })).toBe(
+      '-1e-19',
+    )
+    // In-band mantissa keeps its significant digits.
+    expect(formatSignedRationalScientific({ numerator: 996n, denominator: 1000n })).toBe('+9.96e-1')
+    // Half-up rounding carries into the next exponent (0.09996 → 1e-1).
+    expect(formatSignedRationalScientific({ numerator: 9996n, denominator: 100000n }, 3)).toBe(
+      '+1e-1',
+    )
+  })
+
+  it('formatSignedRationalFixed: half-up on the final digit', () => {
+    expect(formatSignedRationalFixed({ numerator: -1n, denominator: 6n }, 4)).toBe('-0.1667')
+    expect(formatSignedRationalFixed({ numerator: -100n, denominator: 2469n }, 4)).toBe('-0.0405')
+    expect(formatSignedRationalFixed({ numerator: 5n, denominator: 2n }, 3)).toBe('+2.500')
+  })
+
+  it('formatExactPercent: fixed band, scientific band, zero, and undefined', () => {
+    expect(formatExactPercent({ numerator: -100n, denominator: 2469n })).toBe('-0.0405%')
+    expect(formatExactPercent({ numerator: -100n, denominator: 3n })).toBe('-33.3333%')
+    expect(formatExactPercent({ numerator: 100n, denominator: 10n ** 17n + 1n })).toBe('1e-15%')
+    expect(formatExactPercent({ numerator: 0n, denominator: 1n })).toBe('0.0000%')
+    expect(formatExactPercent(null)).toBe('—')
   })
 })

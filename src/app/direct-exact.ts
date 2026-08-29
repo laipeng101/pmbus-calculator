@@ -260,6 +260,108 @@ export function formatExactRational(x: ExactRational): string {
   return `${x.numerator}/${x.denominator}`
 }
 
+// ---- Exact-rational presentation (v2.5.12) ----
+// Display conversions for the DIRECT quantization surfaces. They never
+// decide a status — that is compareExact's job — but they guarantee a
+// non-zero rational can never render as textual zero: tiny magnitudes go
+// scientific, terminating decimals render exactly, repeating rationals fall
+// back to their exact fraction.
+
+const EXACT_TEN_POW4: ExactRational = { numerator: 1n, denominator: 10n ** 4n }
+const EXACT_TEN_POW7: ExactRational = { numerator: 10n ** 7n, denominator: 1n }
+/** Longest terminating expansion rendered as a decimal before falling back to the fraction. */
+const MAX_EXACT_DECIMAL_CHARS = 24
+
+/**
+ * Signed scientific notation with `sigDigits` significant digits (half-up,
+ * the repository rounding policy), e.g. 100/(10^17+1) → '+1e-15'. The
+ * decimal exponent is found by exact cross-multiplication, never log10.
+ */
+export function formatSignedRationalScientific(x: ExactRational, sigDigits = 4): string {
+  const negative = x.numerator < 0n
+  const n = negative ? -x.numerator : x.numerator
+  const d = x.denominator
+  if (n === 0n) return '+0'
+  const digits = (v: bigint): number => v.toString().length
+  let e = digits(n) - digits(d)
+  // Compare n/d with 10^k exactly (no floating log10).
+  const cmpPow10 = (k: number): number => {
+    if (k >= 0) {
+      const rhs = d * pow10(k)
+      return n < rhs ? -1 : n > rhs ? 1 : 0
+    }
+    const lhs = n * pow10(-k)
+    return lhs < d ? -1 : lhs > d ? 1 : 0
+  }
+  while (cmpPow10(e) < 0) e -= 1
+  // 10^e ≤ n/d holds here; raise e while n/d still reaches 10^(e+1).
+  while (cmpPow10(e + 1) >= 0) e += 1
+  const k = sigDigits - 1 - e
+  let s = k >= 0 ? roundRationalHalfUp(n * pow10(k), d) : roundRationalHalfUp(n, d * pow10(-k))
+  if (s >= pow10(sigDigits)) {
+    s = pow10(sigDigits - 1)
+    e += 1
+  }
+  const str = s.toString().padStart(sigDigits, '0')
+  const frac = str.slice(1).replace(/0+$/, '')
+  return `${negative ? '-' : '+'}${str[0]}${frac ? `.${frac}` : ''}e${e}`
+}
+
+/**
+ * Signed fixed-point decimal of a normalized rational with `fracDigits`
+ * places (half-up on the final digit), e.g. −1/6 → '-0.1667'.
+ */
+export function formatSignedRationalFixed(x: ExactRational, fracDigits: number): string {
+  const negative = x.numerator < 0n
+  const n = negative ? -x.numerator : x.numerator
+  const scaled = roundRationalHalfUp(n * pow10(fracDigits), x.denominator)
+  const scale = pow10(fracDigits)
+  const intPart = scaled / scale
+  const frac = (scaled % scale).toString().padStart(fracDigits, '0')
+  const body = fracDigits > 0 ? `${intPart}.${frac}` : `${intPart}`
+  return `${negative ? '-' : '+'}${body}`
+}
+
+/**
+ * Signed display for an exact delta: integers stay integers ('+1'), tiny or
+ * very large magnitudes go scientific ('+1e-16'), in-band terminating
+ * decimals render exactly, repeating rationals fall back to the exact
+ * fraction ('-1/6'). A non-zero rational can never render as textual zero.
+ */
+export function formatExactDelta(x: ExactRational): string {
+  const negative = x.numerator < 0n
+  const sign = negative ? '-' : '+'
+  const abs = { numerator: negative ? -x.numerator : x.numerator, denominator: x.denominator }
+  if (abs.numerator === 0n) return '+0.000000'
+  if (compareExact(abs, EXACT_TEN_POW4) < 0 || compareExact(abs, EXACT_TEN_POW7) >= 0) {
+    return formatSignedRationalScientific(x, 4)
+  }
+  if (abs.denominator === 1n) return `${sign}${abs.numerator}`
+  const decimal = formatExactDecimal(abs)
+  if (decimal !== null && decimal.length <= MAX_EXACT_DECIMAL_CHARS) {
+    return `${sign}${decimal}`
+  }
+  return `${sign}${abs.numerator}/${abs.denominator}`
+}
+
+/**
+ * Signed display for an exact relative percent: fixed 4 decimals in the
+ * readable band, scientific outside, '—' for the undefined (exact-zero
+ * request) case. Never renders a non-zero percent as textual zero.
+ */
+export function formatExactPercent(x: ExactRational | null): string {
+  if (!x) return '—'
+  if (x.numerator === 0n) return '0.0000%'
+  const negative = x.numerator < 0n
+  const abs = { numerator: negative ? -x.numerator : x.numerator, denominator: x.denominator }
+  const body =
+    compareExact(abs, EXACT_TEN_POW4) < 0 || compareExact(abs, EXACT_TEN_POW7) >= 0
+      ? formatSignedRationalScientific(x, 4)
+      : formatSignedRationalFixed(x, 4)
+  // The delta already carries the direction; a leading '+' is noise here.
+  return `${body.replace(/^\+/, '')}%`
+}
+
 /**
  * Exact decimal expansion for a terminating rational (`-1.00000000000000001`
  * style), or null when the value is a repeating decimal — display helper for

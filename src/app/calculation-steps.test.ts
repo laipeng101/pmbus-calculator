@@ -72,6 +72,54 @@ describe('buildCalculationSteps — quantization-error step (LINEAR11 parity)', 
   })
 })
 
+describe('buildCalculationSteps — DIRECT exact request transaction (v2.5.12)', () => {
+  it('exposes request, exact represented value, and exact delta for a committed lexeme', () => {
+    // Counterexample A: raw encodes exactly, but the binary64 delta folds to
+    // zero — the steps must still carry the exact +1 verdict.
+    const steps = buildCalculationSteps(
+      state({
+        mode: 'DIRECT',
+        raw: 0x0001,
+        direct: { m: 1, b: 0, r: -17, errors: { m: null, b: null, r: null } },
+        valueRequest: { mode: 'DIRECT', value: 1e17, text: '100000000000000001' },
+      }),
+    )
+    expect(steps.find((s) => s.id === 'direct-request')?.value).toBe('100000000000000001')
+    expect(steps.find((s) => s.id === 'direct-exact-represented')?.value).toBe('100000000000000000')
+    expect(steps.find((s) => s.id === 'direct-exact-delta')?.value).toBe('+1')
+    const quantization = steps.find((s) => s.id === 'direct-quantization')
+    expect(quantization?.value).toBe('+1（约 1e-15%）')
+  })
+
+  it('shows the lexeme alongside its exact rational when the two differ', () => {
+    const steps = buildCalculationSteps(
+      state({
+        mode: 'DIRECT',
+        raw: 0x0002,
+        direct: { m: 3, b: 0, r: 0, errors: { m: null, b: null, r: null } },
+        valueRequest: { mode: 'DIRECT', value: 0.5, text: '0.5' },
+      }),
+    )
+    expect(steps.find((s) => s.id === 'direct-request')?.value).toBe('0.5 = 1/2')
+    expect(steps.find((s) => s.id === 'direct-exact-represented')?.value).toBe('2/3')
+    expect(steps.find((s) => s.id === 'direct-exact-delta')?.value).toBe('-1/6')
+    expect(steps.find((s) => s.id === 'direct-quantization')?.value).toBe('-1/6（约 -33.3333%）')
+  })
+
+  it('omits the request transaction steps without provenance', () => {
+    const steps = buildCalculationSteps(
+      state({
+        mode: 'DIRECT',
+        raw: 0x0001,
+        direct: { m: 1, b: 0, r: -17, errors: { m: null, b: null, r: null } },
+      }),
+    )
+    expect(steps.some((s) => s.id === 'direct-request')).toBe(false)
+    expect(steps.some((s) => s.id === 'direct-exact-represented')).toBe(false)
+    expect(steps.some((s) => s.id === 'direct-exact-delta')).toBe(false)
+  })
+})
+
 describe('buildCalculationSteps — unified four-mode skeleton', () => {
   it('L11 exposes fields, formula, intermediates, and result', () => {
     const steps = buildCalculationSteps(state({ mode: 'L11', raw: 0xf819 }))
