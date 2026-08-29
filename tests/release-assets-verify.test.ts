@@ -466,10 +466,12 @@ describe('release-assets-verify: the real Pages workflow consumes the script', (
     expect(workflow).not.toContain('release-assets.env')
   })
 
-  it('verifies checksum and zip contract before extraction and deployment', () => {
+  it('verifies the downloaded byte gate before extraction and deployment (v2.5.12)', () => {
+    // v2.5.12: the checksum and zip contracts moved into the single
+    // verify-downloaded-assets.mjs gate (shared with the operator's draft
+    // pre-publish flow); the order pin now guards the gate itself.
     const order = [
-      'name: Verify SHA-256 checksum',
-      'name: Verify release zip before extraction',
+      'name: Verify downloaded release assets',
       'name: Extract release assets to _site',
       'name: Configure Pages',
     ]

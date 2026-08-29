@@ -45,8 +45,20 @@ export interface ExactRational {
   denominator: bigint
 }
 
+/**
+ * Memoized 10^exp table (v2.5.12): the full-Y sweep analyses and the wider
+ * coefficient grids request the same powers of ten millions of times, and
+ * 10n ** BigInt(exp) is the measured hot spot. Deterministic cache, no
+ * algorithm change; the exponent domain is bounded by the module's callers.
+ */
+const POW10_CACHE = new Map<number, bigint>()
+
 function pow10(exp: number): bigint {
-  return 10n ** BigInt(exp)
+  const cached = POW10_CACHE.get(exp)
+  if (cached !== undefined) return cached
+  const value = 10n ** BigInt(exp)
+  POW10_CACHE.set(exp, value)
+  return value
 }
 
 function gcd(a: bigint, b: bigint): bigint {

@@ -388,8 +388,10 @@ describe('safe re-entry text generation (verified exact encoder)', () => {
 })
 
 describe('round-trip analysis pinned to the real binary64 pipeline', () => {
-  it('roundTripSafe equals the real Number re-encode verdict over the full sweep', () => {
-    for (const { m, b, r } of FULL_SWEEP_COEFFICIENTS) {
+  // v2.5.12: each full sweep is its own test — same corpus, same assertions,
+  // independent per-test timing so no single test carries two sweeps.
+  for (const { m, b, r } of FULL_SWEEP_COEFFICIENTS) {
+    it(`roundTripSafe equals the real Number re-encode verdict over the full sweep (m=${m}, b=${b}, r=${r})`, () => {
       const startedAt = Date.now()
       let unsafeCount = 0
       for (let y = -32768; y <= 32767; y++) {
@@ -408,8 +410,8 @@ describe('round-trip analysis pinned to the real binary64 pipeline', () => {
       // Layered corpus discipline: record the sweep cost, keep it bounded.
       console.log(`full 65536-Y sweep m=${m} b=${b} r=${r}: ${unsafeCount} unsafe, ${elapsedMs}ms`)
       expect(elapsedMs).toBeLessThan(20_000)
-    }
-  })
+    })
+  }
 
   it('samples the wider coefficient grid against the real pipeline and normalization invariants', () => {
     const startedAt = Date.now()

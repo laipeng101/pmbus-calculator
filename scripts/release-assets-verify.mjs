@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Release asset readiness verifier (v2.5.8; JSON data interface since v2.5.9).
+ * Release asset readiness verifier (v2.5.8; JSON data interface since v2.5.9;
+ * exported core since v2.5.12).
  *
  * Single source for the "are the release assets actually ready?" contract.
  * Consumed by the real Pages workflow BEFORE any download/deploy action and
@@ -49,18 +50,36 @@
  *   7  an expected asset exists but is not in the 'uploaded' state
  *   8  an expected asset has a non-positive/unknown size or an invalid URL
  *
- * Checksum and zip-content contracts stay where they belong: `sha256sum -c`
- * and `scripts/verify_release_zip.py` (Pages workflow) / the offline tests
- * (tests/zip-helper-security.test.ts, tests/release-assets.test.ts).
+ * Since v2.5.12 the contract lives in the exported `resolveReleaseAssets`
+ * (throwing `ReleaseVerifyError` with the codes above) so the DOWNLOADED
+ * asset gate `scripts/verify-downloaded-assets.mjs` can reuse the exact
+ * same metadata resolution in-process. The CLI wrapper keeps its behavior
+ * byte-for-byte. Checksum, local-size and zip-content contracts live in the
+ * downloaded-asset gate; offline tests pin both (tests/release-assets-verify.test.ts,
+ * tests/verify-downloaded-assets.test.ts, tests/zip-helper-security.test.ts).
  */
 
 import fs from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import process from 'node:process'
 import {
   assertCanonicalAssetDownloadUrl,
   assertSafeAssetName,
   assertValidRepoSlug,
 } from './release-url-contract.mjs'
+
+/** Contract error carrying the documented exit code (2-8). */
+export class ReleaseVerifyError extends Error {
+  /**
+   * @param {number} code
+   * @param {string} message
+   */
+  constructor(code, message) {
+    super(message)
+    this.name = 'ReleaseVerifyError'
+    this.code = code
+  }
+}
 
 /**
  * @param {number} code
@@ -70,6 +89,137 @@ import {
 function fail(code, message) {
   console.error(`error: ${message}`)
   process.exit(code)
+}
+
+/**
+ * Core metadata resolution: every release-metadata contract check, shared by
+ * the CLI and the downloaded-asset gate. Throws ReleaseVerifyError with the
+ * documented exit code; returns the data-only resolution object.
+ *
+ * @param {unknown} release parsed GitHub release JSON
+ * @param {{ tag: string, repo: string, mode?: 'published'|'draft', zipName?: string|null, sumsName?: string }} options
+ */
+export function resolveReleaseAssets(release, options) {
+  const tag = options.tag
+  const repo = options.repo
+  const mode = options.mode ?? 'published'
+  const sumsName = options.sumsName ?? 'SHA256SUMS.txt'
+  const zipName = options.zipName ?? `pmbus-calculator-${tag}-web.zip`
+  if (!tag || !/^v[1-9][0-9]*\.[0-9]+\.[0-9]+$/.test(tag)) {
+    throw new ReleaseVerifyError(2, '--tag must be a stable SemVer tag like v1.2.3')
+  }
+  if (!repo) throw new ReleaseVerifyError(2, '--repo is required')
+  try {
+    assertValidRepoSlug(repo)
+  } catch (error) {
+    throw new ReleaseVerifyError(2, error instanceof Error ? error.message : String(error))
+  }
+  if (mode !== 'published' && mode !== 'draft') {
+    throw new ReleaseVerifyError(2, "--mode must be 'published' or 'draft'")
+  }
+  try {
+    assertSafeAssetName(sumsName, '--sums-name')
+  } catch (error) {
+    throw new ReleaseVerifyError(2, error instanceof Error ? error.message : String(error))
+  }
+
+  if (release === null || typeof release !== 'object' || Array.isArray(release)) {
+    throw new ReleaseVerifyError(2, 'release metadata must be a JSON object')
+  }
+  const rec =
+    /** @type {{ tag_name?: unknown, draft?: unknown, prerelease?: unknown, assets?: unknown }} */ (
+      release
+    )
+  if (typeof rec.tag_name !== 'string') {
+    throw new ReleaseVerifyError(2, 'release metadata has no string tag_name')
+  }
+
+  // ---- Release metadata contract (exit 3) ----
+  if (rec.tag_name !== tag) {
+    throw new ReleaseVerifyError(
+      3,
+      `release tag mismatch: metadata says ${rec.tag_name}, expected ${tag}`,
+    )
+  }
+  const wantDraft = mode === 'draft'
+  if (rec.draft !== wantDraft) {
+    throw new ReleaseVerifyError(
+      3,
+      mode === 'published'
+        ? `release ${tag} is ${rec.draft ? 'a draft' : 'not published'}; the Pages entry gate requires a published release`
+        : `release ${tag} is not a draft; the pre-publish verification requires the draft release`,
+    )
+  }
+  if (rec.prerelease !== false) {
+    throw new ReleaseVerifyError(
+      3,
+      `release ${tag} is a prerelease; the stable Pages flow only deploys stable releases`,
+    )
+  }
+
+  // ---- Asset contract ----
+  const assets = rec.assets
+  if (!Array.isArray(assets)) {
+    throw new ReleaseVerifyError(2, 'release metadata has no assets array')
+  }
+  if (assets.length === 0) throw new ReleaseVerifyError(4, `release ${tag} has no assets at all`)
+
+  const expected = [
+    { key: 'zip', name: zipName },
+    { key: 'sums', name: sumsName },
+  ]
+  /** @type {Record<string, { name: string, size: number, url: string }>} */
+  const resolved = {}
+
+  for (const { key, name } of expected) {
+    const matches = assets.filter((asset) => asset && asset.name === name)
+    if (matches.length === 0) {
+      throw new ReleaseVerifyError(
+        6,
+        `asset "${name}" is missing from release ${tag} (assets: ${assets.map((a) => a?.name).join(', ') || 'none'})`,
+      )
+    }
+    if (matches.length > 1) {
+      throw new ReleaseVerifyError(
+        5,
+        `asset "${name}" appears ${matches.length} times; asset names must be unique`,
+      )
+    }
+    const asset = matches[0]
+    if (asset.state !== 'uploaded') {
+      throw new ReleaseVerifyError(
+        7,
+        `asset "${name}" is in state "${asset.state}", not "uploaded" — the upload has not finished`,
+      )
+    }
+    if (!Number.isInteger(asset.size) || asset.size <= 0) {
+      throw new ReleaseVerifyError(
+        8,
+        `asset "${name}" has size ${asset.size}; a ready asset must have a positive size`,
+      )
+    }
+    const url = asset.browser_download_url
+    try {
+      assertCanonicalAssetDownloadUrl(url, {
+        repo,
+        tag,
+        name,
+        // GitHub draft releases carry a placeholder `untagged-<hex>` tag
+        // segment in browser_download_url until publish (live REST behavior):
+        // the operator's draft check must accept it, while the published
+        // Pages gate keeps the strict tag form.
+        allowUntaggedPlaceholder: mode === 'draft',
+      })
+    } catch (error) {
+      throw new ReleaseVerifyError(
+        8,
+        `asset "${name}": ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+    resolved[key] = { name, size: asset.size, url }
+  }
+
+  return { tag, mode, repo, zip: resolved.zip, sums: resolved.sums }
 }
 
 /**
@@ -113,127 +263,69 @@ const USAGE =
   'usage: release-assets-verify.mjs <release-json-file> --tag vX.Y.Z --repo owner/repo ' +
   '[--mode published|draft] [--zip-name <name>] [--sums-name <name>]'
 
-const args = parseArgs(process.argv.slice(2))
-if (args.help) {
-  console.log(USAGE)
-  process.exit(0)
-}
-if (!args.positional || args.positional.length !== 1) fail(2, USAGE)
-if (!args.tag || !/^v[1-9][0-9]*\.[0-9]+\.[0-9]+$/.test(args.tag)) {
-  fail(2, '--tag must be a stable SemVer tag like v1.2.3')
-}
-if (!args.repo) fail(2, USAGE)
-try {
-  assertValidRepoSlug(args.repo)
-} catch (error) {
-  fail(2, error instanceof Error ? error.message : String(error))
-}
-if (args.mode !== 'published' && args.mode !== 'draft') {
-  fail(2, "--mode must be 'published' or 'draft'")
-}
-try {
-  if (args.zipName !== null) assertSafeAssetName(args.zipName, '--zip-name')
-  assertSafeAssetName(args.sumsName, '--sums-name')
-} catch (error) {
-  fail(2, error instanceof Error ? error.message : String(error))
-}
-
-const releasePath = args.positional[0]
-let release
-try {
-  release = JSON.parse(fs.readFileSync(releasePath, 'utf8'))
-} catch (error) {
-  fail(
-    2,
-    `cannot read/parse release metadata (${releasePath}): ${error instanceof Error ? error.message : String(error)}`,
-  )
-}
-if (release === null || typeof release !== 'object' || Array.isArray(release)) {
-  fail(2, 'release metadata must be a JSON object')
-}
-if (typeof release.tag_name !== 'string') fail(2, 'release metadata has no string tag_name')
-
-// ---- Release metadata contract (exit 3) ----
-if (release.tag_name !== args.tag) {
-  fail(3, `release tag mismatch: metadata says ${release.tag_name}, expected ${args.tag}`)
-}
-const wantDraft = args.mode === 'draft'
-if (release.draft !== wantDraft) {
-  fail(
-    3,
-    args.mode === 'published'
-      ? `release ${args.tag} is ${release.draft ? 'a draft' : 'not published'}; the Pages entry gate requires a published release`
-      : `release ${args.tag} is not a draft; the pre-publish verification requires the draft release`,
-  )
-}
-if (release.prerelease !== false) {
-  fail(3, `release ${args.tag} is a prerelease; the stable Pages flow only deploys stable releases`)
-}
-
-// ---- Asset contract ----
-const assets = release.assets
-if (!Array.isArray(assets)) fail(2, 'release metadata has no assets array')
-if (assets.length === 0) fail(4, `release ${args.tag} has no assets at all`)
-
-const zipName = args.zipName ?? `pmbus-calculator-${args.tag}-web.zip`
-const expected = [
-  { key: 'zip', name: zipName },
-  { key: 'sums', name: args.sumsName },
-]
-/** @type {Record<string, { name: string, size: number, url: string }>} */
-const resolved = {}
-
-for (const { key, name } of expected) {
-  const matches = assets.filter((asset) => asset && asset.name === name)
-  if (matches.length === 0) {
-    fail(
-      6,
-      `asset "${name}" is missing from release ${args.tag} (assets: ${assets.map((a) => a?.name).join(', ') || 'none'})`,
-    )
+/**
+ * CLI wrapper: same behavior as the pre-2.5.12 top-level script.
+ * @param {string[]} argv
+ */
+export function runCli(argv) {
+  const args = parseArgs(argv)
+  if (args.help) {
+    console.log(USAGE)
+    process.exit(0)
   }
-  if (matches.length > 1) {
-    fail(5, `asset "${name}" appears ${matches.length} times; asset names must be unique`)
-  }
-  const asset = matches[0]
-  if (asset.state !== 'uploaded') {
-    fail(
-      7,
-      `asset "${name}" is in state "${asset.state}", not "uploaded" — the upload has not finished`,
-    )
-  }
-  if (!Number.isInteger(asset.size) || asset.size <= 0) {
-    fail(8, `asset "${name}" has size ${asset.size}; a ready asset must have a positive size`)
-  }
-  const url = asset.browser_download_url
   try {
-    assertCanonicalAssetDownloadUrl(url, {
-      repo: args.repo,
+    if (!args.positional || args.positional.length !== 1) {
+      throw new ReleaseVerifyError(2, USAGE)
+    }
+    if (!args.tag) throw new ReleaseVerifyError(2, USAGE)
+    if (!args.repo) throw new ReleaseVerifyError(2, USAGE)
+    try {
+      if (args.zipName !== null) assertSafeAssetName(args.zipName, '--zip-name')
+    } catch (error) {
+      throw new ReleaseVerifyError(2, error instanceof Error ? error.message : String(error))
+    }
+
+    const releasePath = args.positional[0]
+    let release
+    try {
+      release = JSON.parse(fs.readFileSync(releasePath, 'utf8'))
+    } catch (error) {
+      throw new ReleaseVerifyError(
+        2,
+        `cannot read/parse release metadata (${releasePath}): ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+    const resolved = resolveReleaseAssets(release, {
       tag: args.tag,
-      name,
-      // GitHub draft releases carry a placeholder `untagged-<hex>` tag
-      // segment in browser_download_url until publish (live REST behavior):
-      // the operator's draft check must accept it, while the published
-      // Pages gate keeps the strict tag form.
-      allowUntaggedPlaceholder: args.mode === 'draft',
+      repo: args.repo,
+      mode: args.mode,
+      zipName: args.zipName,
+      sumsName: args.sumsName,
     })
+
+    // ---- Resolved values for the caller (Pages workflow / release operator) ----
+    // Data-only JSON on stdout; diagnostics live on stderr. Never shell-source it.
+    console.log(
+      JSON.stringify({
+        tag: resolved.tag,
+        mode: resolved.mode,
+        repo: resolved.repo,
+        zip: resolved.zip,
+        sums: resolved.sums,
+      }),
+    )
+    console.error(
+      `ok: release ${resolved.tag} (${resolved.mode}) assets ready: ${resolved.zip.name} (${resolved.zip.size} bytes), ` +
+        `${resolved.sums.name} (${resolved.sums.size} bytes)`,
+    )
   } catch (error) {
-    fail(8, `asset "${name}": ${error instanceof Error ? error.message : String(error)}`)
+    if (error instanceof ReleaseVerifyError) fail(error.code, error.message)
+    throw error
   }
-  resolved[key] = { name, size: asset.size, url }
 }
 
-// ---- Resolved values for the caller (Pages workflow / release operator) ----
-// Data-only JSON on stdout; diagnostics live on stderr. Never shell-source it.
-console.log(
-  JSON.stringify({
-    tag: args.tag,
-    mode: args.mode,
-    repo: args.repo,
-    zip: resolved.zip,
-    sums: resolved.sums,
-  }),
-)
-console.error(
-  `ok: release ${args.tag} (${args.mode}) assets ready: ${resolved.zip.name} (${resolved.zip.size} bytes), ` +
-    `${resolved.sums.name} (${resolved.sums.size} bytes)`,
-)
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
+if (invokedDirectly) {
+  runCli(process.argv.slice(2))
+}

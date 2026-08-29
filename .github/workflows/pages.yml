@@ -116,13 +116,21 @@ jobs:
           node scripts/download-release-assets.mjs release-assets.json \
             --repo "${GITHUB_REPOSITORY}" --out-dir .
 
-      - name: Verify SHA-256 checksum
-        run: sha256sum -c SHA256SUMS.txt
-
-      - name: Verify release zip before extraction
+      # v2.5.12: the single downloaded-asset byte gate, shared with the
+      # operator's draft pre-publish flow. Re-checks the metadata contract
+      # in-process (release-assets-verify.mjs, strict published URL mode),
+      # local presence and size, the SHA256SUMS.txt contract, the zip
+      # checksum (node:crypto) and the shared python zip-safety verifier —
+      # every failure class with its own exit code (2-8, 10-14), always
+      # BEFORE extraction or deploy.
+      - name: Verify downloaded release assets
         env:
-          VERSION: ${{ steps.resolve.outputs.tag }}
-        run: python3 .github/workflows/scripts/verify_release_zip.py "pmbus-calculator-${VERSION}-web.zip"
+          RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          node scripts/verify-downloaded-assets.mjs \
+            --metadata release-metadata.json --dir . \
+            --tag "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --mode published \
+            > downloaded-assets.json
 
       - name: Extract release assets to _site
         env:
