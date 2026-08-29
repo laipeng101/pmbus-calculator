@@ -15,6 +15,10 @@
 ## 发布纪律
 
 - 已发布的 tag 和 GitHub Release 永不修改、移动或覆盖。
+- **未来 Release 由 GitHub 平台强制不可变（immutable releases，v2.5.13 起生效）**：
+  发布前必须复核仓库设置 `immutable-releases` 已启用（见发布流程 §4 第 0 步）；
+  publish 后 Release API 必须报告 `immutable: true`。该设置只影响启用之后的
+  新 Release，不追溯旧版本，也不替代 draft→上传→回验→publish 的流程纪律。
 - `package.json` 版本必须和最新稳定 tag 一致。
 - 禁止在验证完成前创建或推送 tag；tag 永远建立在已通过完整验证的精确 main merge SHA 上。
 - Release 和 Pages 是实时发布状态的权威来源；README 不重复维护“最新 Pages 已成功”类状态。
@@ -87,6 +91,21 @@ npm run test:e2e:release
 > 执行，release-published 事件触发的 Pages 在资产尚未存在时读取失败。本节顺序
 > 是对该竞态的流程修复，不是可选优化。
 
+0. **平台前置条件复核（tag/draft 之前，人工授权步骤）**：
+
+   ```bash
+   gh api repos/laipeng101/pmbus-calculator/immutable-releases
+   gh api repos/laipeng101/pmbus-calculator --jq '{full_name, permissions: .permissions.admin}'
+   git ls-remote --tags origin refs/tags/vX.Y.Z
+   ```
+
+   三项必须分别满足：immutable releases 返回 `enabled: true`（未启用时先以
+   admin 执行 `gh api --method PUT repos/laipeng101/pmbus-calculator/immutable-releases`
+   并再次 GET 复核；该设置只影响未来 Release）；authenticated 身份对
+   `laipeng101/pmbus-calculator` 具有 admin 权限且 full_name 与预期仓库一致；
+   目标 tag 不存在。任一不满足：停止发布并解决前置条件，不得绕过。
+   设置查询/启用属于发布前人工步骤，Pages workflow 不持有也不需要 admin 权限。
+
 1. 全部验证成功后创建 annotated tag：
 
    ```bash
@@ -144,7 +163,22 @@ npm run test:e2e:release
    ```
 
 7. 下载刚发布的两个资产，重新校验 checksum 与预期名称（公开态复核）。
-8. 若 tag 已存在或远端版本冲突：停止，不得移动或覆盖。
+8. **publish 后不可变与完整性复核**：
+
+   ```bash
+   gh api repos/laipeng101/pmbus-calculator/releases/tags/vX.Y.Z \
+     --jq '{draft, prerelease, immutable, tag_name}'
+   gh release verify vX.Y.Z        # 校验 Release 加密签名 attestation（CLI 支持时）
+   gh release verify-asset vX.Y.Z pmbus-calculator-vX.Y.Z-web.zip
+   ```
+
+   API 必须报告 `draft: false`、`prerelease: false`、`immutable: true` 且
+   `tag_name` 精确匹配；`gh release verify` / `verify-asset` 校验资产
+   attestation（当前 gh 2.97.0 支持；若未来 CLI 不支持则以匿名重新下载的
+   SHA-256 与 size 复核为准）。若 `immutable` 不是 `true`：保留现场、停止
+   声明完成，不得删除重建同名 Release，也不得移动 tag。
+
+9. 若 tag 已存在或远端版本冲突：停止，不得移动或覆盖。
 
 ### 5. Pages 部署与线上 smoke
 

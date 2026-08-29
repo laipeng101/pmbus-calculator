@@ -252,6 +252,14 @@ describe('ci.yml full-tier gating', () => {
       expect(normalize(block)).toContain(`if: ${FULL_TIER_CONDITION}`)
     },
   )
+
+  it('keeps the v2.5.13 release docs command contract available in the light tier', () => {
+    // Docs-only PRs are classified light, and this cheap offline contract is
+    // exactly the gate they need (the PR #74 lesson) — it must never be
+    // hidden behind the full-tier condition.
+    const block = findStepByRun('npm run check:release-docs-commands')
+    expect(normalize(block)).not.toContain(`if: ${FULL_TIER_CONDITION}`)
+  })
 })
 
 describe('ci.yml canonical/compatibility runtimes', () => {

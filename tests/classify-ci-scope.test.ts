@@ -96,6 +96,26 @@ describe('classifyPaths', () => {
     expect(result.changedCount).toBe(3)
   })
 
+  it('classifies release operator docs as light (their contract gate runs in both tiers)', () => {
+    // v2.5.13: docs/RELEASING.md and docs/DEPLOYING.md stay light-only; the
+    // cheap release-docs command contract gate runs unconditionally in the
+    // quality job, so a docs-only release change keeps its guard.
+    const result = classifyPaths(['docs/RELEASING.md', 'docs/DEPLOYING.md'])
+    expect(result.tier).toBe('light')
+    expect(result.fullCount).toBe(0)
+  })
+
+  it('classifies the release docs contract gate script itself as full', () => {
+    expect(classifyPaths(['scripts/check-release-docs-commands.mjs']).tier).toBe('full')
+  })
+
+  it('classifies mixed release operator docs and workflow changes as full', () => {
+    const result = classifyPaths(['docs/RELEASING.md', '.github/workflows/pages.yml'])
+    expect(result.tier).toBe('full')
+    expect(result.fullCount).toBe(1)
+    expect(result.lightCount).toBe(1)
+  })
+
   it('classifies .gitignore as light', () => {
     expect(classifyPaths(['.gitignore']).tier).toBe('light')
   })
