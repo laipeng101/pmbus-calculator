@@ -116,7 +116,7 @@ npm run test:e2e:release
    gh api repos/laipeng101/pmbus-calculator/releases \
      --jq '.[] | select(.tag_name=="vX.Y.Z")' > draft-release.json
    gh release download vX.Y.Z --dir /tmp/vX.Y.Z-draft-assets
-   node scripts/verify-downloaded-assets.mjs draft-release.json \
+   node scripts/verify-downloaded-assets.mjs --metadata draft-release.json \
      --dir /tmp/vX.Y.Z-draft-assets \
      --tag vX.Y.Z --repo laipeng101/pmbus-calculator --mode draft > draft-verified.json
    ```
