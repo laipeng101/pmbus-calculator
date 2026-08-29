@@ -4,6 +4,55 @@
 
 ## [Unreleased]
 
+## [2.5.12] - 2026-08-30
+
+### Fixed
+
+- **DIRECT 精确请求 provenance 与 raw 编码共享同一词法真值（P1）**：v2.5.11
+  的 typed 提交已用完整 lexeme 精确编码 raw，但请求 provenance 与量化诊断
+  仍退回 binary64——同一次事务使用两套真值。正式站反例：`m=1,b=0,R=-17`
+  输入 `100000000000000001` 精确编码 `0001`，面板却报 `+0.000000
+(0.0000%)` 且 status=exact；`m=1,b=1,R=17` 输入
+  `-1.0000000000000000001`（精确误差 `-1e-19`）同样被读作零；精确越界
+  `32767.0000000000000001` 被误判 exact 而非 saturated。现在
+  `valueRequest` 是模式判别联合，DIRECT 保存 reducer 实际用于 exact 编码
+  的同一 lexeme；量化分类（saturated/exact/quantized）与 requested /
+  represented / absolute / relative 全部由精确有理数决定（范围端点取
+  signed16 Y 极值的精确解码，按 m 符号排序），Number 字段只作近似展示，
+  绝不反向决定分类；`m=0`、无 provenance、lexeme 不可解析 fail closed。
+  这是同一事务内真值统一的产品缺陷修复，不是 PMBus §7.4 公式变更；
+  仓库的 `Math.round` half-up + signed16 clamp 策略不变。
+- **DIRECT 全部用户表面忠实呈现 exact 请求（P2）**：量化面板、计算步骤与
+  复制说明由精确有理数渲染——非零误差绝不格式化为文本零：整数差值显示
+  `+1`，极小/极大值用带符号科学计数法（`-1e-19`、`+1e-16`），循环有理数
+  回退精确分数（`-1/6`）并辅以「约」十进制近似；面板注记在显示值无法完整
+  呈现请求时保留「用户请求 <lexeme>；raw 精确表示 <exact>」。物理值复制
+  合同不变：继续提供经验证可安全回录当前 raw 的文本。
+- **精确十进制路径复杂度边界（输入资源策略，非 PMBus 限制）**：
+  `DIRECT_EXACT_MAX_LEXEME_LENGTH = 4096`（依据：安全回录生成器 531,932
+  条文本实测最大 136 字符、理论上限约 607，保留 ≥6.7×/≥30× 余量）。
+  长度/语法/指数移位以纯字符串检查在任何 BigInt 构造之前完成，兆字节
+  粘贴微秒级被拒绝；UI 显示「输入过长，未提交」并保留旧 raw 与旧请求，
+  不静默截断、不改写为 ±Infinity/±0（刻意不用 `maxLength`——浏览器对
+  超长粘贴的静默截断会把截断值当新请求提交）；true zero 文本在任意指数
+  下仍合法零。
+- **默认 5s 单测门禁稳定性**：download 网络拒绝契约测试此前真实睡眠
+  2×2000ms（实测 4.0-4.4s，距 5s 门禁不足 1s，负载下越限）。现在注入
+  记录型 `sleepImpl` 并断言退避序列 `[2000, 2000]`（合同更强、墙钟成本
+  归零）；`direct-exact` 记忆化 `pow10` 并拆分两个 65536-Y 全量 sweep 为
+  独立测试（语料与断言不减）。修复后默认 coverage 连续 3 次 rc 0 且无
+  单测超 5s。
+- **draft Release 资产本地字节验证成为仓库正式流程**：新增
+  `scripts/verify-downloaded-assets.mjs` 统一字节门禁，由 operator 的
+  draft pre-publish 流程（`--mode draft`，元数据可接受 `untagged-<hex>`
+  占位 URL）与 Pages 工作流下载公开资产之后（`--mode published`，严格
+  canonical tag URL 不放宽）共同消费。进程内复用
+  `release-assets-verify.mjs` 的元数据合同，叠加本地文件存在性/普通文件
+  检查、本地字节数等于元数据、`SHA256SUMS.txt` 严格格式合同、ZIP 的
+  SHA-256（node:crypto）与共享 python ZIP 安全校验；失败按类分级
+  （元数据 2-8、缺失 10、大小 11、sums 12、checksum 13、ZIP 安全 14），
+  全部发生在解压/部署/publish 之前。
+
 ## [2.5.11] - 2026-08-28
 
 ### Fixed
