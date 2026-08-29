@@ -70,6 +70,7 @@ npm run check:release-contract
 npm run check:toolchain
 npm run test:coverage
 npm run test:e2e
+npm run test:e2e:mobile
 npm run build
 npm run check:tailwind-scope
 npm run test:e2e:release

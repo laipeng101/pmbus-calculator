@@ -207,3 +207,9 @@ npm run verify                 # 完整本地门禁（已包含 specs:check 与 
    merge SHA 的 `HEAD^{tree}`，两者必须完全相同（M19-B：main 不再有 push CI，tree
    一致即验证完成；不一致属于真实阻塞，用 `workflow_dispatch` 执行 full CI 并定位）。
 7. 文件数、树大小、snapshot 数量、tracked PDF 数量（当前应为 0）和 legacy HTML 是否存在，均以 `git ls-tree -r -l HEAD` 为准；manifest 记录数以 `document/specifications.json` 为准。
+8. 树增长报告随 release（或重大资产变更）PR 记录：tracked file count / tracked
+   bytes（`git ls-tree -r -l HEAD`）、GitHub repo API size、分类占比
+   （visual snapshots、`docs/releases`、`docs/archive`、legacy HTML）与近几个
+   tag 的树体积趋势。不设总字节硬阈值（正常新增测试/快照会合理增长）；
+   单个新增大文件沿用第 5 节 >1 MiB 规则与例外审批；重写 Git 历史不是
+   认可的体积治理手段。

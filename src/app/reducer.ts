@@ -51,7 +51,9 @@ function encodeDirectFromValue(state: AppState, value: number, text: string): Ap
   // v2.5.12: the exact parse enforces the DIRECT_EXACT_MAX_LEXEME_LENGTH
   // resource boundary at its first statement — an overlong lexeme fails
   // closed here with no BigInt work and no provenance (the UI shows the
-  // explicit 输入过长 error; a direct dispatch is a no-op).
+  // explicit 输入过长 error; a direct dispatch is a no-op). Since v2.5.13
+  // the boundary measures the RAW caller string before any trim, so a
+  // whitespace-padded dispatch payload cannot bypass it via classifyFloatText.
   const exact = parseDecimalExactRational(text)
   if (!exact) return state
   const y = encodeDirectExactFromRational(exact, state.direct.m, state.direct.b, state.direct.r)

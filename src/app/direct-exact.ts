@@ -244,7 +244,9 @@ export function directEncodableRangeExact(
  * generator cap of ~607 characters (TERMINATING_EXPANSION_MAX_DIGITS=600
  * plus sign/integer point). 4096 keeps ≥6.7× margin over the theoretical
  * generator cap and ≥30× over the measured maximum, while bounding one
- * lexeme's BigInt construction to ≤ ~13.6k bits.
+ * lexeme's BigInt construction to ≤ ~13.6k bits. The cap measures the raw
+ * caller-provided string (v2.5.13) — the same length the UI input gate sees,
+ * before any trim — so surrounding whitespace cannot extend the budget.
  */
 export const DIRECT_EXACT_MAX_LEXEME_LENGTH = 4096
 
@@ -265,10 +267,17 @@ export type ExactLexemeBoundary =
  * Boundary classification of one candidate exact lexeme (v2.5.12). Exported
  * so tests (and future callers) can prove rejection happens BEFORE BigInt
  * construction; `parseDecimalExactRational` consumes this on every call.
+ *
+ * v2.5.13: the length cap applies to the RAW caller-provided string, BEFORE
+ * any trim — one shared resource measure for the UI input gate and the
+ * reducer-side dispatch. Whitespace padding can no longer buy extra lexeme
+ * budget (`' '.repeat(1_000_000) + '1'` is overlong even though it trims to
+ * `'1'`), and short-input whitespace semantics are unchanged.
  */
 export function checkExactLexemeBoundary(text: string): ExactLexemeBoundary {
-  const s = String(text).trim()
-  if (s.length > DIRECT_EXACT_MAX_LEXEME_LENGTH) return { ok: false, reason: 'overlong' }
+  const raw = String(text)
+  if (raw.length > DIRECT_EXACT_MAX_LEXEME_LENGTH) return { ok: false, reason: 'overlong' }
+  const s = raw.trim()
   const match = EXACT_DECIMAL_SYNTAX.exec(s)
   if (!match) return { ok: false, reason: 'syntax' }
   const intPart = match[2] ?? ''

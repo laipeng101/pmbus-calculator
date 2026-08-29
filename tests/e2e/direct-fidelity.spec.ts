@@ -384,7 +384,7 @@ test.describe('DIRECT 精确请求 provenance（v2.5.12 正式站反例，1280×
   }
 })
 
-test.describe('DIRECT 精确十进制输入边界（v2.5.12）', () => {
+test.describe('DIRECT 精确十进制输入边界（v2.5.13）', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')
@@ -407,15 +407,16 @@ test.describe('DIRECT 精确十进制输入边界（v2.5.12）', () => {
     await page.keyboard.press('ControlOrMeta+v')
   }
 
-  test('超长 paste 立即报「输入过长」：不改 raw、不造 provenance、页面保持响应', async ({
+  test('超长 paste（4097 字符）立即报「输入过长」：不改 raw、不造 provenance、页面保持响应', async ({
     page,
   }) => {
     await commitViaKeyboard(page, '7')
     await expect(hexInput(page)).toHaveValue('0007')
     await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
 
-    // 一百万字符的粘贴：O(1) 边界立即拒绝，绝不阻塞主线程。
-    await pasteIntoValueInput(page, '9'.repeat(1_000_000))
+    // 上限 +1 的真实剪贴板粘贴：raw 长度门立即拒绝（DOM/clipboard/错误交互
+    // 合同在此验证；兆字节级拒绝由纯函数/reducer 单测覆盖，不在浏览器重复）。
+    await pasteIntoValueInput(page, '9'.repeat(4_097))
     await expect(page.getByText(/输入过长，未提交/)).toBeVisible()
     // 旧 committed raw 与旧请求 provenance 保持不变：面板仍在且显示同一
     // exact 事务（清除 provenance 会让面板整体消失）。
@@ -428,6 +429,19 @@ test.describe('DIRECT 精确十进制输入边界（v2.5.12）', () => {
     await valueInput(page).press('Enter')
     await expect(hexInput(page)).toHaveValue('0005')
     await expect(page.getByText(/输入过长，未提交/)).toHaveCount(0)
+  })
+
+  test('空白填充的过长 paste 同样拒绝：trim 不增加预算，旧 provenance 保持', async ({ page }) => {
+    await commitViaKeyboard(page, '7')
+    await expect(hexInput(page)).toHaveValue('0007')
+
+    // 4096 空格 + "1"（raw 4097，trim 后只有 "1"）：UI 的 raw 长度门拒绝，
+    // 与 reducer 侧共享同一度量（v2.5.13 修复的 trim-before-length 分裂）。
+    await pasteIntoValueInput(page, `${' '.repeat(4_200)}1`)
+    await expect(page.getByText(/输入过长，未提交/)).toBeVisible()
+    await expect(hexInput(page)).toHaveValue('0007')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(quantizationPanel(page)).toContainText('+0.000000 (0.0000%)')
   })
 
   test('最大允许长度（4096 字符，前导零）正常提交并保留请求 provenance', async ({ page }) => {

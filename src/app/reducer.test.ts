@@ -1497,6 +1497,30 @@ describe('appReducer — state transitions', () => {
       expect(appReducer(committed, { type: 'value/set', value: overlong })).toBe(committed)
     })
 
+    it('fails closed on a whitespace-padded dispatch payload: trim buys no budget (v2.5.13)', () => {
+      // The raw caller string is measured BEFORE any trim, so whitespace
+      // padding cannot smuggle a short lexeme past the shared boundary.
+      const s = directWith(1, 0, 0)
+      const committed = appReducer(s, { type: 'value/set', value: '7' })
+      const padded = `${' '.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH)}1`
+      expect(appReducer(committed, { type: 'value/set', value: padded })).toBe(committed)
+      // Megabyte payload: still a strict no-op (same state reference).
+      const megabyte = `${' '.repeat(1_000_000)}1`
+      expect(appReducer(committed, { type: 'value/set', value: megabyte })).toBe(committed)
+    })
+
+    it('keeps accepted provenance text bounded by the raw lexeme cap (v2.5.13)', () => {
+      const s = directWith(1, 0, 0)
+      const padded = `${' '.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH - 1)}1`
+      const next = appReducer(s, { type: 'value/set', value: padded })
+      expect(next.raw).toBe(1)
+      expect(next.valueRequest?.mode).toBe('DIRECT')
+      if (next.valueRequest?.mode === 'DIRECT') {
+        expect(next.valueRequest.text).toBe(padded)
+        expect(next.valueRequest.text.length).toBeLessThanOrEqual(DIRECT_EXACT_MAX_LEXEME_LENGTH)
+      }
+    })
+
     it('fails closed when the lexeme is not an exact decimal (defensive)', () => {
       // classifyFloatText would reject these before the reducer; a direct
       // dispatch must still not fabricate a state change.

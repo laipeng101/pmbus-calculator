@@ -120,18 +120,22 @@ PMBusMath.decodeDirect(y, …))`）与经验证的安全回录文本生成
   request；非法、越界、下溢与过长文本不生成 provenance。这修复的是同一
   次事务使用两套真值的产品缺陷（raw 精确、provenance 折叠），不是 PMBus
   公式变更。
-- **精确 lexeme 长度边界（v2.5.12，交互资源边界而非 PMBus 限制）**：
+- **精确 lexeme 长度边界（v2.5.12；v2.5.13 统一度量，交互资源边界而非 PMBus 限制）**：
   `DIRECT_EXACT_MAX_LEXEME_LENGTH = 4096` 是 DIRECT 精确十进制路径接受的
   单条 lexeme 最大字符数。依据：安全回录生成器在 531,932 条文本的实测中
   最大长度为 136（理论生成器上限约 607，即
   `TERMINATING_EXPANSION_MAX_DIGITS=600` 加符号/整数位），4096 保留 ≥6.7×
   理论余量、≥30× 实测余量，并把单条 lexeme 的 BigInt 构造限制在
-  ≤~13.6k bit。`checkExactLexemeBoundary` 在任何 BigInt 构造之前以纯字符串
-  工作完成长度/语法/指数移位检查（O(1)/O(n)），兆字节粘贴在微秒级被拒绝；
-  true zero 文本（`0e-400`、`-0.0e-999`）在任何指数下仍合法零。UI 显示
-  明确的「输入过长，未提交」错误并保留旧 raw 与旧请求；不静默截断、不改写
-  为 ±Infinity/±0；reducer 经 `parseDecimalExactRational` 内部边界防御直接
-  dispatch（不只依赖 DOM）。
+  ≤~13.6k bit。v2.5.13 起边界度量是**调用方提供的原始字符串长度（raw
+  `length`，在任何 trim 之前）**：UI 输入门与 reducer/exact parser 防线共享
+  同一度量，空白填充（如 `4096 个空格 + "1"`，raw 长度 4097）不能通过先
+  trim 换取额外预算，直接 dispatch 超长文本是严格 no-op；
+  `checkExactLexemeBoundary` 在任何 BigInt 构造之前以纯字符串工作完成
+  raw 长度/语法/指数移位检查（O(1)/O(n)），兆字节粘贴在微秒级被拒绝；
+  短输入的空白语义（首尾空白 trim、`0e-400`/`-0.0e-999` 等任何指数下的
+  true zero）不变。UI 显示明确的「输入过长，未提交」错误并保留旧 raw 与
+  旧请求；超长粘贴在进入 React draft state 之前被拒绝（不把超长字符串
+  驻留在组件状态中），不静默截断、不改写为 ±Infinity/±0。
 
 ### 2.4 HALF
 

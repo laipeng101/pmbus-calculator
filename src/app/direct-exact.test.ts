@@ -571,3 +571,34 @@ describe('exact lexeme boundary (v2.5.12)', () => {
     expect(generated).toBeGreaterThan(30)
   })
 })
+
+describe('raw lexeme resource boundary (v2.5.13)', () => {
+  it('rejects a whitespace-padded lexeme whose raw length exceeds the cap — trim buys no budget', () => {
+    // The v2.5.12 gap: a padded dispatch payload trimmed to a short valid
+    // lexeme and was accepted. The cap now measures the raw string first.
+    const padded = `${' '.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH)}1`
+    expect(padded.length).toBe(DIRECT_EXACT_MAX_LEXEME_LENGTH + 1)
+    expect(padded.trim()).toBe('1')
+    expect(checkExactLexemeBoundary(padded)).toEqual({ ok: false, reason: 'overlong' })
+    expect(parseDecimalExactRational(padded)).toBeNull()
+  })
+
+  it('accepts a syntactically valid lexeme whose raw length is exactly the cap', () => {
+    const padded = `${' '.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH - 1)}1`
+    expect(padded.length).toBe(DIRECT_EXACT_MAX_LEXEME_LENGTH)
+    expect(checkExactLexemeBoundary(padded)).toEqual({ ok: true })
+    expect(parseDecimalExactRational(padded)).toEqual({ numerator: 1n, denominator: 1n })
+  })
+
+  it('refuses a megabyte whitespace-padded payload at the string boundary, with no BigInt work', () => {
+    const padded = `${' '.repeat(1_000_000)}1`
+    expect(checkExactLexemeBoundary(padded)).toEqual({ ok: false, reason: 'overlong' })
+    expect(parseDecimalExactRational(padded)).toBeNull()
+  })
+
+  it('keeps short-input whitespace semantics unchanged (signed zero, exponent forms)', () => {
+    expect(parseDecimalExactRational('\t 1 \n')).toEqual({ numerator: 1n, denominator: 1n })
+    expect(parseDecimalExactRational(' -.0e3 ')).toEqual({ numerator: 0n, denominator: 1n })
+    expect(parseDecimalExactRational(' 0e-400 ')).toEqual({ numerator: 0n, denominator: 1n })
+  })
+})
