@@ -222,34 +222,89 @@ export function directEncodableRangeExact(
 }
 
 /**
- * Exact parse of one complete decimal lexeme into a normalized rational.
- * Accepts the same complete-syntax class `classifyFloatText` treats as a
- * value (sign, digits, optional fraction, optional exponent); NaN/Infinity
- * literals and any other text return null so callers can fail closed. The
- * exponent is bounded because the reducer only reaches the exact path after
- * `classifyFloatText` produced a finite Number (|value| < 1.8e308).
+ * Maximum accepted length of one DIRECT exact decimal lexeme (v2.5.12).
+ *
+ * This is an interactive RESOURCE boundary, not a PMBus rule: the exact path
+ * must reject absurdly long pasted text before any BigInt work so a paste
+ * can never block the main thread. Evidence: the repository's safe re-entry
+ * generator produces at most 136-character texts over a 531,932-text
+ * measurement sweep (widest denominators included), with a theoretical
+ * generator cap of ~607 characters (TERMINATING_EXPANSION_MAX_DIGITS=600
+ * plus sign/integer point). 4096 keeps ≥6.7× margin over the theoretical
+ * generator cap and ≥30× over the measured maximum, while bounding one
+ * lexeme's BigInt construction to ≤ ~13.6k bits.
  */
-export function parseDecimalExactRational(text: string): ExactRational | null {
+export const DIRECT_EXACT_MAX_LEXEME_LENGTH = 4096
+
+/** Complete decimal lexeme accepted by the exact path (same class as classifyFloatText values). */
+const EXACT_DECIMAL_SYNTAX = /^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/
+
+/**
+ * Why a lexeme is rejected by the exact parse boundary (v2.5.12). The
+ * boundary check is pure string work — O(1) for the length cap, O(n) for the
+ * syntax scan — and never constructs a BigInt, so even megabyte pastes are
+ * rejected before any big-integer cost.
+ */
+export type ExactLexemeBoundary =
+  | { ok: true }
+  | { ok: false; reason: 'overlong' | 'syntax' | 'shift-out-of-range' }
+
+/**
+ * Boundary classification of one candidate exact lexeme (v2.5.12). Exported
+ * so tests (and future callers) can prove rejection happens BEFORE BigInt
+ * construction; `parseDecimalExactRational` consumes this on every call.
+ */
+export function checkExactLexemeBoundary(text: string): ExactLexemeBoundary {
   const s = String(text).trim()
-  const match = /^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/.exec(s)
-  if (!match) return null
-  const sign = match[1] === '-' ? -1n : 1n
+  if (s.length > DIRECT_EXACT_MAX_LEXEME_LENGTH) return { ok: false, reason: 'overlong' }
+  const match = EXACT_DECIMAL_SYNTAX.exec(s)
+  if (!match) return { ok: false, reason: 'syntax' }
   const intPart = match[2] ?? ''
   const fracPart = match[3] ?? match[4] ?? ''
-  const digits = BigInt(intPart + fracPart || '0')
   // True zero texts keep the legal signed-zero input contract regardless of
   // exponent extremes (`0e-400`, `-0.0e-999`): the exact rational of a zero
   // magnitude needs no power of ten at all, and the DIRECT field encode of
   // zero is sign-independent (±0 encode to the same integer Y).
-  if (digits === 0n) return { numerator: 0n, denominator: 1n }
+  if (!/[1-9]/.test(intPart + fracPart)) return { ok: true }
   const exp = match[5] !== undefined ? Number(match[5]) : 0
-  if (!Number.isSafeInteger(exp)) return null
+  if (!Number.isSafeInteger(exp)) return { ok: false, reason: 'shift-out-of-range' }
   // value = ±digits × 10^(exp − fracLen). Non-zero magnitudes that could
   // overflow binary64 (>1e308) or underflow past the subnormal range are
   // rejected by classifyFloatText upstream (out-of-range / underflow); the
   // bounds below fail closed if such a lexeme ever reaches this path.
   const shift = exp - fracPart.length
-  if (shift > 400 || shift < -500) return null
+  if (shift > 400 || shift < -500) return { ok: false, reason: 'shift-out-of-range' }
+  return { ok: true }
+}
+
+/**
+ * Exact parse of one complete decimal lexeme into a normalized rational.
+ * Accepts the same complete-syntax class `classifyFloatText` treats as a
+ * value (sign, digits, optional fraction, optional exponent); NaN/Infinity
+ * literals and any other text return null so callers can fail closed.
+ * v2.5.12: the O(1)/O(n) boundary check (length cap, syntax, exponent
+ * shift) runs BEFORE any BigInt construction — an overlong paste is
+ * rejected without big-integer cost.
+ */
+export function parseDecimalExactRational(text: string): ExactRational | null {
+  const boundary = checkExactLexemeBoundary(text)
+  if (!boundary.ok) return null
+  const s = String(text).trim()
+  const match = EXACT_DECIMAL_SYNTAX.exec(s)
+  if (!match) return null
+  const sign = match[1] === '-' ? -1n : 1n
+  const intPart = match[2] ?? ''
+  const fracPart = match[3] ?? match[4] ?? ''
+  // True zero (any exponent, including extremes beyond the shift bounds):
+  // the exact rational of a zero magnitude needs no power of ten at all.
+  if (!/[1-9]/.test(intPart + fracPart)) return { numerator: 0n, denominator: 1n }
+  // Non-zero magnitudes only reach here, so the mantissa digit string is
+  // well-formed and bounded by DIRECT_EXACT_MAX_LEXEME_LENGTH.
+  const digits = BigInt(intPart + fracPart)
+  const exp = match[5] !== undefined ? Number(match[5]) : 0
+  // value = ±digits × 10^(exp − fracLen); the shift bounds were verified by
+  // the boundary check without any BigInt work.
+  const shift = exp - fracPart.length
   if (shift >= 0) return normalize(sign * digits * pow10(shift), 1n)
   return normalize(sign * digits, pow10(-shift))
 }

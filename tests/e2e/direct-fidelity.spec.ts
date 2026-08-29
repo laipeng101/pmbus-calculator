@@ -383,3 +383,78 @@ test.describe('DIRECT 精确请求 provenance（v2.5.12 正式站反例，1280×
     })
   }
 })
+
+test.describe('DIRECT 精确十进制输入边界（v2.5.12）', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    await setDirectCoefficients(page, 1, 0, 0)
+  })
+
+  async function commitViaKeyboard(page: Page, text: string) {
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type(text, { delay: 20 })
+    await valueInput(page).press('Enter')
+  }
+
+  async function pasteIntoValueInput(page: Page, text: string) {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.evaluate((t) => navigator.clipboard.writeText(t), text)
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.press('ControlOrMeta+v')
+  }
+
+  test('超长 paste 立即报「输入过长」：不改 raw、不造 provenance、页面保持响应', async ({
+    page,
+  }) => {
+    await commitViaKeyboard(page, '7')
+    await expect(hexInput(page)).toHaveValue('0007')
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+
+    // 一百万字符的粘贴：O(1) 边界立即拒绝，绝不阻塞主线程。
+    await pasteIntoValueInput(page, '9'.repeat(1_000_000))
+    await expect(page.getByText(/输入过长，未提交/)).toBeVisible()
+    // 旧 committed raw 与旧请求 provenance 保持不变：面板仍在且显示同一
+    // exact 事务（清除 provenance 会让面板整体消失）。
+    await expect(hexInput(page)).toHaveValue('0007')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(quantizationPanel(page)).toContainText('+0.000000 (0.0000%)')
+    // 页面仍然响应：继续编辑可正常提交。
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('5', { delay: 20 })
+    await valueInput(page).press('Enter')
+    await expect(hexInput(page)).toHaveValue('0005')
+    await expect(page.getByText(/输入过长，未提交/)).toHaveCount(0)
+  })
+
+  test('最大允许长度（4096 字符，前导零）正常提交并保留请求 provenance', async ({ page }) => {
+    const maxText = `0${'0'.repeat(4094)}1`
+    expect(maxText.length).toBe(4096)
+    await pasteIntoValueInput(page, maxText)
+    // 值为 1：raw 0001、量化 exact；面板 note 保留完整 4096 字符请求文本。
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+    await expect(quantizationPanel(page)).toContainText(maxText)
+    // 无横向溢出：长请求文本必须换行显示。
+    const { scrollWidth, clientWidth } = await page
+      .locator('body')
+      .evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }))
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
+  })
+
+  test('1e-400 下溢与 1e400 溢出合同不回归（超长检查不影响既有错误分类）', async ({ page }) => {
+    // fill = 单次 change 事件（回归检查与 value-magnitude.spec.ts 同模式；
+    // 逐字符输入会对每个合法前缀 live-commit，属于另一条合同的证明）。
+    await valueInput(page).fill('1e-400')
+    await valueInput(page).press('Tab')
+    await expect(page.getByText(/输入下溢/)).toBeVisible()
+    await expect(hexInput(page)).toHaveValue('0000')
+    await valueInput(page).fill('1e400')
+    await valueInput(page).press('Tab')
+    await expect(page.getByText(/数值超出可表示范围/)).toBeVisible()
+    await expect(hexInput(page)).toHaveValue('0000')
+  })
+})

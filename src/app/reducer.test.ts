@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { appReducer } from './reducer'
 import { INITIAL_STATE, type AppState } from './state'
 import { toCalculatorViewModel } from './view-model'
+import { DIRECT_EXACT_MAX_LEXEME_LENGTH } from './direct-exact'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
 
@@ -1485,6 +1486,15 @@ describe('appReducer — state transitions', () => {
       const s = appReducer(directZero, { type: 'value/set', value: '-1' })
       expect(s.raw).toBe(directZero.raw)
       expect(s.valueRequest).toBeNull()
+    })
+
+    it('fails closed on an overlong lexeme: no commit, no provenance (v2.5.12)', () => {
+      // Domain defense: the boundary inside parseDecimalExactRational rejects
+      // overlong text even on a direct dispatch (never only-DOM enforcement).
+      const s = directWith(1, 0, 0)
+      const committed = appReducer(s, { type: 'value/set', value: '7' })
+      const overlong = `1${'0'.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH + 1)}`
+      expect(appReducer(committed, { type: 'value/set', value: overlong })).toBe(committed)
     })
 
     it('fails closed when the lexeme is not an exact decimal (defensive)', () => {
