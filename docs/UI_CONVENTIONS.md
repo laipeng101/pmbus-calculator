@@ -148,6 +148,14 @@
   `2^-25` 等「请求本身可表示、编码量化为零」的量化合同不变。输入下溢错误与
   relative L16 的派生下溢（`resolveRelativeVoltage`）是两类不同错误来源，文案、
   状态与测试不得混用。这是 JavaScript Number 的事实合同，不是 PMBus 规范要求。
+- **超长粘贴在进入草稿状态前拒绝（v2.5.13，仅 DIRECT 精确路径）**：原始文本
+  长度超过 `DIRECT_EXACT_MAX_LEXEME_LENGTH`（4096，含首尾空白的 raw 长度）时，
+  `handleChange` 在写入 draft state 之前显示「输入过长，未提交」并整体拒绝该次
+  编辑——受控输入保持上一个草稿内容（粘贴文本不驻留 React state）、不运行解析
+  管线、不改 committed raw/请求/provenance；不使用 HTML `maxlength`（粘贴会被
+  静默截断），由受控状态显式拒绝。后续 blur 按既有事务合同处理（无超长草稿
+  残留）；用户重新输入合法文本后错误与旧 draft 同时清除。reducer 侧共享同一
+  raw 长度度量（DOMAIN_MODEL §2.3），直接派发超长文本是严格 no-op。
 - 模式切换后不得留下与当前显示值矛盾的 stale error（错误随字段所在 workspace
   卸载清除；DIRECT 系数错误随状态保留、只在 DIRECT 模式渲染）。
 - 全局快捷键 `Ctrl+1..4` 仅在非编辑上下文生效：`src/app/editable-target.ts` 判定

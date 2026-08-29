@@ -88,20 +88,24 @@ export default function ValueInput({ vm, dispatch }: Props) {
   // v2.5.12 resource boundary (DIRECT exact lexemes only): an overlong draft
   // shows an explicit error and never commits — no truncation, no rewrite to
   // Infinity/0, last committed state/raw and provenance stay untouched. The
-  // reducer enforces the same constant defensively.
+  // reducer enforces the same constant defensively, and since v2.5.13 both
+  // gates measure the RAW string length (before any trim) so a whitespace-
+  // padded dispatch payload cannot bypass the boundary the UI enforces.
   const overlong = (text: string): boolean =>
     vm.mode === 'DIRECT' && text.length > DIRECT_EXACT_MAX_LEXEME_LENGTH
 
   const handleChange = (text: string) => {
     transaction.markDirty()
-    setDraft(text)
-    // O(1) resource gate before any classification work: a megabyte paste
-    // must never run the parse/Number pipeline (v2.5.12, DIRECT only — other
+    // O(1) resource gate BEFORE the draft state (v2.5.13): an overlong paste
+    // is refused outright — it never enters React state (the controlled input
+    // keeps the previous draft), no parse/Number pipeline runs, and the
+    // committed state/raw/provenance stay untouched (DIRECT only — other
     // modes have no BigInt path and keep their existing contracts).
     if (overlong(text)) {
       setError(OVERLONG_MESSAGE)
       return
     }
+    setDraft(text)
     const { kind, value } = classifyDraft(text, vm.mode === 'HALF')
     if (kind === 'invalid') {
       setError(INVALID_MESSAGE)
