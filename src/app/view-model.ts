@@ -28,6 +28,8 @@ import type { RelativeVoltageResult } from './relative-voltage'
 import {
   analyzeDirectRoundTrip,
   formatExactDecimal,
+  formatExactDelta,
+  formatExactPercent,
   formatExactRational,
   generateSafeDirectReentryText,
 } from './direct-exact'
@@ -850,12 +852,39 @@ function formatSpecial(value: number): string {
  * informational, saturated or overflowing/error — with no cross-format
  * absolute threshold: PMBus device accuracy is a datasheet property
  * (Part II §7.8/§7.9), so no universal cut-off is implied.
+ *
+ * v2.5.12: DIRECT renders the exact rational verdict when one exists — the
+ * binary64 Number fields cannot distinguish a folded delta from a real
+ * zero, and a non-zero exact error must never display as 0.
  */
 function presentQuantizationOutcome(outcome: QuantizationOutcome): {
   kind: 'ok' | 'warn' | 'error'
   text: string
   note?: string
 } {
+  if (outcome.directExact) {
+    const exact = outcome.directExact
+    const delta = formatExactDelta(exact.absoluteError)
+    switch (outcome.status) {
+      case 'exact':
+        return { kind: 'ok', text: `+0.000000 (${formatExactPercent(exact.relativePercent)})` }
+      case 'quantized':
+        return {
+          kind: 'warn',
+          text: `${delta}（约 ${formatExactPercent(exact.relativePercent)}）`,
+        }
+      case 'saturated':
+        return {
+          kind: 'error',
+          text: `${delta}（已编码到边界值）`,
+          note: '请求值超出当前系数下的精确可表示范围，编码器已饱和',
+        }
+      // overflow / special are unreachable for a DIRECT exact transaction;
+      // they fall through to the generic presentation below.
+      default:
+        break
+    }
+  }
   switch (outcome.status) {
     case 'exact': {
       const percent = outcome.relativeError === null ? '—' : `${outcome.relativeError.toFixed(4)}%`
@@ -906,6 +935,9 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   // v2.5.11: DIRECT precision fidelity is resolved once and consumed by the
   // quantization readout, the copy override and the VM field alike.
   const directFidelity = resolveDirectFidelity(state)
+  // Displayed physical value — also the reference for whether the committed
+  // request lexeme is already fully visible to the user.
+  const valueText = computeValueText(state)
   {
     const outcome = computeQuantizationOutcome(state)
     if (outcome) {
@@ -914,6 +946,16 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       deltaText = presented.text
       const notes: string[] = []
       if (presented.note) notes.push(presented.note)
+      // v2.5.12: the panel keeps the committed exact request and the exact
+      // represented value side by side whenever the displayed value cannot
+      // show the request as-is (folded approximation, normalized display…).
+      // A request that already IS the displayed value stays noise-free.
+      if (outcome.directExact && valueText !== outcome.directExact.requestedText) {
+        const e = outcome.directExact
+        const representedText =
+          formatExactDecimal(e.represented) ?? formatExactRational(e.represented)
+        notes.push(`用户请求 ${e.requestedText}；raw 精确表示 ${representedText}`)
+      }
       if (directFidelity) {
         // The binary64 delta may honestly be zero, but a folded display must
         // never read as a clean exact result: flag it as a warning and name
@@ -1045,7 +1087,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   return {
     mode: state.mode,
     steps: buildCalculationSteps(state),
-    valueText: computeValueText(state),
+    valueText,
     valueLabel: getValueLabel(state.mode),
     rawHex,
     rawHexDigits,

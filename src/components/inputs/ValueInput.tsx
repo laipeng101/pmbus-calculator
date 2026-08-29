@@ -6,6 +6,7 @@ import {
   resolveFloatTextOnBlur,
   type FloatTextClassification,
 } from '../../app/float-parse'
+import { DIRECT_EXACT_MAX_LEXEME_LENGTH } from '../../app/direct-exact'
 import { useEditTransaction } from '../../app/input-transaction'
 
 interface Props {
@@ -21,6 +22,7 @@ const OUT_OF_RANGE_MESSAGE =
   '数值超出可表示范围：该十进制文本会转换为 ±Infinity，请输入 JavaScript Number 可表示的有限值'
 const UNDERFLOW_MESSAGE =
   '输入下溢：该非零十进制文本会转换为 ±0，请求的量级信息会丢失；请输入 JavaScript Number 可表示的非零有限值（最小到 5e-324），或真正的 0'
+const OVERLONG_MESSAGE = `输入过长，未提交：DIRECT 精确十进制文本最多 ${DIRECT_EXACT_MAX_LEXEME_LENGTH} 个字符，旧请求保持不变（这是交互资源边界，不是 PMBus 限制）`
 
 /** Keep-error blur mapping: each rejected raw kind keeps its own message. */
 function errorForRawKind(kind: FloatTextClassification['kind']): string {
@@ -83,9 +85,23 @@ export default function ValueInput({ vm, dispatch }: Props) {
     if (!editing && !error) setDraft(vm.valueText)
   }, [vm.valueText, editing, error])
 
+  // v2.5.12 resource boundary (DIRECT exact lexemes only): an overlong draft
+  // shows an explicit error and never commits — no truncation, no rewrite to
+  // Infinity/0, last committed state/raw and provenance stay untouched. The
+  // reducer enforces the same constant defensively.
+  const overlong = (text: string): boolean =>
+    vm.mode === 'DIRECT' && text.length > DIRECT_EXACT_MAX_LEXEME_LENGTH
+
   const handleChange = (text: string) => {
     transaction.markDirty()
     setDraft(text)
+    // O(1) resource gate before any classification work: a megabyte paste
+    // must never run the parse/Number pipeline (v2.5.12, DIRECT only — other
+    // modes have no BigInt path and keep their existing contracts).
+    if (overlong(text)) {
+      setError(OVERLONG_MESSAGE)
+      return
+    }
     const { kind, value } = classifyDraft(text, vm.mode === 'HALF')
     if (kind === 'invalid') {
       setError(INVALID_MESSAGE)
@@ -121,6 +137,13 @@ export default function ValueInput({ vm, dispatch }: Props) {
       setEditing(false)
       return
     }
+    // Resource gate before classification (v2.5.12): an overlong DIRECT
+    // draft keeps the error and never commits, whatever its syntax is.
+    if (overlong(draft)) {
+      setError(OVERLONG_MESSAGE)
+      setEditing(false)
+      return
+    }
     // Classification-first blur decision (v2.5.9): the raw draft is
     // classified BEFORE any normalization, so an invalid draft (`NaN.`,
     // `2..`, `1ee`) keeps its error and never becomes a commit, and only a
@@ -137,6 +160,10 @@ export default function ValueInput({ vm, dispatch }: Props) {
         // HALF literals stay rejected outside HALF mode: keep the draft and
         // the error, no commit.
         setError(NON_FINITE_MESSAGE)
+      } else if (overlong(resolution.text)) {
+        // DIRECT exact lexeme resource boundary: keep the draft and show the
+        // explicit error, no commit.
+        setError(OVERLONG_MESSAGE)
       } else {
         setError(null)
         setDraft(resolution.text)

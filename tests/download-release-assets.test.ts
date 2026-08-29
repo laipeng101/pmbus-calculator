@@ -198,9 +198,21 @@ describe('downloadVerifiedAssets: failure contract', () => {
     const fetchImpl = (async () => {
       throw new TypeError('fetch failed')
     }) as unknown as typeof fetch
+    // v2.5.12: the backoff sleeps are injected (recorded, not really slept)
+    // so this contract runs in milliseconds instead of deterministically
+    // burning 2×2000ms of the 5s per-test gate under load.
+    const sleeps: number[] = []
     await expect(
-      downloadVerifiedAssets(verified(), { repo: REPO, outDir, fetchImpl }),
+      downloadVerifiedAssets(verified(), {
+        repo: REPO,
+        outDir,
+        fetchImpl,
+        sleepImpl: async (ms) => {
+          sleeps.push(ms)
+        },
+      }),
     ).rejects.toMatchObject({ code: 10 })
+    expect(sleeps).toEqual([2_000, 2_000])
   })
 
   it('rejects malformed verified metadata with code 2 (missing sums entry)', async () => {
@@ -480,18 +492,25 @@ describe('downloadVerifiedAssets: bounded network-rejection backoff (v2.5.11)', 
   it('keeps tokens, auth headers and signed query strings out of diagnostics', async () => {
     const outDir = newOutDir()
     let caught: string | undefined
+    const sleeps: number[] = []
     await downloadVerifiedAssets(verified(), {
       repo: REPO,
       outDir,
       fetchImpl: (async () => {
         throw new TypeError('fetch failed')
       }) as unknown as typeof fetch,
+      // Injected backoff (v2.5.12): the diagnostics contract must not depend
+      // on two real 2-second sleeps.
+      sleepImpl: async (ms) => {
+        sleeps.push(ms)
+      },
     }).catch((error: Error) => {
       caught = `${error.name}: ${error.message}`
     })
     // The failure chain only ever carries the verified canonical URL and the
     // transport error text — no credential-shaped fragment may appear.
     expect(caught).toContain('download failed after 3 attempts')
+    expect(sleeps).toEqual([2_000, 2_000])
     for (const fragment of ['token', 'Authorization', 'sig=', 'Bearer']) {
       expect(caught, fragment).not.toContain(fragment)
     }

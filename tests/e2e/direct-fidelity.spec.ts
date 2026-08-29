@@ -246,3 +246,215 @@ test.describe('DIRECT 精度保真响应式与资源（390/360px）', () => {
     expect(consoleErrors).toEqual([])
   })
 })
+
+test.describe('DIRECT 精确请求 provenance（v2.5.12 正式站反例，1280×900）', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+  })
+
+  async function commitViaKeyboard(page: Page, text: string) {
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type(text, { delay: 20 })
+    await valueInput(page).press('Enter')
+  }
+
+  test('反例 A：整数请求 100000000000000001 → raw 0001，量化面板报精确 +1（非零）', async ({
+    page,
+  }) => {
+    await setDirectCoefficients(page, 1, 0, -17)
+    await commitViaKeyboard(page, '100000000000000001')
+
+    await expect(hexInput(page)).toHaveValue('0001')
+    // 输入框沿用 represented 的规范化显示；面板保留原始请求。
+    await expect(valueInput(page)).toHaveValue('100000000000000000')
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'warn')
+    await expect(quantizationPanel(page)).toContainText('+1（约 1e-15%）')
+    await expect(quantizationPanel(page)).toContainText('用户请求 100000000000000001')
+    await expect(quantizationPanel(page)).toContainText('raw 精确表示 100000000000000000')
+
+    // 步骤：请求、精确表示、精确误差同屏可见。
+    await expandSteps(page)
+    const steps = page.getByTestId('calculation-steps')
+    await expect(steps).toContainText('100000000000000001')
+    await expect(steps).toContainText('raw 精确解码值')
+    await expect(steps).toContainText('精确误差（请求 − 表示）')
+
+    // 物理值复制仍是可安全回录的表示值：真实剪贴板回录回到 raw 0001。
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.getByRole('button', { name: '物理值' }).click()
+    const copied = await page.evaluate(() => navigator.clipboard.readText())
+    expect(copied).toBe('100000000000000000')
+    await commitViaKeyboard(page, copied)
+    await expect(hexInput(page)).toHaveValue('0001')
+  })
+
+  test('反例 A 负向对称：-100000000000000001 → raw FFFF，精确 -1', async ({ page }) => {
+    await setDirectCoefficients(page, 1, 0, -17)
+    await commitViaKeyboard(page, '-100000000000000001')
+    await expect(hexInput(page)).toHaveValue('FFFF')
+    await expect(quantizationPanel(page)).toContainText('-1（约 -1e-15%）')
+    await expect(quantizationPanel(page)).toContainText('用户请求 -100000000000000001')
+  })
+
+  test('反例 B：-1.0000000000000000001 → raw 0000，精确 -1e-19（绝不显示为 0）', async ({
+    page,
+  }) => {
+    await setDirectCoefficients(page, 1, 1, 17)
+    await commitViaKeyboard(page, '-1.0000000000000000001')
+    await expect(hexInput(page)).toHaveValue('0000')
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'warn')
+    await expect(quantizationPanel(page)).toContainText('-1e-19（约 -1e-17%）')
+    await expect(quantizationPanel(page)).toContainText('用户请求 -1.0000000000000000001')
+    await expect(quantizationPanel(page)).toContainText('raw 精确表示 -1')
+  })
+
+  test('反例 C：精确越界饱和——32767.0000000000000001 → 7FFF / +1e-16', async ({ page }) => {
+    await setDirectCoefficients(page, 1, 0, 0)
+    await commitViaKeyboard(page, '32767.0000000000000001')
+    await expect(hexInput(page)).toHaveValue('7FFF')
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'error')
+    await expect(quantizationPanel(page)).toContainText('+1e-16（已编码到边界值）')
+    await commitViaKeyboard(page, '-32768.0000000000000001')
+    await expect(hexInput(page)).toHaveValue('8000')
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'error')
+    await expect(quantizationPanel(page)).toContainText('-1e-16（已编码到边界值）')
+    // 精确端点仍是 exact，不误报饱和。
+    await commitViaKeyboard(page, '32767')
+    await expect(hexInput(page)).toHaveValue('7FFF')
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+    await commitViaKeyboard(page, '-32768')
+    await expect(hexInput(page)).toHaveValue('8000')
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+  })
+
+  test('provenance 生命周期：真实 raw 编辑清除、untouched blur 保留、显式同值重输重建', async ({
+    page,
+  }) => {
+    await setDirectCoefficients(page, 1, 0, -17)
+    await commitViaKeyboard(page, '100000000000000001')
+    await expect(quantizationPanel(page)).toContainText('用户请求 100000000000000001')
+
+    // untouched focus/blur：严格 no-op，provenance 保留。
+    await valueInput(page).click()
+    await valueInput(page).press('Tab')
+    await expect(quantizationPanel(page)).toContainText('用户请求 100000000000000001')
+
+    // 显式同值重输：重新建立 provenance（新事务，面板仍在）。
+    await commitViaKeyboard(page, '100000000000000001')
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(quantizationPanel(page)).toContainText('用户请求 100000000000000001')
+
+    // 真实 raw 编辑（键盘全选替换）：provenance 清除，面板消失。
+    await hexInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('1234', { delay: 20 })
+    await hexInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('1234')
+    await expect(quantizationPanel(page)).toHaveCount(0)
+  })
+
+  test('fidelity 折叠告警与量化面板共存且不矛盾（请求精确可表示时）', async ({ page }) => {
+    await setDirectCoefficients(page, 1, 1, 17)
+    // 请求 -1.00000000000000001 恰好精确可表示：raw FFFF、量化 exact，
+    // 但显示值折叠——两个告警必须同时可见。
+    await commitViaKeyboard(page, '-1.00000000000000001')
+    await expect(hexInput(page)).toHaveValue('FFFF')
+    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    await expect(quantizationPanel(page)).toContainText('+0.000000 (0.0000%)')
+    await expect(quantizationPanel(page)).toContainText('用户请求 -1.00000000000000001')
+  })
+
+  for (const width of [390, 360]) {
+    test(`${width}px：长精确请求文本换行显示且无横向溢出`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 })
+      await setDirectCoefficients(page, 1, 0, -17)
+      await commitViaKeyboard(page, '100000000000000001')
+      await expect(quantizationPanel(page)).toContainText('用户请求 100000000000000001')
+      const { scrollWidth, clientWidth } = await page
+        .locator('body')
+        .evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }))
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
+      // 完整值仍可通过步骤访问（不截断丢失）。
+      await expandSteps(page)
+      await expect(page.getByTestId('calculation-steps')).toContainText('100000000000000001')
+    })
+  }
+})
+
+test.describe('DIRECT 精确十进制输入边界（v2.5.12）', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    await setDirectCoefficients(page, 1, 0, 0)
+  })
+
+  async function commitViaKeyboard(page: Page, text: string) {
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type(text, { delay: 20 })
+    await valueInput(page).press('Enter')
+  }
+
+  async function pasteIntoValueInput(page: Page, text: string) {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.evaluate((t) => navigator.clipboard.writeText(t), text)
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.press('ControlOrMeta+v')
+  }
+
+  test('超长 paste 立即报「输入过长」：不改 raw、不造 provenance、页面保持响应', async ({
+    page,
+  }) => {
+    await commitViaKeyboard(page, '7')
+    await expect(hexInput(page)).toHaveValue('0007')
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+
+    // 一百万字符的粘贴：O(1) 边界立即拒绝，绝不阻塞主线程。
+    await pasteIntoValueInput(page, '9'.repeat(1_000_000))
+    await expect(page.getByText(/输入过长，未提交/)).toBeVisible()
+    // 旧 committed raw 与旧请求 provenance 保持不变：面板仍在且显示同一
+    // exact 事务（清除 provenance 会让面板整体消失）。
+    await expect(hexInput(page)).toHaveValue('0007')
+    await expect(quantizationPanel(page)).toHaveCount(1)
+    await expect(quantizationPanel(page)).toContainText('+0.000000 (0.0000%)')
+    // 页面仍然响应：继续编辑可正常提交。
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('5', { delay: 20 })
+    await valueInput(page).press('Enter')
+    await expect(hexInput(page)).toHaveValue('0005')
+    await expect(page.getByText(/输入过长，未提交/)).toHaveCount(0)
+  })
+
+  test('最大允许长度（4096 字符，前导零）正常提交并保留请求 provenance', async ({ page }) => {
+    const maxText = `0${'0'.repeat(4094)}1`
+    expect(maxText.length).toBe(4096)
+    await pasteIntoValueInput(page, maxText)
+    // 值为 1：raw 0001、量化 exact；面板 note 保留完整 4096 字符请求文本。
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+    await expect(quantizationPanel(page)).toContainText(maxText)
+    // 无横向溢出：长请求文本必须换行显示。
+    const { scrollWidth, clientWidth } = await page
+      .locator('body')
+      .evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }))
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
+  })
+
+  test('1e-400 下溢与 1e400 溢出合同不回归（超长检查不影响既有错误分类）', async ({ page }) => {
+    // fill = 单次 change 事件（回归检查与 value-magnitude.spec.ts 同模式；
+    // 逐字符输入会对每个合法前缀 live-commit，属于另一条合同的证明）。
+    await valueInput(page).fill('1e-400')
+    await valueInput(page).press('Tab')
+    await expect(page.getByText(/输入下溢/)).toBeVisible()
+    await expect(hexInput(page)).toHaveValue('0000')
+    await valueInput(page).fill('1e400')
+    await valueInput(page).press('Tab')
+    await expect(page.getByText(/数值超出可表示范围/)).toBeVisible()
+    await expect(hexInput(page)).toHaveValue('0000')
+  })
+})

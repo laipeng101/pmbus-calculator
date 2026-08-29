@@ -20,10 +20,31 @@ import {
   RELATIVE_VOLTAGE_OVERFLOW_NOTE,
   RELATIVE_VOLTAGE_UNDERFLOW_NOTE,
 } from './relative-voltage'
-import { analyzeDirectRoundTrip, formatExactDecimal, formatExactRational } from './direct-exact'
+import {
+  analyzeDirectRoundTrip,
+  formatExactDecimal,
+  formatExactDelta,
+  formatExactPercent,
+  formatExactRational,
+} from './direct-exact'
 
 /** Step text mirrors the shared readout panel wording. */
 function quantizationStepValue(outcome: QuantizationOutcome): string {
+  // v2.5.12: DIRECT renders the exact rational verdict — a binary64-folded
+  // delta must not present a textual zero in the steps either.
+  if (outcome.directExact) {
+    const exact = outcome.directExact
+    switch (outcome.status) {
+      case 'exact':
+        return '0（精确编码）'
+      case 'quantized':
+        return `${formatExactDelta(exact.absoluteError)}（约 ${formatExactPercent(exact.relativePercent)}）`
+      case 'saturated':
+        return `${formatExactDelta(exact.absoluteError)}（已饱和到边界值）`
+      default:
+        break
+    }
+  }
   switch (outcome.status) {
     case 'exact':
       return '0（精确编码）'
@@ -240,7 +261,10 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
   return steps
 }
 
-function buildDirectSteps(state: AppState): CalculationStepVM[] {
+function buildDirectSteps(
+  state: AppState,
+  outcome: QuantizationOutcome | null,
+): CalculationStepVM[] {
   const y = PMBusMath.toSigned(state.raw, 16)
   const { m, b, r } = state.direct
   const steps: CalculationStepVM[] = [
@@ -285,6 +309,36 @@ function buildDirectSteps(state: AppState): CalculationStepVM[] {
       exactDecimal !== null
         ? intermediate('direct-exact-decimal', '精确十进制', exactDecimal)
         : intermediate('direct-exact-decimal', '精确十进制', '（循环小数，无有限精确十进制）'),
+    )
+  }
+  // v2.5.12: the committed request's exact transaction — the same lexeme the
+  // reducer encoded, the exact decode of the current raw, and the exact
+  // delta — so the steps, the readout panel and raw share one truth.
+  const exact = outcome?.directExact
+  if (exact) {
+    const requestExact = formatExactRational(exact.requested)
+    intermediates.push(
+      intermediate(
+        'direct-request',
+        '用户请求（精确）',
+        requestExact === exact.requestedText
+          ? exact.requestedText
+          : `${exact.requestedText} = ${requestExact}`,
+      ),
+    )
+    intermediates.push(
+      intermediate(
+        'direct-exact-represented',
+        'raw 精确解码值',
+        formatExactDecimal(exact.represented) ?? formatExactRational(exact.represented),
+      ),
+    )
+    intermediates.push(
+      intermediate(
+        'direct-exact-delta',
+        '精确误差（请求 − 表示）',
+        formatExactDelta(exact.absoluteError),
+      ),
     )
   }
   steps.push(
@@ -513,8 +567,11 @@ function buildVoutModeSteps(state: AppState): CalculationStepVM[] {
  * physical value came from an explicit encoding request (L11 included —
  * same provenance contract as the shared readout panel).
  */
-function appendQuantizationStep(state: AppState, steps: CalculationStepVM[]): void {
-  const outcome = computeQuantizationOutcome(state)
+function appendQuantizationStep(
+  state: AppState,
+  steps: CalculationStepVM[],
+  outcome: QuantizationOutcome | null,
+): void {
   if (outcome) {
     steps.push(
       intermediate(
@@ -527,6 +584,9 @@ function appendQuantizationStep(state: AppState, steps: CalculationStepVM[]): vo
 }
 
 export function buildCalculationSteps(state: AppState): CalculationStepVM[] {
+  // Resolved once per build so the per-mode builders and the appended
+  // quantization step answer the same provenance question.
+  const outcome = computeQuantizationOutcome(state)
   const steps = (() => {
     switch (state.mode) {
       case 'L11':
@@ -534,7 +594,7 @@ export function buildCalculationSteps(state: AppState): CalculationStepVM[] {
       case 'L16':
         return buildL16Steps(state)
       case 'DIRECT':
-        return buildDirectSteps(state)
+        return buildDirectSteps(state, outcome)
       case 'HALF':
         return buildHalfSteps(state)
       case 'VOUT_MODE':
@@ -543,6 +603,6 @@ export function buildCalculationSteps(state: AppState): CalculationStepVM[] {
         return []
     }
   })()
-  appendQuantizationStep(state, steps)
+  appendQuantizationStep(state, steps, outcome)
   return steps
 }

@@ -18,8 +18,39 @@ import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
 import { effectiveL16VoutMode } from './vout-mode-selector'
+import {
+  compareExact,
+  decodeDirectExact,
+  directEncodableRangeExact,
+  divideExact,
+  exactPercentScale,
+  multiplyExact,
+  parseDecimalExactRational,
+  subtractExact,
+  absExact,
+  type ExactRational,
+} from './direct-exact'
 
 export type QuantizationStatus = 'exact' | 'quantized' | 'saturated' | 'overflow' | 'special'
+
+/**
+ * Exact rational truth for one DIRECT encoding transaction (v2.5.12). The
+ * status and these fields come from the same lexeme the reducer encoded —
+ * requested is parsed from the committed text, represented from the live raw
+ * word — so provenance and diagnostics can no longer disagree with raw the
+ * way the binary64 Number path did (e.g. a `100000000000000001` request
+ * whose Number delta folds to 0).
+ */
+export interface DirectExactQuantization {
+  /** The committed decimal lexeme — the same string the exact encoder used. */
+  requestedText: string
+  requested: ExactRational
+  represented: ExactRational
+  /** requested − represented (error direction: legacy contract). */
+  absoluteError: ExactRational
+  /** (requested − represented) / |requested| × 100; null for an exactly-zero request. */
+  relativePercent: ExactRational | null
+}
 
 /** Discriminated outcome of one explicit encoding request. */
 export interface QuantizationOutcome {
@@ -32,6 +63,12 @@ export interface QuantizationOutcome {
   absoluteError: number | null
   /** Percent error; null for zero/−0 denominators or non-finite inputs. */
   relativeError: number | null
+  /**
+   * DIRECT only (v2.5.12): the exact rational verdict for the same
+   * transaction. `status` is decided from THIS structure, never from the
+   * Number fields, which stay approximate display values for compatibility.
+   */
+  directExact?: DirectExactQuantization
 }
 
 /**
@@ -158,6 +195,30 @@ function computeRepresented(state: AppState): number | null {
 }
 
 /**
+ * Exact DIRECT resolution (v2.5.12). Null — fail closed, no fabricated
+ * error — whenever the state is not a DIRECT request that can be resolved
+ * exactly: m=0, no provenance, a lexeme that no longer parses, or an
+ * undecodable raw word.
+ */
+function resolveDirectExactQuantization(state: AppState): DirectExactQuantization | null {
+  if (state.mode !== 'DIRECT' || state.direct.m === 0) return null
+  const r = state.valueRequest
+  if (!r || r.mode !== 'DIRECT') return null
+  const requested = parseDecimalExactRational(r.text)
+  if (!requested) return null
+  const y = PMBusMath.toSigned(state.raw, 16)
+  const represented = decodeDirectExact(y, state.direct.m, state.direct.b, state.direct.r)
+  if (!represented) return null
+  const absoluteError = subtractExact(requested, represented)
+  // Normalized rationals are zero exactly when the numerator is zero.
+  const relativePercent =
+    requested.numerator === 0n
+      ? null
+      : divideExact(multiplyExact(absoluteError, exactPercentScale()), absExact(requested))
+  return { requestedText: r.text, requested, represented, absoluteError, relativePercent }
+}
+
+/**
  * Quantization outcome for the visible page, or null when the panel and
  * steps must stay hidden:
  * - no explicit request provenance (error unknown, never fabricated zero);
@@ -182,6 +243,32 @@ export function computeQuantizationOutcome(state: AppState): QuantizationOutcome
   // failure to surface — never hide it.
   if (representedNonFinite) {
     return { status: 'overflow', requested, represented, absoluteError: null, relativeError: null }
+  }
+
+  // v2.5.12: DIRECT decides its status from the exact rational pipeline over
+  // the committed lexeme and the live raw word. The Number fields below stay
+  // approximate display values — the classification never consults them, so
+  // a delta folded to 0 in binary64 can no longer masquerade as exact.
+  if (state.mode === 'DIRECT') {
+    const exact = resolveDirectExactQuantization(state)
+    const range = directEncodableRangeExact(state.direct.m, state.direct.b, state.direct.r)
+    if (!exact || !range) return null
+    const saturated =
+      compareExact(exact.requested, range.min) < 0 || compareExact(exact.requested, range.max) > 0
+    const status = saturated
+      ? 'saturated'
+      : compareExact(exact.requested, exact.represented) === 0
+        ? 'exact'
+        : 'quantized'
+    const absoluteError = requested - represented
+    return {
+      status,
+      requested,
+      represented,
+      absoluteError,
+      relativeError: requested === 0 ? null : (absoluteError / Math.abs(requested)) * 100,
+      directExact: exact,
+    }
   }
 
   const absoluteError = requested - represented

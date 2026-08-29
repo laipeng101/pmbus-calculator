@@ -11,6 +11,24 @@ export type Endian = 'le' | 'be'
 export type Theme = 'light' | 'dark' | 'system'
 export type Linear16PayloadKind = 'ulinear16' | 'slinear16-offset'
 
+/**
+ * Last committed physical-value encoding request (modes other than L11,
+ * which keeps its own l11.valueInput channel). Set only by a successful
+ * ValueInput encode; cleared whenever raw or the decode parameters change
+ * through any other path; never persisted.
+ *
+ * v2.5.12: the union is mode-discriminated and DIRECT keeps `text` — the
+ * exact decimal lexeme the reducer actually fed to the exact encoder — so
+ * request provenance and raw share one lexical truth instead of the lexeme
+ * collapsing into a binary64 Number. `text` is a string (never a BigInt), so
+ * debug serialization stays JSON-safe; the same invalidation events clear the
+ * whole request.
+ */
+export type ValueRequest =
+  | { mode: 'L16'; value: number }
+  | { mode: 'HALF'; value: number }
+  | { mode: 'DIRECT'; value: number; text: string }
+
 export interface AppState {
   mode: AppMode
   raw: number
@@ -35,11 +53,10 @@ export interface AppState {
 
   /**
    * Last committed physical-value encoding request for modes other than L11
-   * (which keeps its own l11.valueInput channel). Mirrors the same contract:
-   * set only by a successful ValueInput encode, cleared whenever raw or the
-   * decode parameters change through any other path, and never persisted.
+   * (which keeps its own l11.valueInput channel). See ValueRequest for the
+   * v2.5.12 discriminated-union contract.
    */
-  valueRequest: { mode: AppMode; value: number } | null
+  valueRequest: ValueRequest | null
 
   l16: {
     /**

@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { PMBusMath } from '../legacy/pmbus-math'
 import {
   analyzeDirectRoundTrip,
+  checkExactLexemeBoundary,
   decodeDirectExact,
+  DIRECT_EXACT_MAX_LEXEME_LENGTH,
   encodeDirectExactFromRational,
+  formatExactDelta,
+  formatExactPercent,
   formatExactRational,
+  formatSignedRationalFixed,
+  formatSignedRationalScientific,
   generateSafeDirectReentryText,
   parseDecimalExactRational,
   roundRationalHalfUp,
@@ -382,8 +388,10 @@ describe('safe re-entry text generation (verified exact encoder)', () => {
 })
 
 describe('round-trip analysis pinned to the real binary64 pipeline', () => {
-  it('roundTripSafe equals the real Number re-encode verdict over the full sweep', () => {
-    for (const { m, b, r } of FULL_SWEEP_COEFFICIENTS) {
+  // v2.5.12: each full sweep is its own test — same corpus, same assertions,
+  // independent per-test timing so no single test carries two sweeps.
+  for (const { m, b, r } of FULL_SWEEP_COEFFICIENTS) {
+    it(`roundTripSafe equals the real Number re-encode verdict over the full sweep (m=${m}, b=${b}, r=${r})`, () => {
       const startedAt = Date.now()
       let unsafeCount = 0
       for (let y = -32768; y <= 32767; y++) {
@@ -402,8 +410,8 @@ describe('round-trip analysis pinned to the real binary64 pipeline', () => {
       // Layered corpus discipline: record the sweep cost, keep it bounded.
       console.log(`full 65536-Y sweep m=${m} b=${b} r=${r}: ${unsafeCount} unsafe, ${elapsedMs}ms`)
       expect(elapsedMs).toBeLessThan(20_000)
-    }
-  })
+    })
+  }
 
   it('samples the wider coefficient grid against the real pipeline and normalization invariants', () => {
     const startedAt = Date.now()
@@ -437,5 +445,129 @@ describe('round-trip analysis pinned to the real binary64 pipeline', () => {
       }
     }
     console.log(`sampled grid + 5000-sample fuzz (seed ${SEED}): ${Date.now() - startedAt}ms`)
+  })
+})
+
+describe('exact-rational presentation (v2.5.12)', () => {
+  it('formatExactDelta: integer, scientific, terminating, and fraction bands', () => {
+    expect(formatExactDelta({ numerator: 1n, denominator: 1n })).toBe('+1')
+    expect(formatExactDelta({ numerator: -7233n, denominator: 1n })).toBe('-7233')
+    expect(formatExactDelta({ numerator: 0n, denominator: 1n })).toBe('+0.000000')
+    // Tiny magnitudes go scientific — never textual zero.
+    expect(formatExactDelta({ numerator: 1n, denominator: 10n ** 16n })).toBe('+1e-16')
+    expect(formatExactDelta({ numerator: -1n, denominator: 10n ** 19n })).toBe('-1e-19')
+    // Very large magnitudes go scientific too.
+    expect(formatExactDelta({ numerator: 10n ** 38n, denominator: 1n })).toBe('+1e38')
+    // In-band terminating decimal renders exactly.
+    expect(formatExactDelta({ numerator: 1n, denominator: 4n })).toBe('+0.25')
+    expect(formatExactDelta({ numerator: -1n, denominator: 2000n })).toBe('-0.0005')
+    // Repeating rational falls back to the exact fraction.
+    expect(formatExactDelta({ numerator: -1n, denominator: 6n })).toBe('-1/6')
+  })
+
+  it('formatSignedRationalScientific: exact exponent placement and half-up carry', () => {
+    // 100/(1e17+1) ≈ 1e-15 — the counterexample A relative percent.
+    expect(formatSignedRationalScientific({ numerator: 100n, denominator: 10n ** 17n + 1n })).toBe(
+      '+1e-15',
+    )
+    expect(formatSignedRationalScientific({ numerator: -1n, denominator: 10n ** 19n })).toBe(
+      '-1e-19',
+    )
+    // In-band mantissa keeps its significant digits.
+    expect(formatSignedRationalScientific({ numerator: 996n, denominator: 1000n })).toBe('+9.96e-1')
+    // Half-up rounding carries into the next exponent (0.09996 → 1e-1).
+    expect(formatSignedRationalScientific({ numerator: 9996n, denominator: 100000n }, 3)).toBe(
+      '+1e-1',
+    )
+  })
+
+  it('formatSignedRationalFixed: half-up on the final digit', () => {
+    expect(formatSignedRationalFixed({ numerator: -1n, denominator: 6n }, 4)).toBe('-0.1667')
+    expect(formatSignedRationalFixed({ numerator: -100n, denominator: 2469n }, 4)).toBe('-0.0405')
+    expect(formatSignedRationalFixed({ numerator: 5n, denominator: 2n }, 3)).toBe('+2.500')
+  })
+
+  it('formatExactPercent: fixed band, scientific band, zero, and undefined', () => {
+    expect(formatExactPercent({ numerator: -100n, denominator: 2469n })).toBe('-0.0405%')
+    expect(formatExactPercent({ numerator: -100n, denominator: 3n })).toBe('-33.3333%')
+    expect(formatExactPercent({ numerator: 100n, denominator: 10n ** 17n + 1n })).toBe('1e-15%')
+    expect(formatExactPercent({ numerator: 0n, denominator: 1n })).toBe('0.0000%')
+    expect(formatExactPercent(null)).toBe('—')
+  })
+})
+
+describe('exact lexeme boundary (v2.5.12)', () => {
+  it('rejects an overlong lexeme at the string boundary, before any BigInt work', () => {
+    // Deterministic-length fixture (never committed as a snapshot): a
+    // megabyte paste classifies as overlong via pure string checks.
+    const huge = `1${'0'.repeat(1_000_000)}`
+    const started = Date.now()
+    const boundary = checkExactLexemeBoundary(huge)
+    const elapsed = Date.now() - started
+    // Node v24.19.0 (darwin arm64): string scan of 1 MB is a few ms; the
+    // logged duration documents the environment without a brittle assert.
+    console.log(`overlong boundary classification of 1MB took ${elapsed}ms`)
+    expect(boundary).toEqual({ ok: false, reason: 'overlong' })
+    expect(parseDecimalExactRational(huge)).toBeNull()
+  })
+
+  it('accepts a lexeme at the maximum allowed length and still parses it', () => {
+    const maxText = `1${'0'.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH - 1)}`
+    expect(maxText.length).toBe(DIRECT_EXACT_MAX_LEXEME_LENGTH)
+    expect(checkExactLexemeBoundary(maxText)).toEqual({ ok: true })
+    const exact = parseDecimalExactRational(maxText)
+    expect(exact).toEqual({
+      numerator: 10n ** BigInt(DIRECT_EXACT_MAX_LEXEME_LENGTH - 1),
+      denominator: 1n,
+    })
+  })
+
+  it('rejects one character past the limit', () => {
+    const over = `1${'0'.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH)}`
+    expect(checkExactLexemeBoundary(over)).toEqual({ ok: false, reason: 'overlong' })
+    expect(parseDecimalExactRational(over)).toBeNull()
+  })
+
+  it('keeps true zeros legal at any exponent while bounding non-zero shifts', () => {
+    expect(parseDecimalExactRational('0e-999999999999')).toEqual({
+      numerator: 0n,
+      denominator: 1n,
+    })
+    expect(parseDecimalExactRational('-0.0e-999')).toEqual({ numerator: 0n, denominator: 1n })
+    expect(checkExactLexemeBoundary('1e99999999999999999999')).toEqual({
+      ok: false,
+      reason: 'shift-out-of-range',
+    })
+    expect(checkExactLexemeBoundary('NaN.')).toEqual({ ok: false, reason: 'syntax' })
+    expect(checkExactLexemeBoundary('1.5')).toEqual({ ok: true })
+  })
+
+  it('keeps every generated safe re-entry text comfortably within the boundary', () => {
+    // Sampled guard (the full 531k-text measurement behind the constant is a
+    // one-off script): every verified generator output must be parseable.
+    let generated = 0
+    for (const [m, b, r] of [
+      [1, 0, 127],
+      [-1, 0, 127],
+      [1, 0, -128],
+      [2, 1, -128],
+      [32767, 0, 127],
+      [1, 1, 17],
+      [-3, 1, 17],
+    ] as Array<[number, number, number]>) {
+      for (const y of [-32768, -32767, -1, 0, 1, 32766, 32767]) {
+        const exact = decodeDirectExact(y, m, b, r)
+        if (!exact) continue
+        const text = generateSafeDirectReentryText(exact, y, m, b, r)
+        if (text === null) continue
+        generated++
+        expect(text.length, `y=${y} m=${m} b=${b} r=${r}`).toBeLessThanOrEqual(
+          DIRECT_EXACT_MAX_LEXEME_LENGTH,
+        )
+        // The parser must accept its own generator's output.
+        expect(parseDecimalExactRational(text)).not.toBeNull()
+      }
+    }
+    expect(generated).toBeGreaterThan(30)
   })
 })

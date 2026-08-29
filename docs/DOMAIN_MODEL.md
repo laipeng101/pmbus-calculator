@@ -109,6 +109,29 @@ PMBusMath.decodeDirect(y, …))`）与经验证的安全回录文本生成
   warn）与计算步骤的精确值行全部消费同一解析。这不是 PMBus 公式错误，
   也不表示 `encodeDirect(Number)` 有错——是显示层不可逆性的诚实标注；
   raw/Y 编辑始终是位级真值的权威路径。
+- **精确请求 provenance 与 exact 分类（v2.5.12）**：`valueRequest` 是模式
+  判别联合；DIRECT 保留 reducer 实际用于 exact 编码的同一 lexeme
+  （`{ mode: 'DIRECT', value, text }`），L16/HALF 行为不变。DIRECT 的量化
+  分类（`saturated` / `exact` / `quantized`）与误差全部由精确有理数决定：
+  requested 来自 `text` 的精确解析、represented 来自当前 raw 的
+  `decodeDirectExact`、范围端点来自 signed16 Y 极值的精确解码（按 m 符号
+  排序）；Number 字段只作近似展示，绝不反向决定分类。`text` 是字符串
+  （非 BigInt），同一失效事件（raw/Y/系数编辑、模式切换）清除整个
+  request；非法、越界、下溢与过长文本不生成 provenance。这修复的是同一
+  次事务使用两套真值的产品缺陷（raw 精确、provenance 折叠），不是 PMBus
+  公式变更。
+- **精确 lexeme 长度边界（v2.5.12，交互资源边界而非 PMBus 限制）**：
+  `DIRECT_EXACT_MAX_LEXEME_LENGTH = 4096` 是 DIRECT 精确十进制路径接受的
+  单条 lexeme 最大字符数。依据：安全回录生成器在 531,932 条文本的实测中
+  最大长度为 136（理论生成器上限约 607，即
+  `TERMINATING_EXPANSION_MAX_DIGITS=600` 加符号/整数位），4096 保留 ≥6.7×
+  理论余量、≥30× 实测余量，并把单条 lexeme 的 BigInt 构造限制在
+  ≤~13.6k bit。`checkExactLexemeBoundary` 在任何 BigInt 构造之前以纯字符串
+  工作完成长度/语法/指数移位检查（O(1)/O(n)），兆字节粘贴在微秒级被拒绝；
+  true zero 文本（`0e-400`、`-0.0e-999`）在任何指数下仍合法零。UI 显示
+  明确的「输入过长，未提交」错误并保留旧 raw 与旧请求；不静默截断、不改写
+  为 ±Infinity/±0；reducer 经 `parseDecimalExactRational` 内部边界防御直接
+  dispatch（不只依赖 DOM）。
 
 ### 2.4 HALF
 

@@ -45,8 +45,20 @@ export interface ExactRational {
   denominator: bigint
 }
 
+/**
+ * Memoized 10^exp cache (v2.5.12): the full-Y sweep analyses and the wider
+ * coefficient grids request the same powers of ten millions of times, and
+ * 10n ** BigInt(exp) is the measured hot spot. Deterministic, no
+ * algorithm change; the exponent domain is bounded by the module's callers.
+ */
+const POW10_CACHE = new Map<number, bigint>()
+
 function pow10(exp: number): bigint {
-  return 10n ** BigInt(exp)
+  const cached = POW10_CACHE.get(exp)
+  if (cached !== undefined) return cached
+  const value = 10n ** BigInt(exp)
+  POW10_CACHE.set(exp, value)
+  return value
 }
 
 function gcd(a: bigint, b: bigint): bigint {
@@ -162,35 +174,149 @@ export function encodeDirectExactFromRational(
   return Number(clamped)
 }
 
+// ---- Exact rational arithmetic (v2.5.12) ----
+// Closed helper set for the DIRECT quantization domain: every status and
+// error value for a committed DIRECT request is derived from these instead
+// of binary64 comparisons. Inputs are normalized rationals (denominator > 0,
+// gcd 1) as produced by decodeDirectExact / parseDecimalExactRational, and
+// outputs are renormalized.
+
+const HUNDRED: ExactRational = { numerator: 100n, denominator: 1n }
+
+export function subtractExact(a: ExactRational, b: ExactRational): ExactRational {
+  return normalize(
+    a.numerator * b.denominator - b.numerator * a.denominator,
+    a.denominator * b.denominator,
+  )
+}
+
+export function multiplyExact(a: ExactRational, b: ExactRational): ExactRational {
+  return normalize(a.numerator * b.numerator, a.denominator * b.denominator)
+}
+
+export function divideExact(a: ExactRational, b: ExactRational): ExactRational {
+  if (b.numerator === 0n) throw new TypeError('exact rational division by zero')
+  return normalize(a.numerator * b.denominator, a.denominator * b.numerator)
+}
+
+export function absExact(a: ExactRational): ExactRational {
+  return a.numerator < 0n ? { numerator: -a.numerator, denominator: a.denominator } : a
+}
+
+/** Three-way comparison of two normalized rationals: −1, 0 or 1. */
+export function compareExact(a: ExactRational, b: ExactRational): -1 | 0 | 1 {
+  const left = a.numerator * b.denominator
+  const right = b.numerator * a.denominator
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+/** Percent scale (×100) as an exact rational — shared by the relative error. */
+export function exactPercentScale(): ExactRational {
+  return HUNDRED
+}
+
 /**
- * Exact parse of one complete decimal lexeme into a normalized rational.
- * Accepts the same complete-syntax class `classifyFloatText` treats as a
- * value (sign, digits, optional fraction, optional exponent); NaN/Infinity
- * literals and any other text return null so callers can fail closed. The
- * exponent is bounded because the reducer only reaches the exact path after
- * `classifyFloatText` produced a finite Number (|value| < 1.8e308).
+ * Exact encodable physical-value range of one coefficient combination: the
+ * §7.4 decodes of the signed-16-bit Y extremes, ordered by the sign of m
+ * (the decode is strictly monotonic in Y for m ≠ 0). Null for m=0 — no
+ * fabricated range.
  */
-export function parseDecimalExactRational(text: string): ExactRational | null {
+export function directEncodableRangeExact(
+  m: number,
+  b: number,
+  r: number,
+): { min: ExactRational; max: ExactRational } | null {
+  if (m === 0) return null
+  const lo = decodeDirectExact(-32768, m, b, r)
+  const hi = decodeDirectExact(32767, m, b, r)
+  if (!lo || !hi) return null
+  return m > 0 ? { min: lo, max: hi } : { min: hi, max: lo }
+}
+
+/**
+ * Maximum accepted length of one DIRECT exact decimal lexeme (v2.5.12).
+ *
+ * This is an interactive RESOURCE boundary, not a PMBus rule: the exact path
+ * must reject absurdly long pasted text before any BigInt work so a paste
+ * can never block the main thread. Evidence: the repository's safe re-entry
+ * generator produces at most 136-character texts over a 531,932-text
+ * measurement sweep (widest denominators included), with a theoretical
+ * generator cap of ~607 characters (TERMINATING_EXPANSION_MAX_DIGITS=600
+ * plus sign/integer point). 4096 keeps ≥6.7× margin over the theoretical
+ * generator cap and ≥30× over the measured maximum, while bounding one
+ * lexeme's BigInt construction to ≤ ~13.6k bits.
+ */
+export const DIRECT_EXACT_MAX_LEXEME_LENGTH = 4096
+
+/** Complete decimal lexeme accepted by the exact path (same class as classifyFloatText values). */
+const EXACT_DECIMAL_SYNTAX = /^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/
+
+/**
+ * Why a lexeme is rejected by the exact parse boundary (v2.5.12). The
+ * boundary check is pure string work — O(1) for the length cap, O(n) for the
+ * syntax scan — and never constructs a BigInt, so even megabyte pastes are
+ * rejected before any big-integer cost.
+ */
+export type ExactLexemeBoundary =
+  | { ok: true }
+  | { ok: false; reason: 'overlong' | 'syntax' | 'shift-out-of-range' }
+
+/**
+ * Boundary classification of one candidate exact lexeme (v2.5.12). Exported
+ * so tests (and future callers) can prove rejection happens BEFORE BigInt
+ * construction; `parseDecimalExactRational` consumes this on every call.
+ */
+export function checkExactLexemeBoundary(text: string): ExactLexemeBoundary {
   const s = String(text).trim()
-  const match = /^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/.exec(s)
-  if (!match) return null
-  const sign = match[1] === '-' ? -1n : 1n
+  if (s.length > DIRECT_EXACT_MAX_LEXEME_LENGTH) return { ok: false, reason: 'overlong' }
+  const match = EXACT_DECIMAL_SYNTAX.exec(s)
+  if (!match) return { ok: false, reason: 'syntax' }
   const intPart = match[2] ?? ''
   const fracPart = match[3] ?? match[4] ?? ''
-  const digits = BigInt(intPart + fracPart || '0')
   // True zero texts keep the legal signed-zero input contract regardless of
   // exponent extremes (`0e-400`, `-0.0e-999`): the exact rational of a zero
   // magnitude needs no power of ten at all, and the DIRECT field encode of
   // zero is sign-independent (±0 encode to the same integer Y).
-  if (digits === 0n) return { numerator: 0n, denominator: 1n }
+  if (!/[1-9]/.test(intPart + fracPart)) return { ok: true }
   const exp = match[5] !== undefined ? Number(match[5]) : 0
-  if (!Number.isSafeInteger(exp)) return null
+  if (!Number.isSafeInteger(exp)) return { ok: false, reason: 'shift-out-of-range' }
   // value = ±digits × 10^(exp − fracLen). Non-zero magnitudes that could
   // overflow binary64 (>1e308) or underflow past the subnormal range are
   // rejected by classifyFloatText upstream (out-of-range / underflow); the
   // bounds below fail closed if such a lexeme ever reaches this path.
   const shift = exp - fracPart.length
-  if (shift > 400 || shift < -500) return null
+  if (shift > 400 || shift < -500) return { ok: false, reason: 'shift-out-of-range' }
+  return { ok: true }
+}
+
+/**
+ * Exact parse of one complete decimal lexeme into a normalized rational.
+ * Accepts the same complete-syntax class `classifyFloatText` treats as a
+ * value (sign, digits, optional fraction, optional exponent); NaN/Infinity
+ * literals and any other text return null so callers can fail closed.
+ * v2.5.12: the O(1)/O(n) boundary check (length cap, syntax, exponent
+ * shift) runs BEFORE any BigInt construction — an overlong paste is
+ * rejected without big-integer cost.
+ */
+export function parseDecimalExactRational(text: string): ExactRational | null {
+  const boundary = checkExactLexemeBoundary(text)
+  if (!boundary.ok) return null
+  const s = String(text).trim()
+  const match = EXACT_DECIMAL_SYNTAX.exec(s)
+  if (!match) return null
+  const sign = match[1] === '-' ? -1n : 1n
+  const intPart = match[2] ?? ''
+  const fracPart = match[3] ?? match[4] ?? ''
+  // True zero (any exponent, including extremes beyond the shift bounds):
+  // the exact rational of a zero magnitude needs no power of ten at all.
+  if (!/[1-9]/.test(intPart + fracPart)) return { numerator: 0n, denominator: 1n }
+  // Non-zero magnitudes only reach here, so the mantissa digit string is
+  // well-formed and bounded by DIRECT_EXACT_MAX_LEXEME_LENGTH.
+  const digits = BigInt(intPart + fracPart)
+  const exp = match[5] !== undefined ? Number(match[5]) : 0
+  // value = ±digits × 10^(exp − fracLen); the shift bounds were verified by
+  // the boundary check without any BigInt work.
+  const shift = exp - fracPart.length
   if (shift >= 0) return normalize(sign * digits * pow10(shift), 1n)
   return normalize(sign * digits, pow10(-shift))
 }
@@ -199,6 +325,108 @@ export function parseDecimalExactRational(text: string): ExactRational | null {
 export function formatExactRational(x: ExactRational): string {
   if (x.denominator === 1n) return x.numerator.toString()
   return `${x.numerator}/${x.denominator}`
+}
+
+// ---- Exact-rational presentation (v2.5.12) ----
+// Display conversions for the DIRECT quantization surfaces. They never
+// decide a status — that is compareExact's job — but they guarantee a
+// non-zero rational can never render as textual zero: tiny magnitudes go
+// scientific, terminating decimals render exactly, repeating rationals fall
+// back to their exact fraction.
+
+const EXACT_TEN_POW4: ExactRational = { numerator: 1n, denominator: 10n ** 4n }
+const EXACT_TEN_POW7: ExactRational = { numerator: 10n ** 7n, denominator: 1n }
+/** Longest terminating expansion rendered as a decimal before falling back to the fraction. */
+const MAX_EXACT_DECIMAL_CHARS = 24
+
+/**
+ * Signed scientific notation with `sigDigits` significant digits (half-up,
+ * the repository rounding policy), e.g. 100/(10^17+1) → '+1e-15'. The
+ * decimal exponent is found by exact cross-multiplication, never log10.
+ */
+export function formatSignedRationalScientific(x: ExactRational, sigDigits = 4): string {
+  const negative = x.numerator < 0n
+  const n = negative ? -x.numerator : x.numerator
+  const d = x.denominator
+  if (n === 0n) return '+0'
+  const digits = (v: bigint): number => v.toString().length
+  let e = digits(n) - digits(d)
+  // Compare n/d with 10^k exactly (no floating log10).
+  const cmpPow10 = (k: number): number => {
+    if (k >= 0) {
+      const rhs = d * pow10(k)
+      return n < rhs ? -1 : n > rhs ? 1 : 0
+    }
+    const lhs = n * pow10(-k)
+    return lhs < d ? -1 : lhs > d ? 1 : 0
+  }
+  while (cmpPow10(e) < 0) e -= 1
+  // 10^e ≤ n/d holds here; raise e while n/d still reaches 10^(e+1).
+  while (cmpPow10(e + 1) >= 0) e += 1
+  const k = sigDigits - 1 - e
+  let s = k >= 0 ? roundRationalHalfUp(n * pow10(k), d) : roundRationalHalfUp(n, d * pow10(-k))
+  if (s >= pow10(sigDigits)) {
+    s = pow10(sigDigits - 1)
+    e += 1
+  }
+  const str = s.toString().padStart(sigDigits, '0')
+  const frac = str.slice(1).replace(/0+$/, '')
+  return `${negative ? '-' : '+'}${str[0]}${frac ? `.${frac}` : ''}e${e}`
+}
+
+/**
+ * Signed fixed-point decimal of a normalized rational with `fracDigits`
+ * places (half-up on the final digit), e.g. −1/6 → '-0.1667'.
+ */
+export function formatSignedRationalFixed(x: ExactRational, fracDigits: number): string {
+  const negative = x.numerator < 0n
+  const n = negative ? -x.numerator : x.numerator
+  const scaled = roundRationalHalfUp(n * pow10(fracDigits), x.denominator)
+  const scale = pow10(fracDigits)
+  const intPart = scaled / scale
+  const frac = (scaled % scale).toString().padStart(fracDigits, '0')
+  const body = fracDigits > 0 ? `${intPart}.${frac}` : `${intPart}`
+  return `${negative ? '-' : '+'}${body}`
+}
+
+/**
+ * Signed display for an exact delta: integers stay integers ('+1'), tiny or
+ * very large magnitudes go scientific ('+1e-16'), in-band terminating
+ * decimals render exactly, repeating rationals fall back to the exact
+ * fraction ('-1/6'). A non-zero rational can never render as textual zero.
+ */
+export function formatExactDelta(x: ExactRational): string {
+  const negative = x.numerator < 0n
+  const sign = negative ? '-' : '+'
+  const abs = { numerator: negative ? -x.numerator : x.numerator, denominator: x.denominator }
+  if (abs.numerator === 0n) return '+0.000000'
+  if (compareExact(abs, EXACT_TEN_POW4) < 0 || compareExact(abs, EXACT_TEN_POW7) >= 0) {
+    return formatSignedRationalScientific(x, 4)
+  }
+  if (abs.denominator === 1n) return `${sign}${abs.numerator}`
+  const decimal = formatExactDecimal(abs)
+  if (decimal !== null && decimal.length <= MAX_EXACT_DECIMAL_CHARS) {
+    return `${sign}${decimal}`
+  }
+  return `${sign}${abs.numerator}/${abs.denominator}`
+}
+
+/**
+ * Signed display for an exact relative percent: fixed 4 decimals in the
+ * readable band, scientific outside, '—' for the undefined (exact-zero
+ * request) case. Never renders a non-zero percent as textual zero.
+ */
+export function formatExactPercent(x: ExactRational | null): string {
+  if (!x) return '—'
+  if (x.numerator === 0n) return '0.0000%'
+  const negative = x.numerator < 0n
+  const abs = { numerator: negative ? -x.numerator : x.numerator, denominator: x.denominator }
+  const body =
+    compareExact(abs, EXACT_TEN_POW4) < 0 || compareExact(abs, EXACT_TEN_POW7) >= 0
+      ? formatSignedRationalScientific(x, 4)
+      : formatSignedRationalFixed(x, 4)
+  // The delta already carries the direction; a leading '+' is noise here.
+  return `${body.replace(/^\+/, '')}%`
 }
 
 /**

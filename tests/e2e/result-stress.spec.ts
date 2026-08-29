@@ -263,7 +263,12 @@ test.describe('M16 result stress geometry', () => {
     const valueInput = page.locator('#value-input')
     await valueInput.fill('0')
     await valueInput.press('Tab')
-    await expect(panel).toContainText('+1.000000 (—)')
+    // v2.5.12 exact contract: the delta renders from the exact rational
+    // (integer +1) and the relative percent stays undefined (—) for an
+    // exactly-zero request; the note keeps the committed request lexeme.
+    await expect(panel).toContainText('+1（约 —）')
+    await expect(panel).toContainText('用户请求 0')
+    await expect(panel).toContainText('raw 精确表示 -1')
     await expect(panel).toHaveAttribute('data-kind', 'warn')
   })
 

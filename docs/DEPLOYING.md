@@ -67,10 +67,22 @@ https://laipeng101.github.io/pmbus-calculator/
    下载的发布输入。元数据请求失败、资产选择失败与下载失败是三个可区分的
    失败面，保留真实退出码。元数据文本永远只作为数据传递，不被
    `source`/`eval`/拼接 shell 再次解释（v2.5.9 数据边界）。
-5. 执行 `sha256sum -c SHA256SUMS.txt`，校验失败立即停止部署。
+5. **v2.5.12 起下载后的字节门禁是统一入口**
+   `scripts/verify-downloaded-assets.mjs --metadata release-metadata.json
+--dir . --tag <tag> --repo <repo> --mode published`：它在进程内复用
+   `release-assets-verify.mjs` 的完整元数据合同（published 模式保持严格
+   canonical tag URL，不放宽为 draft 占位），再校验本地文件存在且为普通
+   文件、本地字节数等于元数据 size、`SHA256SUMS.txt` 严格格式合同（一行
+   `<64 hex>␠␠<name>`、无重复、无未知名、不列自身）、ZIP 的 SHA-256
+   （node:crypto，跨平台，替代 `sha256sum -c` 的二进制依赖）以及共享
+   python ZIP 安全校验。失败按类分级：元数据 2-8、本地缺失 10、大小不符
+   11、sums 合同 12、checksum 13、ZIP 安全 14；任一失败发生在解压或部署
+   之前。stdout 只输出一个 JSON 数据对象，诊断走 stderr，永远不被
+   `source`/`eval`/拼接 shell 再次解释。
 6. 解压前检查 zip：不包含绝对路径、不包含 `../` 路径穿越、不包含符号链接；
    必须包含 `index.html` 和 `assets/`；`index.html` 必须包含 production CSP；
-   script 和 stylesheet 必须使用相对资源路径；不得包含 `/src/main.tsx`。
+   script 和 stylesheet 必须使用相对资源路径；不得包含 `/src/main.tsx`
+   （该合同由上一步的共享 python 校验器统一执行）。
 7. 解压到临时 `_site` 目录。
 8. 上传 GitHub Pages artifact 并执行 `actions/deploy-pages`。
 9. 在同一工作流中对真实部署 URL 执行远程 Playwright smoke（`npm run test:e2e:deployment`）。

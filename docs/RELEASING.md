@@ -110,26 +110,32 @@ npm run test:e2e:release
    ```
 
 5. **publish 前强制回验 draft 资产**。draft 不可经 `/releases/tags/<tag>` 读取，
-   用 release list 过滤出 REST 形状的元数据后运行校验脚本：
+   用 release list 过滤出 REST 形状的元数据后运行统一字节门禁：
 
    ```bash
    gh api repos/laipeng101/pmbus-calculator/releases \
      --jq '.[] | select(.tag_name=="vX.Y.Z")' > draft-release.json
-   node scripts/release-assets-verify.mjs draft-release.json \
-     --tag vX.Y.Z --repo laipeng101/pmbus-calculator --mode draft > draft-assets.json
+   gh release download vX.Y.Z --dir /tmp/vX.Y.Z-draft-assets
+   node scripts/verify-downloaded-assets.mjs draft-release.json \
+     --dir /tmp/vX.Y.Z-draft-assets \
+     --tag vX.Y.Z --repo laipeng101/pmbus-calculator --mode draft > draft-verified.json
    ```
 
-   脚本校验：tag/prerelease 合同、资产存在且名称唯一、`state == "uploaded"`、
-   `size > 0`、URL 为本仓库本 tag 的 canonical GitHub 下载地址；缺失、重复、
-   上传中分别以明确的错误与退出码报告（见脚本头注释）。stdout 只输出一个
-   JSON 对象（数据），诊断走 stderr——不要把它的输出交给 `source`/`eval`
-   等会再次解释文本的机制（v2.5.9：元数据只作为数据）。Pages 侧的下载消费
-   由 `scripts/download-release-assets.mjs` 在 5 分钟共享总预算内完成
-   （v2.5.10：预算覆盖两项资产、重试与 backoff，不因重试重置，远小于
-   Pages job 的 20 分钟上限；v2.5.11：网络 reject 与 HTTP 408/429/5xx
-   走同一有界退避并计入预算，共享 deadline 触发的 abort 不再重试）。随后下载两个资产
-   执行 `sha256sum -c SHA256SUMS.txt` 并核对 ZIP 内容合同。**任何一项失败
-   都停止在 draft 状态，不得 publish。**
+   v2.5.12 起这是**唯一**的 publish 前资产门禁（脚本：
+   `scripts/verify-downloaded-assets.mjs`），它在进程内复用
+   `release-assets-verify.mjs` 的完整元数据合同（tag/prerelease、资产存在
+   且名称唯一、`state == "uploaded"`、`size > 0`、draft 模式接受 GitHub 的
+   `untagged-<hex>` 占位 URL），并叠加本地字节校验：文件存在且为普通文件、
+   本地字节数等于元数据 size、`SHA256SUMS.txt` 严格格式合同、ZIP 的
+   SHA-256（node:crypto，跨平台）与共享 python ZIP 安全校验。失败按类分级
+   报告：元数据 2-8、本地缺失 10、大小不符 11、sums 合同 12、checksum 13、
+   ZIP 安全 14。stdout 只输出一个 JSON 对象（数据），诊断走 stderr——不要
+   把它的输出交给 `source`/`eval` 等会再次解释文本的机制（v2.5.9：元数据
+   只作为数据）。Pages 侧的下载消费由 `scripts/download-release-assets.mjs`
+   在 5 分钟共享总预算内完成（v2.5.10：预算覆盖两项资产、重试与 backoff，
+   不因重试重置，远小于 Pages job 的 20 分钟上限；v2.5.11：网络 reject 与
+   HTTP 408/429/5xx 走同一有界退避并计入预算，共享 deadline 触发的 abort
+   不再重试）。**任何一项失败都停止在 draft 状态，不得 publish。**
 
 6. 两项资产回验通过后，将 draft 公开为稳定 Release：
 

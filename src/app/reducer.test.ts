@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { appReducer } from './reducer'
 import { INITIAL_STATE, type AppState } from './state'
 import { toCalculatorViewModel } from './view-model'
+import { DIRECT_EXACT_MAX_LEXEME_LENGTH } from './direct-exact'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
 
@@ -336,7 +337,10 @@ describe('appReducer — state transitions', () => {
         ['HALF', 0x4a00],
       ] as const) {
         const s = appReducer(enterMode(mode), { type: 'value/set', value: '12' })
-        expect(s.valueRequest, mode).toEqual({ mode, value: 12 })
+        // DIRECT keeps the exact committed lexeme alongside the Number (v2.5.12).
+        expect(s.valueRequest, mode).toEqual(
+          mode === 'DIRECT' ? { mode, value: 12, text: '12' } : { mode, value: 12 },
+        )
         expect(s.raw, mode).toBe(raw)
       }
     })
@@ -991,7 +995,7 @@ describe('appReducer — state transitions', () => {
       // y = round(1e21 × 10^-21) = 1 → raw 0x0001 (was 0x0000 under the
       // removed ±1e20 parse clamp).
       expect(s.raw).toBe(0x0001)
-      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e21 })
+      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e21, text: '1e21' })
       // raw 0x0001 decodes back to exactly the committed double 1e21.
       expect(PMBusMath.decodeDirect(1, 1, 0, -21).value).toBe(1e21)
     })
@@ -999,24 +1003,24 @@ describe('appReducer — state transitions', () => {
     it('DIRECT m=1,b=0,R=-21: -1e21 encodes 0xFFFF', () => {
       const s = appReducer(directWith(1, 0, -21), { type: 'value/set', value: '-1e21' })
       expect(s.raw).toBe(0xffff)
-      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: -1e21 })
+      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: -1e21, text: '-1e21' })
     })
 
     it('DIRECT m=-1 keeps the sign contrast (1e21 -> y=-1 -> 0xFFFF)', () => {
       const s = appReducer(directWith(-1, 0, -21), { type: 'value/set', value: '1e21' })
       expect(s.raw).toBe(0xffff)
-      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e21 })
+      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e21, text: '1e21' })
     })
 
     it('R=-128 and R=127 boundary exponents round-trip representable vectors', () => {
       // R=-128: y = round(1e128 × 10^-128) = 1
       const lo = appReducer(directWith(1, 0, -128), { type: 'value/set', value: '1e128' })
       expect(lo.raw).toBe(0x0001)
-      expect(lo.valueRequest).toEqual({ mode: 'DIRECT', value: 1e128 })
+      expect(lo.valueRequest).toEqual({ mode: 'DIRECT', value: 1e128, text: '1e128' })
       // R=127: y = round(1e-127 × 10^127) = 1
       const hi = appReducer(directWith(1, 0, 127), { type: 'value/set', value: '1e-127' })
       expect(hi.raw).toBe(0x0001)
-      expect(hi.valueRequest).toEqual({ mode: 'DIRECT', value: 1e-127 })
+      expect(hi.valueRequest).toEqual({ mode: 'DIRECT', value: 1e-127, text: '1e-127' })
       expect(PMBusMath.decodeDirect(1, 1, 0, 127).value).toBe(1e-127)
     })
 
@@ -1025,7 +1029,7 @@ describe('appReducer — state transitions', () => {
       // y = round(1e20 × 1e-21) = round(0.1) = 0 → 0x0000 (quantized step,
       // not saturation: 1e20 lies inside the ±32767×10^21 encodable range).
       expect(s.raw).toBe(0x0000)
-      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e20 })
+      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e20, text: '1e20' })
     })
 
     it('DIRECT saturation keeps the original request as the error baseline', () => {
@@ -1033,7 +1037,7 @@ describe('appReducer — state transitions', () => {
       // y = round(1e30 × 1e-21) = 1e9 → clamp 32767 → 0x7FFF saturated; the
       // provenance must keep the committed 1e30, never a clamped 1e20.
       expect(s.raw).toBe(0x7fff)
-      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e30 })
+      expect(s.valueRequest).toEqual({ mode: 'DIRECT', value: 1e30, text: '1e30' })
     })
 
     it('L11 saturation uses the original unclamped request', () => {
@@ -1058,7 +1062,7 @@ describe('appReducer — state transitions', () => {
       for (const text of ['1e400', '-1e400']) {
         const s = appReducer(committed, { type: 'value/set', value: text })
         expect(s.raw, text).toBe(0x0001)
-        expect(s.valueRequest, text).toEqual({ mode: 'DIRECT', value: 1e21 })
+        expect(s.valueRequest, text).toEqual({ mode: 'DIRECT', value: 1e21, text: '1e21' })
       }
     })
 
@@ -1435,8 +1439,8 @@ describe('appReducer — state transitions', () => {
       const ffff = appReducer(s, { type: 'value/set', value: '-1.00000000000000001' })
       expect(ffff.raw).toBe(0xffff)
       expect(PMBusMath.toSigned(ffff.raw, 16)).toBe(-1)
-      // The provenance Number stays the binary64 request (-1).
-      expect(ffff.valueRequest).toEqual({ mode: 'DIRECT', value: -1 })
+      // The provenance keeps the committed lexeme; the Number stays binary64.
+      expect(ffff.valueRequest).toEqual({ mode: 'DIRECT', value: -1, text: '-1.00000000000000001' })
     })
 
     it('typing plain "-1" under m=1,b=1,R=17 lands on raw 0000 as a new request', () => {
@@ -1445,7 +1449,7 @@ describe('appReducer — state transitions', () => {
       // Exact contract: (1·(-1) + 1)·10^17 = 0 → Y=0. This is a genuinely
       // different request than the FFFF state's exact -1.00000000000000001.
       expect(committed.raw).toBe(0x0000)
-      expect(committed.valueRequest).toEqual({ mode: 'DIRECT', value: -1 })
+      expect(committed.valueRequest).toEqual({ mode: 'DIRECT', value: -1, text: '-1' })
     })
 
     it('raw 0000 and FFFF coexist honestly under one coefficient set', () => {
@@ -1484,6 +1488,15 @@ describe('appReducer — state transitions', () => {
       expect(s.valueRequest).toBeNull()
     })
 
+    it('fails closed on an overlong lexeme: no commit, no provenance (v2.5.12)', () => {
+      // Domain defense: the boundary inside parseDecimalExactRational rejects
+      // overlong text even on a direct dispatch (never only-DOM enforcement).
+      const s = directWith(1, 0, 0)
+      const committed = appReducer(s, { type: 'value/set', value: '7' })
+      const overlong = `1${'0'.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH + 1)}`
+      expect(appReducer(committed, { type: 'value/set', value: overlong })).toBe(committed)
+    })
+
     it('fails closed when the lexeme is not an exact decimal (defensive)', () => {
       // classifyFloatText would reject these before the reducer; a direct
       // dispatch must still not fabricate a state change.
@@ -1492,6 +1505,60 @@ describe('appReducer — state transitions', () => {
       expect(NaNLiteral).toBe(s)
       const infinity = appReducer(s, { type: 'value/set', value: 'Infinity' })
       expect(infinity).toBe(s)
+    })
+  })
+
+  describe('DIRECT exact request provenance lifecycle (v2.5.12)', () => {
+    const toDirect = () => appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+
+    it('value/set stores the exact committed lexeme the encoder consumed', () => {
+      // Default coefficients m=1, b=0, R=0: round(−1.0000000000000000001) = −1.
+      const s = appReducer(toDirect(), { type: 'value/set', value: '-1.0000000000000000001' })
+      expect(s.raw).toBe(0xffff)
+      expect(s.valueRequest).toEqual({
+        mode: 'DIRECT',
+        value: -1,
+        text: '-1.0000000000000000001',
+      })
+    })
+
+    it('an explicit same-value re-entry re-establishes provenance as a new transaction', () => {
+      const first = appReducer(toDirect(), { type: 'value/set', value: '5' })
+      const second = appReducer(first, { type: 'value/set', value: '5' })
+      expect(second.valueRequest).toEqual(first.valueRequest)
+      expect(second.valueRequest).not.toBe(first.valueRequest)
+      expect(second.valueRequest).toEqual({ mode: 'DIRECT', value: 5, text: '5' })
+    })
+
+    it('real raw edits (hex / bit / Y) clear the lexeme provenance', () => {
+      const committed = appReducer(toDirect(), { type: 'value/set', value: '7' })
+      expect(committed.valueRequest).not.toBeNull()
+      expect(
+        appReducer(committed, { type: 'raw/set-from-hex', hex: '1234' }).valueRequest,
+      ).toBeNull()
+      expect(appReducer(committed, { type: 'bit/toggle', bit: 0 }).valueRequest).toBeNull()
+      expect(appReducer(committed, { type: 'direct/set-y', y: '3' }).valueRequest).toBeNull()
+    })
+
+    it('coefficient edits clear the lexeme provenance', () => {
+      const committed = appReducer(toDirect(), { type: 'value/set', value: '7' })
+      for (const name of ['m', 'b', 'r'] as const) {
+        const edited = appReducer(committed, {
+          type: 'direct/set-coeff',
+          name,
+          value: name === 'm' ? '2' : '1',
+        })
+        expect(edited.valueRequest, name).toBeNull()
+      }
+    })
+
+    it('mode switches clear the provenance; illegal drafts never create one', () => {
+      const committed = appReducer(toDirect(), { type: 'value/set', value: '7' })
+      expect(appReducer(committed, { type: 'mode/set', mode: 'L11' }).valueRequest).toBeNull()
+      const overflow = appReducer(toDirect(), { type: 'value/set', value: '1e400' })
+      expect(overflow.valueRequest).toBeNull()
+      const underflow = appReducer(toDirect(), { type: 'value/set', value: '1e-400' })
+      expect(underflow.valueRequest).toBeNull()
     })
   })
 })
