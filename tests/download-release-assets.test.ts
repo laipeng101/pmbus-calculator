@@ -21,7 +21,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { downloadVerifiedAssets } from '../scripts/download-release-assets.mjs'
 
 const TAG = 'v1.2.3'
@@ -330,6 +330,210 @@ describe('downloadVerifiedAssets: cumulative deadline contract (v2.5.10)', () =>
     // gone after two 4-minute attempts.
     expect(calls).toBe(2)
     expect(fs.readdirSync(outDir)).toEqual([])
+  })
+})
+
+describe('downloadVerifiedAssets: bounded network-rejection backoff (v2.5.11)', () => {
+  /** Fetch stand-in: rejects the first N calls with a plain network error,
+   * then answers every URL with its verified bytes. */
+  function rejectingFetch(rejectTimes: number, calls: string[] = []): typeof fetch {
+    const bytesByUrl = new Map<string, Uint8Array>([
+      [ZIP_URL, ZIP_BYTES],
+      [SUMS_URL, SUMS_BYTES],
+    ])
+    return (async (url: string | URL | Request) => {
+      const key = String(url instanceof Request ? url.url : url)
+      calls.push(key)
+      if (calls.length <= rejectTimes) throw new TypeError('fetch failed')
+      return new Response(bytesByUrl.get(key), { status: 200 })
+    }) as unknown as typeof fetch
+  }
+
+  it('backs off once after a network rejection and succeeds on the next attempt', async () => {
+    const outDir = newOutDir()
+    const calls: string[] = []
+    const sleeps: number[] = []
+    await downloadVerifiedAssets(verified(), {
+      repo: REPO,
+      outDir,
+      fetchImpl: rejectingFetch(1, calls),
+      nowImpl: () => 0,
+      sleepImpl: (ms) => {
+        sleeps.push(ms)
+        return Promise.resolve()
+      },
+    })
+    expect(calls).toEqual([ZIP_URL, ZIP_URL, SUMS_URL])
+    // Full budget remains: the backoff is the configured 2000ms, not 0.
+    expect(sleeps).toEqual([2_000])
+    expect(fs.readFileSync(path.join(outDir, ZIP_NAME))).toEqual(Buffer.from(ZIP_BYTES))
+  })
+
+  it('fails after three rejections with exactly two backoffs (bounded attempts)', async () => {
+    const outDir = newOutDir()
+    const calls: string[] = []
+    const sleeps: number[] = []
+    await expect(
+      downloadVerifiedAssets(verified(), {
+        repo: REPO,
+        outDir,
+        fetchImpl: rejectingFetch(99, calls),
+        nowImpl: () => 0,
+        sleepImpl: (ms) => {
+          sleeps.push(ms)
+          return Promise.resolve()
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 10,
+      message: expect.stringContaining('download failed after 3 attempts'),
+    })
+    expect(calls).toEqual([ZIP_URL, ZIP_URL, ZIP_URL])
+    expect(sleeps).toEqual([2_000, 2_000])
+    expect(fs.readdirSync(outDir)).toEqual([])
+  })
+
+  it('clamps the backoff to the remaining budget and never starts an out-of-budget request', async () => {
+    const outDir = newOutDir()
+    let fakeNow = 0
+    let calls = 0
+    const sleeps: number[] = []
+    await expect(
+      downloadVerifiedAssets(verified(), {
+        repo: REPO,
+        outDir,
+        fetchImpl: (async () => {
+          calls++
+          throw new TypeError('fetch failed')
+        }) as unknown as typeof fetch,
+        budgetMs: 300,
+        nowImpl: () => fakeNow,
+        sleepImpl: (ms) => {
+          fakeNow += ms
+          sleeps.push(ms)
+          return Promise.resolve()
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 10,
+      message: expect.stringContaining('deadline exhausted'),
+    })
+    // The rejection backoff slept only the remaining 300ms; attempt 2 then
+    // saw an empty budget and never started.
+    expect(sleeps).toEqual([300])
+    expect(calls).toBe(1)
+    expect(fs.readdirSync(outDir)).toEqual([])
+  })
+
+  it('never retries a shared-deadline abort (TimeoutError)', async () => {
+    const outDir = newOutDir()
+    let calls = 0
+    const sleeps: number[] = []
+    await expect(
+      downloadVerifiedAssets(verified(), {
+        repo: REPO,
+        outDir,
+        fetchImpl: (async () => {
+          calls++
+          throw new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+        }) as unknown as typeof fetch,
+        nowImpl: () => 0,
+        sleepImpl: (ms) => {
+          sleeps.push(ms)
+          return Promise.resolve()
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 10,
+      message: expect.stringContaining('deadline exhausted'),
+    })
+    expect(calls).toBe(1)
+    expect(sleeps).toEqual([])
+    expect(fs.readdirSync(outDir)).toEqual([])
+  })
+
+  it('keeps permanent 4xx fail-fast with zero backoff', async () => {
+    const outDir = newOutDir()
+    const sleeps: number[] = []
+    for (const status of [400, 401, 403, 404]) {
+      let calls = 0
+      await expect(
+        downloadVerifiedAssets(verified(), {
+          repo: REPO,
+          outDir,
+          fetchImpl: (async () => {
+            calls++
+            return new Response('nope', { status })
+          }) as unknown as typeof fetch,
+          nowImpl: () => 0,
+          sleepImpl: (ms) => {
+            sleeps.push(ms)
+            return Promise.resolve()
+          },
+        }),
+      ).rejects.toMatchObject({ code: 10, message: expect.stringContaining(`HTTP ${status}`) })
+      expect(calls, `status ${status}`).toBe(1)
+    }
+    expect(sleeps).toEqual([])
+  })
+
+  it('keeps tokens, auth headers and signed query strings out of diagnostics', async () => {
+    const outDir = newOutDir()
+    let caught: string | undefined
+    await downloadVerifiedAssets(verified(), {
+      repo: REPO,
+      outDir,
+      fetchImpl: (async () => {
+        throw new TypeError('fetch failed')
+      }) as unknown as typeof fetch,
+    }).catch((error: Error) => {
+      caught = `${error.name}: ${error.message}`
+    })
+    // The failure chain only ever carries the verified canonical URL and the
+    // transport error text — no credential-shaped fragment may appear.
+    expect(caught).toContain('download failed after 3 attempts')
+    for (const fragment of ['token', 'Authorization', 'sig=', 'Bearer']) {
+      expect(caught, fragment).not.toContain(fragment)
+    }
+  })
+
+  it('distinguishes transient HTTP, network rejection and backoff in stderr logs', async () => {
+    const outDir = newOutDir()
+    const logs: string[] = []
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+      logs.push(args.map(String).join(' '))
+    })
+    try {
+      // ZIP: 503 transient, then success. SUMS: three network rejections.
+      let zipCalls = 0
+      let sumsCalls = 0
+      const fetchImpl = (async (url: string | URL | Request) => {
+        const key = String(url instanceof Request ? url.url : url)
+        if (key === ZIP_URL) {
+          zipCalls++
+          if (zipCalls === 1) return new Response('boom', { status: 503 })
+          return new Response(ZIP_BYTES, { status: 200 })
+        }
+        sumsCalls++
+        throw new TypeError('fetch failed')
+      }) as unknown as typeof fetch
+      await expect(
+        downloadVerifiedAssets(verified(), {
+          repo: REPO,
+          outDir,
+          fetchImpl,
+          nowImpl: () => 0,
+          sleepImpl: () => Promise.resolve(),
+        }),
+      ).rejects.toMatchObject({ code: 10 })
+      expect(zipCalls).toBe(2)
+      expect(sumsCalls).toBe(3)
+      expect(logs.some((l) => l.includes('transient HTTP 503'))).toBe(true)
+      expect(logs.some((l) => l.includes('network rejection'))).toBe(true)
+      expect(logs.some((l) => l.includes('backing off'))).toBe(true)
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })
 
