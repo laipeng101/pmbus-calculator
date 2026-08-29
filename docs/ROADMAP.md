@@ -3,11 +3,12 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-30（v2.5.12 DIRECT 精确请求 provenance——raw 编码与
-provenance 共享同一词法真值，量化分类/误差由精确有理数决定并忠实呈现；
-精确 lexeme 长度边界 4096；默认 5s 单测门禁消除确定性真实睡眠；draft
-Release 资产本地字节验证成为仓库正式入口 verify-downloaded-assets.mjs，
-operator draft 门禁与 Pages published 门禁共用）
+最后更新：2026-08-30（v2.5.13——DIRECT raw lexeme 资源边界统一
+（4096 上限按 trim 前的原始字符串长度判定，UI/reducer/exact parser
+共享同一防线，超长粘贴在进入 draft state 前拒绝）；E2E 语义单次执行 +
+显式 mobile-contract 套件（Pixel 7 仿真）；future immutable releases
+启用并写入发布前置复核；release 操作文档命令合同进入 light CI；
+删除经引用审计证明无用的 .depcheckrc）
 
 ## 当前产品基线
 
@@ -32,7 +33,7 @@ operator draft 门禁与 Pages published 门禁共用）
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.12；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.13；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -137,6 +138,17 @@ M0–M39 complete；stable release v2.5.12；production distribution: GitHub Pag
   lexeme 长度边界 4096（BigInt 前置字符串边界）；默认 5s 门禁稳定性
   （backoff 注入 + pow10 记忆化 + sweep 拆分）；draft 资产本地字节门禁
   `scripts/verify-downloaded-assets.mjs`（draft/published 双模式）。
+- v2.5.13（PATCH）：DIRECT raw lexeme 资源边界统一（4096 上限按 trim 前的
+  原始字符串长度判定，UI 输入门 / reducer / exact parser 共享同一防线；
+  超长粘贴在进入 draft state 前拒绝，reducer 直接派发严格 no-op，
+  accepted provenance ≤4096，DOMAIN_MODEL §2.3 / UI_CONVENTIONS §8）——
+  E2E 语义单次执行（默认套件单 project 293 tests）+ 显式 mobile-contract
+  套件（11 tests，Pixel 7 仿真，独立 config），逻辑标题守恒，本地默认
+  E2E 中位 132s→77s——future immutable releases 仓库设置启用并写入
+  RELEASING 前置/后置复核——release 操作文档命令合同
+  `check:release-docs-commands` 进入 light CI（RELEASING/Pages 双调用点
+  在离线 fixture 上跑真实 verifier）——删除经引用审计证明无用的
+  `.depcheckrc`。
 - 当前：无进行中的功能里程碑；v2.5.12 已发布，M40–M41 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 

@@ -4,6 +4,49 @@
 
 ## [Unreleased]
 
+## [2.5.13] - 2026-08-30
+
+### Fixed
+
+- **DIRECT raw lexeme 资源边界统一（P2 修复）**：v2.5.12 的 4096 字符上限
+  在 UI 按 raw 长度判断、在 exact parser/reducer 防线却先 `trim()` 再查
+  trimmed 长度——直接派发 `1000000 个空格 + "1"` 会被 trim 后接受，raw 改写
+  为 1 且 provenance 驻留百万字符原始请求。现在 `checkExactLexemeBoundary`
+  在任何 trim/BigInt 之前对调用方原始字符串长度判定；`ValueInput.handleChange`
+  在写入 draft state 之前拒绝超长输入（超长粘贴不再进入 React state，
+  受控输入保留旧草稿，明确显示「输入过长，未提交」）；reducer 直接派发
+  超长文本是严格 no-op；被接受的 provenance 文本长度 ≤4096。短输入的空白
+  语义（首尾空白、任何指数下的 true zero）不变。这是交互资源边界，
+  不是 PMBus 规则；编码策略（`Math.round` half-up + signed16 clamp）不变。
+
+### Changed
+
+- **E2E 语义只跑一次 + 显式移动端合同**：默认 Playwright 套件曾以
+  chromium-desktop + chromium-mobile 双 project 无选择地完整执行两遍
+  （292 逻辑用例 → 584 次执行），而多数 spec 内部自设 viewport，双跑并无
+  独立覆盖。现在默认套件单 project 跑一次（293 tests），真实移动端风险
+  集中到显式 `mobile-contract` 套件（11 tests，Pixel 7 仿真：390/360
+  布局、触摸、术语气泡、命令参考、错误文案换行、逐格式转换 smoke），
+  由独立 `playwright.mobile.config.ts` 承载并进入 CI 与 `npm run verify`。
+  1 MiB 浏览器 paste 从 E2E 移除（资源边界由纯函数/reducer 单测锁定）；
+  逻辑用例标题守恒（除 DIRECT 边界 describe 的 old→new 映射）。
+- **未来 Release 平台强制不可变**：仓库设置 immutable-releases 已启用
+  （v2.5.13 起的新 Release publish 后 API 报告 `immutable: true`；
+  不追溯旧 Release）。RELEASING.md 增加 tag 前置复核（immutable 启用、
+  admin 身份、目标 tag 不存在）与 publish 后 `immutable: true` +
+  `gh release verify`/`verify-asset` attestation 复核步骤。
+- **release 操作文档命令合同进入轻量 CI**：新增
+  `scripts/check-release-docs-commands.mjs`（`npm run check:release-docs-commands`），
+  从 `docs/RELEASING.md`（draft 模式）与 Pages workflow（published 模式）
+  提取 `verify-downloaded-assets.mjs` 真实调用，在离线 fixture 上执行
+  生产脚本：文档 argv 必须 exit 0，PR #74 的位置参数回归与非法 `--mode`
+  必须 exit 2。该门禁在 CI 两个 tier 都运行（docs-only PR 不再绕过）。
+
+### Removed
+
+- 删除 `.depcheckrc`（90 bytes）：引用审计证明 depcheck 工具未安装、
+  无任何脚本/CI/文档/lockfile 引用，属纯死配置。
+
 ## [2.5.12] - 2026-08-30
 
 ### Fixed
