@@ -11,6 +11,7 @@ import { getCommandConfig } from '../legacy/command-metadata'
 import { parseHexStrict } from './hex-parse'
 import { parseIntegerStrict } from './int-parse'
 import { classifyFloatText } from './float-parse'
+import { encodeDirectExactFromRational, parseDecimalExactRational } from './direct-exact'
 import { effectiveL16VoutMode } from './vout-mode-selector'
 
 /**
@@ -32,9 +33,23 @@ function parseIntegerRange(s: string, min: number, max: number): number | null {
   return n
 }
 
-/** Encode a physical value into DIRECT raw via legacy rounding. */
-function encodeDirectFromValue(state: AppState, value: number): AppState {
-  const y = PMBusMath.encodeDirect(value, state.direct.m, state.direct.b, state.direct.r)
+/**
+ * Encode a committed physical-value lexeme into DIRECT raw.
+ *
+ * v2.5.11: the text the user actually typed is encoded through the exact
+ * rational path (`encodeDirectExactFromRational` reproduces the repository's
+ * Math.round + signed-16-bit clamp contract in exact arithmetic), so a
+ * re-entered value can never silently fold through a lossy binary64
+ * intermediate and land on a different payload. `value` is the classify-
+ * float Number kept for the request provenance; the raw comes from the
+ * exact lexeme. Fails closed when the lexeme is not a complete decimal —
+ * unreachable through the UI because `classifyFloatText` only passes
+ * complete finite decimals here.
+ */
+function encodeDirectFromValue(state: AppState, value: number, text: string): AppState {
+  const exact = parseDecimalExactRational(text)
+  if (!exact) return state
+  const y = encodeDirectExactFromRational(exact, state.direct.m, state.direct.b, state.direct.r)
   return { ...state, raw: PMBusMath.fromSigned(y, 16), valueRequest: { mode: 'DIRECT', value } }
 }
 
@@ -228,7 +243,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (state.mode === 'DIRECT') {
         if (Number.isNaN(value) || !Number.isFinite(value)) return state
         if (state.direct.m === 0) return state
-        return encodeDirectFromValue(state, value)
+        // v2.5.11: encode the committed lexeme exactly — the binary64
+        // `value` is provenance only.
+        return encodeDirectFromValue(state, value, action.value)
       }
       if (state.mode === 'HALF') {
         // HALF supports NaN and ±Infinity as first-class values.

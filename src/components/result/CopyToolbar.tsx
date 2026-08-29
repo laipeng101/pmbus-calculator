@@ -65,6 +65,10 @@ export default function CopyToolbar({
   // v2.5.9: a relative-derivation range error disables the 物理值 copy with
   // an accessible, visible reason; raw Hex / LE / BE copies stay available.
   const physicalCopyUnavailable = vm.physicalValueCopy?.available === false
+  // v2.5.11: a precision-folded DIRECT decode swaps the copied payload for
+  // the verified safe re-entry text — the display approximation must never
+  // be handed out as if it round-tripped.
+  const physicalCopyOverride = vm.physicalValueCopyOverride
 
   return (
     <div className="copy-toolbar space-y-3">
@@ -87,11 +91,19 @@ export default function CopyToolbar({
         <CopyButton
           className="col-span-3"
           onClick={() => {
-            if (!physicalCopyUnavailable) void copy(vm.valueText, '物理值')
+            if (!physicalCopyUnavailable) {
+              void copy(physicalCopyOverride ? physicalCopyOverride.text : vm.valueText, '物理值')
+            }
           }}
           label="物理值"
           disabled={physicalCopyUnavailable}
-          describedBy={physicalCopyUnavailable ? 'physical-value-copy-reason' : undefined}
+          describedBy={
+            physicalCopyUnavailable
+              ? 'physical-value-copy-reason'
+              : physicalCopyOverride
+                ? 'physical-value-copy-note'
+                : undefined
+          }
         />
         <CopyButton
           className="col-span-3"
@@ -103,6 +115,12 @@ export default function CopyToolbar({
       {physicalCopyUnavailable && vm.physicalValueCopy && (
         <p id="physical-value-copy-reason" role="status" className="text-xs color-text-secondary">
           {vm.physicalValueCopy.reason}
+        </p>
+      )}
+
+      {physicalCopyOverride && (
+        <p id="physical-value-copy-note" role="status" className="text-xs color-text-secondary">
+          {physicalCopyOverride.note}
         </p>
       )}
 

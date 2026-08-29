@@ -58,7 +58,10 @@ https://laipeng101.github.io/pmbus-calculator/
    诊断终止。该预算刻意远小于 Pages job 的 `timeout-minutes: 20`，为
    npm ci、校验、上传、部署与 remote smoke 留足时间。重试仅针对瞬时故障
    （网络错误与 HTTP 408/429/5xx），次数有界（每资产最多 3 次）且 backoff
-   短小并计入预算；其他 4xx 与元数据/URL/size 合同错误立即失败。下载后先
+   短小并计入预算（v2.5.11：网络 reject 与瞬时 HTTP 状态走同一退避路径，
+   退避量取 `min(退避配置, 剩余预算)`；由共享 deadline 的 AbortSignal 触发
+   的 abort 属于预算耗尽，立即以 code 10 的「deadline exhausted」诊断终止，
+   不再重试）；其他 4xx 与元数据/URL/size 合同错误立即失败。下载后先
    核对文件字节数与元数据一致，不一致立即停止部署（错误码 9），不会到达
    checksum 步骤；两项资产全部下载并通过 size 校验后才会写盘，不产生部分
    下载的发布输入。元数据请求失败、资产选择失败与下载失败是三个可区分的

@@ -1414,4 +1414,84 @@ describe('appReducer — state transitions', () => {
       expect(s).not.toBe(original)
     })
   })
+
+  describe('DIRECT exact typed-value encoding (v2.5.11)', () => {
+    const directWith = (m: number, b: number, r: number) => {
+      let s = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+      for (const [name, v] of [
+        ['m', m],
+        ['b', b],
+        ['r', r],
+      ] as const) {
+        s = appReducer(s, { type: 'direct/set-coeff', name, value: String(v) })
+      }
+      return s
+    }
+
+    it('re-entering the exact decimal of raw FFFF returns to FFFF, not 0000', () => {
+      const s = directWith(1, 1, 17)
+      // The folded display "-1" would encode Y=0 under the old float path;
+      // the exact lexeme of Y=-1 must re-encode to Y=-1.
+      const ffff = appReducer(s, { type: 'value/set', value: '-1.00000000000000001' })
+      expect(ffff.raw).toBe(0xffff)
+      expect(PMBusMath.toSigned(ffff.raw, 16)).toBe(-1)
+      // The provenance Number stays the binary64 request (-1).
+      expect(ffff.valueRequest).toEqual({ mode: 'DIRECT', value: -1 })
+    })
+
+    it('typing plain "-1" under m=1,b=1,R=17 lands on raw 0000 as a new request', () => {
+      const s = directWith(1, 1, 17)
+      const committed = appReducer(s, { type: 'value/set', value: '-1' })
+      // Exact contract: (1·(-1) + 1)·10^17 = 0 → Y=0. This is a genuinely
+      // different request than the FFFF state's exact -1.00000000000000001.
+      expect(committed.raw).toBe(0x0000)
+      expect(committed.valueRequest).toEqual({ mode: 'DIRECT', value: -1 })
+    })
+
+    it('raw 0000 and FFFF coexist honestly under one coefficient set', () => {
+      const s = directWith(1, 1, 17)
+      const zero = appReducer(s, { type: 'value/set', value: '-1' })
+      expect(zero.raw).toBe(0x0000)
+      const minus = appReducer(zero, { type: 'value/set', value: '-1.00000000000000001' })
+      expect(minus.raw).toBe(0xffff)
+      // Switching back via the plain folded text keeps the honest verdicts.
+      const backToZero = appReducer(minus, { type: 'value/set', value: '-1' })
+      expect(backToZero.raw).toBe(0x0000)
+    })
+
+    it('keeps the v2.5.8 large-request vectors on the exact path', () => {
+      const lo = appReducer(directWith(1, 0, -21), { type: 'value/set', value: '1e21' })
+      expect(lo.raw).toBe(0x0001)
+      const neg = appReducer(directWith(1, 0, -21), { type: 'value/set', value: '-1e21' })
+      expect(neg.raw).toBe(0xffff)
+      const flipped = appReducer(directWith(-1, 0, -21), { type: 'value/set', value: '1e21' })
+      expect(flipped.raw).toBe(0xffff)
+    })
+
+    it('keeps the legacy Math.round half-up tie on exact arithmetic', () => {
+      // round(12.5) = 13 (half toward +∞) must survive the exact path.
+      const s = appReducer(directWith(1, 0, 0), { type: 'value/set', value: '12.5' })
+      expect(s.raw).toBe(13)
+      const neg = appReducer(directWith(1, 0, 0), { type: 'value/set', value: '-12.5' })
+      expect(neg.raw).toBe(PMBusMath.fromSigned(-12, 16)) // Math.round(-12.5) = -12
+    })
+
+    it('is a no-op when m=0 (no fabricated encode)', () => {
+      const zeroM = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '0' })
+      const directZero = appReducer(zeroM, { type: 'mode/set', mode: 'DIRECT' })
+      const s = appReducer(directZero, { type: 'value/set', value: '-1' })
+      expect(s.raw).toBe(directZero.raw)
+      expect(s.valueRequest).toBeNull()
+    })
+
+    it('fails closed when the lexeme is not an exact decimal (defensive)', () => {
+      // classifyFloatText would reject these before the reducer; a direct
+      // dispatch must still not fabricate a state change.
+      const s = directWith(1, 1, 17)
+      const NaNLiteral = appReducer(s, { type: 'value/set', value: 'NaN' })
+      expect(NaNLiteral).toBe(s)
+      const infinity = appReducer(s, { type: 'value/set', value: 'Infinity' })
+      expect(infinity).toBe(s)
+    })
+  })
 })

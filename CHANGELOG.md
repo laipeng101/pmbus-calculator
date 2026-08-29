@@ -4,6 +4,37 @@
 
 ## [Unreleased]
 
+## [2.5.11] - 2026-08-28
+
+### Fixed
+
+- **DIRECT 合法系数组合下的精度折叠导致回录不保真（P1）**：PMBus Part II
+  §7.4 的精确解码值可能超出 binary64 精度——m=1、b=1、R=17、raw FFFF 的
+  精确值是 -1.00000000000000001，binary64 只能显示 -1，与 raw 0000（精确
+  -1）在显示上不可区分；真实回输显示值会把 payload 静默改为 Y=0 且界面
+  呈现精确零误差（该系数组合下 65536 个 Y 中 61108 个存在此折叠）。这是
+  exact rational → binary64/显示 → 回录的可逆性缺陷，不是 PMBus 公式错误，
+  也不是 `encodeDirect(Number)` 的错码（既有审计边界保持）。修复：
+  `src/app/direct-exact.ts` 建立无依赖的 BigInt 精确参照——typed 提交路径
+  以完整十进制 lexeme 经 exact rational 复现仓库 `Math.round` + signed16
+  clamp 合同（DOMAIN_MODEL §2.3），折叠状态在结果区/警告/计算步骤标记
+  近似值与精确值/分数，「物理值」复制改为返回经验证可安全回录的精确文本
+  （独立 exact encoder 回验；循环小数用有界经验证近似并在步骤声明），
+  raw/Y 编辑仍是位级真值的权威路径；untouched blur 严格 no-op 与普通
+  安全向量零噪音合同不变。
+- **Release 下载器网络错误重试缺少退避（P2 发布可靠性）**：
+  `download-release-assets.mjs` 对 HTTP 408/429/5xx 有退避，但 fetch
+  reject 的网络错误路径立即重试，与文档承诺的「有界短退避」不一致，会
+  在瞬时 DNS/TLS/socket 错误下形成重试突发。现在网络 reject 与瞬时
+  HTTP 状态走同一退避（`min(2s, 剩余预算)`，计入同一 5 分钟共享预算），
+  共享 deadline 的 AbortSignal 触发的 abort 判定为预算耗尽并立即以
+  code 10 的「deadline exhausted」诊断终止、不再重试；stderr 日志区分
+  瞬时 HTTP / 网络 reject / deadline abort / 永久 HTTP / 尺寸不符。
+  该修复不是已发生线上事故的响应，是使代码与可测试合同、文档一致。
+- **测试证据纪律**：把 `bit-field-grid` 两个 6 视口 × 5 模式的超长用例
+  按视口拆分（断言集合不变，单用例临界路径从逼近 30s 降到 <2s），降低
+  冷启动负载下的超时敏感性；不全局提高 timeout，不弱化任何断言。
+
 ## [2.5.10] - 2026-08-29
 
 ### Fixed

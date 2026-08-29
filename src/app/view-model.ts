@@ -25,6 +25,12 @@ import {
   RELATIVE_VOLTAGE_UNDERFLOW_NOTE,
 } from './relative-voltage'
 import type { RelativeVoltageResult } from './relative-voltage'
+import {
+  analyzeDirectRoundTrip,
+  formatExactDecimal,
+  formatExactRational,
+  generateSafeDirectReentryText,
+} from './direct-exact'
 
 export interface BitGroupVM {
   nibbleIndex: number
@@ -69,6 +75,32 @@ export interface L16PayloadContextVM {
   physicalInputAvailable: boolean
   /** Nominal VOUT_COMMAND reference input applies to this page state. */
   requiresNominalReference: boolean
+}
+
+/**
+ * DIRECT precision-fidelity contract (v2.5.11). Present ONLY when the
+ * current raw's exact §7.4 decode needs more precision than binary64
+ * carries, so the displayed physical value is an approximation whose direct
+ * re-entry would encode a different payload. Derived from the live raw word
+ * and coefficients on every render — never stored, never stale. Safe states
+ * leave it undefined (no noise for ordinary DIRECT vectors).
+ */
+export interface DirectFidelityVM {
+  /** Exact decoded value: "n/d" fraction, or a plain integer for d=1. */
+  exactFractionText: string
+  /** Exact terminating decimal text, or null for a repeating rational. */
+  exactDecimalText: string | null
+  /** The binary64 approximation the result card displays. */
+  approxValueText: string
+  /** Y the repository's Math.round contract assigns to the approximation. */
+  reencodedY: number
+  /**
+   * Decimal string whose re-entry provably returns to the original Y
+   * (verified through the independent exact encoder), or null when no
+   * verified string exists within the deterministic bound — the copy must
+   * then degrade instead of handing out an unverified string.
+   */
+  safeReentryText: string | null
 }
 
 export interface WarningVM {
@@ -163,6 +195,19 @@ export interface CalculatorViewModel {
    * raw Hex / LE / BE copies are never affected.
    */
   physicalValueCopy?: { available: false; reason: string }
+  /**
+   * DIRECT only, present ONLY when the displayed physical value is a
+   * precision-folded approximation (v2.5.11): the 物理值 copy must hand out
+   * the verified safe re-entry text instead of the approximation, with an
+   * explanatory note. The raw Hex / LE / BE / C-macro copies are unaffected.
+   */
+  physicalValueCopyOverride?: { text: string; note: string }
+  /**
+   * DIRECT fidelity contract (v2.5.11): present only when the displayed
+   * value cannot be safely re-entered because the exact decode exceeds
+   * binary64 precision. Undefined for every safe state.
+   */
+  directFidelity?: DirectFidelityVM
   /**
    * L16 only: payload-context contract (v2.5.1). Byte-level VOUT_MODE
    * status alone cannot decide UI entry — the signed offset payload
@@ -461,6 +506,43 @@ function resolveL16RelativeResult(state: AppState): RelativeVoltageResult | null
   return resolveRelativeVoltage(state.l16.nominalVout, ratio)
 }
 
+/**
+ * Shared note for the quantization readout in a precision-folded DIRECT
+ * state (v2.5.11): the binary64 delta can honestly be zero while the
+ * displayed value still cannot be re-entered safely.
+ */
+const DIRECT_PRECISION_FOLD_DELTA_NOTE =
+  '当前 raw 的显示值为 binary64 近似（精度折叠），直接回输会编码为不同的 raw；「物理值」复制使用经验证的精确回录文本'
+
+/**
+ * DIRECT precision-fidelity resolution (v2.5.11): null for every state that
+ * is not "DIRECT with m ≠ 0 whose exact decode precision-folds in binary64".
+ * Single source for the warning, the quantization note, the exact-value
+ * steps and the copy override — every surface answers the same fidelity
+ * question from this resolution, derived from the live raw word and
+ * coefficients so it can never go stale.
+ */
+function resolveDirectFidelity(state: AppState): DirectFidelityVM | null {
+  if (state.mode !== 'DIRECT' || state.direct.m === 0) return null
+  const y = PMBusMath.toSigned(state.raw, 16)
+  const analysis = analyzeDirectRoundTrip(y, state.direct.m, state.direct.b, state.direct.r)
+  if (!analysis || analysis.roundTripSafe) return null
+  const safeReentryText = generateSafeDirectReentryText(
+    analysis.exact,
+    y,
+    state.direct.m,
+    state.direct.b,
+    state.direct.r,
+  )
+  return {
+    exactFractionText: formatExactRational(analysis.exact),
+    exactDecimalText: formatExactDecimal(analysis.exact),
+    approxValueText: formatNumber(analysis.approxValue),
+    reencodedY: analysis.reencodedY,
+    safeReentryText,
+  }
+}
+
 function computeValueText(state: AppState): string {
   try {
     switch (state.mode) {
@@ -532,6 +614,22 @@ function buildWarnings(state: AppState): WarningVM[] {
         id: 'l11-saturation',
         level: 'warning',
         text: `输入值超出 LINEAR11 可表示范围（${formatNumber(min)} ~ ${formatNumber(max)}），编码器已饱和到极值；量化误差见误差面板。`,
+      })
+    }
+  }
+
+  if (state.mode === 'DIRECT' && state.direct.m !== 0) {
+    // v2.5.11: a precision-folded decode must be marked before any re-entry
+    // — the displayed value is an approximation and directly re-entering it
+    // encodes a different payload (a different request, not a same-value
+    // no-op). The field-level m/b/R errors stay in state.direct.errors.
+    const fidelity = resolveDirectFidelity(state)
+    if (fidelity) {
+      const exactText = fidelity.exactDecimalText ?? fidelity.exactFractionText
+      warnings.push({
+        id: 'direct-precision-fold',
+        level: 'warning',
+        text: `当前 raw 的精确物理值是 ${exactText}，超出 binary64 物理值的表示精度；显示值 ${fidelity.approxValueText} 是近似值，直接回输会按仓库舍入合同编码为 Y=${fidelity.reencodedY}——这是一个不同的请求，raw 会随之改变。「物理值」复制提供经精确编码验证、可安全回录的文本；直接编辑 raw 或 Y 始终是保留位级真值的权威路径。`,
       })
     }
   }
@@ -805,6 +903,9 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   let deltaText: string | undefined
   let deltaKind: 'ok' | 'warn' | 'error' | undefined
   let deltaNote: string | undefined
+  // v2.5.11: DIRECT precision fidelity is resolved once and consumed by the
+  // quantization readout, the copy override and the VM field alike.
+  const directFidelity = resolveDirectFidelity(state)
   {
     const outcome = computeQuantizationOutcome(state)
     if (outcome) {
@@ -813,6 +914,13 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       deltaText = presented.text
       const notes: string[] = []
       if (presented.note) notes.push(presented.note)
+      if (directFidelity) {
+        // The binary64 delta may honestly be zero, but a folded display must
+        // never read as a clean exact result: flag it as a warning and name
+        // the re-entry consequence.
+        deltaKind = 'warn'
+        notes.push(DIRECT_PRECISION_FOLD_DELTA_NOTE)
+      }
       if (notes.length > 0) deltaNote = notes.join('；')
     }
   }
@@ -916,6 +1024,24 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     }
   }
 
+  // v2.5.11: a precision-folded DIRECT decode swaps the 物理值 copy payload
+  // for the verified safe re-entry text; when no verified text exists the
+  // copy degrades to disabled instead of handing out the approximation.
+  let physicalValueCopyOverride: { text: string; note: string } | undefined
+  if (directFidelity) {
+    if (directFidelity.safeReentryText !== null) {
+      physicalValueCopyOverride = {
+        text: directFidelity.safeReentryText,
+        note: `物理值复制返回经验证可安全回录的精确文本 ${directFidelity.safeReentryText}（回输后回到当前 raw）；显示值 ${directFidelity.approxValueText} 是精度折叠的近似。`,
+      }
+    } else {
+      physicalValueCopyUnavailability = {
+        available: false,
+        reason: `物理值复制不可用：显示值 ${directFidelity.approxValueText} 是精度折叠的近似，且当前无法生成经验证的精确回录文本。请使用 raw/LE/BE 复制，或直接编辑 raw / Y 保留位级真值。`,
+      }
+    }
+  }
+
   return {
     mode: state.mode,
     steps: buildCalculationSteps(state),
@@ -947,6 +1073,8 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     nRangeText,
     l16Payload,
     physicalValueCopy: physicalValueCopyUnavailability,
+    physicalValueCopyOverride,
+    directFidelity: directFidelity ?? undefined,
     voutModeInfo,
     voutModePage,
     halfSpecial,

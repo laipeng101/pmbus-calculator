@@ -300,6 +300,18 @@
   VID/DIRECT/IEEE Half/非法参数状态都不得显示「数值 V [15:0]」或「有符号值 Y [15:0]」；
   payload 下拉切换不得复活 V/Y 图例；LINEAR 字节（含 bit7=1）恢复 payload-specific
   图例。ARIA 标签不含 V/Y 语义（bits 无 semantic 字段），复制路径不输出图例文字。
+- **DIRECT 精度折叠表面（v2.5.11）**：当 raw 的精确 §7.4 解码值超出 binary64
+  精度（如 m=1、b=1、R=17 的 raw FFFF：精确 -1.00000000000000001，显示 -1），
+  view-model 的 `directFidelity` 驱动三个表面——InfoPanel 警告
+  `direct-precision-fold`（明确显示值为近似、直接回输会编码为 Y=<reencoded>，
+  是"不同的请求"）、量化读数注记（`deltaKind` 降为 warn，不因 binary64 零
+  误差读数读成干净 exact）与计算步骤的精确有理数/十进制行（循环小数显式
+  声明无有限精确十进制）；「物理值」复制按钮经 `physicalValueCopyOverride`
+  返回经独立 exact encoder 验证、可安全回录的精确文本（附说明行，
+  aria-describedby 指向该说明；无法生成验证文本时禁用复制并给出原因，
+  绝不交出未验证字符串）。安全普通向量不出现任何折叠表面；raw/系数变化
+  实时重算，untouched blur 严格 no-op 不变。警告文案不得把折叠状态称为
+  exact，也不得声称"浮点有误差可以忽略"。
 
 ## 16. 独立 VOUT_MODE 页面的 requirement 文案合同（v2.5.4 / v2.5.5）
 

@@ -126,7 +126,8 @@ npm run test:e2e:release
    等会再次解释文本的机制（v2.5.9：元数据只作为数据）。Pages 侧的下载消费
    由 `scripts/download-release-assets.mjs` 在 5 分钟共享总预算内完成
    （v2.5.10：预算覆盖两项资产、重试与 backoff，不因重试重置，远小于
-   Pages job 的 20 分钟上限）。随后下载两个资产
+   Pages job 的 20 分钟上限；v2.5.11：网络 reject 与 HTTP 408/429/5xx
+   走同一有界退避并计入预算，共享 deadline 触发的 abort 不再重试）。随后下载两个资产
    执行 `sha256sum -c SHA256SUMS.txt` 并核对 ZIP 内容合同。**任何一项失败
    都停止在 draft 状态，不得 publish。**
 

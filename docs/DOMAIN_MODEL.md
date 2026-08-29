@@ -88,6 +88,27 @@
 - 编码舍入策略（legacy 兼容）：`Y = clamp(Math.round((m × Value + b) × 10^R), -32768, 32767)`。
   `Math.round` 对 `.5` 向正无穷方向舍入（`1.5 -> 2`，`-1.5 -> -1`）；该策略在获得官方规范
   明确要求前保持不变，并有 golden case 覆盖。
+- **typed 提交的精确编码（v2.5.11）**：物理值提交不再先折算成 binary64——
+  `value/set` 把用户输入的完整十进制 lexeme 解析为 BigInt 有理数
+  （`parseDecimalExactRational`），再以 exact 算术复现同一 `Math.round` +
+  signed16 clamp 合同（`encodeDirectExactFromRational`）。舍入策略本身
+  不变；消除的是「exact → binary64 → 回录」的不可逆精度折叠。m=0 时
+  精确参照返回 invalid，不伪造有理数；lexeme 不是完整十进制时 reducer
+  fail-closed（UI 路径经 `classifyFloatText` 不可达）。
+- **精确参照与回程分析单一来源（v2.5.11）**：`src/app/direct-exact.ts`
+  提供 §7.4 的精确解码有理数（分母恒正、约分）、真实 binary64 管线的
+  回程分析（`roundTripSafe` 按构造等价于 `PMBusMath.encodeDirect(
+PMBusMath.decodeDirect(y, …))`）与经验证的安全回录文本生成
+  （终止小数优先精确展开；循环有理数用有界经验证近似——候选串必须经
+  独立 parse + exact encode 回到原 Y，否则返回 null 触发安全降级）。
+  该模块是 fidelity 判断的单一来源；组件与测试不得用浮点比较自行推导。
+- **精度折叠的呈现（v2.5.11，UI_CONVENTIONS §15）**：当 raw 的精确解码值
+  超出 binary64 精度、显示值直接回输会编码为不同 Y 时，view-model 输出
+  `directFidelity`（精确有理数/十进制文本、近似显示值、回编 Y、经验证
+  回录文本）；警告 `direct-precision-fold`、量化读数注记（deltaKind 降为
+  warn）与计算步骤的精确值行全部消费同一解析。这不是 PMBus 公式错误，
+  也不表示 `encodeDirect(Number)` 有错——是显示层不可逆性的诚实标注；
+  raw/Y 编辑始终是位级真值的权威路径。
 
 ### 2.4 HALF
 

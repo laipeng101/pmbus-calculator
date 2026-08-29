@@ -3,11 +3,11 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-29（v2.5.10 LINEAR11 自动编码严格最近值修复（移除
-固定 1e-15 epsilon，exact tie 显式 smaller-|N| policy 入 DOMAIN_MODEL
-§2.1）+ 非零十进制输入下溢拒绝（`classifyFloatText` 可判别 `underflow`
-分类，输入真实性合同入 UI_CONVENTIONS §8）+ 发布下载器 5 分钟真实累计
-预算 + draft 占位 URL hex 合同收紧（PR #70 正式纳入发布源码））
+最后更新：2026-08-28（v2.5.11 DIRECT 精度保真修复——typed 提交按完整
+十进制 lexeme 经 BigInt exact rational 复现仓库 Math.round + signed16
+clamp 合同（DOMAIN_MODEL §2.3），折叠状态以 `directFidelity` 单一来源
+标记近似值/精确值/回编后果，「物理值」复制返回经验证可安全回录文本；
+发布下载器网络 reject 与瞬时 HTTP 同一有界退避并区分 deadline abort）
 
 ## 当前产品基线
 
@@ -32,7 +32,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.10；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.11；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -122,7 +122,17 @@ M0–M39 complete；stable release v2.5.10；production distribution: GitHub Pag
   5 分钟真实累计预算（重试/backoff 消耗同一预算，不再出现 30 分钟
   最坏累计对 20 分钟 job 的矛盾）——draft 占位 URL `untagged-<hex>`
   合同收紧（PR #70 修复正式纳入发布源码）。
-- 当前：无进行中的功能里程碑；v2.5.10 已完成发布准备，M40–M41 complete。
+- v2.5.11（PATCH）：DIRECT 精度保真修复（新增 `src/app/direct-exact.ts`
+  BigInt 精确参照：typed 提交按完整十进制 lexeme 经 exact rational 复现
+  `Math.round`+signed16 clamp 合同，消除「exact → binary64 显示 → 回录」
+  静默改 raw 的精度折叠——DOMAIN_MODEL §2.3；折叠状态由 `directFidelity`
+  单一来源在警告/量化注记/步骤标记近似值、精确有理数/十进制与回编后果，
+  「物理值」复制返回经独立 exact encoder 验证、可安全回录的精确文本；
+  bit-exact 回归：全 65536-Y 扫描 + 固定种子 fuzz + 真实键盘/剪贴板
+  回录 E2E）——发布下载器网络 reject 与瞬时 HTTP 同一有界退避（计入
+  共享预算，deadline abort 立即失败不重试，日志区分五类事件）——
+  bit-field-grid 超长多视口用例按视口拆分（断言不变，单用例 <2s）。
+- 当前：无进行中的功能里程碑；v2.5.11 已完成发布准备，M40–M41 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

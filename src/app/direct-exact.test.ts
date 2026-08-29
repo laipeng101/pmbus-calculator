@@ -1,0 +1,441 @@
+import { describe, expect, it } from 'vitest'
+import { PMBusMath } from '../legacy/pmbus-math'
+import {
+  analyzeDirectRoundTrip,
+  decodeDirectExact,
+  encodeDirectExactFromRational,
+  formatExactRational,
+  generateSafeDirectReentryText,
+  parseDecimalExactRational,
+  roundRationalHalfUp,
+  type ExactRational,
+} from './direct-exact'
+import { classifyFloatText } from './float-parse'
+
+/**
+ * v2.5.11 — DIRECT exact-coefficient reference model (BigInt oracle).
+ *
+ * The tests never let the binary64 product path prove itself: exact values
+ * are checked against independent BigInt cross-multiplication identities,
+ * exactly-representable decodes are compared bit-exactly against the float
+ * decode, and the full 65536-Y sweeps pin the round-trip analysis to the
+ * REAL shipped encode/decode pair. Property tests use a fixed seed and a
+ * fixed sample count and print reproducible vectors on failure.
+ */
+
+/** Independent BigInt invariant: m·X·10^R === Y − b·10^R for X = num/den.
+ * Derived per R sign without Math.pow rationals:
+ *   R ≥ 0: m·num·10^R === (Y − b·10^R)·den
+ *   R < 0: m·num       === (Y·10^(−R) − b)·den   (Y·10^(−R) is an integer)
+ */
+function decodeIdentityHolds(
+  x: ExactRational,
+  y: number,
+  m: number,
+  b: number,
+  r: number,
+): boolean {
+  const Y = BigInt(y)
+  const M = BigInt(m)
+  const B = BigInt(b)
+  if (r >= 0) {
+    const p = 10n ** BigInt(r)
+    return M * x.numerator * p === (Y - B * p) * x.denominator
+  }
+  const p = 10n ** BigInt(-r)
+  return M * x.numerator === (Y * p - B) * x.denominator
+}
+
+/** Y-field equality: ±0 are the same integer field value (raw is identical). */
+function sameY(a: number, b: number): boolean {
+  return a === b || (a === 0 && b === 0)
+}
+
+function expectNormalized(x: ExactRational): void {
+  expect(x.denominator > 0n).toBe(true)
+  const g = gcdOf(x.numerator < 0n ? -x.numerator : x.numerator, x.denominator)
+  expect(g).toBe(1n)
+}
+
+function gcdOf(a: bigint, b: bigint): bigint {
+  while (b !== 0n) {
+    const r = a % b
+    a = b
+    b = r
+  }
+  return a
+}
+
+/** Deterministic PRNG (mulberry32) so every failure is reproducible. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const SEED = 0xd15c7
+
+/** Layered corpus: full-65536 sets first, sampled-Y grid second. */
+const FULL_SWEEP_COEFFICIENTS: Array<{ m: number; b: number; r: number }> = [
+  { m: 1, b: 1, r: 17 }, // the production-site counterexample family
+  { m: 1, b: 0, r: 0 }, // identity coefficients (X = Y, always exact in binary64)
+]
+
+const SAMPLED_GRID: Array<{ m: number; b: number; r: number }> = [
+  { m: 2, b: 0, r: 0 }, // terminating dyadic
+  { m: 3, b: 1, r: 2 }, // repeating rationals
+  { m: -3, b: -1, r: -2 }, // negative m, negative R
+  { m: -27293, b: -1178, r: 13 }, // high cancellation error
+  { m: -32685, b: -30314, r: 125 }, // large exponent, saturation boundary
+  { m: 32767, b: 32767, r: 127 },
+  { m: -32768, b: -32768, r: -128 },
+]
+
+const SAMPLED_YS = (() => {
+  const ys = new Set<number>([-32768, -32767, -1, 0, 1, 32766, 32767])
+  for (let y = -32768; y <= 32767; y += 97) ys.add(y)
+  return [...ys].sort((a, b) => a - b)
+})()
+
+describe('DIRECT exact decode reference (BigInt oracle)', () => {
+  it('models the production-site counterexample exactly: m=1,b=1,R=17,Y=-1', () => {
+    const exact = decodeDirectExact(-1, 1, 1, 17)
+    expect(exact).not.toBeNull()
+    expect(formatExactRational(exact!)).toBe('-100000000000000001/100000000000000000')
+    expectNormalized(exact!)
+    expect(decodeIdentityHolds(exact!, -1, 1, 1, 17)).toBe(true)
+    // The binary64 product path folds it onto -1 and re-encodes to Y=0.
+    const analysis = analyzeDirectRoundTrip(-1, 1, 1, 17)
+    expect(analysis!.approxValue).toBe(-1)
+    expect(analysis!.reencodedY).toBe(0)
+    expect(analysis!.roundTripSafe).toBe(false)
+  })
+
+  it('keeps Y=0 exact and safe under the same coefficients', () => {
+    const exact = decodeDirectExact(0, 1, 1, 17)!
+    expect(formatExactRational(exact)).toBe('-1')
+    const analysis = analyzeDirectRoundTrip(0, 1, 1, 17)
+    expect(analysis!.approxValue).toBe(-1)
+    expect(analysis!.reencodedY).toBe(0)
+    expect(analysis!.roundTripSafe).toBe(true)
+  })
+
+  it('returns null for m=0 and never fabricates a rational', () => {
+    expect(decodeDirectExact(0, 0, 0, 0)).toBeNull()
+    expect(analyzeDirectRoundTrip(-1, 0, 1, 17)).toBeNull()
+    expect(() =>
+      encodeDirectExactFromRational({ numerator: 1n, denominator: 2n }, 0, 0, 0),
+    ).toThrow()
+  })
+
+  it('rejects non-integer fields instead of silently truncating', () => {
+    expect(() => decodeDirectExact(0.5, 1, 0, 0)).toThrow(TypeError)
+    expect(() => decodeDirectExact(1, 1.5, 0, 0)).toThrow(TypeError)
+    expect(() => decodeDirectExact(1, 1, 0, 0.5)).toThrow(TypeError)
+  })
+
+  it('handles negative m, both R signs and boundary fields via the identity oracle', () => {
+    for (const y of [-32768, -1, 0, 1, 32767]) {
+      for (const m of [-32768, -1, 1, 32767]) {
+        for (const b of [-32768, -1, 0, 1, 32767]) {
+          for (const r of [-128, -127, -1, 0, 1, 126, 127]) {
+            const exact = decodeDirectExact(y, m, b, r)
+            expect(exact, `y=${y} m=${m} b=${b} r=${r}`).not.toBeNull()
+            expectNormalized(exact!)
+            expect(
+              decodeIdentityHolds(exact!, y, m, b, r),
+              `identity y=${y} m=${m} b=${b} r=${r}`,
+            ).toBe(true)
+          }
+        }
+      }
+    }
+  })
+
+  it('terminating (m=2) and repeating (m=3) decodes both normalize exactly', () => {
+    // m=2, b=0, R=0: X = Y/2 — dyadic, so binary64 is exact and both paths agree.
+    for (const y of [-3, -1, 1, 3, 5]) {
+      const exact = decodeDirectExact(y, 2, 0, 0)!
+      expect(formatExactRational(exact)).toBe(`${y}/2`)
+      expect(Number(exact.numerator) / Number(exact.denominator)).toBe(
+        PMBusMath.decodeDirect(y, 2, 0, 0).value,
+      )
+    }
+    // m=3, b=0, R=0: X = Y/3 — repeating; the rational stays exact while the
+    // binary64 result only approximates it (float 3·(1/3) folds back to 1,
+    // proving the double cannot hold 1/3).
+    const third = decodeDirectExact(1, 3, 0, 0)!
+    expect(formatExactRational(third)).toBe('1/3')
+    expect(PMBusMath.decodeDirect(1, 3, 0, 0).value * 3).toBe(1)
+    expect(decodeIdentityHolds(third, 1, 3, 0, 0)).toBe(true)
+  })
+
+  it('agrees bit-exactly with the float decode when the exact value is representable', () => {
+    // X = (Y − b)/m with m = 2^k and R = 0 is dyadic: IEEE division returns
+    // the exact value, so both the rational conversion and the float
+    // expression must produce the same double.
+    for (const m of [1, 2, 4, 8]) {
+      for (const b of [-7, 0, 13]) {
+        for (const y of [-32768, -255, -1, 0, 1, 255, 32767]) {
+          const exact = decodeDirectExact(y, m, b, 0)!
+          const rationalNumber = Number(exact.numerator) / Number(exact.denominator)
+          expect(rationalNumber, `y=${y} m=${m} b=${b}`).toBe(
+            PMBusMath.decodeDirect(y, m, b, 0).value,
+          )
+        }
+      }
+    }
+  })
+
+  it('stays exact beyond the binary64 precision boundary without crashing', () => {
+    // X = 10^128 − 1 (R=-128): an integer far beyond 2^53 — binary64 loses
+    // the trailing −1, the rational does not.
+    const exact = decodeDirectExact(1, 1, 1, -128)!
+    expect(exact.numerator).toBe(10n ** 128n - 1n)
+    expect(exact.denominator).toBe(1n)
+    expect(PMBusMath.decodeDirect(1, 1, 1, -128).value).toBe(1e128)
+    // Subnormal-scale magnitude (R=127): exact and finite, never a fake zero.
+    const tiny = decodeDirectExact(1, 1, 0, 127)!
+    expect(formatExactRational(tiny)).toBe(`1/${10n ** 127n}`)
+    expect(Number(tiny.numerator) / Number(tiny.denominator)).toBe(
+      PMBusMath.decodeDirect(1, 1, 0, 127).value,
+    )
+  })
+
+  it('proves the collision set where distinct Y share one binary64 value', () => {
+    // m=1, b=1, R=17: every Y with |Y·1e-17| below half an ulp of 1 folds to
+    // exactly −1, so Y=0 and Y=-1 (among others) display the same Number.
+    const groups = new Map<number, number[]>()
+    for (let y = -32768; y <= 32767; y++) {
+      const approx = PMBusMath.decodeDirect(y, 1, 1, 17).value
+      const group = groups.get(approx)
+      if (group) group.push(y)
+      else groups.set(approx, [y])
+    }
+    const folded = groups.get(-1)!
+    expect(folded).toContain(0)
+    expect(folded).toContain(-1)
+    expect(folded.length).toBeGreaterThan(2)
+    // Inside one collision group the re-entry verdicts genuinely differ:
+    // Y=0 is safe, Y=-1 has been precision-folded away.
+    expect(analyzeDirectRoundTrip(0, 1, 1, 17)!.roundTripSafe).toBe(true)
+    expect(analyzeDirectRoundTrip(-1, 1, 1, 17)!.roundTripSafe).toBe(false)
+  })
+})
+
+describe('Math.round contract reproduction (exact arithmetic)', () => {
+  it('matches Math.round half-toward-+∞ semantics on ties', () => {
+    // roundRationalHalfUp(n, d) === BigInt(Math.round(n/d)) for dyadic halves.
+    const cases: Array<[bigint, bigint, number]> = [
+      [1n, 2n, 1], // 0.5 → 1
+      [3n, 2n, 2], // 1.5 → 2
+      [5n, 2n, 3], // 2.5 → 3
+      [-1n, 2n, 0], // -0.5 → -0 (0 as an integer field value)
+      [-3n, 2n, -1], // -1.5 → -1
+      [-5n, 2n, -2], // -2.5 → -2
+      [1n, 1n, 1],
+      [-1n, 1n, -1],
+    ]
+    for (const [n, d, expected] of cases) {
+      expect(roundRationalHalfUp(n, d)).toBe(BigInt(expected))
+      // Math.round(-0.5) is -0; == treats ±0 as the same integer field value.
+      expect(Math.round(Number(n) / Number(d)) == expected).toBe(true)
+    }
+  })
+
+  it('round-trips every exact decode back to its own Y (identity contract)', () => {
+    // X is the exact decode of Y ⇒ (m·X + b)·10^R === Y ⇒ the exact encoder
+    // must return Y for every legal field combination.
+    for (const { m, b, r } of [...FULL_SWEEP_COEFFICIENTS, ...SAMPLED_GRID]) {
+      for (const y of SAMPLED_YS) {
+        const exact = decodeDirectExact(y, m, b, r)!
+        expect(encodeDirectExactFromRational(exact, m, b, r), `y=${y} m=${m} b=${b} r=${r}`).toBe(y)
+      }
+    }
+  })
+
+  it('agrees with the float Math.round contract for exactly-representable dyadic requests', () => {
+    // x = k/2^s with small k and s keeps every float intermediate exact, so
+    // the exact encoder and PMBusMath.encodeDirect must agree.
+    for (const m of [1, 2, -3, 977]) {
+      for (const b of [-3, 0, 5]) {
+        for (const r of [0, 1, -2]) {
+          for (const [k, s] of [
+            [1, 1],
+            [3, 2],
+            [-7, 3],
+            [425, 5],
+          ] as const) {
+            const x: ExactRational = { numerator: BigInt(k), denominator: 2n ** BigInt(s) }
+            const floatValue = k / 2 ** s
+            const expected = PMBusMath.encodeDirect(floatValue, m, b, r)
+            expect(
+              sameY(encodeDirectExactFromRational(x, m, b, r), expected),
+              `x=${floatValue} m=${m} b=${b} r=${r}`,
+            ).toBe(true)
+          }
+        }
+      }
+    }
+  })
+
+  it('clamps to the signed 16-bit boundaries like the float encoder', () => {
+    const huge: ExactRational = { numerator: 10n ** 30n, denominator: 1n }
+    expect(encodeDirectExactFromRational(huge, 1, 0, 0)).toBe(32767)
+    expect(encodeDirectExactFromRational({ ...huge, numerator: -huge.numerator }, 1, 0, 0)).toBe(
+      -32768,
+    )
+  })
+})
+
+describe('decimal lexeme exact parsing', () => {
+  it('parses sign, fraction and exponent into the normalized rational', () => {
+    const cases: Array<[string, string]> = [
+      ['-1', '-1'],
+      ['0.5', '1/2'],
+      ['-0.5', '-1/2'],
+      ['1.00000000000000001', '100000000000000001/100000000000000000'],
+      ['-1.00000000000000001', '-100000000000000001/100000000000000000'],
+      ['1e21', `${10n ** 21n}`],
+      ['-1e21', `-${10n ** 21n}`],
+      ['1e-21', '1/1000000000000000000000'],
+      ['12.5e-1', '5/4'],
+      ['+3', '3'],
+      ['.5', '1/2'],
+      ['5.', '5'],
+      ['0e-400', '0'],
+      ['-0.0e-999', '0'],
+    ]
+    for (const [text, expected] of cases) {
+      const parsed = parseDecimalExactRational(text)
+      expect(parsed, text).not.toBeNull()
+      expect(formatExactRational(parsed!), text).toBe(expected)
+      expectNormalized(parsed!)
+    }
+  })
+
+  it('keeps -0 sign information off the magnitude but parses true zero texts', () => {
+    const negativeZeroText = parseDecimalExactRational('-0')!
+    expect(negativeZeroText.numerator).toBe(0n)
+    expect(negativeZeroText.denominator).toBe(1n)
+  })
+
+  it('rejects NaN/Infinity literals and non-decimal text', () => {
+    for (const text of ['NaN', 'Infinity', '-Infinity', 'abc', '', '1e', '1.2.3', '0x10', '--1']) {
+      expect(parseDecimalExactRational(text), text).toBeNull()
+    }
+  })
+})
+
+describe('safe re-entry text generation (verified exact encoder)', () => {
+  it('returns the exact terminating decimal for the production-site counterexample', () => {
+    const exact = decodeDirectExact(-1, 1, 1, 17)!
+    const text = generateSafeDirectReentryText(exact, -1, 1, 1, 17)
+    expect(text).toBe('-1.00000000000000001')
+    // Independent re-entry proof through the real input classification.
+    const classified = classifyFloatText(text!)
+    expect(classified).toEqual({ kind: 'value', value: -1 })
+    expect(encodeDirectExactFromRational(parseDecimalExactRational(text!)!, 1, 1, 17)).toBe(-1)
+  })
+
+  it('prefers the exact expansion over shorter approximations for terminating values', () => {
+    // Y=3, m=2, b=0, R=0 → 1.5 exactly; the copy text must be exactly 1.5.
+    const exact = decodeDirectExact(3, 2, 0, 0)!
+    expect(generateSafeDirectReentryText(exact, 3, 2, 0, 0)).toBe('1.5')
+  })
+
+  it('finds a verified approximation for repeating rationals', () => {
+    // m=3, b=0, R=0, Y=1 → X = 1/3 (repeating). No exact decimal exists, so
+    // the first verified nearest-decimal approximation is returned.
+    const exact = decodeDirectExact(1, 3, 0, 0)!
+    const text = generateSafeDirectReentryText(exact, 1, 3, 0, 0)
+    expect(text).not.toBeNull()
+    expect(parseDecimalExactRational(text!)).not.toBeNull()
+    expect(encodeDirectExactFromRational(parseDecimalExactRational(text!)!, 3, 0, 0)).toBe(1)
+  })
+
+  it('degrades safely (null) when the digit bound cannot be met', () => {
+    const exact = decodeDirectExact(1, 3, 0, 0)!
+    // 1/3 needs more than 0 fractional digits to re-encode to Y=1.
+    expect(generateSafeDirectReentryText(exact, 1, 3, 0, 0, 0)).toBeNull()
+  })
+
+  it('generates a verified re-entry text for every Y of the full-sweep corpora', () => {
+    for (const { m, b, r } of FULL_SWEEP_COEFFICIENTS) {
+      for (let y = -32768; y <= 32767; y++) {
+        const exact = decodeDirectExact(y, m, b, r)!
+        const text = generateSafeDirectReentryText(exact, y, m, b, r)
+        if (text === null) {
+          throw new Error(`no verified re-entry text: y=${y} m=${m} b=${b} r=${r}`)
+        }
+        const reparsed = parseDecimalExactRational(text)
+        if (!reparsed || encodeDirectExactFromRational(reparsed, m, b, r) !== y) {
+          throw new Error(`unverified re-entry text ${text}: y=${y} m=${m} b=${b} r=${r}`)
+        }
+      }
+    }
+  })
+})
+
+describe('round-trip analysis pinned to the real binary64 pipeline', () => {
+  it('roundTripSafe equals the real Number re-encode verdict over the full sweep', () => {
+    for (const { m, b, r } of FULL_SWEEP_COEFFICIENTS) {
+      const startedAt = Date.now()
+      let unsafeCount = 0
+      for (let y = -32768; y <= 32767; y++) {
+        const analysis = analyzeDirectRoundTrip(y, m, b, r)
+        expect(analysis, `y=${y} m=${m} b=${b} r=${r}`).not.toBeNull()
+        const realVerdict =
+          PMBusMath.encodeDirect(PMBusMath.decodeDirect(y, m, b, r).value, m, b, r) === y
+        if (analysis!.roundTripSafe !== realVerdict) {
+          throw new Error(
+            `roundTripSafe drift: y=${y} m=${m} b=${b} r=${r} analysis=${analysis!.roundTripSafe} real=${realVerdict}`,
+          )
+        }
+        if (!analysis!.roundTripSafe) unsafeCount++
+      }
+      const elapsedMs = Date.now() - startedAt
+      // Layered corpus discipline: record the sweep cost, keep it bounded.
+      console.log(`full 65536-Y sweep m=${m} b=${b} r=${r}: ${unsafeCount} unsafe, ${elapsedMs}ms`)
+      expect(elapsedMs).toBeLessThan(20_000)
+    }
+  })
+
+  it('samples the wider coefficient grid against the real pipeline and normalization invariants', () => {
+    const startedAt = Date.now()
+    const rand = mulberry32(SEED)
+    for (const { m, b, r } of SAMPLED_GRID) {
+      for (const y of SAMPLED_YS) {
+        const analysis = analyzeDirectRoundTrip(y, m, b, r)
+        expect(analysis, `y=${y} m=${m} b=${b} r=${r}`).not.toBeNull()
+        expectNormalized(analysis!.exact)
+        expect(decodeIdentityHolds(analysis!.exact, y, m, b, r)).toBe(true)
+        const realVerdict =
+          PMBusMath.encodeDirect(PMBusMath.decodeDirect(y, m, b, r).value, m, b, r) === y
+        expect(analysis!.roundTripSafe, `y=${y} m=${m} b=${b} r=${r}`).toBe(realVerdict)
+      }
+    }
+    // Fixed-seed fuzz: random fields, fixed sample count, reproducible vectors.
+    for (let i = 0; i < 5000; i++) {
+      const y = Math.floor(rand() * 65536) - 32768
+      const m = Math.floor(rand() * 65537) - 32768
+      const b = Math.floor(rand() * 65537) - 32768
+      const r = Math.floor(rand() * 256) - 128
+      if (m === 0) continue
+      const analysis = analyzeDirectRoundTrip(y, m, b, r)
+      if (!analysis) throw new Error(`unexpected null analysis: y=${y} m=${m} b=${b} r=${r}`)
+      expectNormalized(analysis.exact)
+      expect(decodeIdentityHolds(analysis.exact, y, m, b, r)).toBe(true)
+      const realVerdict =
+        PMBusMath.encodeDirect(PMBusMath.decodeDirect(y, m, b, r).value, m, b, r) === y
+      if (analysis.roundTripSafe !== realVerdict) {
+        throw new Error(`fuzz drift (seed ${SEED}, sample ${i}): y=${y} m=${m} b=${b} r=${r}`)
+      }
+    }
+    console.log(`sampled grid + 5000-sample fuzz (seed ${SEED}): ${Date.now() - startedAt}ms`)
+  })
+})

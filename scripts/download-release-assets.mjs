@@ -20,20 +20,21 @@
  *   9  a downloaded file's byte count does not match the verified metadata
  *  10  a download failed (network error, timeout, or non-OK HTTP status)
  *
- * Deadline contract (v2.5.10): the WHOLE download operation shares ONE
- * cumulative budget of `TOTAL_DOWNLOAD_BUDGET_MS` (5 minutes) — retries and
- * backoff consume the same budget, and no attempt ever starts with a fresh
- * full timeout. Each fetch's AbortSignal is the REMAINING budget, so a hung
- * request is cut off when the budget runs out and the operation exits with
- * the stable code 10 / "deadline exhausted" diagnostic. The budget is
- * deliberately far below the Pages job's `timeout-minutes: 20` so npm ci,
- * verification, upload, deploy and the remote smoke keep their time; retrying
- * is limited to transient transport failures (network errors, HTTP
- * 408/429/5xx) with a bounded attempt count and a short backoff, while
- * permanent HTTP contract errors fail fast. Files are written only after BOTH
- * downloads finished and passed the size check. The exported
- * `downloadVerifiedAssets` takes the budget/clock/sleep boundaries as
- * injectable options so offline tests exercise the deadline deterministically
+ * Deadline contract (v2.5.10, backoff completed in v2.5.11): the WHOLE
+ * download operation shares ONE cumulative budget of `TOTAL_DOWNLOAD_BUDGET_MS`
+ * (5 minutes) — retries and backoff consume the same budget, and no attempt
+ * ever starts with a fresh full timeout. Each fetch's AbortSignal is the
+ * REMAINING budget, so a hung request is cut off when the budget runs out and
+ * the operation exits with the stable code 10 / "deadline exhausted"
+ * diagnostic; an abort raised by that shared signal is never retried. Both
+ * transient classes — network rejections AND HTTP 408/429/5xx — back off
+ * before the next attempt with `min(RETRY_BACKOFF_MS, remaining budget)`,
+ * within the bounded per-asset attempt count, while permanent HTTP contract
+ * errors fail fast. stderr diagnostics distinguish transient HTTP, network
+ * rejection, deadline abort, permanent HTTP and size mismatch. Files are
+ * written only after BOTH downloads finished and passed the size check. The
+ * exported `downloadVerifiedAssets` takes the budget/clock/sleep boundaries
+ * as injectable options so offline tests exercise the deadline deterministically
  * without waiting real minutes.
  */
 
@@ -93,7 +94,14 @@ function parseArgs(argv) {
 /**
  * Fetch one asset under the shared deadline. Every attempt receives the
  * REMAINING budget as its AbortSignal; retries (network errors and transient
- * 408/429/5xx only) consume the same budget via the shared deadline.
+ * 408/429/5xx only) consume the same budget via the shared deadline and a
+ * bounded backoff — a fetch REJECTION backs off exactly like a transient
+ * HTTP status (v2.5.11 closed the gap where rejections retried instantly).
+ * An abort raised by the shared-deadline signal itself is NOT retried: it
+ * means the budget is gone, so the operation fails immediately with the
+ * stable code 10 / "deadline exhausted" diagnostic. Diagnostics on stderr
+ * distinguish transient HTTP, network rejection, deadline abort, permanent
+ * HTTP and size mismatch.
  * @param {string} url
  * @param {{
  *   fetchImpl: typeof fetch,
@@ -124,20 +132,49 @@ async function fetchAsset(url, io) {
         const transient =
           response.status === 408 || response.status === 429 || response.status >= 500
         if (!transient || attempt === MAX_ATTEMPTS_PER_ASSET) {
+          console.error(
+            `[download] permanent HTTP ${response.status} for ${url}; failing without retry`,
+          )
           throw new ReleaseDownloadError(
             10,
             `download failed with HTTP ${response.status} for ${url}`,
           )
         }
+        const backoff = Math.min(RETRY_BACKOFF_MS, Math.max(0, io.deadline - io.nowImpl()))
+        console.error(
+          `[download] transient HTTP ${response.status} for ${url}; backing off ${backoff}ms before retry (attempt ${attempt}/${MAX_ATTEMPTS_PER_ASSET})`,
+        )
         lastError = new Error(`HTTP ${response.status}`)
-        await io.sleepImpl(Math.min(RETRY_BACKOFF_MS, Math.max(0, io.deadline - io.nowImpl())))
+        await io.sleepImpl(backoff)
         continue
       }
       return new Uint8Array(await response.arrayBuffer())
     } catch (error) {
       if (error instanceof ReleaseDownloadError) throw error
       lastError = /** @type {Error} */ (error)
+      // DOMException is not an Error subclass in every environment — read
+      // the abort name structurally instead of through instanceof.
+      const name = /** @type {{ name?: unknown }} */ (error)?.name
+      // The only abort source in this script is the shared-deadline
+      // AbortSignal.timeout(remaining): an AbortError/TimeoutError means the
+      // budget is exhausted — retrying cannot succeed and no further request
+      // may start.
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        throw new ReleaseDownloadError(
+          10,
+          `download deadline exhausted (signal abort) for ${url}: the total budget is shared across assets, retries and backoff`,
+        )
+      }
+      const label = typeof name === 'string' && name !== '' ? name : 'unknown'
+      console.error(
+        `[download] network rejection (${label}) for ${url}: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+      )
       if (attempt === MAX_ATTEMPTS_PER_ASSET) break
+      const backoff = Math.min(RETRY_BACKOFF_MS, Math.max(0, io.deadline - io.nowImpl()))
+      console.error(
+        `[download] backing off ${backoff}ms before retry (attempt ${attempt}/${MAX_ATTEMPTS_PER_ASSET})`,
+      )
+      await io.sleepImpl(backoff)
     }
   }
   throw new ReleaseDownloadError(
