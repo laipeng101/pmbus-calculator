@@ -122,11 +122,6 @@ M0–M39 complete；stable release v2.5.12；production distribution: GitHub Pag
   5 分钟真实累计预算（重试/backoff 消耗同一预算，不再出现 30 分钟
   最坏累计对 20 分钟 job 的矛盾）——draft 占位 URL `untagged-<hex>`
   合同收紧（PR #70 修复正式纳入发布源码）。
-- v2.5.12（PATCH）：DIRECT 精确请求 provenance（state 判别联合保存
-  提交 lexeme，量化 exact 分类与误差有理化，全部表面忠实呈现）；精确
-  lexeme 长度边界 4096（BigInt 前置字符串边界）；默认 5s 门禁稳定性
-  （backoff 注入 + pow10 记忆化 + sweep 拆分）；draft 资产本地字节门禁
-  `scripts/verify-downloaded-assets.mjs`（draft/published 双模式）。
 - v2.5.11（PATCH）：DIRECT 精度保真修复（新增 `src/app/direct-exact.ts`
   BigInt 精确参照：typed 提交按完整十进制 lexeme 经 exact rational 复现
   `Math.round`+signed16 clamp 合同，消除「exact → binary64 显示 → 回录」
@@ -137,7 +132,12 @@ M0–M39 complete；stable release v2.5.12；production distribution: GitHub Pag
   回录 E2E）——发布下载器网络 reject 与瞬时 HTTP 同一有界退避（计入
   共享预算，deadline abort 立即失败不重试，日志区分五类事件）——
   bit-field-grid 超长多视口用例按视口拆分（断言不变，单用例 <2s）。
-- 当前：无进行中的功能里程碑；v2.5.12 已完成发布准备，M40–M41 complete。
+- v2.5.12（PATCH）：DIRECT 精确请求 provenance（state 判别联合保存
+  提交 lexeme，量化 exact 分类与误差有理化，全部表面忠实呈现）；精确
+  lexeme 长度边界 4096（BigInt 前置字符串边界）；默认 5s 门禁稳定性
+  （backoff 注入 + pow10 记忆化 + sweep 拆分）；draft 资产本地字节门禁
+  `scripts/verify-downloaded-assets.mjs`（draft/published 双模式）。
+- 当前：无进行中的功能里程碑；v2.5.12 已发布，M40–M41 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
