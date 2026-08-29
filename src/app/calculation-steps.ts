@@ -20,6 +20,7 @@ import {
   RELATIVE_VOLTAGE_OVERFLOW_NOTE,
   RELATIVE_VOLTAGE_UNDERFLOW_NOTE,
 } from './relative-voltage'
+import { analyzeDirectRoundTrip, formatExactDecimal, formatExactRational } from './direct-exact'
 
 /** Step text mirrors the shared readout panel wording. */
 function quantizationStepValue(outcome: QuantizationOutcome): string {
@@ -264,11 +265,30 @@ function buildDirectSteps(state: AppState): CalculationStepVM[] {
   const yTerm = y * pow10
   const yMinusB = yTerm - b
   const invM = 1 / m
-  steps.push(
+  const intermediates = [
     intermediate('direct-pow10', `10^(-R) = 10^${-r}`, formatNumber(pow10)),
     intermediate('direct-y-term', 'Y × 10^(-R)', formatNumber(yTerm)),
     intermediate('direct-y-minus-b', 'Y × 10^(-R) − b', formatNumber(yMinusB)),
     intermediate('direct-inv-m', '1/m', formatNumber(invM)),
+  ]
+  // v2.5.11: when the exact §7.4 decode needs more precision than binary64
+  // carries, the steps must expose the exact value (fraction and, when it
+  // terminates, the exact decimal) so the folded binary64 display can never
+  // pass as the whole truth. Derived from the live raw — never stale.
+  const analysis = analyzeDirectRoundTrip(y, m, b, r)
+  if (analysis && !analysis.roundTripSafe) {
+    intermediates.push(
+      intermediate('direct-exact-value', '精确值（有理数）', formatExactRational(analysis.exact)),
+    )
+    const exactDecimal = formatExactDecimal(analysis.exact)
+    intermediates.push(
+      exactDecimal !== null
+        ? intermediate('direct-exact-decimal', '精确十进制', exactDecimal)
+        : intermediate('direct-exact-decimal', '精确十进制', '（循环小数，无有限精确十进制）'),
+    )
+  }
+  steps.push(
+    ...intermediates,
     formula(
       'direct-substitution',
       '数值代入',

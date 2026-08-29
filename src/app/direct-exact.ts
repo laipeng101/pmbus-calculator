@@ -201,6 +201,16 @@ export function formatExactRational(x: ExactRational): string {
   return `${x.numerator}/${x.denominator}`
 }
 
+/**
+ * Exact decimal expansion for a terminating rational (`-1.00000000000000001`
+ * style), or null when the value is a repeating decimal — display helper for
+ * the fidelity surfaces; re-entry strings still go through the verified
+ * generator.
+ */
+export function formatExactDecimal(x: ExactRational): string | null {
+  return terminatingDecimalText(x)
+}
+
 /** Round-trip analysis of the REAL binary64 pipeline for one signed Y. */
 export interface DirectRoundTripAnalysis {
   /** Original signed Y (the payload word's field value). */
