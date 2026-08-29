@@ -145,8 +145,10 @@ test.describe('M39 共享位字段网格', () => {
     await expect(legend).not.toContainText('未按 LINEAR16 解释')
   })
 
-  test('宽横截面（360/390/430/768/1024/1440）无横向溢出', async ({ page }) => {
-    for (const width of [360, 390, 430, 768, 1024, 1440]) {
+  // v2.5.11: 每个视口一个独立用例——断言集合不变，但单个用例的
+  // viewport×tab 循环从 6×5 缩到 1×5，冷启动负载下不再逼近 30s 临界路径。
+  for (const width of [360, 390, 430, 768, 1024, 1440]) {
+    test(`宽横截面 ${width}px：五个模式无横向溢出`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
       await page.goto('/')
       await expect(page.getByTestId('result-panel')).toBeVisible()
@@ -157,14 +159,15 @@ test.describe('M39 共享位字段网格', () => {
         )
         expect(overflow, width + 'px ' + String(tab)).toBe(true)
       }
-    }
-  })
+    })
+  }
 
-  test('位格始终落在宿主卡片内容盒内（v2.4.0 溢出回归）', async ({ page }) => {
-    // 页面级 scrollWidth 断言拦不住「居中网格在卡片内部溢出」：
-    // v2.4.0 的 16 位网格 auto 轨道（4×174px+gap=714px）曾在 618px 卡片两侧
-    // 对称溢出 48px 而 scrollWidth 不变。这里直接断言位格几何。
-    for (const width of [360, 390, 768, 1024, 1440, 2048]) {
+  // v2.5.11: 同上按视口拆分；几何断言逐条保留。
+  for (const width of [360, 390, 768, 1024, 1440, 2048]) {
+    test(`位格落在宿主卡片内容盒内（v2.4.0 溢出回归，${width}px）`, async ({ page }) => {
+      // 页面级 scrollWidth 断言拦不住「居中网格在卡片内部溢出」：
+      // v2.4.0 的 16 位网格 auto 轨道（4×174px+gap=714px）曾在 618px 卡片两侧
+      // 对称溢出 48px 而 scrollWidth 不变。这里直接断言位格几何。
       await page.setViewportSize({ width, height: 900 })
       await page.goto('/')
       await expect(page.getByTestId('result-panel')).toBeVisible()
@@ -207,8 +210,8 @@ test.describe('M39 共享位字段网格', () => {
         })
         expect(violations, width + 'px ' + String(tab)).toEqual([])
       }
-    }
-  })
+    })
+  }
 
   test('共享 token 可由 DOM/computed style 证明：16 位与 compact 单元使用同一 cell 类', async ({
     page,
