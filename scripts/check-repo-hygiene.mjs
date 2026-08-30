@@ -121,6 +121,12 @@ const REJECT_RULES = [
     fix: 'Remove from tracking; e2e HTML reports are CI artifacts, not source.',
   },
   {
+    id: 'e2e-results-json',
+    description: 'tracked Playwright JSON reporter output tests/e2e/e2e-results*.json',
+    match: (p) => /^tests\/e2e\/e2e-results.*\.json$/.test(p),
+    fix: 'Remove from tracking; e2e-results*.json files are generated reporter artifacts (v2.5.14) and ignored in .gitignore.',
+  },
+  {
     id: 'os-ds-store',
     description: 'tracked macOS .DS_Store',
     match: (p) => p === '.DS_Store' || p.endsWith('/.DS_Store'),
@@ -299,8 +305,8 @@ export function checkRepoHygiene(
       rejected.push({
         file,
         ruleId: 'large-file',
-        description: `tracked file exceeds 1 MiB (${sizeMiB} MiB) without an allowlist entry`,
-        fix: 'Move generated binary to GitHub Releases/CI artifacts, or add an explicit path allowlist and document the exception.',
+        description: `tracked file exceeds 1 MiB (${sizeMiB} MiB)`,
+        fix: 'Move the generated binary to GitHub Releases/CI artifacts. The >1 MiB gate is unconditional (no exceptions); the policy classification below is a statistic, not an exemption.',
       })
     }
   }
@@ -320,7 +326,8 @@ export function checkRepoHygiene(
 
   log(`repo-hygiene: scanned ${files.length} tracked path(s) via git ls-files`)
   log(
-    `repo-hygiene: policy allowlisted: ${policyAllowlistedCount} ` +
+    `repo-hygiene: policy-classified (informational statistic, NOT a size exemption): ` +
+      `${policyAllowlistedCount} ` +
       `(snapshots: ${policyAllowlisted.snapshots.length}, ` +
       `legacy fallbacks: ${policyAllowlisted.legacyFallbacks.length})`,
   )

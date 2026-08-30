@@ -155,6 +155,39 @@ describe('checkRepoHygiene', () => {
     // Policy allowlist categories are exactly snapshots + legacyFallbacks
     // (document PDFs stopped being allowlisted when tracked PDFs were banned).
     expect(Object.keys(result.policyAllowlisted).sort()).toEqual(['legacyFallbacks', 'snapshots'])
+    // The >1 MiB gate is unconditional; the policy classification is a
+    // statistic, not an exemption. The diagnosis must not pretend otherwise
+    // (v2.5.14 clarification).
+    const largeFile = result.rejected.find((item) => item.ruleId === 'large-file')
+    expect(largeFile?.description).not.toContain('allowlist')
+    expect(largeFile?.fix).toContain('no exceptions')
+  })
+
+  it('rejects forced-staged Playwright JSON reporter artifacts but not unrelated JSON (v2.5.14)', async () => {
+    const root = await makeRepo({
+      'tests/e2e/e2e-results.json': '{"suites":[]}',
+      'tests/e2e/e2e-results-mobile.json': '{"suites":[]}',
+      'tests/e2e/e2e-results-release.json': '{"suites":[]}',
+      'tests/e2e/e2e-results-deployment.json': '{"suites":[]}',
+      'tests/e2e/e2e-results-visual.json': '{"suites":[]}',
+      'tests/e2e/unrelated.json': '{"not":"a reporter artifact"}',
+      'src/index.ts': 'export {}\n',
+    })
+
+    const result = checkRepoHygiene({ repoRoot: root, ...silent() })
+    const rejectedByFile = new Map(result.rejected.map((item) => [item.file, item.ruleId]))
+
+    for (const reporter of [
+      'tests/e2e/e2e-results.json',
+      'tests/e2e/e2e-results-mobile.json',
+      'tests/e2e/e2e-results-release.json',
+      'tests/e2e/e2e-results-deployment.json',
+      'tests/e2e/e2e-results-visual.json',
+    ]) {
+      expect(rejectedByFile.get(reporter)).toBe('e2e-results-json')
+    }
+    expect(rejectedByFile.has('tests/e2e/unrelated.json')).toBe(false)
+    expect(result.rejected).toHaveLength(5)
   })
 
   it('parses paths with spaces and Unicode via NUL-delimited git output', async () => {

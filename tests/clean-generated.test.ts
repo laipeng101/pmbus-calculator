@@ -1,9 +1,11 @@
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   cleanGenerated,
+  GENERATED_FILE_TARGETS,
   GENERATED_TARGETS,
   resolveCleanTargets,
 } from '../scripts/clean-generated.mjs'
@@ -221,5 +223,116 @@ describe('cleanGenerated', () => {
     expect(GENERATED_TARGETS).not.toContain('.release-staging.lock')
     expect(GENERATED_TARGETS).not.toContain('.release-staging.transaction.json')
     expect(GENERATED_TARGETS.some((t) => t.startsWith('release-output.backup-'))).toBe(false)
+  })
+})
+
+describe('cleanGenerated — generated-artifact lifecycle (v2.5.14)', () => {
+  it('removes mobile suite dirs and every Playwright JSON reporter file in a default run', async () => {
+    const root = await makeTempRoot()
+    const jsonTargets = [...GENERATED_FILE_TARGETS]
+    for (const dir of ['tests/e2e/output-mobile', 'tests/e2e/report-mobile']) {
+      await fs.mkdir(path.join(root, dir), { recursive: true })
+      await fs.writeFile(path.join(root, dir, 'artifact.bin'), 'artifact')
+    }
+    for (const file of jsonTargets) {
+      await fs.writeFile(path.join(root, file), '{"suites":[]}')
+    }
+
+    const cleaned = await cleanGenerated({ repoRoot: root })
+
+    for (const dir of ['tests/e2e/output-mobile', 'tests/e2e/report-mobile']) {
+      expect(cleaned).toContain(dir)
+      await expect(fs.stat(path.join(root, dir))).rejects.toThrow()
+    }
+    for (const file of jsonTargets) {
+      expect(cleaned).toContain(file)
+      await expect(fs.stat(path.join(root, file))).rejects.toThrow()
+    }
+  })
+
+  it('dry-run selects exactly the four audit artifacts, changes nothing, and stays idempotent', async () => {
+    const root = await makeTempRoot()
+    await fs.mkdir(path.join(root, 'tests/e2e/output-mobile'), { recursive: true })
+    await fs.writeFile(path.join(root, 'tests/e2e/output-mobile', 'x.png'), 'x')
+    await fs.mkdir(path.join(root, 'tests/e2e/report-mobile'), { recursive: true })
+    await fs.writeFile(path.join(root, 'tests/e2e/report-mobile', 'index.html'), 'r')
+    await fs.writeFile(path.join(root, 'tests/e2e/e2e-results.json'), '{}')
+    await fs.writeFile(path.join(root, 'tests/e2e/e2e-results-mobile.json'), '{}')
+
+    const logs: string[] = []
+    const cleaned = await cleanGenerated({
+      repoRoot: root,
+      dryRun: true,
+      log: (message) => logs.push(message),
+    })
+
+    expect([...cleaned].sort()).toEqual([
+      'tests/e2e/e2e-results-mobile.json',
+      'tests/e2e/e2e-results.json',
+      'tests/e2e/output-mobile',
+      'tests/e2e/report-mobile',
+    ])
+    expect(logs.filter((message) => message.includes('[dry-run] would remove'))).toHaveLength(4)
+    await expect(fs.stat(path.join(root, 'tests/e2e/output-mobile'))).resolves.toBeTruthy()
+    await expect(fs.readFile(path.join(root, 'tests/e2e/e2e-results.json'), 'utf8')).resolves.toBe(
+      '{}',
+    )
+
+    const first = await cleanGenerated({ repoRoot: root })
+    expect([...first].sort()).toEqual([...cleaned].sort())
+    await expect(cleanGenerated({ repoRoot: root })).resolves.toEqual([])
+  })
+
+  it('refuses a directory masquerading as an expected reporter JSON file target', async () => {
+    const root = await makeTempRoot()
+    await fs.mkdir(path.join(root, 'tests/e2e/e2e-results-mobile.json'), { recursive: true })
+    await fs.writeFile(path.join(root, 'tests/e2e/e2e-results-mobile.json', 'inside.txt'), 'data')
+
+    await expect(cleanGenerated({ repoRoot: root })).rejects.toThrow(/expected file target/)
+    await expect(
+      fs.readFile(path.join(root, 'tests/e2e/e2e-results-mobile.json', 'inside.txt'), 'utf8'),
+    ).resolves.toBe('data')
+  })
+
+  it('refuses a regular file masquerading as an expected directory target', async () => {
+    const root = await makeTempRoot()
+    await fs.writeFile(path.join(root, 'dist'), 'not a directory')
+
+    await expect(cleanGenerated({ repoRoot: root })).rejects.toThrow(/expected directory target/)
+    await expect(fs.readFile(path.join(root, 'dist'), 'utf8')).resolves.toBe('not a directory')
+  })
+
+  symlinkTest(
+    'rejects a symlink masquerading as an expected reporter JSON file target',
+    async () => {
+      const root = await makeTempRoot()
+      const outside = await makeOutsideRoot()
+      await fs.writeFile(path.join(outside, 'results.json'), '{"suites":[]}')
+      await fs.mkdir(path.join(root, 'tests/e2e'), { recursive: true })
+      await fs.symlink(
+        path.join(outside, 'results.json'),
+        path.join(root, 'tests/e2e/e2e-results-mobile.json'),
+      )
+
+      await expect(cleanGenerated({ repoRoot: root })).rejects.toThrow(/symlink/)
+      await expect(fs.readFile(path.join(outside, 'results.json'), 'utf8')).resolves.toBe(
+        '{"suites":[]}',
+      )
+    },
+  )
+
+  it('keeps every generated target ignored in .gitignore (consistency contract)', () => {
+    const repoRoot = path.resolve(process.cwd())
+    for (const target of GENERATED_TARGETS) {
+      // Trailing-slash patterns in .gitignore only match directory pathnames,
+      // so directory targets are probed with a trailing slash; the JSON
+      // reporter targets are plain file patterns.
+      const probe = GENERATED_FILE_TARGETS.has(target) ? target : `${target}/`
+      const run = spawnSync('git', ['check-ignore', '-q', probe], {
+        encoding: 'utf8',
+        cwd: repoRoot,
+      })
+      expect(run.status, `${target} must be covered by .gitignore`).toBe(0)
+    }
   })
 })
