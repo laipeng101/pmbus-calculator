@@ -23,13 +23,35 @@ test.describe('首页可见性', () => {
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
   })
 
-  test('调试面板可展开', async ({ page }) => {
-    await page.goto('/')
+  // 调试面板合同：DebugDrawer 仅在 dev 构建或显式 ?debug 时渲染
+  //（src/components/debug/DebugDrawer.tsx）。canonical 入口是显式 ?debug；
+  // 普通 URL 的默认行为按目标构建判别：dev 自动渲染是开发契约，
+  // production 默认关闭是产品契约。两种目标都必须通过本测试。
+  test('?debug 显式入口可展开调试面板', async ({ page }) => {
+    await page.goto('/?debug')
     const toggle = page.getByLabel('展开调试面板')
     await expect(toggle).toBeVisible()
     await toggle.scrollIntoViewIfNeeded()
-    await toggle.evaluate((el: HTMLButtonElement) => el.click())
+    await toggle.click()
     await expect(page.getByText(/质量门禁/)).toBeVisible()
+  })
+
+  test('普通 URL 的调试面板可见性符合目标构建契约', async ({ page }) => {
+    await page.goto('/')
+    // dev server 注入 /@vite/client；production dist 没有。用它判别目标构建。
+    const isDevServer = await page.evaluate(() =>
+      [...document.querySelectorAll('script')].some((script) => script.src.includes('/@vite/')),
+    )
+    const toggle = page.getByLabel('展开调试面板')
+    if (isDevServer) {
+      await expect(toggle).toBeVisible()
+    } else {
+      await expect(toggle).toHaveCount(0)
+    }
+
+    // ?debug 查询参数在两种目标下都显式启用。
+    await page.goto('/?debug')
+    await expect(page.getByLabel('展开调试面板')).toBeVisible()
   })
 })
 

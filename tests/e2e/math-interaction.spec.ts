@@ -84,53 +84,84 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     expect(await nInput.evaluate((el) => getComputedStyle(el).cursor)).toBe('not-allowed')
   })
 
-  test('hover、active 与 focus-visible 有可观察反馈', async ({ page }) => {
+  test('hover 有可观察反馈', async ({ page }) => {
     await page.goto('/')
 
     const commandReferenceToggle = page.locator('#command-reference-toggle')
+    await expect(commandReferenceToggle).toBeVisible()
     const hoverCapable = await page.evaluate(
       () => window.matchMedia('(hover: hover) and (pointer: fine)').matches,
     )
 
-    if (hoverCapable) {
-      const shadowBefore = await commandReferenceToggle.evaluate(
-        (el) => getComputedStyle(el).boxShadow,
-      )
-      await commandReferenceToggle.hover()
-      const shadowAfter = await commandReferenceToggle.evaluate(
-        (el) => getComputedStyle(el).boxShadow,
-      )
-      expect(shadowAfter).not.toBe(shadowBefore)
-      expect(shadowAfter).toContain('rgb')
+    if (!hoverCapable) return
 
-      const box = await commandReferenceToggle.boundingBox()
-      if (box == null) throw new Error('command reference toggle bounding box missing')
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-      await page.mouse.down()
-      const transformDuringActive = await commandReferenceToggle.evaluate(
-        (el) => getComputedStyle(el).transform,
-      )
-      await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 + 40)
-      await page.mouse.up()
-      expect(transformDuringActive).not.toBe('none')
-    }
+    const shadowBefore = await commandReferenceToggle.evaluate(
+      (el) => getComputedStyle(el).boxShadow,
+    )
+    await commandReferenceToggle.hover()
+    const shadowAfter = await commandReferenceToggle.evaluate(
+      (el) => getComputedStyle(el).boxShadow,
+    )
+    expect(shadowAfter).not.toBe(shadowBefore)
+    expect(shadowAfter).toContain('rgb')
+  })
 
-    await page.evaluate(() => {
-      const active = document.activeElement as HTMLElement | null
-      if (active) active.blur()
-    })
+  test('active 有按压反馈', async ({ page }) => {
+    await page.goto('/')
+
+    const commandReferenceToggle = page.locator('#command-reference-toggle')
+    await expect(commandReferenceToggle).toBeVisible()
+    const hoverCapable = await page.evaluate(
+      () => window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+    )
+
+    if (!hoverCapable) return
+
+    // hover 先让元素滚动到视口并等待布局稳定，避免字体加载重流使
+    // boundingBox 过期、mousedown 落到相邻元素上。
+    await commandReferenceToggle.hover()
+    const box = await commandReferenceToggle.boundingBox()
+    if (box == null) throw new Error('command reference toggle bounding box missing')
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    const transformDuringActive = await commandReferenceToggle.evaluate(
+      (el) => getComputedStyle(el).transform,
+    )
+    await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 + 40)
+    await page.mouse.up()
+    expect(transformDuringActive).not.toBe('none')
+  })
+
+  // 键盘 focus-visible 合同：从 fresh load 的真实 Tab 进入，断言预期具体控件
+  // （首控件是 AppHeader 主题按钮，其相邻控件是活动模式 tab），并用
+  // Tab/Shift+Tab 往返验证。不依赖“最后一个控件 Tab 后焦点仍在页面内”：
+  // HTML sequential focus navigation 允许在页面末尾转向浏览器控件。
+  test('键盘 Tab 进入首控件并在相邻控件间往返时 focus-visible 可观察', async ({ page }) => {
+    await page.goto('/')
+
+    const themeToggle = page.getByRole('button', { name: /当前主题/ })
+    const activeTab = page.getByRole('tab', { name: /LINEAR11/ })
+
     await page.keyboard.press('Tab')
-    const focusInfo = await page.evaluate(() => {
-      const el = document.activeElement as HTMLElement
-      return {
-        tagName: el?.tagName ?? '',
-        focusVisible: el?.matches(':focus-visible') ?? false,
-        outlineWidth: el ? getComputedStyle(el).outlineWidth : '',
-      }
-    })
-    expect(['BUTTON', 'INPUT']).toContain(focusInfo.tagName)
-    expect(focusInfo.focusVisible).toBe(true)
-    expect(focusInfo.outlineWidth).not.toBe('0px')
+    await expect(themeToggle).toBeFocused()
+    const firstFocus = await themeToggle.evaluate((el) => ({
+      focusVisible: el.matches(':focus-visible'),
+      outlineWidth: getComputedStyle(el).outlineWidth,
+    }))
+    expect(firstFocus.focusVisible).toBe(true)
+    expect(firstFocus.outlineWidth).not.toBe('0px')
+
+    await page.keyboard.press('Tab')
+    await expect(activeTab).toBeFocused()
+    const tabFocus = await activeTab.evaluate((el) => ({
+      focusVisible: el.matches(':focus-visible'),
+      outlineWidth: getComputedStyle(el).outlineWidth,
+    }))
+    expect(tabFocus.focusVisible).toBe(true)
+    expect(tabFocus.outlineWidth).not.toBe('0px')
+
+    await page.keyboard.press('Shift+Tab')
+    await expect(themeToggle).toBeFocused()
   })
 
   test('prefers-reduced-motion: reduce 关闭非必要动画且保留功能反馈', async ({ page }) => {
@@ -175,21 +206,14 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     expect(selectedStyles.backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
     expect(selectedStyles.color).not.toBe('rgba(0, 0, 0, 0)')
 
-    // focus-visible 提示保留。
-    await page.evaluate(() => {
-      const active = document.activeElement as HTMLElement | null
-      active?.blur?.()
-    })
+    // focus-visible 提示保留：从 fresh load 的真实 Tab 进入并断言预期控件。
     await page.keyboard.press('Tab')
-    const focusInfo = await page.evaluate(() => {
-      const el = document.activeElement as HTMLElement | null
-      return {
-        tagName: el?.tagName ?? '',
-        focusVisible: el?.matches(':focus-visible') ?? false,
-        outlineWidth: el ? getComputedStyle(el).outlineWidth : '',
-      }
-    })
-    expect(['BUTTON', 'INPUT']).toContain(focusInfo.tagName)
+    const themeToggle = page.getByRole('button', { name: /当前主题/ })
+    await expect(themeToggle).toBeFocused()
+    const focusInfo = await themeToggle.evaluate((el) => ({
+      focusVisible: el.matches(':focus-visible'),
+      outlineWidth: getComputedStyle(el).outlineWidth,
+    }))
     expect(focusInfo.focusVisible).toBe(true)
     expect(focusInfo.outlineWidth).not.toBe('0px')
 
@@ -250,14 +274,20 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await expect(page.locator('.katex').first()).toBeVisible()
 
+    // 从 fresh load 的真实 Tab 进入，在预期首控件上验证 dark 主题 focus ring。
     await page.keyboard.press('Tab')
-    const darkFocus = await page.evaluate(() => {
-      const el = document.activeElement as HTMLElement
-      const style = el ? getComputedStyle(el) : null
-      return style ? { outlineWidth: style.outlineWidth, outlineColor: style.outlineColor } : null
+    const themeToggle = page.getByRole('button', { name: /当前主题/ })
+    await expect(themeToggle).toBeFocused()
+    const darkFocus = await themeToggle.evaluate((el) => {
+      const style = getComputedStyle(el)
+      return {
+        focusVisible: el.matches(':focus-visible'),
+        outlineWidth: style.outlineWidth,
+        outlineColor: style.outlineColor,
+      }
     })
-    expect(darkFocus).not.toBeNull()
-    expect(darkFocus?.outlineWidth).not.toBe('0px')
-    expect(darkFocus?.outlineColor).not.toBe('rgba(0, 0, 0, 0)')
+    expect(darkFocus.focusVisible).toBe(true)
+    expect(darkFocus.outlineWidth).not.toBe('0px')
+    expect(darkFocus.outlineColor).not.toBe('rgba(0, 0, 0, 0)')
   })
 })
