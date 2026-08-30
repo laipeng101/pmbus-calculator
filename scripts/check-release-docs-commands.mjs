@@ -31,10 +31,15 @@
 //     rejected by the real parser with exit 2.
 //
 // Supported argv syntax is deliberately small: plain whitespace-separated
-// argv with backslash continuations and one trailing ` > file` redirect.
-// Pipes, command substitution, lists and redirects are rejected, not
-// interpreted. No network, no GitHub calls, no trial release. Failure
-// messages name the source file, the command and the difference.
+// argv with backslash continuations and at most one trailing ` > file`
+// stdout redirect (bare `>` token, plain filename target, nothing after it —
+// v2.5.15 tightened the extractor from "truncate at the first ` > `" to this
+// explicit grammar after proving it validated a corrected command instead of
+// the documented one, and silently substituted a token with an unbalanced
+// quote that no shell could parse). Pipes, command substitution, lists and
+// every other redirect form are rejected, not interpreted. No network, no
+// GitHub calls, no trial release. Failure messages name the source file, the
+// command and the difference.
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -65,9 +70,50 @@ export const KNOWN_FLAGS = [
 const FIXTURE_SUBSTITUTED_FLAGS = new Set(['--metadata', '--dir', '--tag', '--repo'])
 // Tokens containing any of these need a shell to interpret. The gate executes
 // plain argv only — no pipes, lists, redirects or command substitution — and
-// rejects them instead. The extractor already strips one trailing ` > file`
-// redirect; this is the backstop for anything else.
+// rejects them instead. The extractor strips exactly one trailing ` > file`
+// redirect (the only redirect shape the documented operator flow uses) and
+// leaves every other redirect form in the line so this backstop rejects the
+// whole command explicitly.
 const SHELL_SYNTAX = /[;|&`<>]|\$\(/
+
+// The one supported redirect: a bare `>` token whose target is the LAST token
+// of the logical command line (v2.5.15). The target must be a plain relative
+// filename — no quotes, no template variables, no leading dash, nothing a
+// shell would reinterpret. `>` in any other position (mid-command, doubled,
+// with no target, with tokens after the target, `>>`, `2>`, `<`) stays in the
+// returned command so the argv contract rejects it with the full original
+// text; the extractor never silently truncates or repairs a command.
+const REDIRECT_TARGET = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/
+
+/**
+ * @param {string} line - whitespace-normalized logical command line
+ * @returns {{ command: string, redirectedTo: string | null }}
+ */
+export function splitTrailingStdoutRedirect(line) {
+  const tokens = line.split(/\s+/)
+  const redirectIndex = tokens.indexOf('>')
+  if (redirectIndex === -1) return { command: line, redirectedTo: null }
+  const target = tokens[redirectIndex + 1]
+  const supported =
+    redirectIndex === tokens.length - 2 && target !== undefined && REDIRECT_TARGET.test(target)
+  if (!supported) return { command: line, redirectedTo: null }
+  return { command: tokens.slice(0, redirectIndex).join(' '), redirectedTo: target }
+}
+
+// Quotes in a documented token must balance within that token: whitespace
+// tokenization cannot reassemble a quoted span, so an odd count means the
+// shell could not parse the documented command at all (e.g. a dropped closing
+// quote) and the gate must reject it instead of substituting the broken token
+// with a fixture value (v2.5.15 false positive).
+/**
+ * @param {string} token
+ * @returns {boolean}
+ */
+function hasUnbalancedQuotes(token) {
+  const doubles = (token.match(/"/g) ?? []).length
+  const singles = (token.match(/'/g) ?? []).length
+  return doubles % 2 !== 0 || singles % 2 !== 0
+}
 
 /**
  * @param {string} importMetaUrl
@@ -89,10 +135,7 @@ export function extractVerifierCommands(text) {
     .split('\n')
     .map((line) => line.trim().replace(/\s+/g, ' '))
     .filter((line) => line.startsWith(`node ${VERIFIER_SCRIPT}`))
-    .map((line) => {
-      const redirect = line.indexOf(' > ')
-      return redirect === -1 ? line : line.slice(0, redirect)
-    })
+    .map((line) => splitTrailingStdoutRedirect(line).command)
 }
 
 /**
@@ -129,6 +172,12 @@ export function parseDocumentedArgs(tokens) {
   const args = tokens.slice(2)
   for (let index = 0; index < args.length; index++) {
     const token = args[index]
+    if (hasUnbalancedQuotes(token)) {
+      problems.push(
+        `unbalanced quotes in ${JSON.stringify(token)} (the shell cannot parse the documented command; documented commands are plain argv with per-token balanced quoting)`,
+      )
+      continue
+    }
     if (SHELL_SYNTAX.test(token)) {
       problems.push(
         `unsupported shell syntax in ${JSON.stringify(token)} (documented commands are plain argv: no pipes, lists, redirects or command substitution)`,
@@ -152,6 +201,13 @@ export function parseDocumentedArgs(tokens) {
     const value = args[index + 1]
     if (value === undefined || value.startsWith('--')) {
       problems.push(`missing value for ${token}`)
+      continue
+    }
+    if (hasUnbalancedQuotes(value)) {
+      problems.push(
+        `unbalanced quotes in value of ${token}: ${JSON.stringify(value)} (the shell cannot parse the documented command)`,
+      )
+      index++
       continue
     }
     if (SHELL_SYNTAX.test(value)) {

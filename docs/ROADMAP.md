@@ -3,14 +3,15 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-30（v2.5.14——被拒编辑事务边界（blur/Enter 不再提交
-旧草稿）、发布文档门禁绑定来源与逐条执行、生成物 clean/hygiene/gitignore
-对齐、移动端触摸合同证据化与验证声明去重
-（4096 上限按 trim 前的原始字符串长度判定，UI/reducer/exact parser
-共享同一防线，超长粘贴在进入 draft state 前拒绝）；E2E 语义单次执行 +
-显式 mobile-contract 套件（Pixel 7 仿真）；future immutable releases
-启用并写入发布前置复核；release 操作文档命令合同进入 light CI；
-删除经引用审计证明无用的 .depcheckrc）
+最后更新：2026-08-31（v2.5.15——完整语义 E2E 套件（desktop 310 + mobile 14）
+以生产构建为主要验收目标（`vite preview` 精确 dist、官方 `/pmbus-calculator/`
+前缀挂载、verify/CI 单次 build、strictPort 且不复用未知服务器）；统一
+`appUrl()` URL 合同与 `app-base-url` 目标守卫 spec；焦点测试从真实键盘入口
+断言具体控件并以页内 Tab/Shift+Tab 往返验证，不再依赖页尾环境焦点假设；
+调试面板 canonical 入口改显式 `?debug`；发布文档命令门禁修复重定向截断与
+引号不平衡两个假阳性（显式有限语法：至多一处尾部重定向 + 逐 token 引号
+平衡）；REPOSITORY_HYGIENE/CONTRIBUTING 清理漂移副本并以 Playwright↔cleaner
+一致性测试守护；无任何 `src/` 产品源码变更）
 
 ## 当前产品基线
 
@@ -35,7 +36,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.14；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.15；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -163,7 +164,17 @@ M0–M39 complete；stable release v2.5.14；production distribution: GitHub Pag
   错误换行几何断言、被拒编辑触摸失焦双基线）——AGENTS/CONTRIBUTING/
   RELEASING 验证声明去重（package.json 为命令组合唯一真值，fresh 链
   不重复 verify 已含步骤）。
-- 当前：无进行中的功能里程碑；v2.5.14 已发布，M40–M41 complete。
+- v2.5.15（PATCH）：验收目标真实性——完整语义 E2E（desktop 310 + mobile 14）
+  以生产构建为主要验收目标（preview 精确 dist + 官方 Pages 前缀挂载，
+  verify/CI 单次 build 三套件共享，strictPort 不复用未知服务器，新增
+  `appUrl()` 前缀合同与 `app-base-url` 生产守卫 spec）——焦点测试合同纠正
+  （fresh load 真实 Tab + 具体控件 + 页内 Tab/Shift+Tab 往返，替代页尾
+  blur+Tab 环境焦点假设；调试面板 canonical 入口改显式 ?debug；未声明任何
+  浏览器缺陷）——发布文档命令门禁两个假阳性修复（提取器不再在首个 `>`
+  截断后缀；显式有限语法：至多一处尾部 stdout 重定向 + 逐 token 引号
+  平衡，其余形态显式拒绝）——REPOSITORY_HYGIENE/CONTRIBUTING 漂移副本
+  对齐 + Playwright↔cleaner 产物一致性测试。无 `src/` 产品源码变更。
+- 当前：无进行中的功能里程碑；v2.5.15 已发布，M40–M41 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

@@ -95,12 +95,18 @@ npm run check:repo-hygiene     # 基于 git ls-files 的跟踪文件门禁
 npm run verify                 # 完整本地门禁（已包含 specs:check 与 check:repo-hygiene）
 ```
 
-`scripts/clean-generated.mjs` 只删除硬编码允许重建的目录：
+`scripts/clean-generated.mjs` 只删除其 `GENERATED_TARGETS` 常量允许重建的生成目标；
+该常量是精确路径与类型（目录 / 单文件 reporter JSON）的唯一真值，本文件不再复制
+易漂移的整份列表（v2.5.15：此处曾硬编码一份缺漏副本——mobile 套件目录、五份
+reporter JSON 与 `.release-staging` 均缺失）。覆盖类别：
 
-`dist`、`build`、`out`、`coverage`、`playwright-report`、`test-results`、
-`tests/e2e/output`、`tests/e2e/report`、`tests/e2e/output-release`、`tests/e2e/report-release`、
-`tests/e2e/output-deployment`、`tests/e2e/report-deployment`、`tests/e2e/output-visual`、`tests/e2e/report-visual`、
-`.cache/specifications`、`release-output`。
+- 构建/打包输出目录：`dist`、`build`、`out`、`coverage`、`playwright-report`、`test-results`、`release-output`、`.release-staging`；
+- 每个 Playwright 配置（default/mobile/release/deployment/visual）各自的 `outputDir` 与 HTML report 目录；
+- 每个 Playwright 配置的 JSON reporter 产物（单文件目标，`tests/e2e/e2e-results*.json`）；
+- 按需下载的规范缓存 `.cache/specifications`。
+
+`tests/playwright-artifacts-consistency.test.ts` 从实际 Playwright 配置推导产物集合并与
+清理器常量交叉比对；新增/更名套件输出时该测试与门禁同步失败，不再依赖人工抄列表。
 
 安全边界：
 
@@ -197,7 +203,15 @@ npm run verify                 # 完整本地门禁（已包含 specs:check 与 
 ## 7. 例外审批方式
 
 - 任何新的二进制跟踪或 >1 MiB 文件，必须在 `docs/REPOSITORY_HYGIENE.md` 或对应 PR 描述中说明：用途、运行时引用、是否可用 GitHub Release/CI Artifact 替代、保留理由。
-- 必须同步更新 `scripts/check-repo-hygiene.mjs` 的 allowlist，并保持 `git check-ignore -v` 与 `npm run check:repo-hygiene` 双通过。
+- 当前不存在任何大小豁免机制：`policy-classified` 只是分类统计，不是大小例外
+  （v2.5.14 澄清，v2.5.15 文档对齐——本节不再描述任何“大小 allowlist”）。
+  未来确实需要例外时，必须以精确路径、明确理由和大小上限单独审核实现并在第 5 节记录，
+  不允许静默绕过。
+- 新增/更名生成产物路径时必须同步四处真值：生成它的配置（如 Playwright config）、
+  `.gitignore`、`scripts/clean-generated.mjs` 的 `GENERATED_TARGETS` 与
+  `scripts/check-repo-hygiene.mjs` 的拒绝规则；一致性由
+  `tests/playwright-artifacts-consistency.test.ts` 守护，并保持 `git check-ignore -v`
+  与 `npm run check:repo-hygiene` 双通过。
 - 第三方规范 PDF 不进入当前 Git tree；provenance、官方链接和哈希进入 `document/specifications.json`，PDF 由开发者按需下载到 ignored `.cache/specifications/`。历史 tag/commit 不重写。
 
 ## 8. PR 统计与流程证据

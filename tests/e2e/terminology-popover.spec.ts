@@ -1,7 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 async function settle(page: Page) {
-  await page.goto('/')
+  await page.goto(appUrl())
   await expect(page.locator('.katex').first()).toBeVisible()
   await page.evaluate(async () => {
     await document.fonts.ready

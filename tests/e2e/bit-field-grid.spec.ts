@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * M39 共享位字段网格结构 / 几何 / 无障碍合同。
@@ -9,7 +10,7 @@ import { test, expect, type Page } from '@playwright/test'
  */
 
 async function settle(page: Page) {
-  await page.goto('/')
+  await page.goto(appUrl())
   await expect(page.locator('.katex').first()).toBeVisible()
 }
 
@@ -62,7 +63,7 @@ test.describe('M39 共享位字段网格', () => {
   })
 
   test('独立 VOUT_MODE 是 2 nibble × 4 位；bit/Hex/语义三向同步仍成立', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
     const info = await gridInfo(page, '.bitfield[data-bit-count="8"]')
     expect(info.nibbleCount).toBe(2)
@@ -79,7 +80,7 @@ test.describe('M39 共享位字段网格', () => {
   })
 
   test('L16 内嵌 VOUT_MODE 为 compact 且仍是两个四位组；bits[6:5] 真正禁用', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const root = page.locator('.bitfield[data-density="compact"]')
     await expect(root).toBeVisible()
@@ -111,7 +112,7 @@ test.describe('M39 共享位字段网格', () => {
   })
 
   test('L16 数据解释类型切换时图例文案跟随（无符号值 vs 有符号值）', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const legend = page.locator('.bitfield[data-bit-count="16"] .bitfield-legend')
     await expect(legend).toContainText('数值 V [15:0]')
@@ -122,7 +123,7 @@ test.describe('M39 共享位字段网格', () => {
   test('非 LINEAR 共享字节的 L16 图例必须是中性 raw word，绝不显示 V/Y（v2.5.3）', async ({
     page,
   }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const legend = page.locator('.bitfield[data-bit-count="16"] .bitfield-legend')
     for (const hex of ['20', '3E', '40', '60']) {
@@ -150,7 +151,7 @@ test.describe('M39 共享位字段网格', () => {
   for (const width of [360, 390, 430, 768, 1024, 1440]) {
     test(`宽横截面 ${width}px：五个模式无横向溢出`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto('/')
+      await page.goto(appUrl())
       await expect(page.getByTestId('result-panel')).toBeVisible()
       for (const tab of [/LINEAR11/, /LINEAR16/, /DIRECT/, /HALF/, /VOUT_MODE/]) {
         await page.getByRole('tab', { name: tab }).click()
@@ -169,7 +170,7 @@ test.describe('M39 共享位字段网格', () => {
       // v2.4.0 的 16 位网格 auto 轨道（4×174px+gap=714px）曾在 618px 卡片两侧
       // 对称溢出 48px 而 scrollWidth 不变。这里直接断言位格几何。
       await page.setViewportSize({ width, height: 900 })
-      await page.goto('/')
+      await page.goto(appUrl())
       await expect(page.getByTestId('result-panel')).toBeVisible()
       for (const tab of [/LINEAR11/, /LINEAR16/, /DIRECT/, /HALF/, /VOUT_MODE/]) {
         await page.getByRole('tab', { name: tab }).click()
@@ -217,7 +218,7 @@ test.describe('M39 共享位字段网格', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const result = await page.evaluate(() => {
       const cells = document.querySelectorAll('.bitfield-cell')

@@ -148,25 +148,28 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npx playwright install --with-deps chromium
 
+      # v2.5.15: the desktop semantic suite and the mobile-contract suite are
+      # the primary acceptance targets and verify the PRODUCTION build
+      # (`vite preview` of the exact dist/ under the official Pages prefix).
+      # Build once here, before any suite; the release smoke consumes the same
+      # dist without rebuilding.
+      - name: Build for production E2E
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run build
+
       - name: Run Playwright E2E
         id: e2e
         if: steps.scope.outputs.run_full != 'false'
         run: npm run test:e2e
 
       # v2.5.13: the explicit mobile-contract suite (Pixel 7 emulation) runs
-      # after the deduplicated desktop suite; together they replace the old
-      # run-everything-twice desktop+mobile project duplication.
+      # after the desktop suite on the same production dist; together they
+      # replace the old run-everything-twice desktop+mobile project
+      # duplication.
       - name: Run Playwright mobile contract E2E
         id: e2e_mobile
         if: steps.scope.outputs.run_full != 'false'
         run: npm run test:e2e:mobile
-
-      # The release smoke serves the production build via `vite preview`, so
-      # the e2e job must build dist/ before running it (build is fast and the
-      # artifact is disposable).
-      - name: Build for release smoke
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run build
 
       - name: Run production release smoke
         id: release_smoke

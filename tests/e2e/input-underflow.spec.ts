@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * 输入下溢合同（v2.5.10）：非零十进制文本经 binary64 转换得到 ±0 时，
@@ -95,7 +96,7 @@ test.describe('输入下溢：非零十进制不得静默提交为 ±0（v2.5.10
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
   })
 
   test('HALF：1e-400 fill 保留错误与旧请求，真实修复后按原合同提交', async ({ page }) => {

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 async function assertGutters(page: Page) {
   const title = page.getByRole('heading', { name: 'PMBus' })
@@ -48,7 +49,7 @@ test.describe('gutter alignment', () => {
       page,
     }) => {
       await page.setViewportSize(viewport)
-      await page.goto('/')
+      await page.goto(appUrl())
       await assertGutters(page)
     })
   }
@@ -59,7 +60,7 @@ test.describe('gutter alignment', () => {
       { width: 390, height: 844 },
     ]) {
       await page.setViewportSize(viewport)
-      await page.goto('/')
+      await page.goto(appUrl())
       const buttons = page.getByRole('button', { name: /Hex|LE 字节|BE 字节|物理值|C 代码/ })
       const count = await buttons.count()
       expect(count).toBeGreaterThanOrEqual(5)
@@ -73,7 +74,7 @@ test.describe('gutter alignment', () => {
 
   test('copy toolbar uses balanced 6-column rows', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     const first = page.getByRole('button', { name: 'Hex（LE）' })
     const le = page.getByRole('button', { name: 'LE 字节' })
     const be = page.getByRole('button', { name: 'BE 字节' })

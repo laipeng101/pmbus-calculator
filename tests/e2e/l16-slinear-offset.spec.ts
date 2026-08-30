@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * v2.5.1 P1-A/P1-B regression: SLINEAR16 offset under a relative VOUT_MODE
@@ -9,7 +10,7 @@ import { test, expect, type Page } from '@playwright/test'
  */
 
 async function settle(page: Page) {
-  await page.goto('/')
+  await page.goto(appUrl())
   await expect(
     page.locator('#value-input').or(page.locator('#l16-nominal-vout')).first(),
   ).toBeVisible()
