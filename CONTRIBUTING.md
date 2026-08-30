@@ -73,9 +73,10 @@ npm run check:repo-hygiene
 git status --short
 ```
 
-`npm run verify:light`（format:check、check:markdown-math、check:repo-hygiene 与两个
-whitespace 检查）只用于 `scripts/classify-ci-scope.mjs` 判定为 pure light-only 的任务；
-mixed/unknown 或产品相关变更必须完整 `npm run verify`。无参数调用 `npm run ci:classify`
+`npm run verify:light` 只用于 `scripts/classify-ci-scope.mjs` 判定为 pure light-only 的任务；
+其步骤组合同样以 package.json 的 `verify:light` 脚本为唯一真值（含发布操作文档命令
+门禁 `check:release-docs-commands`），本文件不复制逐条列表。mixed/unknown 或产品相关
+变更必须完整 `npm run verify`。无参数调用 `npm run ci:classify`
 返回用法错误并 exit 2，不会悄悄得到 light。
 
 第三方规范 PDF 不进入当前 Git tree：provenance、官方链接和哈希维护在
