@@ -149,7 +149,7 @@ M0–M39 complete；stable release v2.5.13；production distribution: GitHub Pag
   `check:release-docs-commands` 进入 light CI（RELEASING/Pages 双调用点
   在离线 fixture 上跑真实 verifier）——删除经引用审计证明无用的
   `.depcheckrc`。
-- 当前：无进行中的功能里程碑；v2.5.12 已发布，M40–M41 complete。
+- 当前：无进行中的功能里程碑；v2.5.13 已发布，M40–M41 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

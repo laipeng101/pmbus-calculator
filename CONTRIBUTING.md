@@ -58,27 +58,12 @@ Fresh environment 先执行 `npm ci` 与 `npm run test:e2e:install`。核心门�
 npm run verify
 ```
 
-`npm run verify` 依次执行：
-
-```bash
-npm run format:check
-npm run typecheck
-npm run lint
-npm run check:markdown-math
-npm run specs:check
-npm run check:release-contract
-npm run check:toolchain
-npm run test:coverage
-npm run test:e2e
-npm run test:e2e:mobile
-npm run build
-npm run check:tailwind-scope
-npm run test:e2e:release
-npm run check:repo-hygiene
-git diff --check
-git diff --cached --check
-npm audit --audit-level=high
-```
+`npm run verify` 的步骤组合以 package.json 的 `verify` / `verify:light` 脚本为
+唯一真值（涵盖 format、typecheck、lint、inline style、markdown 数学、规范
+manifest、发布合同、发布操作文档命令、工具链、coverage、桌面/移动 E2E、build、
+Tailwind scope、release smoke、repo hygiene、两个 whitespace 检查与 audit）。
+本文件不再逐条复制该命令链，避免与脚本漂移；各门禁的职责与失败处理见下文
+与 `docs/REPOSITORY_HYGIENE.md`。
 
 提交前建议先执行：
 

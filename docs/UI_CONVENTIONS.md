@@ -387,5 +387,6 @@
 - 量化误差读数合同不变：主动输入特殊值 = `special/warn`；有限 `65520` 溢出 =
   `overflow/error`。有限溢出编码出的 +Inf word 同时显示 overflow/error 读数与
   §7.6.2 卡是正确形态——两个表面回答不同问题，不得合并成一个状态。
-- E2E：`tests/e2e/half-special-semantics.spec.ts`（desktop/mobile 双项目）覆盖
-  NaN/±Inf/有限、双路径、ARIA role、1280/390/360 无横向溢出。
+- E2E：`tests/e2e/half-special-semantics.spec.ts`（desktop 默认套件单项目，
+  390/360 几何经 setViewportSize 断言；触摸差异风险由 mobile-contract 套件
+  承担）覆盖 NaN/±Inf/有限、双路径、ARIA role、1280/390/360 无横向溢出。

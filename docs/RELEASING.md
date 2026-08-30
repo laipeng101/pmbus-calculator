@@ -63,12 +63,17 @@ git worktree add --detach <path> <exact-merge-sha>
 cd <path>
 npm ci
 npx playwright install chromium        # 或核对既有安装
-npm run typecheck
 npm run verify
 npm run test:e2e:visual
-npm run build
-npm run test:e2e:release
 ```
+
+> v2.5.14 起 fresh 阶段不再在 `verify` 之外原样重跑 typecheck/build/release
+> smoke——这些步骤已在 `verify` 内，以该次 fresh 运行的输出为该阶段的证明。
+> visual 基线不在 `verify` 中，仍需单独运行；两次确定性资产生成
+> （`release:prepare-assets` 与 `-- --force`）也仍需执行。若在验证与发布之间
+> 发生任何源码/配置/依赖变化，受影响的证明作废并须重验，不得引用失效日志。
+> PR head 的完整验证与 merge 后的 fresh 独立重建仍是两次不同的可信边界，
+> 都不可省略。
 
 然后生成并校验发行资产：
 
