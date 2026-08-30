@@ -9,6 +9,7 @@ import {
   PAGES_WORKFLOW,
   RELEASING_DOC,
   rebuildArgv,
+  splitTrailingStdoutRedirect,
   tokenizeCommand,
   validateTokens,
   VERIFIER_SCRIPT,
@@ -37,6 +38,82 @@ describe('extractVerifierCommands', () => {
 
   it('returns nothing when the verifier is not invoked', () => {
     expect(extractVerifierCommands('```bash\nnpm run verify\n```')).toEqual([])
+  })
+})
+
+// v2.5.15: the extractor no longer truncates at the first space-surrounded `>`.
+// The only supported redirect is one trailing bare `> <plain filename>`;
+// everything else passes through untouched so the argv contract rejects the
+// whole original command instead of validating a corrected one (counterexample
+// A: `--mode draft > draft-verified.json --unsupported` used to validate as a
+// clean `--mode draft` invocation while the real CLI exits 2 on --unsupported).
+describe('splitTrailingStdoutRedirect (v2.5.15 redirect grammar)', () => {
+  const base =
+    'node scripts/verify-downloaded-assets.mjs --metadata m.json --dir . --tag v1.2.3 --repo o/r --mode draft'
+
+  it('strips exactly one trailing `> file` redirect', () => {
+    const split = splitTrailingStdoutRedirect(`${base} > draft-verified.json`)
+    expect(split.redirectedTo).toBe('draft-verified.json')
+    expect(split.command).toBe(base)
+  })
+
+  it('keeps the line intact when tokens follow the redirect target', () => {
+    const line = `${base} > draft-verified.json --unsupported`
+    const split = splitTrailingStdoutRedirect(line)
+    expect(split.redirectedTo).toBeNull()
+    expect(split.command).toBe(line)
+    expect(split.command).toContain('--unsupported')
+  })
+
+  it('keeps doubled, unterminated and mid-command redirects intact', () => {
+    for (const line of [
+      `${base} > a.json > b.json`,
+      `${base} >`,
+      `${base} --mode draft > draft.json && echo pwned`,
+      `${base} | tee stolen.json`,
+    ]) {
+      const split = splitTrailingStdoutRedirect(line)
+      expect(split.redirectedTo).toBeNull()
+      expect(split.command).toBe(line)
+    }
+  })
+})
+
+describe('validateTokens — v2.5.15 redirect and quoting false positives', () => {
+  const base =
+    'node scripts/verify-downloaded-assets.mjs --metadata m.json --dir . --tag v1.2.3 --repo o/r --mode draft'
+
+  it('rejects counterexample A: extra flag hidden after a stdout redirect', () => {
+    const doc = `${base} > draft-verified.json --unsupported`
+    const commands = extractVerifierCommands(doc)
+    const problems = validateTokens(tokenizeCommand(commands[0]))
+    expect(problems.some((problem) => problem.includes('shell syntax'))).toBe(true)
+  })
+
+  it('rejects counterexample B: an unclosed quote before fixture substitution', () => {
+    const doc =
+      'node scripts/verify-downloaded-assets.mjs --metadata "draft-release.json --dir . --tag v1.2.3 --repo o/r --mode draft'
+    const commands = extractVerifierCommands(doc)
+    const problems = validateTokens(tokenizeCommand(commands[0]))
+    expect(problems.some((problem) => problem.includes('unbalanced quotes'))).toBe(true)
+  })
+
+  it('rejects an unbalanced single quote in a flag value', () => {
+    const problems = validateTokens(tokenizeCommand(`${base} --zip-name 'unbalanced.zip`))
+    expect(problems.some((problem) => problem.includes('unbalanced quotes'))).toBe(true)
+  })
+
+  it('rejects a trailing shell comment instead of silently accepting it', () => {
+    const problems = validateTokens(tokenizeCommand(`${base} # comment`))
+    expect(problems).not.toEqual([])
+  })
+
+  it('still accepts the Pages form: balanced quoted template variables and one trailing redirect', () => {
+    const doc =
+      'node scripts/verify-downloaded-assets.mjs --metadata release-metadata.json --dir . --tag "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --mode published > downloaded-assets.json'
+    const commands = extractVerifierCommands(doc)
+    expect(commands[0]).not.toContain('>')
+    expect(validateTokens(tokenizeCommand(commands[0]))).toEqual([])
   })
 })
 
@@ -346,4 +423,46 @@ describe('checkReleaseDocsCommands — per-source mode binding and per-command e
       fs.rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('fails closed on counterexample A: unknown flag hidden after a stdout redirect (v2.5.15)', () => {
+    // v2.5.14 truncated at the first ` > ` and execution-validated the
+    // corrected command while the real CLI exits 2 on --unsupported.
+    const dir = makeFixtureRepo(
+      fence(`${draftCommand} > draft-verified.json --unsupported`),
+      fence(pagesCommand),
+    )
+    try {
+      const report = checkReleaseDocsCommands(dir, { verifierPath: realVerifierPath })
+      expect(report.ok).toBe(false)
+      expect(report.validated).toEqual([])
+      expect(
+        report.problems.some(
+          (problem) => problem.includes(RELEASING_DOC) && problem.includes('shell syntax'),
+        ),
+      ).toBe(true)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('fails closed on counterexample B: unclosed quote in a fixture-substituted value (v2.5.15)', () => {
+    const dir = makeFixtureRepo(
+      fence(
+        draftCommand.replace('--metadata draft-release.json', '--metadata "draft-release.json'),
+      ),
+      fence(pagesCommand),
+    )
+    try {
+      const report = checkReleaseDocsCommands(dir, { verifierPath: realVerifierPath })
+      expect(report.ok).toBe(false)
+      expect(report.validated).toEqual([])
+      expect(
+        report.problems.some(
+          (problem) => problem.includes(RELEASING_DOC) && problem.includes('unbalanced quotes'),
+        ),
+      ).toBe(true)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
