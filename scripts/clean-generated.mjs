@@ -8,6 +8,14 @@ import { fileURLToPath } from 'node:url'
  * Generated targets the cleaner may remove. release-output/ and the
  * disposable .release-staging/ staging root are build outputs: they can be
  * deleted and regenerated at any time (no lock, no journal, no recovery).
+ *
+ * Every Playwright config (default, mobile, release, deployment, visual)
+ * writes an outputDir, an HTML report folder and a JSON reporter file under
+ * tests/e2e/ — all listed here so local artifacts and the tracked tree stay
+ * in sync (v2.5.14; the mobile suite and the reporter JSONs used to be
+ * missing, so a dry run left them behind). JSON entries are single regular
+ * files; the preflight still refuses anything that is not a file or a
+ * directory.
  */
 export const GENERATED_TARGETS = [
   'dist',
@@ -18,18 +26,42 @@ export const GENERATED_TARGETS = [
   'test-results',
   'tests/e2e/output',
   'tests/e2e/report',
+  'tests/e2e/output-mobile',
+  'tests/e2e/report-mobile',
   'tests/e2e/output-release',
   'tests/e2e/report-release',
   'tests/e2e/output-deployment',
   'tests/e2e/report-deployment',
   'tests/e2e/output-visual',
   'tests/e2e/report-visual',
+  'tests/e2e/e2e-results.json',
+  'tests/e2e/e2e-results-mobile.json',
+  'tests/e2e/e2e-results-release.json',
+  'tests/e2e/e2e-results-deployment.json',
+  'tests/e2e/e2e-results-visual.json',
   '.cache/specifications',
   'release-output',
   '.release-staging',
 ]
 
-const HELP = `clean-generated.mjs — remove generated build/test/report directories
+// Playwright JSON reporter artifacts are expected to be single regular files.
+// A directory at one of these paths is refused instead of recursively removed
+// (v2.5.14 masquerade guard). Targets of the default allowlist that are not
+// file targets are expected to be directories; a regular file at one of those
+// paths is refused as well. Custom target lists passed via options keep the
+// historical permissive behavior for both kinds.
+export const GENERATED_FILE_TARGETS = new Set([
+  'tests/e2e/e2e-results.json',
+  'tests/e2e/e2e-results-mobile.json',
+  'tests/e2e/e2e-results-release.json',
+  'tests/e2e/e2e-results-deployment.json',
+  'tests/e2e/e2e-results-visual.json',
+])
+const GENERATED_DIRECTORY_TARGETS = new Set(
+  GENERATED_TARGETS.filter((target) => !GENERATED_FILE_TARGETS.has(target)),
+)
+
+const HELP = `clean-generated.mjs — remove generated build/test/report directories and reporter files
 
 Usage:
   node scripts/clean-generated.mjs [--dry-run]
@@ -38,9 +70,11 @@ Options:
   --dry-run  Print what would be removed without deleting anything.
   --help     Show this help.
 
-This script only removes a hardcoded allowlist of generated directories
-inside this repository. It refuses filesystem roots, home directories, the
-repository root itself, empty paths, non-directory targets, and symlink escapes.
+This script only removes a hardcoded allowlist of generated directories and
+Playwright JSON reporter files inside this repository. It refuses filesystem
+roots, home directories, the repository root itself, empty paths, targets
+that are neither regular files nor directories, type-masqueraded targets,
+and symlink escapes.
 `
 
 /**
@@ -54,7 +88,7 @@ export function repoRootFromScript(importMetaUrl) {
 /**
  * @param {string} repoRoot
  * @param {string[]} targets
- * @returns {{ target: string, absolute: string }[]}
+ * @returns {{ target: string, absolute: string, expectedType: 'file' | 'directory' | null }[]}
  */
 export function resolveCleanTargets(repoRoot, targets) {
   if (typeof repoRoot !== 'string' || repoRoot.length === 0) {
@@ -91,7 +125,15 @@ export function resolveCleanTargets(repoRoot, targets) {
     if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
       throw new Error(`clean target escapes repository root: ${target}`)
     }
-    return { target, absolute }
+    return {
+      target,
+      absolute,
+      expectedType: GENERATED_FILE_TARGETS.has(target)
+        ? 'file'
+        : GENERATED_DIRECTORY_TARGETS.has(target)
+          ? 'directory'
+          : null,
+    }
   })
 }
 
@@ -138,9 +180,10 @@ async function rejectSymlinkEscape(repoRoot, absoluteTarget) {
 /**
  * @param {string} repoRoot
  * @param {string} absoluteTarget
+ * @param {'file' | 'directory' | null} expectedType
  * @returns {Promise<{ exists: boolean }>}
  */
-async function preflightCleanTarget(repoRoot, absoluteTarget) {
+async function preflightCleanTarget(repoRoot, absoluteTarget, expectedType) {
   await rejectSymlinkEscape(repoRoot, absoluteTarget)
 
   let stat = null
@@ -155,16 +198,22 @@ async function preflightCleanTarget(repoRoot, absoluteTarget) {
   }
 
   if (stat.isFile()) {
+    if (expectedType === 'directory') {
+      throw new Error(`refusing regular file at expected directory target: ${absoluteTarget}`)
+    }
     // Regular files are allowed as clean targets; rm() below handles both
     // files and directories.
     return { exists: true }
   }
 
-  if (!stat.isDirectory()) {
-    throw new Error(`refusing non-directory clean target: ${absoluteTarget}`)
+  if (stat.isDirectory()) {
+    if (expectedType === 'file') {
+      throw new Error(`refusing directory at expected file target: ${absoluteTarget}`)
+    }
+    return { exists: true }
   }
 
-  return { exists: true }
+  throw new Error(`refusing non-directory clean target: ${absoluteTarget}`)
 }
 
 /**
@@ -181,8 +230,8 @@ export async function cleanGenerated(
   // target type checks all happen first so a failing target cannot leave a
   // partial cleanup behind.
   const preflighted = []
-  for (const { target, absolute } of resolved) {
-    const result = await preflightCleanTarget(repoRoot, absolute)
+  for (const { target, absolute, expectedType } of resolved) {
+    const result = await preflightCleanTarget(repoRoot, absolute, expectedType)
     preflighted.push({ target, absolute, ...result })
   }
 

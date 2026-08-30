@@ -153,9 +153,16 @@
   `handleChange` 在写入 draft state 之前显示「输入过长，未提交」并整体拒绝该次
   编辑——受控输入保持上一个草稿内容（粘贴文本不驻留 React state）、不运行解析
   管线、不改 committed raw/请求/provenance；不使用 HTML `maxlength`（粘贴会被
-  静默截断），由受控状态显式拒绝。后续 blur 按既有事务合同处理（无超长草稿
-  残留）；用户重新输入合法文本后错误与旧 draft 同时清除。reducer 侧共享同一
-  raw 长度度量（DOMAIN_MODEL §2.3），直接派发超长文本是严格 no-op。
+  静默截断），由受控状态显式拒绝。reducer 侧共享同一 raw 长度度量
+  （DOMAIN_MODEL §2.3），直接派发超长文本是严格 no-op。
+  **被拒候选的事务边界（v2.5.14）**：最近一次编辑候选被该门禁拒绝时，当前
+  focus 会话持有 rejected 标记（极小布尔状态，不保存超长文本）；blur/Enter
+  是 commit 层 no-op——不派发 `value/set`、不改写 raw/参数/请求 provenance、
+  不清除拒绝错误、不把受控输入里的旧短草稿当新候选提交。该状态不因重复
+  focus/blur/Enter、焦点来回切换而重置；同一 focus 内此前已发生的合法提交
+  保持有效（不回滚）。只有新的短候选通过资源门禁后才清除标记，并按候选自身
+  分类（合法/过渡态/非法）走既有合同；显式重输同一合法值仍建立新请求。
+  模式切换/组件卸载维持既有边界，标记不跨模式泄漏。
 - 模式切换后不得留下与当前显示值矛盾的 stale error（错误随字段所在 workspace
   卸载清除；DIRECT 系数错误随状态保留、只在 DIRECT 模式渲染）。
 - 全局快捷键 `Ctrl+1..4` 仅在非编辑上下文生效：`src/app/editable-target.ts` 判定
@@ -387,5 +394,6 @@
 - 量化误差读数合同不变：主动输入特殊值 = `special/warn`；有限 `65520` 溢出 =
   `overflow/error`。有限溢出编码出的 +Inf word 同时显示 overflow/error 读数与
   §7.6.2 卡是正确形态——两个表面回答不同问题，不得合并成一个状态。
-- E2E：`tests/e2e/half-special-semantics.spec.ts`（desktop/mobile 双项目）覆盖
-  NaN/±Inf/有限、双路径、ARIA role、1280/390/360 无横向溢出。
+- E2E：`tests/e2e/half-special-semantics.spec.ts`（desktop 默认套件单项目，
+  390/360 几何经 setViewportSize 断言；触摸差异风险由 mobile-contract 套件
+  承担）覆盖 NaN/±Inf/有限、双路径、ARIA role、1280/390/360 无横向溢出。

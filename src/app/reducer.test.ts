@@ -1507,6 +1507,9 @@ describe('appReducer — state transitions', () => {
       // Megabyte payload: still a strict no-op (same state reference).
       const megabyte = `${' '.repeat(1_000_000)}1`
       expect(appReducer(committed, { type: 'value/set', value: megabyte })).toBe(committed)
+      // All-whitespace payload: not an exact lexeme at all — strict no-op
+      // (the UI classifies it as empty/transitional before any dispatch).
+      expect(appReducer(committed, { type: 'value/set', value: '   ' })).toBe(committed)
     })
 
     it('keeps accepted provenance text bounded by the raw lexeme cap (v2.5.13)', () => {

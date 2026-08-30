@@ -472,3 +472,213 @@ test.describe('DIRECT 精确十进制输入边界（v2.5.13）', () => {
     await expect(hexInput(page)).toHaveValue('0000')
   })
 })
+
+test.describe('DIRECT 被拒编辑的事务边界（v2.5.14 正式站反例，1280×900）', () => {
+  // P1 反例基线：最近一次编辑候选被超长门禁拒绝后，blur/Enter 不得把受控
+  // 输入里残留的旧短草稿当新候选提交——反例 A 会改 raw，反例 B 保留 raw
+  // 但丢失精确请求 provenance。粘贴统一走真实剪贴板（grantPermissions +
+  // writeText + Ctrl/Cmd+V），键盘/点击路径用真实 input 事件。
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+  })
+
+  const overlongText = '9'.repeat(4_097)
+  const overlongError = (page: Page) => page.getByText(/输入过长，未提交/)
+
+  /** 反例 A 基线：raw FFFF（近似显示 -1，保真警告合理），无 provenance。 */
+  async function caseABaseline(page: Page) {
+    await setDirectCoefficients(page, 1, 1, 17)
+    await setRaw(page, 'FFFF')
+    await expect(resultValue(page)).toHaveText('-1')
+    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    await expect(quantizationPanel(page)).toHaveCount(0)
+  }
+
+  /** 反例 B 基线：raw 0001，精确请求 100000000000000001（误差 +1）。 */
+  async function caseBBaseline(page: Page) {
+    await setDirectCoefficients(page, 1, 0, -17)
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('100000000000000001', { delay: 20 })
+    await valueInput(page).press('Enter')
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(quantizationPanel(page)).toContainText('用户请求 100000000000000001')
+    await expect(quantizationPanel(page)).toContainText('+1（约 1e-15%）')
+  }
+
+  async function pasteOverlong(page: Page) {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.evaluate((t) => navigator.clipboard.writeText(t), overlongText)
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.press('ControlOrMeta+v')
+    await expect(overlongError(page)).toBeVisible()
+  }
+
+  for (const commit of ['Tab', 'Enter'] as const) {
+    test(`反例 A：超长粘贴后 ${commit} 不提交旧显示值——raw 保持 FFFF、无新请求（真实剪贴板）`, async ({
+      page,
+    }) => {
+      await caseABaseline(page)
+      await pasteOverlong(page)
+      if (commit === 'Tab') {
+        await valueInput(page).press('Tab')
+      } else {
+        await valueInput(page).press('Enter')
+      }
+      await expect(hexInput(page)).toHaveValue('FFFF')
+      await expect(resultValue(page)).toHaveText('-1')
+      // 拒绝状态与错误保持真实：错误不清除、不伪造新请求。
+      await expect(overlongError(page)).toBeVisible()
+      await expect(quantizationPanel(page)).toHaveCount(0)
+      await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    })
+  }
+
+  test('反例 A：超长粘贴后点击其他控件失焦同样不提交', async ({ page }) => {
+    await caseABaseline(page)
+    await pasteOverlong(page)
+    // 点击真实的外部控件（Hex 输入框）触发失焦。
+    await hexInput(page).click()
+    await expect(hexInput(page)).toHaveValue('FFFF')
+    await expect(resultValue(page)).toHaveText('-1')
+    await expect(overlongError(page)).toBeVisible()
+    await expect(quantizationPanel(page)).toHaveCount(0)
+  })
+
+  test('反例 B：超长粘贴后 blur 不丢 provenance——raw 0001、误差 +1、请求原文保持', async ({
+    page,
+  }) => {
+    await caseBBaseline(page)
+    await pasteOverlong(page)
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(overlongError(page)).toBeVisible()
+    await expect(quantizationPanel(page)).toContainText('用户请求 100000000000000001')
+    await expect(quantizationPanel(page)).toContainText('raw 精确表示 100000000000000000')
+    await expect(quantizationPanel(page)).toContainText('+1（约 1e-15%）')
+  })
+
+  test('反例 B：拒绝后重复 focus/blur/Enter 不新增提交、不清错误', async ({ page }) => {
+    await caseBBaseline(page)
+    await pasteOverlong(page)
+    await valueInput(page).press('Tab')
+    for (let round = 0; round < 2; round += 1) {
+      await valueInput(page).click()
+      await valueInput(page).press('Enter')
+      await valueInput(page).click()
+      await valueInput(page).press('Tab')
+    }
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(overlongError(page)).toBeVisible()
+    await expect(quantizationPanel(page)).toContainText('用户请求 100000000000000001')
+    await expect(quantizationPanel(page)).toContainText('+1（约 1e-15%）')
+  })
+
+  test('同一 focus 先有合法提交再被拒：blur 保留最后实际合法提交', async ({ page }) => {
+    await setDirectCoefficients(page, 1, 0, 0)
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('7', { delay: 20 })
+    await expect(hexInput(page)).toHaveValue('0007')
+    await pasteOverlong(page)
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('0007')
+    await expect(overlongError(page)).toBeVisible()
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+  })
+
+  test('同一 focus 先有过渡态再被拒：blur 不把旧过渡态规范化提交（-0 改写防线）', async ({
+    page,
+  }) => {
+    await caseBBaseline(page)
+    // 真实键盘输入过渡态 '-.'（单字符 change 各自过渡，无 live-commit）。
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('-.', { delay: 20 })
+    await expect(hexInput(page)).toHaveValue('0001')
+    await pasteOverlong(page)
+    await valueInput(page).press('Tab')
+    // 旧行为会把 '-.' 归一化为 '-0' 并提交（raw 0000、provenance 丢失）。
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(overlongError(page)).toBeVisible()
+    await expect(quantizationPanel(page)).toContainText('用户请求 100000000000000001')
+  })
+
+  test('同一 focus 先有非法短文本再被拒：不提交，错误保持最新拒绝原因', async ({ page }) => {
+    await setDirectCoefficients(page, 1, 0, 0)
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('7', { delay: 20 })
+    await page.keyboard.type('x', { delay: 20 })
+    await expect(page.getByText(/物理值输入无效/)).toBeVisible()
+    await pasteOverlong(page)
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('0007')
+    await expect(overlongError(page)).toBeVisible()
+  })
+
+  test('拒绝后输入合法短值正常提交并恢复（真实键盘）', async ({ page }) => {
+    await setDirectCoefficients(page, 1, 0, 0)
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('7', { delay: 20 })
+    await expect(hexInput(page)).toHaveValue('0007')
+    await pasteOverlong(page)
+    await valueInput(page).press('Tab')
+    await expect(overlongError(page)).toBeVisible()
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('5', { delay: 20 })
+    await valueInput(page).press('Enter')
+    await expect(hexInput(page)).toHaveValue('0005')
+    await expect(overlongError(page)).toHaveCount(0)
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+  })
+
+  test('拒绝后显式重输同一合法值：真实的显式请求语义（新 provenance）', async ({ page }) => {
+    await caseBBaseline(page)
+    await pasteOverlong(page)
+    await valueInput(page).press('Tab')
+    // 全选删除（真实键盘 onChange）后显式重输完整十进制。
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.press('Delete')
+    await page.keyboard.type('100000000000000001', { delay: 20 })
+    await valueInput(page).press('Enter')
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(overlongError(page)).toHaveCount(0)
+    await expect(quantizationPanel(page)).toContainText('用户请求 100000000000000001')
+    await expect(quantizationPanel(page)).toContainText('+1（约 1e-15%）')
+  })
+
+  test('拒绝后清空并 blur：物理值空串归 0 的既有合同', async ({ page }) => {
+    await setDirectCoefficients(page, 1, 0, 0)
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('7', { delay: 20 })
+    await pasteOverlong(page)
+    await valueInput(page).press('Tab')
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.press('Delete')
+    await valueInput(page).press('Tab')
+    await expect(hexInput(page)).toHaveValue('0000')
+    await expect(overlongError(page)).toHaveCount(0)
+  })
+
+  test('拒绝状态切换模式不泄漏：其他模式无错误，返回 DIRECT 无 stale 状态', async ({ page }) => {
+    await caseBBaseline(page)
+    await pasteOverlong(page)
+    await page.getByRole('tab', { name: /HALF/ }).click()
+    await expect(overlongError(page)).toHaveCount(0)
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    await expect(overlongError(page)).toHaveCount(0)
+    await expect(hexInput(page)).toHaveValue('0001')
+    // 模式切换本身清除 provenance（DOMAIN_MODEL §6.1 既有合同）；
+    // 本测试证明的是拒绝状态不留 stale 错误/事务标记。
+    await expect(quantizationPanel(page)).toHaveCount(0)
+  })
+})

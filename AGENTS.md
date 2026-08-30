@@ -114,11 +114,11 @@ tests/e2e/        Playwright 真实用户流程
    npm run verify
    ```
 
-   `npm run verify` 展开为：`format:check`、`typecheck`、`lint`、`check:markdown-math`、`specs:check`、
-   `check:release-contract`、`check:toolchain`、`test:coverage`、`test:e2e`、`test:e2e:mobile`、
-   `build`、`check:tailwind-scope`、`test:e2e:release`、`check:repo-hygiene`、
-   `git diff --check`（未暂存工作区）、`git diff --cached --check`（暂存区）、
-   `npm audit --audit-level=high`。
+   `npm run verify` 的步骤组合以 package.json 的 `verify` / `verify:light` 脚本为唯一
+   真值（涵盖 format、typecheck、lint、inline style、markdown 数学、规范 manifest、
+   发布合同、发布操作文档命令、工具链、coverage、桌面/移动 E2E、build、Tailwind
+   scope、release smoke、repo hygiene、两个 whitespace 检查与 audit）；本文件不逐条
+   复制该命令链，避免与脚本漂移。
    CI 的 whitespace gate 检查完整 PR base→head 范围（main 不再有 push CI）。
    CI 仅由目标为 main 的 PR 与手动 `workflow_dispatch` 触发，manual run 始终 full；
    按 `scripts/classify-ci-scope.mjs` 分级（fail closed）：纯 light-only 变更在 CI 中跳过
