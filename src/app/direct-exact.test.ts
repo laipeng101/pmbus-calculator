@@ -528,6 +528,16 @@ describe('exact lexeme boundary (v2.5.12)', () => {
     expect(parseDecimalExactRational(over)).toBeNull()
   })
 
+  it('accepts a lexeme one character below the limit (4095, v2.5.14 boundary audit)', () => {
+    const below = `1${'0'.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH - 2)}`
+    expect(below.length).toBe(DIRECT_EXACT_MAX_LEXEME_LENGTH - 1)
+    expect(checkExactLexemeBoundary(below)).toEqual({ ok: true })
+    expect(parseDecimalExactRational(below)).toEqual({
+      numerator: 10n ** BigInt(DIRECT_EXACT_MAX_LEXEME_LENGTH - 2),
+      denominator: 1n,
+    })
+  })
+
   it('keeps true zeros legal at any exponent while bounding non-zero shifts', () => {
     expect(parseDecimalExactRational('0e-999999999999')).toEqual({
       numerator: 0n,

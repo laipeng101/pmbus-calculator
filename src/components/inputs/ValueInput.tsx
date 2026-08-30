@@ -71,12 +71,25 @@ function classifyDraft(
  * - HALF 模式继续接受 NaN、+Infinity、-Infinity；
  * - 未发生任何编辑的 focus/blur 是严格 no-op：不 dispatch `value/set`、
  *   不改写 raw、不伪造编码请求来源（raw-lossless，Part II §7.6.2 与
- *   DOMAIN_MODEL §6.1 请求来源合同，v2.5.6）。
+ *   DOMAIN_MODEL §6.1 请求来源合同，v2.5.6）；
+ * - 被资源门禁拒绝的编辑候选（v2.5.14）：超长粘贴把当前 focus 事务标为
+ *   dirty（此前编辑可能已 dirty），但受控输入保留上一个短草稿——blur/Enter
+ *   必须把该状态当作 commit 层 no-op（不派发、不改 raw/请求、不清错误），
+ *   否则旧草稿会被当成新候选提交，改写 raw 或丢失精确请求 provenance。
  */
 export default function ValueInput({ vm, dispatch }: Props) {
   const [draft, setDraft] = useState(vm.valueText)
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // True while the LATEST edit candidate of the current focus session was
+  // rejected by the overlong resource gate. handleChange marks the
+  // transaction dirty BEFORE that gate (earlier edits may already have), and
+  // the controlled input keeps the previous short draft — so without this
+  // marker, blur/Enter would normalize and commit that stale draft as if it
+  // were a fresh candidate (v2.5.14: raw/provenance corruption). Only a NEW
+  // candidate that passes the gate clears it; the marker survives blur/Enter
+  // and dies with the component on mode switch (no cross-mode leakage).
+  const [rejectedCandidate, setRejectedCandidate] = useState(false)
   // Dirty is tracked by real onChange transactions — never by comparing
   // parsed numbers (NaN !== NaN, -0, alternate textual forms would misreport).
   const transaction = useEditTransaction()
@@ -102,9 +115,14 @@ export default function ValueInput({ vm, dispatch }: Props) {
     // committed state/raw/provenance stay untouched (DIRECT only — other
     // modes have no BigInt path and keep their existing contracts).
     if (overlong(text)) {
+      setRejectedCandidate(true)
       setError(OVERLONG_MESSAGE)
       return
     }
+    // A new short candidate replaces a previously rejected one: from here on
+    // blur/Enter follow the normal classification-first contract again, and
+    // the new candidate's own kind decides commit vs keep-error.
+    setRejectedCandidate(false)
     setDraft(text)
     const { kind, value } = classifyDraft(text, vm.mode === 'HALF')
     if (kind === 'invalid') {
@@ -134,6 +152,16 @@ export default function ValueInput({ vm, dispatch }: Props) {
   }
 
   const handleBlur = () => {
+    // The latest candidate was rejected by the resource gate (v2.5.14):
+    // blur/Enter is a commit-layer no-op — no dispatch, no rewrite of
+    // raw/parameters/valueRequest, no error clear. The stale short draft
+    // stays in the box and the rejection error stays visible; a repeated
+    // focus/blur cycle hits this branch again and cannot commit either.
+    if (rejectedCandidate) {
+      transaction.shouldCommitOnBlur()
+      setEditing(false)
+      return
+    }
     // Untouched focus/blur (no onChange at all) is a strict no-op: it must not
     // dispatch value/set, rewrite raw, fabricate an encoding request, or drop
     // a still-visible field error. Only a real edit transaction commits.
