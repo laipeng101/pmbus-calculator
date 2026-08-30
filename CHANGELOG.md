@@ -4,6 +4,62 @@
 
 ## [Unreleased]
 
+## [2.5.14] - 2026-08-30
+
+### Fixed
+
+- **被拒编辑在 blur/Enter 时不再误提交旧草稿（P1）**：v2.5.13 中，被 DIRECT
+  4096 字符资源门禁拒绝的粘贴会把当前 focus 事务标为 dirty，而受控输入仍保留
+  上一个短草稿；随后的 blur/Enter 会把该旧草稿当新候选规范化提交——反例 A
+  （raw FFFF，近似 −1）直接改写 raw 为 0000，反例 B（raw 0001、精确请求
+  100000000000000001、误差 +1）raw 不变但精确请求 provenance 被近似值改写。
+  现在 `ValueInput` 持有 rejected 候选标记（极小布尔状态，不保存超长文本）：
+  blur/Enter 是 commit 层 no-op（不派发、不改 raw/参数/请求、不清错误），
+  只有新的短候选通过门禁才清除标记并按其自身分类处理；同一 focus 内先前的
+  合法提交保持有效，重复 focus/blur/Enter 不能伪造提交，模式切换不泄漏。
+  超长文本仍然被拒绝——4096 上限不变，这是交互资源边界，不是 PMBus 规则；
+  本修复不放宽长度上限，也不是算法更新。
+
+### Changed
+
+- **发布文档门禁绑定来源与逐条执行**：`check:release-docs-commands` 的
+  expectedMode 曾是死代码（全局按 mode 聚合让两个来源互相满足对方的合同，
+  mode 对调后门禁仍通过），每条 mode 只执行第一条文档命令（第二条带未知
+  flag 的命令从未运行），`validated` 在任何执行前就填充，且子进程脚本路径
+  相对父进程 cwd 解析。现在每个来源绑定其预期 mode，每条提取命令先过 argv
+  合同（未知/重复 flag、缺值、位置参数、shell 语法显式拒绝而非解释）再逐条
+  真实执行，只有实际 exit 0 才记为 execution validated；子进程以
+  `process.execPath` 运行绑定 repoRoot 的入口脚本、cwd 固定为被检查根；
+  失败按提取/argv 合同/fixture 构建/入口绑定/timeout/信号/CLI 非零分类并
+  保留真实 exit code/stderr。
+- **生成物生命周期一致（clean/hygiene/gitignore 三方对齐）**：mobile 套件的
+  `output-mobile`/`report-mobile` 目录与全部五个 Playwright JSON reporter
+  产物（`e2e-results*.json`）此前被生成、被 ignore、却不被 cleaner 清理
+  （对这四种产物 dry-run 选择为空），被强制暂存时 hygiene 也不拒绝。现在
+  cleaner 允许清单覆盖全部产物并对预期为文件的目标拒绝目录伪装（反向同理，
+  自定义 target 保持既有行为），hygiene 新增 `e2e-results*.json` 拒绝规则，
+  一致性测试锁定每个清理目标都被 .gitignore 覆盖；>1 MiB 大文件门禁的
+  误导性诊断已修正（政策分类是统计数字，不是大小豁免；本版本未引入任何
+  大小例外机制）。
+
+### Changed (tests)
+
+- **移动端触摸合同以真实触摸路径为准**：`locator.click()` 走 page.mouse，
+  移动端仿真不会把它变成触摸；此前 mode tab 与外部关闭使用 click 且注释
+  声称相反语义。现在需要证明触摸可用性的路径全部使用
+  `locator.tap()`/`touchscreen.tap()`（术语气泡在 document 上监听
+  pointerdown，触摸 tap 以 pointerType=touch 触发同一关闭合同），一次性
+  事件观测探针证明真实 touch 事件到达（不修改应用行为），360 错误换行
+  断言实测两行几何而非仅 visible，并新增 v2.5.14 被拒编辑的触摸失焦双基线
+  （raw FFFF 与精确 provenance 0001）；fill/tap 等操作命名与实际一致。
+  mobile-contract 套件 11 → 14 tests。
+- **验证声明以 package.json 为单一真值**：AGENTS/CONTRIBUTING 不再手工
+  复制 verify/verify:light 命令链（既有副本已漏掉 release-docs 门禁）；
+  RELEASING 的 fresh 重建链不再在同一干净 worktree 内于 verify 之外原样
+  重跑 typecheck/build/release smoke（PR head 验证与 merge 后 fresh 独立
+  重建仍是两次不同可信边界；visual 与确定性资产生成仍单独执行）；
+  ROADMAP 当前状态行与 UI_CONVENTIONS 的 E2E 项目描述与实际一致。
+
 ## [2.5.13] - 2026-08-30
 
 ### Fixed

@@ -133,12 +133,16 @@ npm run verify                 # 完整本地门禁（已包含 specs:check 与 
 
 大文件检查：
 
-- 任何新增跟踪文件超过 1 MiB 时失败；
-- 未来确实需要例外时，必须通过清楚的路径 allowlist 和文档说明加入，不允许静默绕过。
+- 任何跟踪文件超过 1 MiB 时失败；该检查对每条 tracked path 无条件执行，
+  当前不存在任何大小豁免机制（v2.5.14 澄清：政策分类不是大小例外）。
+- 未来确实需要例外时，必须以精确路径、明确理由和大小上限单独审核实现并
+  在此记录，不允许静默绕过；本轮未引入任何此类机制。
 
 输出语义：
 
-- `policy allowlisted` 是政策例外总数，当前分为两类：`snapshots`（visual baseline PNG/WebP）、`legacy fallbacks`（`pmbus-calculator.html`）。
+- `policy-classified` 是分类统计（信息性数字，不是大小豁免），当前分为
+  两类：`snapshots`（visual baseline PNG/WebP）、`legacy fallbacks`
+  （`pmbus-calculator.html`）。
 - tracked tree size 是当前 Git index/HEAD 中每个 tracked path 对应 blob size 的求和，按路径 entry 计数，不是 Git pack size，也不是 GitHub API 返回的 repository size。
 - 脚本结果必须与 `git ls-tree -r -l HEAD` 的 tree size 语义一致；同一 blob 被多个路径共享时，每个路径都计入。
 

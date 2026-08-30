@@ -3,7 +3,9 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-30（v2.5.13——DIRECT raw lexeme 资源边界统一
+最后更新：2026-08-30（v2.5.14——被拒编辑事务边界（blur/Enter 不再提交
+旧草稿）、发布文档门禁绑定来源与逐条执行、生成物 clean/hygiene/gitignore
+对齐、移动端触摸合同证据化与验证声明去重
 （4096 上限按 trim 前的原始字符串长度判定，UI/reducer/exact parser
 共享同一防线，超长粘贴在进入 draft state 前拒绝）；E2E 语义单次执行 +
 显式 mobile-contract 套件（Pixel 7 仿真）；future immutable releases
@@ -33,7 +35,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.13；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M39 complete；stable release v2.5.14；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -149,7 +151,19 @@ M0–M39 complete；stable release v2.5.13；production distribution: GitHub Pag
   `check:release-docs-commands` 进入 light CI（RELEASING/Pages 双调用点
   在离线 fixture 上跑真实 verifier）——删除经引用审计证明无用的
   `.depcheckrc`。
-- 当前：无进行中的功能里程碑；v2.5.13 已发布，M40–M41 complete。
+- v2.5.14（PATCH）：被拒编辑事务边界（资源门禁拒绝后 blur/Enter 为
+  commit 层 no-op，反例 A 不再改写 raw、反例 B 不再丢精确请求
+  provenance；4096 上限不变）——发布文档门禁绑定 source/mode 并逐条
+  执行生产 verifier（argv 合同显式拒绝未知/重复 flag、缺值、位置参数与
+  shell 语法；执行绑定 repoRoot/cwd/process.execPath）——生成物
+  clean/hygiene/gitignore 三方对齐（mobile 目录与全部
+  `e2e-results*.json` reporter 产物纳入 cleaner 与 hygiene，文件/目录
+  伪装拒绝，大文件诊断澄清为「分类统计非豁免」）——mobile-contract
+  套件 11→14（mode tab/外部关闭改真实 tap、touch 事件观测探针、360
+  错误换行几何断言、被拒编辑触摸失焦双基线）——AGENTS/CONTRIBUTING/
+  RELEASING 验证声明去重（package.json 为命令组合唯一真值，fresh 链
+  不重复 verify 已含步骤）。
+- 当前：无进行中的功能里程碑；v2.5.14 已发布，M40–M41 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
