@@ -4,6 +4,61 @@
 
 ## [Unreleased]
 
+## [2.5.15] - 2026-08-31
+
+### Fixed
+
+- **发布文档命令门禁的两个假阳性**：`check:release-docs-commands` 的提取器曾在
+  第一个空格包围的 `>` 处截断全部后缀——`--mode draft > draft-verified.json
+--unsupported` 这类「重定向位于参数之间」的命令被当成干净的 `--mode draft`
+  调用通过并执行校验，而真实 CLI 会对未知 flag 以 exit 2 拒绝；引号不平衡的
+  token（如缺结束引号的 `--metadata "draft-release.json`）此前会被 fixture
+  替换静默换值后假通过，而真实 shell 根本无法解析。现在支持的语法显式为
+  「至多一处尾部 stdout 文件重定向（裸 `>` token、纯文件名目标、其后不得再有
+  token）+ 逐 token 引号平衡」；任何其他重定向形态原样透传给 argv 合同显式
+  拒绝，提取器不再静默截断或修复，诊断包含来源文件与原始命令。Pages 形式
+  （平衡的 `"${VAR}"` 模板值 + 一处尾部重定向）保持合法，正式文档命令 2/2
+  通过。这不是已发布资产的缺陷——v2.5.13/v2.5.14 资产经独立核验正确且不可变。
+
+### Changed
+
+- **完整语义 E2E 套件以生产构建为主要验收目标**：桌面语义套件（310）与
+  mobile-contract 套件（14）现在对 `vite preview` 服务的精确 `dist/` 运行，
+  并挂载在官方 Pages 路径前缀 `/pmbus-calculator/` 下——整个套件同时成为
+  前缀 URL 合同的实测证据；dev server 只保留 canonical visual 基线世界
+  （28 张快照合同不变）。verify 链与 CI e2e job 在任何浏览器套件之前只构建
+  一次，三个套件（desktop/mobile/release smoke）消费同一 dist，不再重复
+  build；所有 preview webServer 使用 strictPort 且 `reuseExistingServer:false`，
+  未知的或过期的服务器不能冒充绿灯。新增 `tests/e2e/helpers/app-url.ts`
+  纯函数 URL 合同（`E2E_APP_BASE_PATH` 由目标配置声明，保留前缀与末尾斜线，
+  拒绝 `..` 段）与 `app-base-url.spec.ts`（生产构建守卫、前缀保留、资源同源
+  成功且非 HTML fallback、`?debug` 入口保留前缀）；25 个套件 spec 的 110 处
+  `goto('/')` 与 2 处 `goto('/?debug')` 全部迁移到 `appUrl()`。
+- **焦点与调试入口测试合同纠正**：hover/active/键盘 focus-visible 拆分为
+  独立测试；focus-visible 从 fresh load 的真实 Tab 进入，断言预期具体控件
+  （主题按钮、活动模式 tab）并以 Tab/Shift+Tab 在页内相邻控件间往返验证，
+  不再依赖「blur 后按 Tab 必然落在任意 BUTTON/INPUT」的环境焦点假设——生产
+  DOM 中 `#command-reference-toggle` 是页尾最后控件，顺序焦点导航此时允许
+  离开页面（实测 preview 普通 URL Tab 后 activeElement 为 BODY、
+  focus-visible=false，而 `?debug` 下落到调试按钮且 focus-visible=true）。
+  调试面板 canonical 入口改为显式 `?debug` + 真实 `locator.click()`；普通
+  URL 的可见性按目标构建判别（dev 自动渲染是开发契约，production 默认关闭
+  是产品契约）。**未声明发现或修复任何浏览器焦点缺陷**：变化是测试起点与
+  断言合同，不是产品行为。
+- **维护说明与生成物文档对齐**：REPOSITORY_HYGIENE 不再手工复制清理器目标
+  列表（副本已漂移：缺 mobile 目录、五份 reporter JSON 与 `.release-staging`，
+  且误称 cleaner 只删除目录），例外章节不再暗示存在大小 allowlist；新增
+  `tests/playwright-artifacts-consistency.test.ts` 从实际 Playwright 配置
+  推导产物集合并与清理器常量双向比对。CONTRIBUTING 不再复制不完整的
+  `verify:light` 步骤列表（package.json 是唯一命令真值）。
+
+### Removed
+
+- 无。本版本不删除任何快照、文档、兼容资源或测试覆盖；desktop 语义套件
+  305→310（hover/active/focus-visible 组合测试拆为 3 个独立测试 +2，
+  home 调试面板测试拆为显式入口与判别契约两个 +1，新增 2 个 URL 合同测试），
+  mobile 14、release smoke 1、deployment 4、visual 28 全部保留。
+
 ## [2.5.14] - 2026-08-30
 
 ### Fixed
