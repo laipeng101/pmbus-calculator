@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 test.describe('计算器真实用户流程', () => {
   test('L11：Hex 输入解码为 Y/N/Value', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
 
     await hexInput.fill('F819')
@@ -15,7 +16,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('L11：Value 输入编码为 Hex', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     const valueInput = page.locator('#value-input')
     const hexInput = page.locator('input[placeholder="0000"]')
 
@@ -25,7 +26,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('bit toggle 更新 Hex 和 Value', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
 
     await expect(hexInput).toHaveValue('0000')
@@ -36,7 +37,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('命令参考默认折叠且展开后只读显示命令信息', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
     const toggle = page.locator('#command-reference-toggle')
 
@@ -57,7 +58,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('L16：十进制 V 输入拒绝 partial parse/科学计数法/小数并显示错误', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const vInput = page.getByLabel('V（16 位无符号，0～65535）')
     const hexInput = page.locator('input[placeholder="0000"]')
@@ -80,7 +81,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('命令参考中 device_defined 行标注需要器件数据手册且不切换模式', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     await page.locator('#command-reference-toggle').click()
 
@@ -94,7 +95,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('DIRECT：Hex→Y/Value、Y→raw、Value→raw 双向同步', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
     const hexInput = page.locator('input[placeholder="0000"]')
     const yInput = page.getByLabel('Y（16 位有符号，−32768～32767）')
@@ -114,7 +115,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('DIRECT：bit toggle 同步 Y 与 Value', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
     const hexInput = page.locator('input[placeholder="0000"]')
     const yInput = page.getByLabel('Y（16 位有符号，−32768～32767）')
@@ -127,7 +128,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('DIRECT：m=0 显示明确错误且 Value 不编码', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
     const hexInput = page.locator('input[placeholder="0000"]')
 
@@ -139,7 +140,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('HALF：Hex→Value、Value→Hex、bit toggle 三方向同步', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /HALF/ }).click()
     const hexInput = page.locator('input[placeholder="0000"]')
     const valueInput = page.locator('#value-input')
@@ -156,7 +157,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('HALF：NaN 作为一等值支持', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /HALF/ }).click()
     const hexInput = page.locator('input[placeholder="0000"]')
     const valueInput = page.locator('#value-input')
@@ -168,7 +169,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('命令参考 STATUS_WORD 行显示状态位语义且不切换模式', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     await page.locator('#command-reference-toggle').click()
 
@@ -182,7 +183,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('L16 非 LINEAR 共享字节（0x20）fail closed：无物理输入、无伪 VID 电压', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const voutModeInput = page.locator('#vout-mode-input')
     await voutModeInput.fill('20')
@@ -200,7 +201,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('L16 relative LINEAR（0x98）显示需要参考值且不给出绝对电压', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const voutModeInput = page.locator('#vout-mode-input')
     await voutModeInput.fill('98')
@@ -214,7 +215,7 @@ test.describe('计算器真实用户流程', () => {
 
   test('复制 Hex 使用当前偏好格式', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.goto('/')
+    await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('0001')
     await hexInput.press('Tab')
@@ -229,7 +230,7 @@ test.describe('计算器真实用户流程', () => {
 
   test('复制 LE bytes 与 C 宏默认使用未交换 raw word', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.goto('/')
+    await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('0001')
     await hexInput.press('Tab')
@@ -248,7 +249,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('非法 Hex 输入显示明确错误且不修改全局状态', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
 
     await hexInput.fill('1G')
@@ -258,7 +259,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('固定 0x 前缀下粘贴裸 0x 归一化为空 digits，blur 后回到 0', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
 
     await hexInput.fill('0x')
@@ -273,7 +274,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('超长 Hex 输入显示明确错误且不被静默截断', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
 
     await hexInput.fill('12345')
@@ -283,7 +284,7 @@ test.describe('计算器真实用户流程', () => {
   })
 
   test('DIRECT 系数错误只在 DIRECT 模式显示', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
 
     await page.getByLabel('DIRECT 系数 m').fill('2.5')
@@ -299,7 +300,7 @@ test.describe('计算器真实用户流程', () => {
 
   test('复制偏好（0x/空格/字节序）在 reload 后恢复并影响复制结果', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.goto('/')
+    await page.goto(appUrl())
 
     const prefixBtn = page.getByRole('button', { name: '0x 前缀' })
     await prefixBtn.scrollIntoViewIfNeeded()
@@ -354,7 +355,7 @@ test.describe('计算器真实用户流程', () => {
     await page.addInitScript(() => {
       localStorage.setItem('pmbus-calculator:theme', 'light')
     })
-    await page.goto('/')
+    await page.goto(appUrl())
 
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
 

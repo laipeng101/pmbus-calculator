@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 async function setTheme(page: Page, theme: 'light' | 'dark') {
   await page.addInitScript((t) => localStorage.setItem('pmbus-calculator:theme', t), theme)
@@ -42,7 +43,7 @@ test.describe('contrast', () => {
   test('light/dark selected mode tab has >= 4.5 contrast', async ({ page }) => {
     for (const theme of ['light', 'dark'] as const) {
       await setTheme(page, theme)
-      await page.goto('/')
+      await page.goto(appUrl())
       const activeTab = page.locator('[role="tab"][aria-selected="true"]')
       const styles = await readContrast(activeTab)
       expect(await contrastOf(styles)).toBeGreaterThanOrEqual(4.5)
@@ -52,7 +53,7 @@ test.describe('contrast', () => {
   test('pressed/unpressed format preference buttons have >= 4.5 contrast', async ({ page }) => {
     for (const theme of ['light', 'dark'] as const) {
       await setTheme(page, theme)
-      await page.goto('/')
+      await page.goto(appUrl())
       const pressed = page.locator('.copy-toolbar [aria-pressed="true"]').first()
       const pressedStyles = await readContrast(pressed)
       expect(await contrastOf(pressedStyles)).toBeGreaterThanOrEqual(4.5)
@@ -68,7 +69,7 @@ test.describe('contrast', () => {
   test('theme toggle button has >= 4.5 contrast', async ({ page }) => {
     for (const theme of ['light', 'dark'] as const) {
       await setTheme(page, theme)
-      await page.goto('/')
+      await page.goto(appUrl())
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
       const toggle = page.getByRole('button', { name: /当前主题/ })
       // 等待颜色过渡结束：transition-colors 期间读取会得到中间色
@@ -80,7 +81,7 @@ test.describe('contrast', () => {
 
   test('L11 blue N bit and green Y bit have >= 4.5 on-bit contrast', async ({ page }) => {
     await setTheme(page, 'dark')
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('button', { name: '位 15: 0' }).click()
     await page.waitForTimeout(300)
     const blueBit = page.getByRole('button', { name: '位 15: 1' })
@@ -105,7 +106,7 @@ test.describe('contrast', () => {
 
   test('HALF orange sign bit has >= 4.5 on-bit contrast', async ({ page }) => {
     await setTheme(page, 'dark')
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /HALF/ }).click()
     await page.getByRole('button', { name: '位 15: 0' }).click()
     await page.waitForTimeout(300)
@@ -120,7 +121,7 @@ test.describe('contrast', () => {
 
   test('copy feedback success and failure have >= 4.5 contrast', async ({ page }) => {
     await setTheme(page, 'dark')
-    await page.goto('/')
+    await page.goto(appUrl())
 
     // Success path
     await page.evaluate(() => {

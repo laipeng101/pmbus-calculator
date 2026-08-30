@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * Physical-value input blur transaction contract (v2.5.6):
@@ -43,7 +44,7 @@ test.describe('HALF untouched blur（1280×900 dark）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /HALF/ }).click()
   })
 
@@ -110,7 +111,7 @@ test.describe('HALF signed-zero shorthand（1280×900 dark）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /HALF/ }).click()
   })
 
@@ -216,7 +217,7 @@ test.describe('LINEAR11 untouched blur（360×800 light）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'light')
     await page.setViewportSize({ width: 360, height: 800 })
-    await page.goto('/')
+    await page.goto(appUrl())
   })
 
   test('raw 0801（N=1,Y=1）无操作 focus/blur 后 raw、N、Y 不变、误差隐藏', async ({ page }) => {
@@ -258,7 +259,7 @@ test.describe('LINEAR16 untouched blur（390×844 dark）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
   })
 
@@ -297,7 +298,7 @@ test.describe('DIRECT untouched blur（768×1024 light）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'light')
     await page.setViewportSize({ width: 768, height: 1024 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
   })
 

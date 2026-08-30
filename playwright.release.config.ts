@@ -30,7 +30,11 @@ export default defineConfig({
   webServer: {
     command: 'npm run preview -- --port 4173 --strictPort',
     url: 'http://localhost:4173',
-    reuseExistingServer: process.env.CI ? false : true,
+    // v2.5.15: root-mounted preview of the same dist the semantic suites use
+    // (this suite provides the root-deployment live evidence). Never reuse an
+    // unknown server on the port — a stale dist would fake a green release
+    // smoke.
+    reuseExistingServer: false,
     timeout: 10_000,
   },
 })

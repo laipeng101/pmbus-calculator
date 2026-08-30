@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * Shared-input blur transaction contract (v2.5.7, extended v2.5.8):
@@ -80,7 +81,7 @@ test.describe('L11 untouched blur（1280×900 dark）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     // 解锁 N（手动指数），使 N 编辑器可交互。
     await page.getByRole('button', { name: 'N 已锁定（自动）' }).click()
   })
@@ -180,7 +181,7 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
   })
 
@@ -354,7 +355,7 @@ test.describe('DIRECT untouched blur（1280×900 light）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'light')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
   })
 
@@ -425,7 +426,7 @@ test.describe('HALF untouched blur（360×800 dark）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 360, height: 800 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /HALF/ }).click()
   })
 
@@ -469,7 +470,7 @@ test.describe('VOUT_MODE untouched blur（1280×900 light）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'light')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
   })
 
@@ -561,7 +562,7 @@ test.describe('invalid draft blur 事务（v2.5.9）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
   })
 
   test('HALF：NaN./NaNe/Infinitye/2.. 失焦与 Enter 都保留草稿与错误，raw 不变（3C00 起点）', async ({

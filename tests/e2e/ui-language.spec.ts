@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * M39 中文优先语言合同。
@@ -146,7 +147,7 @@ test.describe('M39 中文优先界面语言合同', () => {
 
   for (const scene of scenes) {
     test(scene.name + ' 不出现双语重复或整段英文解释', async ({ page }) => {
-      await page.goto('/')
+      await page.goto(appUrl())
       await expect(page.getByTestId('result-panel')).toBeVisible()
       // 展开说明面板与计算过程，让解释性文本进入可访问文本树。
       const details = page.locator('.vout-explanations-details')
@@ -169,7 +170,7 @@ test.describe('M39 中文优先界面语言合同', () => {
   })
 
   test('页面标题包含全部五个模式且配置状态不经 KaTeX 排版', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await expect(page).toHaveTitle(/PMBus/)
     await expect(page).toHaveTitle(/VOUT_MODE/)
     await page.getByRole('tab', { name: /VOUT_MODE/ }).click()

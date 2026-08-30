@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * v2.5.11 — DIRECT 精度保真合同（正式站反例 m=1,b=1,R=17）：
@@ -45,7 +46,7 @@ async function expandSteps(page: Page) {
 test.describe('DIRECT 精度保真（m=1,b=1,R=17 正式站反例，1280×900）', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
     await setDirectCoefficients(page, 1, 1, 17)
   })
@@ -167,7 +168,7 @@ test.describe('DIRECT 精度保真（m=1,b=1,R=17 正式站反例，1280×900）
 test.describe('DIRECT 循环小数与安全向量（1280×900）', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
   })
 
@@ -212,7 +213,7 @@ test.describe('DIRECT 循环小数与安全向量（1280×900）', () => {
 
 test.describe('DIRECT 精度保真响应式与资源（390/360px）', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
     await setDirectCoefficients(page, 1, 1, 17)
     await setRaw(page, 'FFFF')
@@ -250,7 +251,7 @@ test.describe('DIRECT 精度保真响应式与资源（390/360px）', () => {
 test.describe('DIRECT 精确请求 provenance（v2.5.12 正式站反例，1280×900）', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
   })
 
@@ -387,7 +388,7 @@ test.describe('DIRECT 精确请求 provenance（v2.5.12 正式站反例，1280×
 test.describe('DIRECT 精确十进制输入边界（v2.5.13）', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
     await setDirectCoefficients(page, 1, 0, 0)
   })
@@ -480,7 +481,7 @@ test.describe('DIRECT 被拒编辑的事务边界（v2.5.14 正式站反例，12
   // writeText + Ctrl/Cmd+V），键盘/点击路径用真实 input 事件。
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
   })
 

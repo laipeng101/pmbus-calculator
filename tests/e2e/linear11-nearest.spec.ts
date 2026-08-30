@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * v2.5.10 — LINEAR11 auto-N must encode the strictly nearest representable
@@ -95,7 +96,7 @@ const VECTORS: Vector[] = [
 test.describe('LINEAR11 严格最近值编码（v2.5.10）', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 })
-    await page.goto('/')
+    await page.goto(appUrl())
   })
 
   test('2^-17 中点邻接向量：物理值输入 → raw/N/Y/结果/量化误差一致', async ({ page }) => {

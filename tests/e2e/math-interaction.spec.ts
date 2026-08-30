@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 test.describe('LaTeX 公式展示与交互反馈', () => {
   test('四个计算模式均出现 KaTeX 容器且无 .katex-error', async ({ page }) => {
@@ -9,7 +10,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
       if (message.type() === 'error') consoleErrors.push(message.text())
     })
 
-    await page.goto('/')
+    await page.goto(appUrl())
 
     // VOUT_MODE 是结构化配置字节而非数学公式（M39 字体角色合同），其结果面板
     // 不经 KaTeX 排版；只有四个数值换算模式仍渲染真实公式。
@@ -28,7 +29,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
 
   test('VOUT_MODE 结果面板使用配置摘要而非 KaTeX', async ({ page }) => {
     const summary = page.getByTestId('vout-mode-config-summary')
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
     await expect(summary).toBeVisible()
     await expect(summary).toContainText('VOUT_MODE')
@@ -49,7 +50,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
   })
 
   test('修改输入后公式同步更新', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
 
     await hexInput.fill('F819')
@@ -68,7 +69,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
   })
 
   test('cursor 语义：按钮 pointer、输入 text、禁用 N 为 not-allowed', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
 
     const commandReferenceToggle = page.locator('#command-reference-toggle')
     await expect(commandReferenceToggle).toBeVisible()
@@ -85,7 +86,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
   })
 
   test('hover 有可观察反馈', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
 
     const commandReferenceToggle = page.locator('#command-reference-toggle')
     await expect(commandReferenceToggle).toBeVisible()
@@ -107,7 +108,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
   })
 
   test('active 有按压反馈', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
 
     const commandReferenceToggle = page.locator('#command-reference-toggle')
     await expect(commandReferenceToggle).toBeVisible()
@@ -137,7 +138,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
   // Tab/Shift+Tab 往返验证。不依赖“最后一个控件 Tab 后焦点仍在页面内”：
   // HTML sequential focus navigation 允许在页面末尾转向浏览器控件。
   test('键盘 Tab 进入首控件并在相邻控件间往返时 focus-visible 可观察', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
 
     const themeToggle = page.getByRole('button', { name: /当前主题/ })
     const activeTab = page.getByRole('tab', { name: /LINEAR11/ })
@@ -166,7 +167,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
 
   test('prefers-reduced-motion: reduce 关闭非必要动画且保留功能反馈', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.goto('/')
+    await page.goto(appUrl())
 
     const toMs = (value: string) => parseFloat(value) * (value.endsWith('ms') ? 1 : 1000)
 
@@ -242,7 +243,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
   test('360/390 视口无横向滚动，长公式只在自身容器滚动', async ({ page }) => {
     for (const width of [360, 390]) {
       await page.setViewportSize({ width, height: 844 })
-      await page.goto('/')
+      await page.goto(appUrl())
       await page.getByRole('tab', { name: /DIRECT/ }).click()
 
       await page.getByLabel('DIRECT 系数 m').fill('-32768')
@@ -269,7 +270,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     await page.addInitScript(() => {
       localStorage.setItem('pmbus-calculator:theme', 'dark')
     })
-    await page.goto('/')
+    await page.goto(appUrl())
 
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await expect(page.locator('.katex').first()).toBeVisible()

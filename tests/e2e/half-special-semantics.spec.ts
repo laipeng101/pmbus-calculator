@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * v2.5.5: HALF NaN / ±Infinity words carry PMBus Part II §7.6.2 operational
@@ -11,7 +12,7 @@ import { test, expect, type Page } from '@playwright/test'
  */
 
 async function settle(page: Page) {
-  await page.goto('/')
+  await page.goto(appUrl())
   await page.evaluate(async () => {
     await document.fonts.ready
   })

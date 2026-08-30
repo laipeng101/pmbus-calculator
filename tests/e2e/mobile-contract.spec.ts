@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 // Explicit mobile-contract suite (v2.5.13, touch contract tightened in
 // v2.5.14). Runs ONLY under playwright.mobile.config.ts
@@ -55,10 +56,16 @@ async function expectWrappedInContainer(locator: Locator) {
 test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2.5.14）', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/')
+    await page.goto(appUrl())
   })
 
   test('LINEAR11：value 编码 hex，页面无横向溢出', async ({ page }) => {
+    // 受测构建来源守卫：本套件验证的是生产 dist（防止 dev 绿灯冒充 production）。
+    const isDevServer = await page.evaluate(() =>
+      [...document.querySelectorAll('script')].some((script) => script.src.includes('/@vite/')),
+    )
+    expect(isDevServer).toBe(false)
+
     await page.locator(VALUE_INPUT).fill('12.5')
     await expect(page.locator(HEX_INPUT)).toHaveValue('F819')
     await expectNoBodyOverflow(page)
@@ -162,7 +169,7 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
 test.describe('移动端合同：被拒编辑的触摸失焦（v2.5.14，390）', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).tap()
   })
 
@@ -224,7 +231,7 @@ test.describe('移动端合同：被拒编辑的触摸失焦（v2.5.14，390）'
 test.describe('移动端合同：360 错误文案换行（v2.5.13/v2.5.14）', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 })
-    await page.goto('/')
+    await page.goto(appUrl())
   })
 
   test('DIRECT 超长 fill 后错误在 360 下可见并真实换行，不改 raw', async ({ page }) => {

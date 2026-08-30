@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * M21 input & keyboard interaction reliability — bounded pairwise matrix.
@@ -70,7 +71,7 @@ test.describe('L11（360×800 light）：手动 Y/N 非法输入、错误关联�
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'light')
     await page.setViewportSize({ width: 360, height: 800 })
-    await page.goto('/')
+    await page.goto(appUrl())
   })
 
   test('N 非法输入：draft 保留、错误关联、raw 不变、修正后清除', async ({ page }) => {
@@ -136,7 +137,7 @@ test.describe('L16（390×844 dark）：V 非法整数、clamp 合同、无 body
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
   })
 
@@ -184,7 +185,7 @@ test.describe('DIRECT（768×1024 light）：m/b/R 与 Y 字段级错误、修�
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'light')
     await page.setViewportSize({ width: 768, height: 1024 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
   })
 
@@ -271,7 +272,7 @@ test.describe('HALF（1280×900 dark）：NaN/Infinity 合法、垃圾文本非�
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /HALF/ }).click()
   })
 
@@ -334,7 +335,7 @@ test.describe('HALF（1280×900 dark）：NaN/Infinity 合法、垃圾文本非�
 test.describe('命令参考（950×304）：只读表格无溢出', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 950, height: 304 })
-    await page.goto('/')
+    await page.goto(appUrl())
   })
 
   test('展开后表格完整可读且页面不产生横向滚动', async ({ page }) => {
@@ -348,7 +349,7 @@ test.describe('命令参考（950×304）：只读表格无溢出', () => {
 
 test.describe('全局快捷键：编辑区不触发、非编辑区触发', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
   })
 
   test('焦点在物理值输入内按 Ctrl+2..4：不切换模式、不丢 draft、不抢焦点', async ({ page }) => {

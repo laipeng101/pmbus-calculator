@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * v2.5.8 — 解析层不再静默限幅（DOMAIN_MODEL §6.1 / float-parse 合同）：
@@ -37,7 +38,7 @@ test.describe('DIRECT 大值请求按真实值提交（1280×900 dark）', () =>
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
     // 计算器示例向量：m=1、b=0、R=-21
     await page.locator('#direct-coeff-r-input').fill('-21')
@@ -97,7 +98,7 @@ test.describe('HALF 字面量与十进制溢出区分（1280×900 dark）', () =
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /HALF/ }).click()
   })
 
@@ -126,7 +127,7 @@ test.describe('新错误文案与极值在 360×800 的排版与键盘可达性�
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'light')
     await page.setViewportSize({ width: 360, height: 800 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
   })
 

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * v2.5.4: legal IEEE Half VOUT_MODE bytes (0x60 absolute / 0xE0 relative) are
@@ -34,7 +35,7 @@ interface VoutModeSurfaces {
 }
 
 async function settle(page: Page) {
-  await page.goto('/')
+  await page.goto(appUrl())
   await page.evaluate(async () => {
     await document.fonts.ready
   })

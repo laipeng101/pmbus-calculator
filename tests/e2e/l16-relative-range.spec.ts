@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * Relative ULINEAR16 derivation-range diagnostics (v2.5.9).
@@ -53,7 +54,7 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
   test.beforeEach(async ({ page }) => {
     await setTheme(page, 'dark')
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
+    await page.goto(appUrl())
   })
 
   test('有限基线：98/0100 nominal 12 → ratio 1，X=12 且物理值复制可用', async ({ page }) => {

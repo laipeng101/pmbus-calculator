@@ -1,18 +1,24 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// v2.5.13: the default suite runs the semantic flows ONCE (single
-// chromium-desktop project). It deliberately ignores the dedicated suites
-// that own their configs: release/deployment smokes and the visual baselines
-// (unchanged), plus the v2.5.13 explicit mobile-contract suite
-// (playwright.mobile.config.ts, Pixel 7 emulation) — the former
-// chromium-mobile project re-ran all 292 logical tests with no project-specific
-// selection, doubling CI cost without dedicated coverage.
+// v2.5.15: the default semantic suite is the PRIMARY acceptance target and
+// runs against the PRODUCTION build: the exact dist/ served by `vite preview`,
+// mounted under the official GitHub Pages path prefix so the whole suite
+// doubles as the prefixed-URL contract evidence. The single build happens
+// before the suite in `npm run verify` and in the CI e2e job; this config
+// never rebuilds and never reuses an unknown server on the port (fail closed
+// against testing a stale dist). Dev-server smoke/debug entries stay
+// dedicated to playwright.visual.config.ts (canonical darwin visual world);
+// the mobile contract (playwright.mobile.config.ts) checks the same dist;
+// the release smoke (playwright.release.config.ts) owns its CSP/font checks
+// on a root-mounted preview of the same dist.
+const APP_BASE_PATH = '/pmbus-calculator'
+const PORT = 4173
+process.env.E2E_APP_BASE_PATH = APP_BASE_PATH
+
 export default defineConfig({
   testDir: './tests/e2e',
-  // Deployment smoke tests run exclusively via playwright.deployment.config.ts
-  // against the live Pages URL; visual baselines via playwright.visual.config.ts;
-  // the mobile contract via playwright.mobile.config.ts. None may inflate the
-  // default suite.
+  // Dedicated suites own their configs: release/deployment smokes, the visual
+  // baselines and the mobile contract may not inflate the default suite.
   testIgnore: [
     '**/release.spec.ts',
     '**/visual.spec.ts',
@@ -30,7 +36,7 @@ export default defineConfig({
     ['json', { outputFile: './tests/e2e/e2e-results.json' }],
   ],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: `http://localhost:${PORT}`,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
@@ -44,9 +50,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    command: `npm run preview -- --port ${PORT} --strictPort --base ${APP_BASE_PATH}/`,
+    url: `http://localhost:${PORT}${APP_BASE_PATH}/`,
+    reuseExistingServer: false,
     timeout: 10_000,
   },
 })

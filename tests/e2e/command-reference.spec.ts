@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { appUrl } from './helpers/app-url'
 
 /**
  * Command reference contract:
@@ -10,7 +11,7 @@ import { test, expect } from '@playwright/test'
  */
 test.describe('命令参考（只读，无副作用）', () => {
   test('默认折叠；展开后显示全部 13 条命令行', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     const toggle = page.locator('#command-reference-toggle')
 
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
@@ -25,7 +26,7 @@ test.describe('命令参考（只读，无副作用）', () => {
   })
 
   test('展开/收起可重复且不影响模式与 raw', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     const toggle = page.locator('#command-reference-toggle')
     const hexInput = page.locator('input[placeholder="0000"]')
     const l11Tab = page.getByRole('tab', { name: /LINEAR11/ })
@@ -38,7 +39,7 @@ test.describe('命令参考（只读，无副作用）', () => {
   })
 
   test('表格展示命令码、事务、单位、格式来源与规范章节', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.locator('#command-reference-toggle').click()
 
     const vinRow = page.getByRole('row', { name: /READ_VIN/ })
@@ -54,7 +55,7 @@ test.describe('命令参考（只读，无副作用）', () => {
   })
 
   test('STATUS_WORD 行标注状态位且无数值转换', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.locator('#command-reference-toggle').click()
     const statusRow = page.getByRole('row', { name: /STATUS_WORD/ })
     await expect(statusRow).toContainText('状态位')
@@ -65,7 +66,7 @@ test.describe('命令参考（只读，无副作用）', () => {
   test('STATUS_WORD 行渲染 metadata note：通常 Read Word，写 0x0100 仅清除 UNKNOWN 位', async ({
     page,
   }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.locator('#command-reference-toggle').click()
     const statusRow = page.getByRole('row', { name: /STATUS_WORD/ })
     await expect(statusRow).toContainText('通常为 Read Word')
@@ -74,7 +75,7 @@ test.describe('命令参考（只读，无副作用）', () => {
   })
 
   test('READ_EIN 行渲染 Block Read 与规范字节数/有效载荷冲突说明', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.locator('#command-reference-toggle').click()
     const einRow = page.getByRole('row', { name: /READ_EIN/ })
     await expect(einRow).toContainText('读 Block Read')
@@ -85,7 +86,7 @@ test.describe('命令参考（只读，无副作用）', () => {
   })
 
   test('所有带 note 的命令行都实际渲染 metadata 的说明文本', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.locator('#command-reference-toggle').click()
     const noted = await page.locator('tr[data-command-note]:not([data-command-note=""])').count()
     expect(noted).toBeGreaterThan(0)
@@ -95,7 +96,7 @@ test.describe('命令参考（只读，无副作用）', () => {
   })
 
   test('阅读命令行不修改 DIRECT 系数', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /DIRECT/ }).click()
     const mInput = page.getByLabel('DIRECT 系数 m')
     await mInput.fill('5')
@@ -109,14 +110,14 @@ test.describe('命令参考（只读，无副作用）', () => {
   })
 
   test('不提供任何预设应用入口', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.locator('#command-reference-toggle').click()
     await expect(page.getByRole('button', { name: /应用.*预设/ })).toHaveCount(0)
     await expect(page.getByRole('combobox')).toHaveCount(0)
   })
 
   test('VOUT_COMMAND 行显示 follows_vout_mode 且模式不受影响', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     await page.locator('#command-reference-toggle').click()
 
@@ -129,7 +130,7 @@ test.describe('命令参考（只读，无副作用）', () => {
   })
 
   test('L16 VOUT_MODE 不被命令参考修改', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const voutModeInput = page.locator('#vout-mode-input')
     await voutModeInput.fill('18')
@@ -144,7 +145,7 @@ test.describe('命令参考（只读，无副作用）', () => {
 
   test('390px 视口展开命令参考：表格在容器内横向滚动，body 无横向溢出', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/')
+    await page.goto(appUrl())
     await page.locator('#command-reference-toggle').click()
     await expect(page.getByRole('row', { name: /READ_EIN/ })).toBeVisible()
 
