@@ -10,18 +10,31 @@
 // the shared python verifier available, SHA256SUMS.txt, REST metadata), and
 // executes the production script.
 //
-// Contract enforced:
+// Contract enforced (v2.5.14):
 //   - docs/RELEASING.md carries the operator draft gate WITH `--metadata`
 //     (the PR #74 fix; a positional metadata file is a usage error) and
-//     `--mode draft`;
-//   - .github/workflows/pages.yml carries the published gate with
-//     `--mode published`;
-//   - the documented argv runs the real verifier to exit 0;
+//     `--mode draft`; .github/workflows/pages.yml carries the published gate
+//     with `--mode published`. Sources are BOUND to their expected mode: a
+//     command documented in the wrong source, or a source left without its
+//     expected mode, fails the gate (a global per-mode bucket that let each
+//     side satisfy the other was the v2.5.13 false positive).
+//   - EVERY extracted command is either executed or explicitly rejected at
+//     the argv contract (unknown flag, duplicate flag, missing value,
+//     positional token, shell syntax, wrong mode) — none is silently skipped,
+//     and only a command that actually ran the real verifier to exit 0 is
+//     reported as execution validated.
+//   - Execution is bound to the checked root: process.execPath runs the
+//     verifier entry resolved from repoRoot (overridable via options) with
+//     cwd=repoRoot — a stale relative script path resolved against the
+//     parent process cwd was the v2.5.13 binding gap.
 //   - dropping `--metadata` (positional form) and an invalid `--mode` are
 //     rejected by the real parser with exit 2.
 //
-// No network, no GitHub calls, no trial release. Failure messages name the
-// source file, the command and the difference.
+// Supported argv syntax is deliberately small: plain whitespace-separated
+// argv with backslash continuations and one trailing ` > file` redirect.
+// Pipes, command substitution, lists and redirects are rejected, not
+// interpreted. No network, no GitHub calls, no trial release. Failure
+// messages name the source file, the command and the difference.
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -34,6 +47,27 @@ export const RELEASING_DOC = 'docs/RELEASING.md'
 export const PAGES_WORKFLOW = '.github/workflows/pages.yml'
 export const VERIFIER_SCRIPT = 'scripts/verify-downloaded-assets.mjs'
 export const REQUIRED_FLAGS = ['--metadata', '--dir', '--tag', '--repo', '--mode']
+// Flags the real verifier CLI (scripts/verify-downloaded-assets.mjs parseArgs)
+// accepts on a documented gate command. --help/-h is a usage aid, not a gate
+// invocation, and is deliberately unsupported here.
+export const KNOWN_FLAGS = [
+  '--metadata',
+  '--dir',
+  '--tag',
+  '--repo',
+  '--mode',
+  '--zip-name',
+  '--sums-name',
+]
+// These flag values are rebuilt against fixture data regardless of how the
+// doc spelled them (template token, quoted shell variable or literal), so
+// `${VAR}`-style spellings are legal exactly there.
+const FIXTURE_SUBSTITUTED_FLAGS = new Set(['--metadata', '--dir', '--tag', '--repo'])
+// Tokens containing any of these need a shell to interpret. The gate executes
+// plain argv only — no pipes, lists, redirects or command substitution — and
+// rejects them instead. The extractor already strips one trailing ` > file`
+// redirect; this is the backstop for anything else.
+const SHELL_SYNTAX = /[;|&`<>]|\$\(/
 
 /**
  * @param {string} importMetaUrl
@@ -69,27 +103,98 @@ export function tokenizeCommand(command) {
   return command.trim().split(/\s+/)
 }
 
-// Validate flag presence and mode value; returns human-readable problems.
+// Parse the documented argv (tokens after `node <script>`) against the real
+// verifier CLI contract. Returns ordered flag/value pairs plus human-readable
+// problems for anything the gate does not support — every documented command
+// is either parsed cleanly or explicitly rejected, never silently skipped.
+/**
+ * @param {string[]} tokens
+ * @returns {{ pairs: [string, string][], problems: string[] }}
+ */
+export function parseDocumentedArgs(tokens) {
+  /** @type {string[]} */
+  const problems = []
+  /** @type {[string, string][]} */
+  const pairs = []
+  if (tokens[0] !== 'node') {
+    problems.push(`command must invoke node (got ${JSON.stringify(tokens[0] ?? null)})`)
+  }
+  if (tokens[1] !== VERIFIER_SCRIPT) {
+    problems.push(
+      `command must invoke ${VERIFIER_SCRIPT} (got ${JSON.stringify(tokens[1] ?? null)})`,
+    )
+  }
+  /** @type {Set<string>} */
+  const seen = new Set()
+  const args = tokens.slice(2)
+  for (let index = 0; index < args.length; index++) {
+    const token = args[index]
+    if (SHELL_SYNTAX.test(token)) {
+      problems.push(
+        `unsupported shell syntax in ${JSON.stringify(token)} (documented commands are plain argv: no pipes, lists, redirects or command substitution)`,
+      )
+      continue
+    }
+    if (!token.startsWith('--')) {
+      problems.push(
+        `unexpected positional token ${JSON.stringify(token)} (the real CLI rejects positionals with exit 2; metadata must be passed as --metadata <file>)`,
+      )
+      continue
+    }
+    if (!KNOWN_FLAGS.includes(token)) {
+      problems.push(`unknown flag ${token} (the real CLI exits 2 on it)`)
+      continue
+    }
+    if (seen.has(token)) {
+      problems.push(`duplicate flag ${token}`)
+      continue
+    }
+    const value = args[index + 1]
+    if (value === undefined || value.startsWith('--')) {
+      problems.push(`missing value for ${token}`)
+      continue
+    }
+    if (SHELL_SYNTAX.test(value)) {
+      problems.push(`unsupported shell syntax in value of ${token}: ${JSON.stringify(value)}`)
+      index++
+      continue
+    }
+    if (token === '--mode' && value !== 'draft' && value !== 'published') {
+      problems.push(
+        `--mode must be a bare "draft" or "published" literal (got ${JSON.stringify(value)})`,
+      )
+      index++
+      continue
+    }
+    if (!FIXTURE_SUBSTITUTED_FLAGS.has(token) && /[$"}{]/.test(value)) {
+      problems.push(
+        `${token} is not rebuilt against fixture values, so its value must be a bare literal without quotes or template variables (got ${JSON.stringify(value)})`,
+      )
+      index++
+      continue
+    }
+    seen.add(token)
+    pairs.push([token, value])
+    index++
+  }
+  for (const flag of REQUIRED_FLAGS) {
+    if (!seen.has(flag)) problems.push(`missing required flag ${flag}`)
+  }
+  if (!seen.has('--metadata')) {
+    problems.push(
+      'metadata file must be passed as --metadata <file> (positional form is a usage error)',
+    )
+  }
+  return { pairs, problems }
+}
+
+// Validate flag presence, values and argv shape; returns human-readable problems.
 /**
  * @param {string[]} tokens
  * @returns {string[]}
  */
 export function validateTokens(tokens) {
-  /** @type {string[]} */
-  const problems = []
-  for (const flag of REQUIRED_FLAGS) {
-    if (!tokens.includes(flag)) problems.push(`missing required flag ${flag}`)
-  }
-  if (!tokens.includes('--metadata')) {
-    problems.push(
-      'metadata file must be passed as --metadata <file> (positional form is a usage error)',
-    )
-  }
-  const mode = tokens[tokens.indexOf('--mode') + 1]
-  if (mode !== 'draft' && mode !== 'published') {
-    problems.push(`--mode must be "draft" or "published" (got ${JSON.stringify(mode ?? null)})`)
-  }
-  return problems
+  return parseDocumentedArgs(tokens).problems
 }
 
 // Rebuild the documented argv against fixture values: every value consumed by
@@ -181,21 +286,28 @@ export function buildMetadata(repo, tag, dir, zipName, sumsName, draft) {
 
 /**
  * @param {string} repoRoot
- * @returns {{ ok: boolean, problems: string[], validated: string[] }}
+ * @param {{ verifierPath?: string }} [options] - explicit verifier entry path;
+ *   defaults to the production script resolved from repoRoot. Tests that feed
+ *   fixture documentation MUST pass the real script path explicitly so the
+ *   child never depends on this process's cwd.
+ * @returns {{ ok: boolean, problems: string[], validated: string[], executed: number }}
  */
-export function checkReleaseDocsCommands(repoRoot) {
+export function checkReleaseDocsCommands(repoRoot, options = {}) {
   /** @type {string[]} */
   const problems = []
   /** @type {string[]} */
   const validated = []
+  const verifierPath = options.verifierPath ?? path.join(repoRoot, VERIFIER_SCRIPT)
 
+  // Source-mode binding: a documented gate command only counts for the source
+  // that owns its mode (v2.5.14; the v2.5.13 global per-mode bucket let each
+  // source satisfy the other's contract).
   const sources = [
     { file: RELEASING_DOC, expectedMode: 'draft' },
     { file: PAGES_WORKFLOW, expectedMode: 'published' },
   ]
-
-  /** @type {Record<string, string[]>} */
-  const commandsByMode = { draft: [], published: [] }
+  /** @type {{ source: (typeof sources)[number], command: string, tokens: string[], mode: string }[]} */
+  const parsed = []
   for (const source of sources) {
     const filePath = path.join(repoRoot, source.file)
     if (!fs.existsSync(filePath)) {
@@ -211,24 +323,28 @@ export function checkReleaseDocsCommands(repoRoot) {
       const tokens = tokenizeCommand(command)
       const tokenProblems = validateTokens(tokens)
       if (tokenProblems.length > 0) {
-        problems.push(`${source.file}: ${tokenProblems.join('; ')}\n  command: ${command}`)
+        problems.push(
+          `${source.file}: argv contract violated (${tokenProblems.join('; ')})\n  command: ${command}`,
+        )
         continue
       }
       const mode = tokens[tokens.indexOf('--mode') + 1]
-      commandsByMode[mode].push(command)
-      validated.push(`${source.file}: ${command}`)
+      if (mode !== source.expectedMode) {
+        problems.push(
+          `${source.file}: command runs --mode ${mode} but this source requires --mode ${source.expectedMode}\n  command: ${command}`,
+        )
+        continue
+      }
+      parsed.push({ source, command, tokens, mode })
+    }
+    if (!parsed.some((entry) => entry.source === source)) {
+      problems.push(`${source.file}: no --mode ${source.expectedMode} verifier invocation found`)
     }
   }
+  if (problems.length > 0) return { ok: false, problems, validated, executed: 0 }
 
-  if (commandsByMode.draft.length === 0) {
-    problems.push(`${RELEASING_DOC}: no --mode draft verifier invocation found`)
-  }
-  if (commandsByMode.published.length === 0) {
-    problems.push(`${PAGES_WORKFLOW}: no --mode published verifier invocation found`)
-  }
-  if (problems.length > 0) return { ok: false, problems, validated }
-
-  // Real end-to-end execution on offline fixtures.
+  // Real end-to-end execution on offline fixtures, shared per mode so unrelated
+  // commands do not rebuild the zip or relaunch python for every negative.
   const fixtureTag = 'v9.9.9'
   const fixtureRepo = 'owner/repo'
   const zipName = `pmbus-calculator-${fixtureTag}-web.zip`
@@ -243,9 +359,14 @@ export function checkReleaseDocsCommands(repoRoot) {
     '</body></html>',
   ].join('\n')
 
+  /** @type {Record<string, { dir: string, metadataPath: string }>} */
+  const fixtures = {}
+  /** @type {string[]} */
+  const fixtureDirs = []
+  let fixtureFailed = false
   for (const mode of /** @type {const} */ (['draft', 'published'])) {
-    const command = commandsByMode[mode][0]
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-docs-contract-'))
+    fixtureDirs.push(dir)
     try {
       buildFixtureZip(path.join(dir, zipName), indexHtml)
       fs.writeFileSync(
@@ -264,77 +385,121 @@ export function checkReleaseDocsCommands(repoRoot) {
       )
       const metadataPath = path.join(dir, 'release-metadata.json')
       fs.writeFileSync(metadataPath, JSON.stringify(metadata))
-      const argv = rebuildArgv(tokenizeCommand(command), {
-        tag: fixtureTag,
-        repo: fixtureRepo,
-        metadataPath,
-        dir,
-      })
-      const result = spawnSync('node', argv.slice(1), { encoding: 'utf8', timeout: 60_000 })
-      if (result.status !== 0) {
-        problems.push(
-          `${mode} fixture run exited ${result.status} (expected 0)\n  command: ${command}\n  stderr: ${(result.stderr || '').trim()}`,
-        )
-      }
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true })
-    }
-  }
-
-  // Negative contracts against the REAL CLI parser (PR #74 regression): the
-  // documented draft command must fail when --metadata is dropped (positional
-  // form) or the mode is misspelled.
-  const draftCommand = commandsByMode.draft[0]
-  /** @type {{ name: string, mutate: (tokens: string[]) => string[] }[]} */
-  const negatives = [
-    {
-      name: 'positional metadata (no --metadata)',
-      mutate: (tokens) => tokens.filter((t) => t !== '--metadata'),
-    },
-    {
-      name: 'invalid --mode',
-      mutate: (tokens) => tokens.map((t) => (t === 'draft' ? 'bogus' : t)),
-    },
-  ]
-  for (const negative of negatives) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-docs-contract-'))
-    try {
-      buildFixtureZip(path.join(dir, zipName), indexHtml)
-      fs.writeFileSync(
-        path.join(dir, sumsName),
-        `${createHash('sha256')
-          .update(fs.readFileSync(path.join(dir, zipName)))
-          .digest('hex')}  ${zipName}\n`,
+      fixtures[mode] = { dir, metadataPath }
+    } catch (error) {
+      fixtureFailed = true
+      problems.push(
+        `${mode} fixture build failed: ${error instanceof Error ? error.message : String(error)}`,
       )
-      const metadata = buildMetadata(fixtureRepo, fixtureTag, dir, zipName, sumsName, true)
-      const metadataPath = path.join(dir, 'release-metadata.json')
-      fs.writeFileSync(metadataPath, JSON.stringify(metadata))
-      const mutated = negative.mutate(tokenizeCommand(draftCommand))
-      const argv = rebuildArgv(mutated, {
-        tag: fixtureTag,
-        repo: fixtureRepo,
-        metadataPath,
-        dir,
-      })
-      const result = spawnSync('node', argv.slice(1), { encoding: 'utf8', timeout: 60_000 })
-      if (result.status !== 2) {
-        problems.push(
-          `negative "${negative.name}" exited ${result.status} (expected 2)\n  command: ${draftCommand}`,
-        )
-      }
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true })
     }
   }
+  if (fixtureFailed) {
+    for (const dir of fixtureDirs) fs.rmSync(dir, { recursive: true, force: true })
+    return { ok: false, problems, validated, executed: 0 }
+  }
+  // The entry script must exist at the bound path before any run: node itself
+  // exits 1 (not a spawn error) on a missing module, which would otherwise be
+  // misreported as a verifier failure instead of a repoRoot binding failure.
+  if (!fs.existsSync(verifierPath)) {
+    for (const dir of fixtureDirs) fs.rmSync(dir, { recursive: true, force: true })
+    problems.push(
+      `verifier entry script not found: ${verifierPath} (repoRoot binding or options.verifierPath is wrong)`,
+    )
+    return { ok: false, problems, validated, executed: 0 }
+  }
 
-  return { ok: problems.length === 0, problems, validated }
+  try {
+    // Execute EVERY parsed documented command against the real verifier. Only
+    // an actual exit 0 is recorded as execution validated (v2.5.14; the list
+    // used to be filled before any run).
+    for (const entry of parsed) {
+      const fixture = fixtures[entry.mode]
+      const rebuilt = rebuildArgv(entry.tokens, {
+        tag: fixtureTag,
+        repo: fixtureRepo,
+        metadataPath: fixture.metadataPath,
+        dir: fixture.dir,
+      })
+      const argv = [process.execPath, verifierPath, ...rebuilt.slice(2)]
+      const result = spawnSync(argv[0], argv.slice(1), {
+        encoding: 'utf8',
+        timeout: 60_000,
+        cwd: repoRoot,
+      })
+      if (result.error !== undefined && result.error !== null) {
+        if (/** @type {{code?: string}} */ (result.error).code === 'ETIMEDOUT') {
+          problems.push(
+            `${entry.source.file}: command timed out after 60s\n  command: ${entry.command}`,
+          )
+        } else {
+          const code = /** @type {{code?: string}} */ (result.error).code
+          problems.push(
+            `${entry.source.file}: failed to execute verifier entry script ${verifierPath}${code ? ` (${code})` : ''}\n  command: ${entry.command}`,
+          )
+        }
+      } else if (result.signal !== null) {
+        problems.push(
+          `${entry.source.file}: verifier killed by signal ${result.signal}\n  command: ${entry.command}`,
+        )
+      } else if (result.status !== 0) {
+        problems.push(
+          `${entry.source.file}: fixture run exited ${result.status} (expected 0)\n  command: ${entry.command}\n  stderr: ${(result.stderr || '').trim()}`,
+        )
+      } else {
+        validated.push(`${entry.source.file}: ${entry.command}`)
+      }
+    }
+
+    // Negative contracts against the REAL CLI parser (PR #74 regression): the
+    // documented draft command must fail when --metadata is dropped (positional
+    // form) or the mode is misspelled.
+    const draftEntry = parsed.find((entry) => entry.mode === 'draft')
+    if (draftEntry === undefined) {
+      problems.push(`${RELEASING_DOC}: no draft command available for negative contracts`)
+    } else {
+      /** @type {{ name: string, mutate: (tokens: string[]) => string[] }[]} */
+      const negatives = [
+        {
+          name: 'positional metadata (no --metadata)',
+          mutate: (tokens) => tokens.filter((t) => t !== '--metadata'),
+        },
+        {
+          name: 'invalid --mode',
+          mutate: (tokens) => tokens.map((t) => (t === 'draft' ? 'bogus' : t)),
+        },
+      ]
+      for (const negative of negatives) {
+        // The draft fixture dir and its metadata file from the positive runs
+        // are reused read-only: the verifier never mutates its inputs.
+        const mutated = negative.mutate(tokenizeCommand(draftEntry.command))
+        const rebuilt = rebuildArgv(mutated, {
+          tag: fixtureTag,
+          repo: fixtureRepo,
+          metadataPath: fixtures.draft.metadataPath,
+          dir: fixtures.draft.dir,
+        })
+        const argv = [process.execPath, verifierPath, ...rebuilt.slice(2)]
+        const result = spawnSync(argv[0], argv.slice(1), {
+          encoding: 'utf8',
+          timeout: 60_000,
+          cwd: repoRoot,
+        })
+        if (result.status !== 2) {
+          problems.push(
+            `negative "${negative.name}" exited ${result.status} (expected 2)\n  command: ${draftEntry.command}`,
+          )
+        }
+      }
+    }
+  } finally {
+    for (const dir of fixtureDirs) fs.rmSync(dir, { recursive: true, force: true })
+  }
+
+  return { ok: problems.length === 0, problems, validated, executed: parsed.length }
 }
 
 function main() {
   const report = checkReleaseDocsCommands(repoRootFromScript(import.meta.url))
-  for (const entry of report.validated) {
-    process.stdout.write(`release-docs-contract: validated ${entry}\n`)
-  }
   if (!report.ok) {
     for (const problem of report.problems) {
       process.stderr.write(`release-docs-contract: FAIL ${problem}\n`)
@@ -342,8 +507,11 @@ function main() {
     process.exitCode = 1
     return
   }
+  for (const entry of report.validated) {
+    process.stdout.write(`release-docs-contract: validated ${entry}\n`)
+  }
   process.stdout.write(
-    'release-docs-contract: OK (operator docs and Pages workflow match the real verifier CLI)\n',
+    `release-docs-contract: OK (${report.executed} documented command(s) executed against the real verifier CLI; sources bound to their modes)\n`,
   )
 }
 
