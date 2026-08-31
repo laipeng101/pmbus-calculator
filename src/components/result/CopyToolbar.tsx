@@ -3,6 +3,8 @@ import type { CalculatorViewModel } from '../../app/view-model'
 import type { AppState } from '../../app/state'
 import { copyTextToClipboard } from '../../app/copy-utils'
 import { getCopyHexLabel } from '../../app/result-presentation'
+import ControlTooltip from '../help/ControlTooltip'
+import type { ControlTriggerProps } from '../help/ControlTooltip'
 import { CopyIcon } from '../icons/Icon'
 
 interface Props {
@@ -73,43 +75,78 @@ export default function CopyToolbar({
   return (
     <div className="copy-toolbar space-y-3">
       <div className="grid grid-cols-6 gap-2">
-        <CopyButton
-          className="col-span-2"
-          onClick={() => copy(copyHex, copyHexLabel)}
-          label={copyHexLabel}
-        />
-        <CopyButton
-          className="col-span-2"
-          onClick={() => copy(vm.rawBytesLE, 'LE bytes')}
-          label="LE 字节"
-        />
-        <CopyButton
-          className="col-span-2"
-          onClick={() => copy(vm.rawBytesBE, 'BE bytes')}
-          label="BE 字节"
-        />
-        <CopyButton
-          className="col-span-3"
-          onClick={() => {
-            if (!physicalCopyUnavailable) {
-              void copy(physicalCopyOverride ? physicalCopyOverride.text : vm.valueText, '物理值')
-            }
+        <ControlTooltip help="copy-hex" params={{ endian: copyPrefs.endian }}>
+          {(triggerProps) => (
+            <CopyButton
+              className="col-span-2"
+              triggerProps={triggerProps}
+              onClick={() => copy(copyHex, copyHexLabel)}
+              label={copyHexLabel}
+            />
+          )}
+        </ControlTooltip>
+        <ControlTooltip help="copy-le-bytes" params={undefined}>
+          {(triggerProps) => (
+            <CopyButton
+              className="col-span-2"
+              triggerProps={triggerProps}
+              onClick={() => copy(vm.rawBytesLE, 'LE bytes')}
+              label="LE 字节"
+            />
+          )}
+        </ControlTooltip>
+        <ControlTooltip help="copy-be-bytes" params={undefined}>
+          {(triggerProps) => (
+            <CopyButton
+              className="col-span-2"
+              triggerProps={triggerProps}
+              onClick={() => copy(vm.rawBytesBE, 'BE bytes')}
+              label="BE 字节"
+            />
+          )}
+        </ControlTooltip>
+        <ControlTooltip
+          help="copy-physical"
+          params={{
+            available: !physicalCopyUnavailable,
+            usesOverride: physicalCopyOverride != null,
+            unavailableReason: vm.physicalValueCopy?.reason,
           }}
-          label="物理值"
-          disabled={physicalCopyUnavailable}
-          describedBy={
-            physicalCopyUnavailable
-              ? 'physical-value-copy-reason'
-              : physicalCopyOverride
-                ? 'physical-value-copy-note'
-                : undefined
-          }
-        />
-        <CopyButton
-          className="col-span-3"
-          onClick={() => copy(vm.cMacroText, 'C 宏')}
-          label="C 代码"
-        />
+        >
+          {(triggerProps) => (
+            <CopyButton
+              className="col-span-3"
+              triggerProps={triggerProps}
+              onClick={() => {
+                if (!physicalCopyUnavailable) {
+                  void copy(
+                    physicalCopyOverride ? physicalCopyOverride.text : vm.valueText,
+                    '物理值',
+                  )
+                }
+              }}
+              label="物理值"
+              disabled={physicalCopyUnavailable}
+              describedBy={
+                physicalCopyUnavailable
+                  ? 'physical-value-copy-reason'
+                  : physicalCopyOverride
+                    ? 'physical-value-copy-note'
+                    : undefined
+              }
+            />
+          )}
+        </ControlTooltip>
+        <ControlTooltip help="copy-c-macro" params={undefined}>
+          {(triggerProps) => (
+            <CopyButton
+              className="col-span-3"
+              triggerProps={triggerProps}
+              onClick={() => copy(vm.cMacroText, 'C 宏')}
+              label="C 代码"
+            />
+          )}
+        </ControlTooltip>
       </div>
 
       {physicalCopyUnavailable && vm.physicalValueCopy && (
@@ -133,12 +170,26 @@ export default function CopyToolbar({
           <span id="copy-hex-format-label" className="copy-pref-group-label">
             Hex 格式
           </span>
-          <PreferenceButton pressed={copyPrefs.prefix0x} onClick={onTogglePrefix} label="0x 前缀" />
-          <PreferenceButton
-            pressed={copyPrefs.spaceBetweenBytes}
-            onClick={onToggleSpace}
-            label="字节空格"
-          />
+          <ControlTooltip help="copy-pref-prefix" params={{ pressed: copyPrefs.prefix0x }}>
+            {(triggerProps) => (
+              <PreferenceButton
+                triggerProps={triggerProps}
+                pressed={copyPrefs.prefix0x}
+                onClick={onTogglePrefix}
+                label="0x 前缀"
+              />
+            )}
+          </ControlTooltip>
+          <ControlTooltip help="copy-pref-space" params={{ pressed: copyPrefs.spaceBetweenBytes }}>
+            {(triggerProps) => (
+              <PreferenceButton
+                triggerProps={triggerProps}
+                pressed={copyPrefs.spaceBetweenBytes}
+                onClick={onToggleSpace}
+                label="字节空格"
+              />
+            )}
+          </ControlTooltip>
         </div>
         <div
           role="group"
@@ -149,16 +200,32 @@ export default function CopyToolbar({
             Hex 复制顺序
           </span>
           <div className="inline-flex rounded-md p-0.5 surface-muted border-default">
-            <EndianButton
-              pressed={copyPrefs.endian === 'le'}
-              onClick={() => onCopyEndianChange('le')}
-              label="LE"
-            />
-            <EndianButton
-              pressed={copyPrefs.endian === 'be'}
-              onClick={() => onCopyEndianChange('be')}
-              label="BE"
-            />
+            <ControlTooltip
+              help="copy-pref-endian-le"
+              params={{ pressed: copyPrefs.endian === 'le' }}
+            >
+              {(triggerProps) => (
+                <EndianButton
+                  triggerProps={triggerProps}
+                  pressed={copyPrefs.endian === 'le'}
+                  onClick={() => onCopyEndianChange('le')}
+                  label="LE"
+                />
+              )}
+            </ControlTooltip>
+            <ControlTooltip
+              help="copy-pref-endian-be"
+              params={{ pressed: copyPrefs.endian === 'be' }}
+            >
+              {(triggerProps) => (
+                <EndianButton
+                  triggerProps={triggerProps}
+                  pressed={copyPrefs.endian === 'be'}
+                  onClick={() => onCopyEndianChange('be')}
+                  label="BE"
+                />
+              )}
+            </ControlTooltip>
           </div>
         </div>
       </div>
@@ -183,19 +250,24 @@ function CopyButton({
   className = '',
   disabled = false,
   describedBy,
+  triggerProps,
 }: {
   onClick: () => void
   label: string
   className?: string
   disabled?: boolean
   describedBy?: string
+  triggerProps?: ControlTriggerProps
 }) {
   return (
     <button
+      {...triggerProps}
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-describedby={describedBy}
+      aria-describedby={
+        triggerProps?.['aria-describedby'] != null ? triggerProps['aria-describedby'] : describedBy
+      }
       className={`surface-muted border-default color-text-primary flex min-h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
       <CopyIcon size={14} />
@@ -208,13 +280,16 @@ function PreferenceButton({
   pressed,
   onClick,
   label,
+  triggerProps,
 }: {
   pressed: boolean
   onClick: () => void
   label: string
+  triggerProps?: ControlTriggerProps
 }) {
   return (
     <button
+      {...triggerProps}
       type="button"
       onClick={onClick}
       aria-pressed={pressed}
@@ -229,13 +304,16 @@ function EndianButton({
   pressed,
   onClick,
   label,
+  triggerProps,
 }: {
   pressed: boolean
   onClick: () => void
   label: string
+  triggerProps?: ControlTriggerProps
 }) {
   return (
     <button
+      {...triggerProps}
       type="button"
       onClick={onClick}
       aria-pressed={pressed}

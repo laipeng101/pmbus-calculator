@@ -125,4 +125,124 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     await expect(button).not.toHaveAttribute('aria-expanded')
     await expect(button).not.toHaveAttribute('title')
   })
+
+  test('模式 tab：hover 打开说明（含 Ctrl 快捷键），click 只切换模式', async ({ page }) => {
+    await settle(page)
+
+    const tab = page.getByRole('tab', { name: /LINEAR16/ })
+    await tab.hover()
+    const tooltip = page.getByTestId('control-tooltip-mode-tab-linear16')
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText('切换到 LINEAR16 换算器')
+    await expect(tooltip).toContainText('Ctrl+2')
+
+    // hover 后 click：模式切换恰好发生一次，tooltip 不劫持。
+    await tab.click()
+    await expect(page.getByRole('tab', { name: /LINEAR16/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(page.locator('#mode-panel')).toContainText(/LINEAR16/)
+  })
+
+  test('N 锁定按钮：hover 说明随锁定状态变化，原生 title 已移除', async ({ page }) => {
+    await settle(page)
+
+    const lock = page.locator('.n-lock-button')
+    await expect(lock).not.toHaveAttribute('title')
+    await lock.hover()
+    const tooltip = page.getByTestId('control-tooltip-l11-n-lock')
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText('自动')
+
+    // click 切换状态后说明跟随（先离开再 hover，触发新的 hover 打开）。
+    // click 会原地替换图标节点，Chromium 可能在旧坐标补发一次 phantom
+    // pointerenter；等一帧让该伪事件先落地再移开指针，避免误判为悬停不关。
+    await lock.click()
+    await page.waitForTimeout(120)
+    await page.mouse.move(8, 300)
+    await expect(tooltip).toHaveCount(0)
+    await lock.hover()
+    await expect(page.getByTestId('control-tooltip-l11-n-lock')).toContainText('手动')
+  })
+
+  test('VID 下相对值禁用原因有可见路径，且全部交互控件无原生 title', async ({ page }) => {
+    await settle(page)
+    await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+
+    await page.getByRole('radio', { name: 'VID' }).click()
+    const relRadio = page.getByRole('radio', { name: '相对值' })
+    await expect(relRadio).toBeDisabled()
+    // 键盘/触屏可达的可见禁用原因（原生 title 已删除）。
+    await expect(page.getByTestId('vout-rel-disabled-reason')).toContainText(
+      '相对值不适用于 VID（Part II §8.5.3）',
+    )
+
+    // 运行时全量扫描：生产交互控件不携带原生 title 帮助。
+    const titled = await page.evaluate(() => {
+      const controls = document.querySelectorAll(
+        'button, [role="tab"], [role="radio"], summary, a[href]',
+      )
+      return Array.from(controls)
+        .filter((el) => el.hasAttribute('title'))
+        .map((el) => el.textContent?.slice(0, 24) ?? el.tagName)
+    })
+    expect(titled).toEqual([])
+  })
+
+  test('复制工具与偏好按钮：hover 说明存在且物理值禁用原因来自同一模板', async ({ page }) => {
+    await settle(page)
+
+    const hexCopy = page.getByRole('button', { name: /Hex（LE）/ })
+    await hexCopy.hover()
+    await expect(page.getByTestId('control-tooltip-copy-hex')).toContainText('复制顺序')
+
+    const prefix = page.getByRole('button', { name: '0x 前缀' })
+    await prefix.hover()
+    const prefixTooltip = page.getByTestId('control-tooltip-copy-pref-prefix')
+    await expect(prefixTooltip).toBeVisible()
+    await expect(prefixTooltip).toContainText('当前开启')
+
+    // click 原动作不受影响：偏好真实翻转。
+    await prefix.click()
+    await expect(prefix).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  test('位编辑按钮：hover 显示动态位号/区域/当前值，点击仍翻转', async ({ page }) => {
+    await settle(page)
+
+    // bit 15（原始数据位网格首位）。
+    const bit = page.locator('.bitfield-bit').first()
+    await bit.hover()
+    const tooltip = page.getByTestId('control-tooltip-bit-toggle').first()
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText('第 15 位')
+    await expect(tooltip).toContainText('当前为 0')
+
+    await bit.click()
+    await expect(bit).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  test('disclosure 控件：计算过程/命令参考 hover 有说明，展开收起不受影响', async ({ page }) => {
+    await settle(page)
+
+    const steps = page.getByTestId('calculation-steps-summary')
+    await steps.hover()
+    const stepsTooltip = page.getByTestId('control-tooltip-steps-toggle')
+    await expect(stepsTooltip).toBeVisible()
+    await expect(stepsTooltip).toContainText('计算过程')
+
+    const commandRef = page.locator('#command-reference-toggle')
+    await commandRef.hover()
+    await expect(page.getByTestId('control-tooltip-command-ref-toggle')).toBeVisible()
+    // 命令参考 section（data-testid=command-reference）始终渲染，展开态看
+    // aria-expanded 与表格容器，不能对 section 断言 unmount。
+    await commandRef.click()
+    await expect(commandRef).toHaveAttribute('aria-expanded', 'true')
+    const tableShell = page.locator('.command-ref-table-shell')
+    await expect(tableShell).toBeVisible()
+    await commandRef.click()
+    await expect(commandRef).toHaveAttribute('aria-expanded', 'false')
+    await expect(tableShell).toHaveCount(0)
+  })
 })

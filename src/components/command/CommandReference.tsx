@@ -4,6 +4,7 @@ import {
   describeEncodingRule,
   describeTransactions,
 } from '../../legacy/command-metadata'
+import ControlTooltip from '../help/ControlTooltip'
 import TechnicalTerm from '../term/TechnicalTerm'
 import { ChevronDownIcon, ChevronUpIcon } from '../icons/Icon'
 
@@ -22,18 +23,23 @@ export default function CommandReference() {
 
   return (
     <section aria-label="命令参考" data-testid="command-reference" className="px-4 py-2 sm:px-0">
-      <button
-        type="button"
-        id="command-reference-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="command-ref-button flex h-10 w-full items-center justify-between rounded-lg px-4 text-left text-sm transition-colors"
-      >
-        <span className="font-medium">命令参考（只读）</span>
-        <span className="inline-flex" aria-hidden="true">
-          {open ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
-        </span>
-      </button>
+      <ControlTooltip help="command-ref-toggle" params={{ count: commands.length }}>
+        {(triggerProps) => (
+          <button
+            {...triggerProps}
+            type="button"
+            id="command-reference-toggle"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+            className="command-ref-button flex h-10 w-full items-center justify-between rounded-lg px-4 text-left text-sm transition-colors"
+          >
+            <span className="font-medium">命令参考（只读）</span>
+            <span className="inline-flex" aria-hidden="true">
+              {open ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
+            </span>
+          </button>
+        )}
+      </ControlTooltip>
 
       {open && (
         <div className="command-ref-table-shell mt-2 overflow-x-auto rounded-lg">

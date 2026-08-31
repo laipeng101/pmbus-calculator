@@ -11,6 +11,7 @@ import LinearFormulaEditor from '../formula/LinearFormulaEditor'
 import VoutModeComposer from './VoutModeComposer'
 import HalfSpecialCard from './HalfSpecialCard'
 import TechnicalTerm from '../term/TechnicalTerm'
+import ControlTooltip from '../help/ControlTooltip'
 import { MODE_PANEL_ID, modeTabId } from './modeTabs'
 import { LockIcon, UnlockIcon } from '../icons/Icon'
 import MathFormula from '../math/MathFormula'
@@ -114,16 +115,20 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 />
               }
               lockButton={
-                <button
-                  type="button"
-                  onClick={() => dispatch({ type: 'l11/toggle-auto-n' })}
-                  className="n-lock-button flex min-h-10 min-w-10 items-center justify-center rounded-md px-2 py-1.5 transition-colors"
-                  title={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
-                  aria-label={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
-                  aria-pressed={state.l11.autoN}
-                >
-                  {state.l11.autoN ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
-                </button>
+                <ControlTooltip help="l11-n-lock" params={{ locked: state.l11.autoN }}>
+                  {(triggerProps) => (
+                    <button
+                      {...triggerProps}
+                      type="button"
+                      onClick={() => dispatch({ type: 'l11/toggle-auto-n' })}
+                      className="n-lock-button flex min-h-10 min-w-10 items-center justify-center rounded-md px-2 py-1.5 transition-colors"
+                      aria-label={state.l11.autoN ? 'N 已锁定（自动）' : 'N 已解锁（手动）'}
+                      aria-pressed={state.l11.autoN}
+                    >
+                      {state.l11.autoN ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
+                    </button>
+                  )}
+                </ControlTooltip>
               }
             />
 

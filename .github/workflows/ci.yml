@@ -90,6 +90,10 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm run check:inline-style
 
+      - name: Native title help gate
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run check:no-title-help
+
       - name: Specification manifest check
         if: steps.scope.outputs.run_full != 'false'
         run: npm run specs:check

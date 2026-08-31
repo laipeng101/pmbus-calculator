@@ -1,5 +1,6 @@
 import type { AppState } from '../../app/state'
 import type { AppMode } from '../../app/state'
+import ControlTooltip from '../help/ControlTooltip'
 import { ChevronDownIcon, ChevronUpIcon } from '../icons/Icon'
 
 interface Props {
@@ -24,19 +25,24 @@ export default function DebugDrawer({ open, state, onToggle }: Props) {
 
   return (
     <div className="mt-4">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-label={open ? '收起调试面板' : '展开调试面板'}
-        aria-expanded={open}
-        className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors panel-surface-muted color-text-muted"
-      >
-        <span className="inline-flex" aria-hidden="true">
-          {open ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
-        </span>
-        <span>调试面板</span>
-        <span className="debug-dot ml-1 inline-block h-2 w-2 rounded-full" data-open={open} />
-      </button>
+      <ControlTooltip help="debug-toggle" params={{ open }}>
+        {(triggerProps) => (
+          <button
+            {...triggerProps}
+            type="button"
+            onClick={onToggle}
+            aria-label={open ? '收起调试面板' : '展开调试面板'}
+            aria-expanded={open}
+            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors panel-surface-muted color-text-muted"
+          >
+            <span className="inline-flex" aria-hidden="true">
+              {open ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+            </span>
+            <span>调试面板</span>
+            <span className="debug-dot ml-1 inline-block h-2 w-2 rounded-full" data-open={open} />
+          </button>
+        )}
+      </ControlTooltip>
 
       {open && (
         <div className="mt-2 space-y-3 rounded-xl p-4 text-sm panel-surface-muted">
