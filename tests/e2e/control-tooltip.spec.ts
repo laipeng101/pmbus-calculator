@@ -2,8 +2,9 @@ import { test, expect, type Page } from '@playwright/test'
 import { appUrl } from './helpers/app-url'
 
 /**
- * v2.6.0 控件 tooltip 合同：按钮/按钮型控件悬停即显示、移开即消失、键盘
- * focus-visible 打开、click 原动作只执行一次、与术语气泡共享全局单开。
+ * v2.6.0 控件 tooltip 合同：按钮/按钮型控件悬停即显示、键盘 focus-visible
+ * 打开、click 原动作只执行一次、与术语气泡共享全局单开；v2.6.2 起满足
+ * WCAG 2.2 SC 1.4.13——指针移入浮层保持可见，同时离开触发器与浮层才关闭。
  */
 
 const THEME_TOOLTIP = '[data-testid="control-tooltip-theme-toggle"]'
@@ -19,7 +20,9 @@ async function settle(page: Page) {
 }
 
 test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
-  test('hover 打开、指针移开立即关闭、tooltip 为非交互 role=tooltip', async ({ page }) => {
+  test('hover 打开、指针移入 tooltip 保持（SC 1.4.13 Hoverable）、离开两者后关闭', async ({
+    page,
+  }) => {
     await settle(page)
 
     const button = page.locator(THEME_BUTTON)
@@ -30,7 +33,17 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     await expect(button).toHaveAttribute('aria-describedby', /.+/)
     await expect(tooltip).toContainText('当前主题')
 
-    // 指针移开即消失，不要求点击、不要求移入气泡。
+    // WCAG 2.2 SC 1.4.13：指针从触发器移入浮层（跨过 8px offset 间隙），
+    // 浮层保持可见、可悬停，触发器 aria-describedby 不变。
+    await tooltip.hover()
+    await expect(tooltip).toBeVisible()
+    await expect(button).toHaveAttribute('aria-describedby', /.+/)
+
+    // 返回路径：从浮层移回触发器同样保持打开。
+    await button.hover()
+    await expect(tooltip).toBeVisible()
+
+    // 指针同时离开触发器与浮层后才关闭（确定性短 grace，覆盖间隙穿越）。
     await page.mouse.move(8, 300)
     await expect(tooltip).toHaveCount(0)
     await expect(button).not.toHaveAttribute('aria-describedby')
