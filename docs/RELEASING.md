@@ -19,6 +19,13 @@
   发布前必须复核仓库设置 `immutable-releases` 已启用（见发布流程 §4 第 0 步）；
   publish 后 Release API 必须报告 `immutable: true`。该设置只影响启用之后的
   新 Release，不追溯旧版本，也不替代 draft→上传→回验→publish 的流程纪律。
+- **历史 mutable Release 的操作停止策略（v2.6.2 起 verifier 强制）**：`v2.5.13`
+  及之后的 Release 是 immutable；`v2.5.12` 及更早的 Release 是 mutable。手动
+  `workflow_dispatch` 部署会在被 dispatch 的 tag ref 上运行该 tag tree 自带的
+  workflow 与校验脚本，不受 main 上新门禁保护——因此历史 mutable Release
+  **不得**作为手动 Pages 部署/回滚目标；不得删除、重建或移动旧 tag/Release；
+  新代码不追溯改变旧 tag 内的 workflow/script。手动部署只允许针对其 tree 已
+  包含 immutable 门禁（v2.6.2 起）的 Release。
 - `package.json` 版本必须和最新稳定 tag 一致。
 - 禁止在验证完成前创建或推送 tag；tag 永远建立在已通过完整验证的精确 main merge SHA 上。
 - Release 和 Pages 是实时发布状态的权威来源；README 不重复维护“最新 Pages 已成功”类状态。
@@ -149,7 +156,9 @@ npm run test:e2e:visual
    `scripts/verify-downloaded-assets.mjs`），它在进程内复用
    `release-assets-verify.mjs` 的完整元数据合同（tag/prerelease、资产存在
    且名称唯一、`state == "uploaded"`、`size > 0`、draft 模式接受 GitHub 的
-   `untagged-<hex>` 占位 URL），并叠加本地字节校验：文件存在且为普通文件、
+   `untagged-<hex>` 占位 URL；published 模式自 v2.6.2 起额外强制
+   `immutable: true`——GitHub draft 尚不可 immutable，draft 模式不执行
+   该检查），并叠加本地字节校验：文件存在且为普通文件、
    本地字节数等于元数据 size、`SHA256SUMS.txt` 严格格式合同、ZIP 的
    SHA-256（node:crypto，跨平台）与共享 python ZIP 安全校验。失败按类分级
    报告：元数据 2-8、本地缺失 10、大小不符 11、sums 合同 12、checksum 13、

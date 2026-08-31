@@ -16,10 +16,12 @@
  * Checks (in order, each failure class with its own exit code):
  *   - release metadata contract — delegated IN-PROCESS to
  *     scripts/release-assets-verify.mjs `resolveReleaseAssets` (exit 2-8:
- *     tag/draft/prerelease, asset presence, uniqueness, uploaded state,
- *     positive size, canonical URL policy). The published mode keeps the
- *     strict canonical tag URL contract; only draft mode accepts GitHub's
- *     untagged placeholder. Nothing here relaxes the Pages downloader.
+ *     tag/draft/prerelease, published-mode immutable gate (v2.6.2), asset
+ *     presence, uniqueness, uploaded state, positive size, canonical URL
+ *     policy). The published mode keeps the strict canonical tag URL
+ *     contract and requires `immutable: true`; only draft mode accepts
+ *     GitHub's untagged placeholder and skips the immutable check. Nothing
+ *     here relaxes the Pages downloader.
  *   - local presence (exit 10): each expected asset exists in --dir as a
  *     regular file (exact name; no subdirectories, no symlinks).
  *   - local size (exit 11): the local byte size equals the metadata size.

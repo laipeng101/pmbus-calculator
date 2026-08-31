@@ -152,6 +152,27 @@ describe('pages.yml preserved release-security contracts', () => {
     expect(workflow).toContain('node scripts/verify-downloaded-assets.mjs')
   })
 
+  it('gates any download, extraction and deployment behind the published-mode metadata contract', () => {
+    // The published immutable gate lives in the shared
+    // release-assets-verify.mjs metadata contract (v2.6.2). The workflow's
+    // static proof is therefore: both published-mode verifier invocations
+    // happen strictly before download, extraction and deployment — so no
+    // mutable release can ever reach a download/deploy step.
+    const metadataGate = normalize(findStepByName('Verify GitHub Release metadata and Git tag'))
+    expect(metadataGate).toContain('--mode published')
+    const byteGate = normalize(findStepByName('Verify downloaded release assets'))
+    expect(byteGate).toContain('--mode published')
+    const order = [
+      stepIndexByName('Verify GitHub Release metadata and Git tag'),
+      stepIndexByName('Download release assets'),
+      stepIndexByName('Verify downloaded release assets'),
+      stepIndexByName('Extract release assets to _site'),
+      stepIndexByName('Deploy to GitHub Pages'),
+    ]
+    expect(order.every((index) => index >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+
   it('extracts exactly the validated release zip', () => {
     const step = normalize(findStepByName('Extract release assets to _site'))
     expect(step).toContain('unzip -q "pmbus-calculator-${VERSION}-web.zip" -d _site')

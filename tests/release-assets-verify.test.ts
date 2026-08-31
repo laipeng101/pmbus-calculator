@@ -17,6 +17,10 @@
 // validated with the URL parser against the canonical
 // github.com/<repo>/releases/download contract, never a string prefix.
 //
+// v2.6.2: the published (Pages entry) mode additionally fail-closes on a
+// release whose metadata does not report `immutable: true` — the enforced
+// form of docs/RELEASING.md's “Pages 只部署不可变 GitHub Release 资产”.
+//
 // Checksum and zip-content failures are pinned by
 // tests/zip-helper-security.test.ts and tests/release-assets.test.ts;
 // the downloader consumer is pinned by tests/download-release-assets.test.ts.
@@ -61,6 +65,9 @@ function validRelease(overrides: Record<string, unknown> = {}) {
     tag_name: TAG,
     draft: false,
     prerelease: false,
+    // Live REST shape since the repo enabled immutable releases (v2.5.13):
+    // every published release reports `immutable: true`.
+    immutable: true,
     assets: [asset(ZIP_NAME), asset('SHA256SUMS.txt', { size: 165 })],
     ...overrides,
   }
@@ -388,6 +395,38 @@ describe('release-assets-verify: release metadata contract', () => {
   })
 })
 
+describe('release-assets-verify: published immutable gate (v2.6.2)', () => {
+  // docs/RELEASING.md: Pages 只部署不可变 GitHub Release 资产。The shared
+  // metadata contract must fail closed for a published release whose REST
+  // metadata does not report `immutable: true` — including the field being
+  // absent, null, or a string (older releases and any hand-crafted metadata).
+  it.each([
+    ['false', { immutable: false }],
+    ['null', { immutable: null }],
+    ['a string', { immutable: 'true' }],
+    ['missing', { immutable: undefined }],
+  ])('rejects a published release with immutable %s (exit 3)', (_label, override) => {
+    const result = runScript(writeFixture(validRelease(override)))
+    expect(result.status).toBe(3)
+    expect(result.stderr).toContain('immutable')
+    expect(result.stdout).toBe('')
+  })
+
+  it('accepts a published release reporting immutable true (live REST shape)', () => {
+    const result = runScript(writeFixture(validRelease()))
+    expect(result.status).toBe(0)
+    const parsed = parseOutput(result.stdout)
+    expect(parsed.mode).toBe('published')
+  })
+
+  it('draft mode never enforces immutability (a GitHub draft is not immutable yet)', () => {
+    const draft = validRelease({ draft: true, immutable: false })
+    const ok = runScript(writeFixture(draft), ['--mode', 'draft'])
+    expect(ok.status).toBe(0)
+    expect(parseOutput(ok.stdout).mode).toBe('draft')
+  })
+})
+
 describe('release-assets-verify: usage and shape errors', () => {
   it('rejects invalid JSON with exit 2', () => {
     const result = runScript(writeFixture('{ not json'))
@@ -395,7 +434,12 @@ describe('release-assets-verify: usage and shape errors', () => {
   })
 
   it('rejects a release object without an assets array', () => {
-    const result = runScript(writeFixture({ tag_name: TAG, draft: false, prerelease: false }))
+    // The immutable gate lives in the metadata contract (exit 3) and runs
+    // before the asset-shape check, so a shape-error fixture must carry the
+    // otherwise-valid published metadata fields.
+    const result = runScript(
+      writeFixture({ tag_name: TAG, draft: false, prerelease: false, immutable: true }),
+    )
     expect(result.status).toBe(2)
   })
 
