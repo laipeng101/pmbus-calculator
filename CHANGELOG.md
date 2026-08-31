@@ -4,6 +4,58 @@
 
 ## [Unreleased]
 
+## [2.6.2] - 2026-08-31
+
+### Fixed
+
+- **已发布 Release 不可变性 fail-closed 验证**：`release-assets-verify` 在
+  published 模式下要求 Release 元数据 `immutable === true`（缺失、`false` 或
+  非布尔一律 exit 3 拒绝），draft 模式豁免（draft 的 `immutable` 尚无意义）；
+  `verify-downloaded-assets` 经共享边界继承同一门禁；Pages workflow 合同测试
+  钉住 published 模式的 metadata → download → verify → extract → deploy
+  步骤顺序。`docs/RELEASING.md` 新增历史 mutable Release 操作停止策略：
+  v2.5.13+ 发布为 immutable、v2.5.12- 为 mutable，历史 mutable 发布绝不能
+  成为手动部署/回滚目标，旧 tag/Release 永不删除、重建或移动。
+- **DIRECT 尾零补偿科学计数法精确提交**：审计最小向量
+  `1` + 501 个 `0` + `e-501`（507 字符，binary64 值恰为 1）此前被
+  v2.5.12 的句法移位边界按 `shift-out-of-range` 拒绝，UI 判 valid、reducer
+  静默 no-op。现在词素归一化在 BigInt 之前做 O(n) 尾零剥离，并把下溢边界
+  改为按有效移位（`shift + trailingZeros`）判定，下限
+  `-max(500, raw.length + 323)` 保证任何 classify-valid 词素都不会被静默
+  丢弃；4096 原始长度门禁与「trim 前计数」合同不变。编码/解码/舍入与受保护
+  算法零变更；新增 golden 矩阵（e-500/e-501/e-502、±符号、部分补偿、深位
+  golden、fail-closed 钉子、4096 字符补偿向量）与 reducer provenance、E2E
+  提交断言。
+- **控件 tooltip 可悬停驻留（WCAG 2.2 SC 1.4.13）**：指针离开触发器不再立即
+  关闭，而是进入 150ms 确定性宽限；移入浮层或回到触发器即取消关闭，指针离开
+  两者后才关闭。Escape / blur / 外点关闭、click 恰好一次、触屏零劫持与全局
+  单开合同不变；surface 的 pointerenter 只取消定时器、不写状态，焦点打开的
+  surface 不会被 hover 翻转来源。
+- **VOUT_MODE radio 键盘合同（ARIA APG radio pattern）**：绝对值/相对值与
+  格式（bits[6:5]）两组 `role=radiogroup` 此前无方向键、无 roving tabindex。
+  现在选中项是唯一 tab stop，ArrowRight/Down 下一项、ArrowLeft/Up 上一项，
+  循环并跳过 disabled（VID 下相对值）；焦点到达即选择，复用 click 的幂等
+  守卫；选中项被 disabled 的非法组合字节（如相对+VID）按首个可用项兜底
+  tab stop，键盘不进入死胡同。独立页与 L16 内嵌两处同样生效；新增纯函数
+  `src/app/radio-navigation.ts` 单测 + 四条 E2E。
+- **L16 内嵌 bits[6:5] 禁用原因浮层外可见**：原生 disabled 的位按钮不产生
+  指针/焦点事件，禁用原因此前只存在于位 aria-label 与（永不触发的）
+  tooltip 中。现在新增可见原因行（`vout-bits65-disabled-reason`），linked
+  与非 LINEAR 两种措辞由 `src/app/vout-mode-formats.ts` 单一来源提供，并经
+  `aria-describedby` 关联到 bit5/bit6 按钮。
+- **删除无消费者的 `focus-navigation` 死代码**：`src/app/focus-navigation.ts`
+  仅被自身同名测试引用，无任何生产导入方，独立绿色清理提交删除。
+
+### Changed
+
+- **文档**：`docs/UI_CONVENTIONS.md` §7 控件说明触发策略从「移开即消失」改写
+  为 SC 1.4.13 可悬停/可驻留/可关闭合同，禁用控件条款补 aria-describedby
+  关联；§14 补 L16 bits[6:5] 可见禁用原因与单一来源。视觉基线仅 L16 三个
+  桌面场景因新增可见原因行更新（逐图审查：唯一差异即新原因行及其下移内容）。
+- **deployment 验收**：`tests/e2e/deployment.spec.ts` 新增 v2.6.2 正式站
+  验收组——DIRECT 审计向量提交 raw 0001、tooltip 可悬停驻留、radio 方向键、
+  bits[6:5] 可见禁用原因。
+
 ## [2.6.1] - 2026-08-31
 
 ### Fixed

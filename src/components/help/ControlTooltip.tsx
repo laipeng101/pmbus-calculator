@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { autoUpdate, flip, offset, shift, size, useFloating } from '@floating-ui/react-dom'
@@ -32,19 +32,26 @@ interface Props<K extends ControlHelpId> {
  * single-open state with the glossary term popovers, but uses the control
  * trigger strategy:
  *
- * - fine-pointer hover opens immediately and pointerleave closes right away —
- *   never click-gated, never hijacking the control's own click action;
+ * - fine-pointer hover opens immediately; pointer leave does NOT close on
+ *   the spot (v2.6.2, WCAG 2.2 SC 1.4.13 Hoverable/Persistent): a short
+ *   deterministic grace covers the offset gap, and moving the pointer into
+ *   the floating surface (or back onto the trigger) cancels the close. The
+ *   surface only closes once the pointer has left both trigger and surface —
+ *   it stays hoverable and persistent, remains dismissible via Escape and
+ *   outside pointerdown, and never hijacks the control's own click action;
  * - keyboard `:focus-visible` opens (the a11y-equivalent path) and blur/Escape
  *   closes;
  * - coarse pointers stay untouched: the matchMedia gate plus the
  *   `pointerType === 'mouse'` filter keep touch taps free of sticky hover or
- *   first-tap hijacking;
+ *   first-tap hijacking (the surface handlers apply the same filters);
  * - the surface is non-interactive prose with tooltip semantics
  *   (`role="tooltip"` + `aria-describedby`, no aria-expanded — the trigger is
  *   not a disclosure);
  * - unmounting (mode switch, conditional rendering) closes the surface so no
  *   orphan portal or stale active id survives.
  */
+/** Deterministic close grace (ms) covering the 8px offset gap traversal. */
+const HOVER_CLOSE_GRACE_MS = 150
 export default function ControlTooltip<K extends ControlHelpId>({
   help,
   params,
@@ -90,25 +97,51 @@ export default function ControlTooltip<K extends ControlHelpId>({
     return finePointerRef.current
   }
 
+  // SC 1.4.13 Hoverable: leaving the trigger schedules a short close; the
+  // pointer entering the surface (or re-entering the trigger) cancels it. A
+  // pending timer firing after the surface already closed is a filtered
+  // no-op in the provider, so no explicit cleanup on close is needed. The
+  // callbacks are stable (stable deps), so the unmount effect below still
+  // runs exactly once.
+  const closeTimerRef = useRef<number | null>(null)
+  const triggerRef = useRef<HTMLElement | null>(null)
+  const cancelScheduledHoverClose = useCallback(() => {
+    if (closeTimerRef.current != null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }, [])
+  const scheduleHoverClose = useCallback(() => {
+    cancelScheduledHoverClose()
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null
+      closeIfActive(surfaceKey, ['hover'])
+    }, HOVER_CLOSE_GRACE_MS)
+  }, [cancelScheduledHoverClose, closeIfActive, surfaceKey])
+
   // If this control unmounts while its surface is active (mode switch,
   // conditional render), drop the surface — no orphan portal, no stale id.
-  // closeIfActive is a stable provider callback, so this runs once.
   useEffect(() => {
-    return () => closeIfActive(surfaceKey)
-  }, [surfaceKey, closeIfActive])
+    return () => {
+      cancelScheduledHoverClose()
+      closeIfActive(surfaceKey)
+    }
+  }, [surfaceKey, closeIfActive, cancelScheduledHoverClose])
 
   const triggerProps: ControlTriggerProps = {
     ref: (node: HTMLElement | null) => {
       refs.setReference(node)
+      triggerRef.current = node
     },
     'aria-describedby': open ? panelId : undefined,
     onPointerEnter: (event) => {
       if (event.pointerType !== 'mouse' || !isFinePointer()) return
+      cancelScheduledHoverClose()
       openControl(surfaceKey, 'hover', event.currentTarget)
     },
     onPointerLeave: (event) => {
       if (event.pointerType !== 'mouse') return
-      closeIfActive(surfaceKey, ['hover'])
+      scheduleHoverClose()
     },
     onFocus: (event) => {
       if (!event.currentTarget.matches(':focus-visible')) return
@@ -141,6 +174,18 @@ export default function ControlTooltip<K extends ControlHelpId>({
             role="tooltip"
             data-testid={'control-tooltip-' + help}
             className="term-popover popover-enter"
+            onPointerEnter={(event) => {
+              if (event.pointerType !== 'mouse' || !isFinePointer()) return
+              // SC 1.4.13: the pointer may rest on and move within the
+              // surface — entering it cancels the scheduled close. No state
+              // write: the surface only exists while open, and a hover
+              // pointer must never flip a focus-opened surface's source.
+              cancelScheduledHoverClose()
+            }}
+            onPointerLeave={(event) => {
+              if (event.pointerType !== 'mouse') return
+              scheduleHoverClose()
+            }}
           >
             {text}
           </div>,

@@ -238,3 +238,66 @@ test.describe('M39 共享位字段网格', () => {
     expect(result.legacySelectors, '旧分叉 CSS 类不得存在').toBe(0)
   })
 })
+
+test.describe('v2.6.2 L16 bits[6:5] 禁用原因可见（overlay 外）', () => {
+  // 原生 disabled 的位按钮不产生指针/焦点事件，禁用原因必须有 tooltip 之外的
+  // 可见路径，并通过 aria-describedby 关联到这两个按钮。
+  test('linked 状态：可见原因 + bit5/bit6 aria-describedby；bit7 不关联；独立页无该行', async ({
+    page,
+  }) => {
+    await page.goto(appUrl())
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+
+    const reason = page.locator('#vout-bits65-disabled-reason')
+    await expect(reason).toBeVisible()
+    await expect(reason).toContainText('格式位固定为 LINEAR')
+
+    for (const index of [5, 6]) {
+      const bit = page.getByRole('button', {
+        name: new RegExp('第 ' + index + ' 位，格式位固定为 LINEAR'),
+      })
+      await expect(bit).toBeDisabled()
+      await expect(bit).toHaveAttribute('aria-describedby', 'vout-bits65-disabled-reason')
+    }
+    const bit7 = page.getByRole('button', { name: /第 7 位，绝对值\/相对值/ })
+    await expect(bit7).toBeEnabled()
+    await expect(bit7).not.toHaveAttribute('aria-describedby')
+
+    // 独立 VOUT_MODE 页没有这个锁，也没有该可见原因行。
+    await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+    await expect(page.locator('#vout-bits65-disabled-reason')).toHaveCount(0)
+  })
+
+  test('non-linear 状态：可见原因切换为“非 LINEAR”措辞，aria-describedby 保持', async ({
+    page,
+  }) => {
+    await page.goto(appUrl())
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+
+    const hex = page.locator('#vout-mode-input')
+    await hex.fill('40')
+    await hex.press('Tab')
+
+    const reason = page.locator('#vout-bits65-disabled-reason')
+    await expect(reason).toBeVisible()
+    await expect(reason).toContainText('格式位不可在本页切换（当前字节非 LINEAR）')
+    for (const index of [5, 6]) {
+      const bit = page.getByRole('button', {
+        name: new RegExp('第 ' + index + ' 位，格式位不可在本页切换'),
+      })
+      await expect(bit).toBeDisabled()
+      await expect(bit).toHaveAttribute('aria-describedby', 'vout-bits65-disabled-reason')
+    }
+  })
+
+  test('可见原因行不引入横向溢出（390px 移动端）', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(appUrl())
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    await expect(page.locator('#vout-bits65-disabled-reason')).toBeVisible()
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    )
+    expect(overflow).toBe(true)
+  })
+})

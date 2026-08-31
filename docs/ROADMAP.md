@@ -3,15 +3,12 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-31（v2.6.1——发布完整性、帮助系统契约与 CI 效率加固：
-Pages 手动部署绑定被部署 tag 的 ref 并校验 annotated tag/HEAD/Release 元数据
-一致；`TechnicalTerm` 与 `ControlTooltip` 对称的卸载清理（provider active
-surface 不再残留 detached trigger、document 监听 add/remove 对称）；
-`TERM_PLACEMENT_SURFACES` 字符串清单退役，E2E 改为从真实 DOM 触发器累计
-术语 id 并与 `GLOSSARY_TERM_IDS` 精确相等；UI_CONVENTIONS §7 术语 disclosure
-关闭态 `aria-expanded="false"` 合同纠偏；e2e job light-tier 跳过 `npm ci`；
-desktop 语义 E2E 以本地无 retry 实验采纳 CI 2 workers；SMBus/LE 字节序引用
-精度收窄）
+最后更新：2026-08-31（v2.6.2——审计修复：published Release `immutable`
+fail-closed 验证与历史 mutable Release 操作停止策略；DIRECT 尾零补偿科学
+计数法词素边界（classify-valid 不再被静默拒绝，数学语义零变更）；控件
+tooltip SC 1.4.13 可悬停/可驻留；VOUT_MODE radio ARIA APG 键盘合同
+（roving tabindex + 方向键 + 跳过 disabled）；L16 内嵌 bits[6:5] 禁用原因
+浮层外可见 + aria-describedby；删除零消费者 focus-navigation 死代码）
 
 ## 当前产品基线
 
@@ -36,7 +33,7 @@ desktop 语义 E2E 以本地无 retry 实验采纳 CI 2 workers；SMBus/LE 字�
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v2.6.1；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v2.6.2；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -203,7 +200,20 @@ M0–M42 complete；stable release v2.6.1；production distribution: GitHub Page
   2-worker 中位 59s，零 flake、repeat-each=10 压力 1210 次零失败）采纳
   desktop 语义 E2E CI 2 workers；SMBus/LE 字节序引用精度收窄（§7.6 明示范围
   为浮点数据）。数值算法零变更、visual 基线零变化。
-- 当前：无进行中的功能里程碑；v2.6.1 已发布，M40–M42 complete。
+- v2.6.2（PATCH）：审计修复——`release-assets-verify` published 模式强制
+  `immutable === true`（draft 豁免、`verify-downloaded-assets` 继承、Pages
+  workflow 步骤顺序合同），RELEASING 新增历史 mutable Release 操作停止策略；
+  DIRECT 尾零补偿科学计数法词素边界（BigInt 前 O(n) 尾零剥离 + 有效移位
+  下溢判定 `-max(500, raw.length+323)`，classify-valid 词素不再被静默拒绝；
+  受保护算法与舍入合同零变更，4096 门禁不变）；控件 tooltip SC 1.4.13
+  可悬停/可驻留（150ms 确定性宽限，Escape/blur/click-once/触屏合同不变）；
+  VOUT_MODE 两组 radio ARIA APG 键盘合同（roving tabindex、方向键循环、
+  跳过 disabled、焦点即选择，`src/app/radio-navigation.ts` 纯函数单测）；
+  L16 内嵌 bits[6:5] 禁用原因浮层外可见 + `aria-describedby`（措辞单一
+  来源 `vout-mode-formats.ts`）；删除零消费者 `focus-navigation.ts`；
+  UI_CONVENTIONS §7/§14 更新；L16 三个桌面 visual 基线随新可见行更新
+  （25 张不变）；deployment 新增 v2.6.2 正式站验收组 4 条。
+- 当前：无进行中的功能里程碑；v2.6.2 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

@@ -1,6 +1,8 @@
+import { useRef } from 'react'
 import type { AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { VoutModeInfoVM } from '../../app/view-model'
+import { findRadioNeighbor, radioArrowDirection, radioTabStop } from '../../app/radio-navigation'
 import { VID_CODE_TABLE } from '../../legacy/vout-mode'
 import { PMBusMath } from '../../legacy/pmbus-math'
 import DecimalInput from '../inputs/DecimalInput'
@@ -10,7 +12,11 @@ import ExponentEditor from '../formula/ExponentEditor'
 import LinearFormulaEditor from '../formula/LinearFormulaEditor'
 import TechnicalTerm from '../term/TechnicalTerm'
 import ControlTooltip from '../help/ControlTooltip'
-import { VOUT_MODE_FORMATS, voutModeFormatTerm } from '../../app/vout-mode-formats'
+import {
+  VOUT_MODE_FORMATS,
+  voutModeFormatTerm,
+  l16FormatBitDisabledHint,
+} from '../../app/vout-mode-formats'
 import { getBitRegions } from '../../app/bit-regions'
 import BitFieldGrid from '../bits/BitFieldGrid'
 import VoutModeExplanations from './VoutModeExplanations'
@@ -55,6 +61,38 @@ const byteDigits = (byte: number) => (byte & 0xff).toString(16).toUpperCase().pa
 export default function VoutModeComposer({ state, info, byte, dispatch, embedded = false }: Props) {
   const isVid = info.format === 1
   const disabledBits = embedded ? new Set([5, 6]) : undefined
+  const bits65Hint = embedded ? l16FormatBitDisabledHint(info.source) : undefined
+
+  // ARIA APG radio pattern (v2.6.2): roving tabindex on the selected radio,
+  // arrow keys move focus and select, wrapping and skipping disabled options.
+  // The rel radio is disabled only for VID; a raw illegal byte (relative +
+  // VID) can select a disabled radio, in which case radioTabStop falls back
+  // to the first enabled radio so the keyboard never dead-ends.
+  const absRelRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const formatRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const absRelDisabled = (index: number) => index === 1 && isVid
+  const absRelSelected = info.isRelative === false ? 0 : info.isRelative === true ? 1 : -1
+  const absRelStop = radioTabStop(2, absRelSelected, absRelDisabled)
+  const formatSelected = VOUT_MODE_FORMATS.findIndex((f) => f.value === info.format)
+  const formatStop = radioTabStop(VOUT_MODE_FORMATS.length, formatSelected, () => false)
+
+  const onRadioArrowKey = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    refs: React.RefObject<(HTMLButtonElement | null)[]>,
+    count: number,
+    index: number,
+    isDisabled: (i: number) => boolean,
+    select: (next: number) => void,
+  ) => {
+    const direction = radioArrowDirection(event.key)
+    if (direction == null) return
+    event.preventDefault()
+    const next = findRadioNeighbor(count, index, direction, isDisabled)
+    if (next < 0) return
+    refs.current[next]?.focus()
+    // Selection follows focus; the same idempotent guards as click apply.
+    select(next)
+  }
 
   return (
     <div className="vout-composer min-w-0 space-y-1">
@@ -64,17 +102,24 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         groups={info.nibbles}
         regions={getBitRegions('VOUT_MODE')}
         disabledBits={disabledBits}
-        disabledHint={
-          embedded
-            ? info.source === 'non-linear'
-              ? '格式位不可在本页切换（当前字节非 LINEAR）'
-              : '格式位固定为 LINEAR'
-            : undefined
-        }
+        disabledHint={bits65Hint}
+        disabledDescribedBy={embedded ? 'vout-bits65-disabled-reason' : undefined}
         density={embedded ? 'compact' : 'regular'}
         onToggle={(bit) => dispatch({ type: 'vout-mode/toggle-bit', bit })}
         groupLabel="VOUT_MODE 8 位编辑器"
       />
+
+      {/* 原生 disabled 的位按钮不产生指针/焦点事件，bits[6:5] 的禁用原因
+          必须有 tooltip 之外的可见路径，并经 aria-describedby 关联到位按钮。 */}
+      {embedded && bits65Hint && (
+        <p
+          className="text-xs color-text-muted"
+          data-testid="vout-bits65-disabled-reason"
+          id="vout-bits65-disabled-reason"
+        >
+          {bits65Hint}（bits[6:5]，Part II §8.3）。
+        </p>
+      )}
 
       {/* bit7 + bits[6:5] semantic controls */}
       <div className="vout-composer-controls">
@@ -86,6 +131,11 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
                 type="button"
                 role="radio"
                 aria-checked={info.isRelative === false}
+                ref={(el) => {
+                  absRelRefs.current[0] = el
+                  triggerProps.ref?.(el)
+                }}
+                tabIndex={absRelStop === 0 ? 0 : -1}
                 onClick={() => {
                   // Re-selecting the active semantic control must not dispatch a
                   // state write: the reducer would keep the byte, but not
@@ -94,6 +144,15 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
                     dispatch({ type: 'vout-mode/set-relative', relative: false })
                   }
                 }}
+                onKeyDown={(e) =>
+                  onRadioArrowKey(e, absRelRefs, 2, 0, absRelDisabled, (next) => {
+                    if (next === 0 && info.isRelative !== false) {
+                      dispatch({ type: 'vout-mode/set-relative', relative: false })
+                    } else if (next === 1 && info.isRelative !== true) {
+                      dispatch({ type: 'vout-mode/set-relative', relative: true })
+                    }
+                  })
+                }
                 className="vout-seg-btn"
               >
                 绝对值
@@ -111,11 +170,25 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
                 role="radio"
                 aria-checked={info.isRelative}
                 disabled={isVid}
+                ref={(el) => {
+                  absRelRefs.current[1] = el
+                  triggerProps.ref?.(el)
+                }}
+                tabIndex={absRelStop === 1 ? 0 : -1}
                 onClick={() => {
                   if (info.isRelative !== true) {
                     dispatch({ type: 'vout-mode/set-relative', relative: true })
                   }
                 }}
+                onKeyDown={(e) =>
+                  onRadioArrowKey(e, absRelRefs, 2, 1, absRelDisabled, (next) => {
+                    if (next === 0 && info.isRelative !== false) {
+                      dispatch({ type: 'vout-mode/set-relative', relative: false })
+                    } else if (next === 1 && info.isRelative !== true) {
+                      dispatch({ type: 'vout-mode/set-relative', relative: true })
+                    }
+                  })
+                }
                 className="vout-seg-btn"
               >
                 相对值
@@ -136,7 +209,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             aria-label="格式（bits[6:5]）"
             className="vout-seg vout-seg-format"
           >
-            {VOUT_MODE_FORMATS.map((f) => (
+            {VOUT_MODE_FORMATS.map((f, formatIndex) => (
               <ControlTooltip key={f.value} help={f.helpId} params={undefined}>
                 {(triggerProps) => (
                   <button
@@ -144,11 +217,31 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
                     type="button"
                     role="radio"
                     aria-checked={info.format === f.value}
+                    ref={(el) => {
+                      formatRefs.current[formatIndex] = el
+                      triggerProps.ref?.(el)
+                    }}
+                    tabIndex={formatStop === formatIndex ? 0 : -1}
                     onClick={() => {
                       if (info.format !== f.value) {
                         dispatch({ type: 'vout-mode/set-format', format: f.value })
                       }
                     }}
+                    onKeyDown={(e) =>
+                      onRadioArrowKey(
+                        e,
+                        formatRefs,
+                        VOUT_MODE_FORMATS.length,
+                        formatIndex,
+                        () => false,
+                        (next) => {
+                          const target = VOUT_MODE_FORMATS[next]
+                          if (info.format !== target.value) {
+                            dispatch({ type: 'vout-mode/set-format', format: target.value })
+                          }
+                        },
+                      )
+                    }
                     className="vout-seg-btn"
                   >
                     {f.label}

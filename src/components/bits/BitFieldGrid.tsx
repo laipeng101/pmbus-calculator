@@ -21,6 +21,8 @@ interface Props {
   disabledBits?: ReadonlySet<number>
   /** Shown in the aria-label of a disabled bit (e.g. L16 format bits fixed). */
   disabledHint?: string
+  /** id of a visible element describing why bits are disabled (v2.6.2). */
+  disabledDescribedBy?: string
   density?: 'regular' | 'compact'
   onToggle: (bit: number) => void
   /** Accessible group name. */
@@ -49,6 +51,7 @@ export default function BitFieldGrid({
   regions,
   disabledBits,
   disabledHint,
+  disabledDescribedBy,
   density = 'regular',
   onToggle,
   groupLabel,
@@ -93,6 +96,12 @@ export default function BitFieldGrid({
                         disabled={disabled}
                         aria-pressed={on}
                         aria-label={label}
+                        // Disabled bits never emit pointer/focus events (their
+                        // tooltip can never open), so this only ever applies
+                        // to them and cannot clobber an open tooltip id.
+                        aria-describedby={
+                          disabled && disabledDescribedBy ? disabledDescribedBy : undefined
+                        }
                         className="bitfield-bit"
                       >
                         <div
