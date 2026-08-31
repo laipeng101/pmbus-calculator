@@ -82,7 +82,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     token: 'SMBus',
     name: '系统管理总线',
     detail:
-      'PMBus 所基于的系统管理总线；PMBus word 在线上默认低字节在前、高位在前（Part II §7.6）。',
+      'PMBus 所基于的系统管理总线；PMBus word 在线上默认低字节在前、高位在前（Part II §7.6 对浮点数据明示，其余 word 类型由 SMBus/PMBus 传输规则规定）。',
     source: 'smbus',
     scope: '总线与规范',
   },
@@ -256,7 +256,8 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     id: 'le',
     token: 'LE',
     name: '小端序',
-    detail: '小端字节序：PMBus/SMBus word 在线上默认低字节在前（Part II §7.6）。',
+    detail:
+      '小端字节序：PMBus/SMBus word 在线上默认低字节在前、字节内高位在前（Part II §7.6 对浮点数据明示）；BE 仅是本工具的显示/复制选项，不改变线上顺序。',
     source: 'generic',
     specRef: 'Part II §7.6',
     scope: '字节序（线上默认）',
