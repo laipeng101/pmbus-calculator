@@ -130,10 +130,14 @@ test.describe('GitHub Pages production deployment', () => {
     test('DIRECT 尾零补偿科学计数法向量提交为 raw 0001', async ({ page }) => {
       await page.goto(deploymentUrl!)
       await page.getByRole('tab', { name: /DIRECT/ }).click()
+      // m=1, b=0, R=0：与 direct-fidelity v2.6.2 边界用例同一系数组，V=1 精确
+      // 编码为 Y=1。v2.6.2 的发布 smoke 曾误用 fidelity 组的 (1,1,17)——该组
+      // 下 V=1 超出 Y 的 16 位表示范围（Y 饱和 32767 → 0x7FFF），属测试缺陷
+      // 而非应用缺陷（v2.6.3 修正）。
       for (const [id, value] of [
         ['#direct-coeff-m-input', '1'],
-        ['#direct-coeff-b-input', '1'],
-        ['#direct-coeff-r-input', '17'],
+        ['#direct-coeff-b-input', '0'],
+        ['#direct-coeff-r-input', '0'],
       ] as const) {
         await page.locator(id).fill(value)
         await page.locator(id).press('Tab')
