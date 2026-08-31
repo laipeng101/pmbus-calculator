@@ -4,6 +4,59 @@
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-08-31
+
+### Added
+
+- **全局帮助浮层体系（M42）**：概念术语气泡与控件说明两类触发策略推广到全应用，
+  任一时刻至多一个帮助浮层（`HelpOverlayProvider` 全局单开：打开任一浮层自动
+  关闭另一个；单一 document 监听负责外点关闭与 Escape 关闭并把焦点恢复到
+  触发器；状态不进入主 reducer、不持久化）。
+- **术语气泡全局放置**：帮助概念术语（`TechnicalTerm`）覆盖页头（PMBus、
+  binary16、SMBus）、五种模式工作区（LINEAR11 指数/范围、LINEAR16 字节序与
+  ULINEAR16/SLINEAR16 语义、DIRECT 二补码系数、HALF binary16 与 NaN/±Infinity、
+  VOUT_MODE 配置字节/bit7 语义/指数/当前格式）、结果区（原始 Hex、LE/BE、量化
+  误差）与命令参考（事务）；每个概念至少一个生产放置面由
+  `TERM_PLACEMENT_SURFACES` 契约守护。术语数据合同扩容：`source`
+  （pmbus-spec/smbus/project/generic）、`specRef` 与 `scope` 元数据；LINEAR11
+  指数 N（word bits[15:11]）与 VOUT_MODE 参数 N（bits[4:0]）拆分为两个概念，
+  消除「同一个 N」的语义混用。
+- **控件悬停/键盘焦点说明（`ControlTooltip`）**：全部按钮与按钮型控件（模式
+  tab、主题切换、LINEAR11 N 锁、VOUT_MODE 绝对/相对值、格式 radio、规范化/
+  应用示例/说明折叠、16/8 位位编辑按钮、复制/前缀/空格/字节序按钮、计算过程/
+  命令参考/调试面板折叠）统一获得悬停即显示、移开即消失的说明；文案只来自
+  `src/app/control-help.ts` 的 typed `CONTROL_HELP` registry（per-id 参数模板，
+  如 N 锁随锁定状态变化、位按钮显示位号/区域/当前值、物理值复制显示禁用原因）。
+  触发合同：fine-pointer 悬停双门禁（matchMedia + `pointerType === 'mouse'`，
+  触屏首 tap 永不被劫持）、键盘 `:focus-visible` 打开、blur/Escape 关闭、
+  click 原动作只执行一次、`role="tooltip"` + `aria-describedby`（无
+  `aria-expanded`）。
+- **可见禁用原因**：VID 下 VOUT_MODE「相对值」的原生 `title` 说明改为浮层之外的
+  可见段落（键盘/触屏可达），`data-testid="vout-rel-disabled-reason"`。
+
+### Changed
+
+- **原生 `title` 帮助全部移除**：主题切换、LINEAR11 N 锁、VID 相对值三处原生
+  title 已删除；新增 `check:no-title-help` 门禁（verify 链 + CI quality job）
+  拒绝 `src/` 下一切原生 title 属性回潮，control-tooltip E2E 另有运行时全量
+  扫描回归。
+- **VOUT_MODE 格式标签/术语单源化**：`vout-mode-formats.ts` 统一
+  `VOUT_MODE_FORMATS`（value/label/termId/helpId），配置器与位区域不再各持一份
+  FORMAT→术语映射副本。
+- **视觉场景静止态归一**：visual 套件在截图前把指针停回 (0,0)、输入提交后释放
+  焦点——v2.6.0 起真实鼠标点击会打开悬停说明、Tab 提交会在按钮上打开焦点说明，
+  场景统一取「已输入、无焦点环、无浮层」的静止状态。8 张 stress 基线相应更新
+  （差异仅为不再入镜的 bit 15 焦点环/焦点浮层），其余 20 张基线零变化。
+- **UI_CONVENTIONS §7 重写**：从「Popover containment（术语气泡唯一）」扩展为
+  「帮助浮层：术语气泡与控件说明」双合同（两类触发策略、全局单开、ARIA 身份、
+  禁嵌套、registry 单源、no-title 门禁）。
+
+### Removed
+
+- **`src/components/result/ResultInspector.tsx`**：结果面板迁移到
+  ResultSummary/ResultDetails/CopyToolbar 后零引用的死代码（`result-panel`
+  live-region 合同由 ResultSummary 持有）；删除无行为影响。
+
 ## [2.5.15] - 2026-08-31
 
 ### Fixed

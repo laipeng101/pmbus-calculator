@@ -81,18 +81,41 @@
   light/dark 下公式与 focus ring 可读。
 - Release/Pages smoke：KaTeX CSS 与全部字体加载，资源为 Pages 同源。
 
-## 7. Popover containment（通用规则）
+## 7. 帮助浮层：术语气泡与控件说明（v2.6.0 起）
 
-术语气泡（`TechnicalTerm`）是当前唯一的 portal popover；命令参考仍是页内折叠表格：
+全应用共有两类 portal 帮助浮层，共享同一套定位与「任一时刻至多一个帮助浮层」合同：
+**术语气泡**（`TechnicalTerm`，点击展开的概念解释，disclosure 语义）与
+**控件说明**（`ControlTooltip`，悬停/键盘焦点的操作提示，tooltip 语义）。命令参考
+仍是页内折叠表格，不是浮层。
 
-- popover 使用 `@floating-ui/react-dom`（或等价的 flip/shift/size/autoUpdate 组合），portal 渲染。
-- 必须配置 `flip`、`shift`（viewport padding 8–12px）、`size` 和 `autoUpdate`。
-- popup 打开时 resize、页面滚动、触发器靠近顶部/底部都必须保持 viewport 内完整可见；
-  可用高度不足时只让内部列表滚动，不得滚动整个页面。
-- 术语气泡内容为非交互说明时使用 tooltip 语义：触发器携带 `aria-expanded` /
-  `aria-controls` / `aria-describedby`；若未来加入可点击内容必须升级为非模态 dialog。
+- 两类浮层都使用 `@floating-ui/react-dom`（flip/shift/size/autoUpdate 组合）并 portal
+  渲染到 `document.body`；必须配置 `flip`、`shift`（viewport padding 8–12px）、`size`
+  与 `autoUpdate`。打开时 resize、滚动、触发器靠近视口边缘都必须保持完整可见；可用
+  高度不足时只让浮层内部滚动，不得滚动整个页面。
+- **全局单开**由 `HelpOverlayProvider`（`src/components/help/`）协调：术语气泡与控件
+  说明共享一个 active surface 状态（kind: `term` | `control`，实例级 key =
+  概念/帮助 id + `useId`）。打开任一浮层自动关闭另一个；状态不进入主 reducer（悬停
+  是高频瞬态 UI 状态，不持久化）。单一 document `pointerdown` 监听负责外点关闭，
+  单一 `keydown` 监听负责 Escape 关闭并把焦点恢复到触发器。
+- **术语气泡触发策略（click-only）**：只通过点击 / Enter / Space / 触屏 tap 切换；
+  不随悬停打开。触发器是 disclosure：打开时携带 `aria-expanded` / `aria-controls` /
+  `aria-describedby`（关闭时不声明 expanded）。内容保持非交互说明；未来加入可点击
+  内容必须升级为非模态 dialog。
+- **控件说明触发策略（hover + focus）**：fine pointer 悬停即显示、移开即消失
+  （双门禁：`matchMedia('(hover: hover) and (pointer: fine)')` + 事件
+  `pointerType === 'mouse'`，触屏首 tap 永不被劫持）；键盘 `:focus-visible` 打开、
+  blur 或 Escape 关闭；click 原动作只执行一次，浮层不得拦截、延迟或二次触发。
+  浮层是 `role="tooltip"` + 触发器 `aria-describedby`（仅打开时），**没有**
+  `aria-expanded`——触发器不是 disclosure。
+- **禁用控件**：原生 `disabled` 不产生指针/焦点事件，其「为什么不可用」必须有
+  浮层之外的可见、键盘/触屏可达路径（如 VOUT_MODE 相对值在 VID 下的可见禁用原因
+  段落）；tooltip 只是补充，不是唯一通道。
+- **单一数据源**：术语中文解释只在 `src/app/terminology.ts`；控件说明文案只在
+  `src/app/control-help.ts` 的 `CONTROL_HELP` registry（带类型的 per-id 参数模板）。
+  组件不得内联复制这些文案；新控件说明先扩 registry 再包 `ControlTooltip`。
 - 禁止在 tab、button、summary、option 等已有交互控件内部嵌套术语触发器；
-  禁止把整段说明塞进原生 `title`。
+  禁止把整段说明塞进原生 `title`（`npm run check:no-title-help` 门禁拒绝 `src/`
+  下一切原生 title 属性，运行时回归在 control-tooltip E2E）。
 
 ## 8. 输入编辑与错误合同（M21 起长期稳定）
 

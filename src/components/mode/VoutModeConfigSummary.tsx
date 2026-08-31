@@ -1,20 +1,6 @@
 import type { VoutModeInfoVM } from '../../app/view-model'
-import type { TermId } from '../../app/terminology'
 import TechnicalTerm from '../term/TechnicalTerm'
-
-const FORMAT_TOKEN: Record<number, string> = {
-  0: 'LINEAR',
-  1: 'VID',
-  2: 'DIRECT',
-  3: 'IEEE Half',
-}
-
-const FORMAT_TERM_ID: Record<number, TermId> = {
-  0: 'linear',
-  1: 'vid',
-  2: 'direct',
-  3: 'binary16',
-}
+import { voutModeFormatLabel, voutModeFormatTerm } from '../../app/vout-mode-formats'
 
 function stateLabel(info: VoutModeInfoVM): string {
   switch (info.domainStatus) {
@@ -59,7 +45,9 @@ export default function VoutModeConfigSummary({ info }: Props) {
       <span className="vout-config-seq">=</span>
       <span className="vout-config-byte">{info.hex}</span>
       <span className="vout-config-sep">·</span>
-      <TechnicalTerm termId={FORMAT_TERM_ID[format]}>{FORMAT_TOKEN[format]}</TechnicalTerm>
+      <TechnicalTerm termId={voutModeFormatTerm(format)}>
+        {voutModeFormatLabel(format)}
+      </TechnicalTerm>
       <span className="vout-config-sep">·</span>
       <span className="vout-config-state">{stateLabel(info)}</span>
     </div>

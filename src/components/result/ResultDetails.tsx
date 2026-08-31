@@ -1,5 +1,6 @@
 import type { CalculatorViewModel } from '../../app/view-model'
 import type { AppState } from '../../app/state'
+import TechnicalTerm from '../term/TechnicalTerm'
 import CalculationSteps from './CalculationSteps'
 import ErrorDelta from './ErrorDelta'
 import CopyToolbar from './CopyToolbar'
@@ -45,7 +46,9 @@ export default function ResultDetails({
           <>
             {/* Raw Hex */}
             <div className="min-w-0">
-              <label className="mb-1 block text-xs color-text-muted">原始 Hex</label>
+              <div className="mb-1 text-xs color-text-muted">
+                原始 <TechnicalTerm termId="hex" />
+              </div>
               <div className="input-surface rounded-lg px-4 py-2 text-lg font-semibold">
                 {vm.rawHex}
               </div>
@@ -54,13 +57,19 @@ export default function ResultDetails({
             {/* Byte Order */}
             <div className="grid grid-cols-2 gap-3">
               <div className="min-w-0">
-                <label className="mb-1 block text-xs color-text-muted">小端序（LE）</label>
+                <div className="mb-1 text-xs color-text-muted">
+                  小端序（
+                  <TechnicalTerm termId="le" />）
+                </div>
                 <div className="input-surface rounded-lg px-3 py-2 text-sm font-medium">
                   {vm.rawBytesLE}
                 </div>
               </div>
               <div className="min-w-0">
-                <label className="mb-1 block text-xs color-text-muted">大端序（BE）</label>
+                <div className="mb-1 text-xs color-text-muted">
+                  大端序（
+                  <TechnicalTerm termId="be" />）
+                </div>
                 <div className="input-surface rounded-lg px-3 py-2 text-sm font-medium">
                   {vm.rawBytesBE}
                 </div>

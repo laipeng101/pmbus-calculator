@@ -30,10 +30,22 @@ async function settle(page: Page) {
   await page.waitForTimeout(120)
 }
 
+/**
+ * v2.6.0 起 Playwright 的真实鼠标点击会把指针留在控件上并打开 hover 说明；
+ * 截图前把指针停回 (0,0)，让场景反映静态页面而不是上一次点击的悬停状态。
+ */
+async function parkPointer(page: Page) {
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(80)
+}
+
 async function fillRaw(page: Page, hex: string) {
   const hexInput = page.locator('input[placeholder="0000"]')
   await hexInput.fill(hex)
   await hexInput.press('Tab')
+  // v2.6.0 起按钮型控件在 focus-visible 下会打开说明浮层；提交输入后把焦点
+  // 释放回 body，让 stress 场景统一取“已输入、无焦点环、无浮层”的静止状态。
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await expect(page.locator('.katex').first()).toBeVisible()
   await page.evaluate(async () => {
     await document.fonts.ready
@@ -63,6 +75,10 @@ async function setDirectStress(page: Page) {
   await page.getByLabel('DIRECT 系数 r').fill('12')
   await page.getByLabel('DIRECT 系数 r').press('Tab')
   await fillRaw(page, '8FC3')
+  // v2.6.0 起系数网格之后存在可聚焦术语触发器，焦点移动会让浏览器滚动页面；
+  // 场景基线统一取自然页首位置，避免滚动状态进入截图。
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.waitForTimeout(60)
 }
 
 async function switchToVoutMode(page: Page) {
@@ -78,6 +94,7 @@ test.describe('visual regression (stable scenes)', () => {
   test('desktop dark LINEAR11', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
     await settle(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-dark-l11.png', { animations: 'disabled' })
   })
 
@@ -90,6 +107,7 @@ test.describe('visual regression (stable scenes)', () => {
       await document.fonts.ready
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-dark-l16.png', { animations: 'disabled' })
   })
 
@@ -102,6 +120,7 @@ test.describe('visual regression (stable scenes)', () => {
       await document.fonts.ready
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-dark-direct.png', { animations: 'disabled' })
   })
 
@@ -114,12 +133,14 @@ test.describe('visual regression (stable scenes)', () => {
       await document.fonts.ready
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-dark-half.png', { animations: 'disabled' })
   })
 
   test('desktop light L11', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-light-l11.png', { animations: 'disabled' })
   })
 
@@ -132,6 +153,7 @@ test.describe('visual regression (stable scenes)', () => {
       await document.fonts.ready
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-light-direct.png', { animations: 'disabled' })
   })
 
@@ -144,6 +166,7 @@ test.describe('visual regression (stable scenes)', () => {
       await document.fonts.ready
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-light-l16.png', { animations: 'disabled' })
   })
 
@@ -156,6 +179,7 @@ test.describe('visual regression (stable scenes)', () => {
       await document.fonts.ready
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-light-half.png', { animations: 'disabled' })
   })
 
@@ -163,6 +187,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
     await settle(page)
     await switchToVoutMode(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-dark-vout-mode.png', { animations: 'disabled' })
   })
 
@@ -170,6 +195,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
     await switchToVoutMode(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-light-vout-mode.png', { animations: 'disabled' })
   })
 
@@ -178,6 +204,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
     await switchToVoutMode(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('mobile-390-vout-mode.png', { animations: 'disabled' })
   })
 
@@ -185,6 +212,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('mobile-390-l11.png', { animations: 'disabled' })
   })
 
@@ -198,6 +226,7 @@ test.describe('visual regression (stable scenes)', () => {
       await document.fonts.ready
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('mobile-390-half.png', { animations: 'disabled' })
   })
 
@@ -211,6 +240,7 @@ test.describe('visual regression (stable scenes)', () => {
       await document.fonts.ready
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('mobile-390-direct.png', { animations: 'disabled' })
   })
 
@@ -218,6 +248,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.setViewportSize({ width: 360, height: 800 })
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('mobile-360-l11.png', { animations: 'disabled' })
   })
 
@@ -230,6 +261,7 @@ test.describe('visual regression (stable scenes)', () => {
     await summary.getByTestId('term-trigger-vout-mode').click()
     await expect(page.getByTestId('term-popover-vout-mode')).toBeVisible()
     await expect(page.getByTestId('term-popover-vout-mode')).toContainText('输出电压格式配置字节')
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-light-vout-mode-glossary.png', {
       animations: 'disabled',
     })
@@ -249,6 +281,7 @@ test.describe('visual regression (stable scenes)', () => {
       await document.fonts.ready
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('mobile-390-l16-embedded.png', { animations: 'disabled' })
   })
 
@@ -262,6 +295,7 @@ test.describe('visual regression (stable scenes)', () => {
       await document.fonts.ready
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('mobile-360-half.png', { animations: 'disabled' })
   })
 
@@ -280,6 +314,7 @@ test.describe('visual regression (stable scenes)', () => {
       el.style.maxWidth = 'none'
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(shell).toHaveScreenshot('command-reference-table-light.png', {
       animations: 'disabled',
     })
@@ -289,6 +324,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
     await settle(page)
     await setL11Stress(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-dark-l11-stress.png', { animations: 'disabled' })
   })
 
@@ -296,6 +332,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
     await settle(page)
     await setL16Stress(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-dark-l16-stress.png', { animations: 'disabled' })
   })
 
@@ -303,6 +340,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
     await settle(page)
     await setDirectStress(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-dark-direct-stress.png', {
       animations: 'disabled',
     })
@@ -312,6 +350,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
     await settle(page)
     await setHalfStress(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-dark-half-stress.png', { animations: 'disabled' })
   })
 
@@ -319,6 +358,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
     await setL11Stress(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-light-l11-stress.png', { animations: 'disabled' })
   })
 
@@ -326,6 +366,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
     await setHalfStress(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('desktop-light-half-stress.png', { animations: 'disabled' })
   })
 
@@ -334,6 +375,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
     await setL11Stress(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('mobile-390-l11-stress.png', { animations: 'disabled' })
   })
 
@@ -342,6 +384,7 @@ test.describe('visual regression (stable scenes)', () => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
     await settle(page)
     await setHalfStress(page)
+    await parkPointer(page)
     await expect(page).toHaveScreenshot('mobile-390-half-stress.png', { animations: 'disabled' })
   })
 
@@ -359,6 +402,7 @@ test.describe('visual regression (stable scenes)', () => {
       el.style.maxWidth = 'none'
     })
     await page.waitForTimeout(120)
+    await parkPointer(page)
     await expect(shell).toHaveScreenshot('command-reference-table-dark.png', {
       animations: 'disabled',
     })

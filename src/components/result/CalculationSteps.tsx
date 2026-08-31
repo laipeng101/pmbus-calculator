@@ -1,4 +1,5 @@
 import type { CalculationStepVM } from '../../app/calculation-steps'
+import ControlTooltip from '../help/ControlTooltip'
 import MathFormula from '../math/MathFormula'
 
 interface Props {
@@ -28,9 +29,17 @@ export default function CalculationSteps({ steps }: Props) {
       className="calc-steps-disclosure min-w-0 rounded-xl"
       data-testid="calculation-steps-disclosure"
     >
-      <summary className="calc-steps-summary" data-testid="calculation-steps-summary">
-        计算过程（{steps.length} 步）
-      </summary>
+      <ControlTooltip help="steps-toggle" params={{ count: steps.length }}>
+        {(triggerProps) => (
+          <summary
+            {...triggerProps}
+            className="calc-steps-summary"
+            data-testid="calculation-steps-summary"
+          >
+            计算过程（{steps.length} 步）
+          </summary>
+        )}
+      </ControlTooltip>
 
       <section
         aria-label="计算过程"

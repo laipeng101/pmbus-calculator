@@ -64,6 +64,32 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     await expect(trigger).toBeFocused()
   })
 
+  test('键盘连续打开第二个术语时全局最多一个浮层（无 pointerdown 也单开）', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+
+    // 纯键盘路径：Enter 打开 A（摘要配置字节），Tab 到 B（当前格式）再 Enter。
+    const triggerA = page.locator(VM_TRIGGER)
+    await triggerA.focus()
+    await triggerA.press('Enter')
+    await expect(page.locator(VM_POPOVER)).toBeVisible()
+
+    await triggerA.press('Tab')
+    const triggerB = page.locator(LINEAR_TRIGGER)
+    await expect(triggerB).toBeFocused()
+    await triggerB.press('Enter')
+
+    // 修复的缺陷：键盘激活不产生 pointerdown，旧实现允许两个浮层同时保持。
+    await expect(page.locator(VM_POPOVER)).toHaveCount(0)
+    await expect(page.locator(LINEAR_POPOVER)).toBeVisible()
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(1)
+
+    // Escape 由协调层单一监听器处理：焦点确定恢复到最后激活的触发器。
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(0)
+    await expect(triggerB).toBeFocused()
+  })
+
   test('触屏 viewport（390px）点击打开且无 body 横向溢出', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await settle(page)
@@ -111,5 +137,97 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
         ).length,
     )
     expect(nestedInteractive).toBe(0)
+  })
+
+  // v2.6.0 全局放置覆盖矩阵：每个模式/区域断言代表性术语触发器真实可达，
+  // 内容正确性由各模式的代表气泡逐点验证（避免为每个 token 复制完整交互用例）。
+  test('v2.6.0 放置覆盖矩阵：页头、五模式、结果区与命令参考代表术语可达', async ({ page }) => {
+    await settle(page)
+
+    // 页头：PMBus + 副标题五个格式 token + SMBus。
+    await expect(page.getByTestId('term-trigger-pmbus')).toBeVisible()
+    for (const id of ['linear11', 'linear16', 'direct', 'binary16', 'vout-mode', 'smbus']) {
+      await expect(page.getByTestId('term-trigger-' + id).first()).toBeVisible()
+    }
+
+    // 结果区（数值模式通用）：Hex / LE / BE 标签触发器。
+    await expect(page.getByTestId('term-trigger-hex').first()).toBeVisible()
+    await expect(page.getByTestId('term-trigger-le')).toBeVisible()
+    await expect(page.getByTestId('term-trigger-be').first()).toBeVisible()
+
+    // L11：章节标题 + 范围提示里的 LINEAR11 N。
+    await expect(
+      page.getByRole('heading', { name: /LINEAR11 参数/ }).getByTestId('term-trigger-linear11'),
+    ).toBeVisible()
+    await expect(page.getByTestId('term-trigger-linear11-exponent')).toBeVisible()
+
+    // L16：标题 + payload 说明行两个 payload 标签。
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    await expect(
+      page
+        .getByRole('heading', { name: /LINEAR16 \/ VOUT 参数/ })
+        .getByTestId('term-trigger-linear16'),
+    ).toBeVisible()
+    await expect(page.getByTestId('term-trigger-ulinear16')).toBeVisible()
+    await expect(page.getByTestId('term-trigger-slinear16')).toBeVisible()
+
+    // DIRECT：标题 + 二补码。
+    await page.getByRole('tab', { name: /^DIRECT/ }).click()
+    await expect(
+      page.getByRole('heading', { name: /DIRECT 系数/ }).getByTestId('term-trigger-direct'),
+    ).toBeVisible()
+    await expect(page.getByTestId('term-trigger-twos-complement')).toBeVisible()
+
+    // HALF：标题 + 特殊值（binary16 在页头副标题也出现，h3 实例是最后一个）。
+    await page.getByRole('tab', { name: /^HALF/ }).click()
+    await expect(page.getByTestId('term-trigger-binary16').last()).toBeVisible()
+    await expect(page.getByTestId('term-trigger-fp-special')).toBeVisible()
+
+    // VOUT_MODE：术语行 abs-rel/exponent + VID code type（切换到 VID 格式）。
+    await switchToVoutMode(page)
+    await expect(
+      page.locator('[data-testid="vout-term-row"] [data-testid="term-trigger-abs-rel"]'),
+    ).toBeVisible()
+    await expect(
+      page.locator('[data-testid="vout-term-row"] [data-testid="term-trigger-exponent"]'),
+    ).toBeVisible()
+    await page.getByRole('radio', { name: 'VID' }).click()
+    await expect(page.getByTestId('term-trigger-vid-code-type')).toBeVisible()
+
+    // 命令参考：事务列表头触发器 + 提示行 VOUT_MODE。
+    await page.locator('#command-reference-toggle').click()
+    await expect(page.getByTestId('term-trigger-transaction')).toBeVisible()
+    await expect(
+      page.locator('[data-testid="command-reference"] [data-testid="term-trigger-vout-mode"]'),
+    ).toBeVisible()
+  })
+
+  test('v2.6.0 同名 N 按作用域区分：LINEAR11 N 与 VOUT_MODE N 展示不同且正确的解释', async ({
+    page,
+  }) => {
+    await settle(page)
+
+    // L11 的 N：主断言是 LINEAR11 word bits[15:11]（§7.3）。
+    const l11n = page.getByTestId('term-trigger-linear11-exponent')
+    await expect(l11n).toBeVisible()
+    await l11n.click()
+    const l11Popover = page.locator('[data-testid="term-popover-linear11-exponent"]')
+    await expect(l11Popover).toContainText('LINEAR11 指数')
+    await expect(l11Popover).toContainText('bits[15:11]')
+    await expect(l11Popover).toContainText('§7.3')
+    await page.keyboard.press('Escape')
+
+    // VOUT_MODE 页术语行的 N：主断言是 VOUT_MODE bits[4:0]（§8.3/§8.4.1）。
+    await switchToVoutMode(page)
+    const vmN = page.locator('[data-testid="vout-term-row"] [data-testid="term-trigger-exponent"]')
+    await vmN.click()
+    const vmPopover = page.locator('[data-testid="term-popover-exponent"]')
+    await expect(vmPopover).toContainText('VOUT_MODE 指数')
+    await expect(vmPopover).toContainText('VOUT_MODE bits[4:0] 的 5 位二补码值')
+    await page.keyboard.press('Escape')
+
+    // 两个气泡的主张互不越界：VOUT_MODE N 的气泡不把 LINEAR11 word 位域当作主解释。
+    await vmN.click()
+    await expect(vmPopover).not.toContainText('位于两字节 word 的 bits[15:11]')
   })
 })

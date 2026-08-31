@@ -1,7 +1,6 @@
 import type { AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { VoutModeInfoVM } from '../../app/view-model'
-import type { VoutModeFormat } from '../../legacy/vout-mode'
 import { VID_CODE_TABLE } from '../../legacy/vout-mode'
 import { PMBusMath } from '../../legacy/pmbus-math'
 import DecimalInput from '../inputs/DecimalInput'
@@ -10,7 +9,8 @@ import HexInput from '../inputs/HexInput'
 import ExponentEditor from '../formula/ExponentEditor'
 import LinearFormulaEditor from '../formula/LinearFormulaEditor'
 import TechnicalTerm from '../term/TechnicalTerm'
-import type { TermId } from '../../app/terminology'
+import ControlTooltip from '../help/ControlTooltip'
+import { VOUT_MODE_FORMATS, voutModeFormatTerm } from '../../app/vout-mode-formats'
 import { getBitRegions } from '../../app/bit-regions'
 import BitFieldGrid from '../bits/BitFieldGrid'
 import VoutModeExplanations from './VoutModeExplanations'
@@ -23,20 +23,6 @@ interface Props {
   dispatch: React.Dispatch<AppAction>
   /** L16 embedded editor locks bits[6:5] and shows the linked/non-linear source. */
   embedded?: boolean
-}
-
-const FORMATS: Array<{ value: VoutModeFormat; label: string }> = [
-  { value: 0, label: 'LINEAR' },
-  { value: 1, label: 'VID' },
-  { value: 2, label: 'DIRECT' },
-  { value: 3, label: 'IEEE Half' },
-]
-
-const FORMAT_TERM_ID: Record<VoutModeFormat, TermId> = {
-  0: 'linear',
-  1: 'vid',
-  2: 'direct',
-  3: 'binary16',
 }
 
 function vidOptionLabel(v: { code: number; kind: string; reservedReason?: string }): string {
@@ -93,39 +79,56 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
       {/* bit7 + bits[6:5] semantic controls */}
       <div className="vout-composer-controls">
         <div role="radiogroup" aria-label="绝对值 / 相对值（bit7）" className="vout-seg">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={info.isRelative === false}
-            onClick={() => {
-              // Re-selecting the active semantic control must not dispatch a
-              // state write: the reducer would keep the byte, but not
-              // dispatching keeps the transaction contract explicit (v2.5.7).
-              if (info.isRelative !== false) {
-                dispatch({ type: 'vout-mode/set-relative', relative: false })
-              }
-            }}
-            className="vout-seg-btn"
+          <ControlTooltip help="vout-abs" params={undefined}>
+            {(triggerProps) => (
+              <button
+                {...triggerProps}
+                type="button"
+                role="radio"
+                aria-checked={info.isRelative === false}
+                onClick={() => {
+                  // Re-selecting the active semantic control must not dispatch a
+                  // state write: the reducer would keep the byte, but not
+                  // dispatching keeps the transaction contract explicit (v2.5.7).
+                  if (info.isRelative !== false) {
+                    dispatch({ type: 'vout-mode/set-relative', relative: false })
+                  }
+                }}
+                className="vout-seg-btn"
+              >
+                绝对值
+              </button>
+            )}
+          </ControlTooltip>
+          <ControlTooltip
+            help="vout-rel"
+            params={isVid ? { disabledReason: '相对值不适用于 VID（Part II §8.5.3）' } : {}}
           >
-            绝对值
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={info.isRelative}
-            aria-disabled={isVid}
-            disabled={isVid}
-            title={isVid ? '相对值不适用于 VID（Part II §8.5.3）' : undefined}
-            onClick={() => {
-              if (info.isRelative !== true) {
-                dispatch({ type: 'vout-mode/set-relative', relative: true })
-              }
-            }}
-            className="vout-seg-btn"
-          >
-            相对值
-          </button>
+            {(triggerProps) => (
+              <button
+                {...triggerProps}
+                type="button"
+                role="radio"
+                aria-checked={info.isRelative}
+                disabled={isVid}
+                onClick={() => {
+                  if (info.isRelative !== true) {
+                    dispatch({ type: 'vout-mode/set-relative', relative: true })
+                  }
+                }}
+                className="vout-seg-btn"
+              >
+                相对值
+              </button>
+            )}
+          </ControlTooltip>
         </div>
+        {/* 原生 disabled 的控件不产生指针/焦点事件，禁用原因必须有可见路径。 */}
+        {isVid && (
+          <p className="text-xs color-text-muted" data-testid="vout-rel-disabled-reason">
+            相对值不适用于 VID（Part II §8.5.3）。
+          </p>
+        )}
 
         {!embedded && (
           <div
@@ -133,21 +136,25 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             aria-label="格式（bits[6:5]）"
             className="vout-seg vout-seg-format"
           >
-            {FORMATS.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                role="radio"
-                aria-checked={info.format === f.value}
-                onClick={() => {
-                  if (info.format !== f.value) {
-                    dispatch({ type: 'vout-mode/set-format', format: f.value })
-                  }
-                }}
-                className="vout-seg-btn"
-              >
-                {f.label}
-              </button>
+            {VOUT_MODE_FORMATS.map((f) => (
+              <ControlTooltip key={f.value} help={f.helpId} params={undefined}>
+                {(triggerProps) => (
+                  <button
+                    {...triggerProps}
+                    type="button"
+                    role="radio"
+                    aria-checked={info.format === f.value}
+                    onClick={() => {
+                      if (info.format !== f.value) {
+                        dispatch({ type: 'vout-mode/set-format', format: f.value })
+                      }
+                    }}
+                    className="vout-seg-btn"
+                  >
+                    {f.label}
+                  </button>
+                )}
+              </ControlTooltip>
             ))}
           </div>
         )}
@@ -157,8 +164,16 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         <div className="vout-term-row" data-testid="vout-term-row">
           <span className="text-xs color-text-muted">配置字节：</span>
           <TechnicalTerm termId="vout-mode" />
+          <span className="text-xs color-text-muted">bit7 语义：</span>
+          <TechnicalTerm termId="abs-rel" />
+          {info.format === 0 && (
+            <>
+              <span className="text-xs color-text-muted">指数：</span>
+              <TechnicalTerm termId="exponent" />
+            </>
+          )}
           <span className="text-xs color-text-muted">当前格式：</span>
-          <TechnicalTerm termId={FORMAT_TERM_ID[info.format]} />
+          <TechnicalTerm termId={voutModeFormatTerm(info.format)} />
         </div>
       )}
 
@@ -218,17 +233,22 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           )}
           {info.isRelative && (
             <p className="vout-param-note text-xs">
-              {state.l16.payloadKind === 'slinear16-offset'
-                ? 'bit7 相对值仅作用于 §8.5 相对阈值命令；当前 SLINEAR16 offset 是有符号命令 payload（§13.3/§13.4），bit7 不参与其数学，无需标称参考值。'
-                : '相对 LINEAR：payload 与 VOUT_COMMAND 同格式，解出比值 R；最终电压需要 VOUT_COMMAND 标称参考值。'}
+              {state.l16.payloadKind === 'slinear16-offset' ? (
+                'bit7 相对值仅作用于 §8.5 相对阈值命令；当前 SLINEAR16 offset 是有符号命令 payload（§13.3/§13.4），bit7 不参与其数学，无需标称参考值。'
+              ) : (
+                <>
+                  相对 LINEAR：payload 与 <TechnicalTerm termId="vout-command" />
+                  同格式，解出比值 R；最终电压需要 VOUT_COMMAND 标称参考值。
+                </>
+              )}
             </p>
           )}
         </div>
       ) : info.format === 1 ? (
         <div className="vout-param-vid">
-          <label className="text-xs color-text-muted" htmlFor="vout-vid-code-select">
-            VID 代码类型（无符号，0～31）
-          </label>
+          <div className="text-xs color-text-muted">
+            <TechnicalTerm termId="vid-code-type">VID 代码类型</TechnicalTerm>（无符号，0～31）
+          </div>
           <select
             id="vout-vid-code-select"
             aria-label="VID 代码类型"
@@ -296,13 +316,18 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
       {embedded ? (
         info.source === 'non-linear' ? (
           <>
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'l16/apply-calculator-linear-example' })}
-              className="vout-apply-default min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
-            >
-              应用计算器 LINEAR 示例 0x18
-            </button>
+            <ControlTooltip help="vout-apply-example" params={undefined}>
+              {(triggerProps) => (
+                <button
+                  {...triggerProps}
+                  type="button"
+                  onClick={() => dispatch({ type: 'l16/apply-calculator-linear-example' })}
+                  className="vout-apply-default min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
+                >
+                  应用计算器 LINEAR 示例 0x18
+                </button>
+              )}
+            </ControlTooltip>
             <p className="text-xs color-text-muted">
               0x18（absolute、N=-8）是本计算器的初始/恢复示例值，不是 PMBus
               规范默认值，也不代表真实器件一定接受 VOUT_MODE 写入。
@@ -310,17 +335,29 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           </>
         ) : null
       ) : (
-        <button
-          type="button"
-          onClick={() => dispatch({ type: 'vout-mode/normalize' })}
-          className="vout-normalize min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
-        >
-          规范化
-        </button>
+        <ControlTooltip help="vout-normalize" params={undefined}>
+          {(triggerProps) => (
+            <button
+              {...triggerProps}
+              type="button"
+              onClick={() => dispatch({ type: 'vout-mode/normalize' })}
+              className="vout-normalize min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
+            >
+              规范化
+            </button>
+          )}
+        </ControlTooltip>
       )}
 
       <details className="vout-explanations-details">
-        <summary>说明（{info.explanations.length}）</summary>
+        <ControlTooltip
+          help="vout-explanations-toggle"
+          params={{ count: info.explanations.length }}
+        >
+          {(triggerProps) => (
+            <summary {...triggerProps}>说明（{info.explanations.length}）</summary>
+          )}
+        </ControlTooltip>
         <VoutModeExplanations explanations={info.explanations} />
       </details>
     </div>

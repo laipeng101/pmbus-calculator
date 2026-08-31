@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { appUrl } from './helpers/app-url'
+import { CANONICAL_TOKENS } from '../../src/app/terminology'
 
 /**
  * M39 中文优先语言合同。
@@ -27,30 +28,32 @@ const BANNED_SUBSTRINGS = [
   'structurally legal',
 ]
 
-const ALLOWLIST = [
-  'PMBus',
-  'SMBus',
-  'VOUT_MODE',
-  'VOUT_COMMAND',
+/**
+ * Canonical tokens come from the glossary single source (src/app/terminology.ts,
+ * the same list that drives `TechnicalTerm`). Tokens that may legitimately
+ * appear in the UI but are NOT glossary concepts are split out explicitly:
+ * PMBus command names, IEEE float literals and spec citations.
+ */
+const NON_GLOSSARY_TOKENS = [
+  // VOUT_MODE format radio / summary UI labels (src/app/vout-mode-formats.ts).
+  'IEEE Half',
+  // PMBus output-voltage command names and project payload labels.
   'VOUT_MARGIN_HIGH',
+  'VOUT_MARGIN_LOW',
+  'VOUT_OV_FAULT_LIMIT',
+  'VOUT_OV_WARN_LIMIT',
+  'VOUT_UV_WARN_LIMIT',
+  'VOUT_UV_FAULT_LIMIT',
+  'POWER_GOOD_ON',
+  'POWER_GOOD_OFF',
   'VOUT_TRIM',
   'VOUT_CAL_OFFSET',
-  'LINEAR',
-  'LINEAR11',
-  'LINEAR16',
-  'ULINEAR16',
-  'SLINEAR16',
-  'VID',
-  'DIRECT',
-  'IEEE Half',
-  'IEEE 754 binary16',
-  'Hex',
-  'LE',
-  'BE',
   'NaN',
   'Infinity',
   'Part II',
-]
+] as const
+
+const ALLOWLIST: readonly string[] = [...CANONICAL_TOKENS, ...NON_GLOSSARY_TOKENS]
 
 async function expectChinesePrimary(page: Page, label: string) {
   const text = await page.evaluate(() => document.body.innerText)

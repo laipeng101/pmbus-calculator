@@ -1,4 +1,5 @@
 import type { CalculatorViewModel } from '../../app/view-model'
+import TechnicalTerm from '../term/TechnicalTerm'
 
 interface Props {
   vm: CalculatorViewModel
@@ -22,7 +23,8 @@ export default function ErrorDelta({ vm }: Props) {
       className="mt-3 rounded-lg px-4 py-2 text-sm panel-surface-muted color-text-secondary"
       aria-live="polite"
     >
-      格式编码量化误差:{' '}
+      <TechnicalTerm termId="quantization" />
+      {':'}{' '}
       <span className="error-delta-value font-semibold font-mono" data-kind={vm.deltaKind ?? 'ok'}>
         {vm.deltaText}
       </span>

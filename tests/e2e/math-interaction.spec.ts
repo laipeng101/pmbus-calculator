@@ -1,5 +1,16 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { appUrl } from './helpers/app-url'
+
+/**
+ * v2.6.0 起页头包含多个术语触发器，fresh load 的第一个 Tab 落在标题内的
+ * PMBus 触发器上；用有界真实键盘 Tab 循环前进到目标控件。
+ */
+async function tabUntilFocused(page: Page, locator: ReturnType<Page['getByRole']>, maxSteps = 20) {
+  for (let i = 0; i < maxSteps; i++) {
+    if (await locator.evaluate((el) => el.matches(':focus'))) return
+    await page.keyboard.press('Tab')
+  }
+}
 
 test.describe('LaTeX 公式展示与交互反馈', () => {
   test('四个计算模式均出现 KaTeX 容器且无 .katex-error', async ({ page }) => {
@@ -134,33 +145,38 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
   })
 
   // 键盘 focus-visible 合同：从 fresh load 的真实 Tab 进入，断言预期具体控件
-  // （首控件是 AppHeader 主题按钮，其相邻控件是活动模式 tab），并用
-  // Tab/Shift+Tab 往返验证。不依赖“最后一个控件 Tab 后焦点仍在页面内”：
-  // HTML sequential focus navigation 允许在页面末尾转向浏览器控件。
+  // （v2.6.0 起首控件是 AppHeader 标题内的 PMBus 术语触发器；页头术语触发器
+  // 位于主题按钮之前），并用 Tab/Shift+Tab 往返验证相邻控件。不依赖“最后
+  // 一个控件 Tab 后焦点仍在页面内”：HTML sequential focus navigation 允许
+  // 在页面末尾转向浏览器控件。
   test('键盘 Tab 进入首控件并在相邻控件间往返时 focus-visible 可观察', async ({ page }) => {
     await page.goto(appUrl())
 
+    const firstControl = page.getByTestId('term-trigger-pmbus').first()
     const themeToggle = page.getByRole('button', { name: /当前主题/ })
     const activeTab = page.getByRole('tab', { name: /LINEAR11/ })
 
     await page.keyboard.press('Tab')
-    await expect(themeToggle).toBeFocused()
-    const firstFocus = await themeToggle.evaluate((el) => ({
+    await expect(firstControl).toBeFocused()
+    const firstFocus = await firstControl.evaluate((el) => ({
       focusVisible: el.matches(':focus-visible'),
       outlineWidth: getComputedStyle(el).outlineWidth,
     }))
     expect(firstFocus.focusVisible).toBe(true)
     expect(firstFocus.outlineWidth).not.toBe('0px')
 
-    await page.keyboard.press('Tab')
-    await expect(activeTab).toBeFocused()
-    const tabFocus = await activeTab.evaluate((el) => ({
+    // 有界 Tab 前进越过页头术语触发器，落到主题按钮。
+    await tabUntilFocused(page, themeToggle)
+    await expect(themeToggle).toBeFocused()
+    const tabFocus = await themeToggle.evaluate((el) => ({
       focusVisible: el.matches(':focus-visible'),
       outlineWidth: getComputedStyle(el).outlineWidth,
     }))
     expect(tabFocus.focusVisible).toBe(true)
     expect(tabFocus.outlineWidth).not.toBe('0px')
 
+    await page.keyboard.press('Tab')
+    await expect(activeTab).toBeFocused()
     await page.keyboard.press('Shift+Tab')
     await expect(themeToggle).toBeFocused()
   })
@@ -210,6 +226,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     // focus-visible 提示保留：从 fresh load 的真实 Tab 进入并断言预期控件。
     await page.keyboard.press('Tab')
     const themeToggle = page.getByRole('button', { name: /当前主题/ })
+    await tabUntilFocused(page, themeToggle)
     await expect(themeToggle).toBeFocused()
     const focusInfo = await themeToggle.evaluate((el) => ({
       focusVisible: el.matches(':focus-visible'),
@@ -275,9 +292,10 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await expect(page.locator('.katex').first()).toBeVisible()
 
-    // 从 fresh load 的真实 Tab 进入，在预期首控件上验证 dark 主题 focus ring。
+    // 从 fresh load 的真实 Tab 进入，在预期控件上验证 dark 主题 focus ring。
     await page.keyboard.press('Tab')
     const themeToggle = page.getByRole('button', { name: /当前主题/ })
+    await tabUntilFocused(page, themeToggle)
     await expect(themeToggle).toBeFocused()
     const darkFocus = await themeToggle.evaluate((el) => {
       const style = getComputedStyle(el)

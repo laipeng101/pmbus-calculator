@@ -164,6 +164,28 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
     await expect(page.getByRole('row', { name: /VOUT_COMMAND/ })).toBeVisible()
     await expectNoBodyOverflow(page)
   })
+
+  test('v2.6.0 控件 tooltip 不劫持首次 tap：动作立即执行且无 sticky hover 浮层', async ({
+    page,
+  }) => {
+    await page.getByRole('tab', { name: /LINEAR11/ }).tap()
+
+    // 带 tooltip 的偏好按钮：第一次 tap 必须直接执行切换动作。
+    const prefix = page.getByRole('button', { name: '0x 前缀' })
+    await prefix.scrollIntoViewIfNeeded()
+    await expect(prefix).toHaveAttribute('aria-pressed', 'true')
+    await prefix.tap()
+    await expect(prefix).toHaveAttribute('aria-pressed', 'false')
+
+    // coarse pointer 不产生 hover 浮层（pointerType 过滤 + matchMedia 门禁）。
+    await expect(page.getByTestId('control-tooltip-copy-pref-prefix')).toHaveCount(0)
+
+    // 位按钮第一次 tap 同样直接翻转。
+    const bit = page.locator('.bitfield-bit').first()
+    await bit.tap()
+    await expect(bit).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('control-tooltip-bit-toggle')).toHaveCount(0)
+  })
 })
 
 test.describe('移动端合同：被拒编辑的触摸失焦（v2.5.14，390）', () => {

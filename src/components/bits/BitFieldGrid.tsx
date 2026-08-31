@@ -1,4 +1,5 @@
 import type { BitFieldRegion } from '../../app/bit-regions'
+import ControlTooltip from '../help/ControlTooltip'
 
 export interface BitFieldBit {
   index: number
@@ -74,27 +75,40 @@ export default function BitFieldGrid({
                     bit.value
                   : '位 ' + bit.index + ': ' + bit.value
                 return (
-                  <button
+                  <ControlTooltip
                     key={bit.index}
-                    type="button"
-                    onClick={() => onToggle(bit.index)}
-                    disabled={disabled}
-                    aria-pressed={on}
-                    aria-label={label}
-                    className="bitfield-bit"
+                    help="bit-toggle"
+                    params={{
+                      bitNumber: bit.index,
+                      region: bit.semantic ?? region?.label ?? '未命名区域',
+                      value: on ? 1 : 0,
+                      disabledReason: disabled ? (disabledHint ?? '该位不可编辑') : undefined,
+                    }}
                   >
-                    <div
-                      className="bitfield-cell"
-                      data-region={region?.colorToken}
-                      data-on={on}
-                      aria-hidden="true"
-                    >
-                      {bit.value}
-                    </div>
-                    <span className="bitfield-index" aria-hidden="true">
-                      {bit.index}
-                    </span>
-                  </button>
+                    {(triggerProps) => (
+                      <button
+                        {...triggerProps}
+                        type="button"
+                        onClick={() => onToggle(bit.index)}
+                        disabled={disabled}
+                        aria-pressed={on}
+                        aria-label={label}
+                        className="bitfield-bit"
+                      >
+                        <div
+                          className="bitfield-cell"
+                          data-region={region?.colorToken}
+                          data-on={on}
+                          aria-hidden="true"
+                        >
+                          {bit.value}
+                        </div>
+                        <span className="bitfield-index" aria-hidden="true">
+                          {bit.index}
+                        </span>
+                      </button>
+                    )}
+                  </ControlTooltip>
                 )
               })}
             </div>
