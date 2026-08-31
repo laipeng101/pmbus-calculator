@@ -18,6 +18,7 @@ import CommandReference from './components/command/CommandReference'
 import ResultSummary from './components/result/ResultSummary'
 import ResultDetails from './components/result/ResultDetails'
 import DebugDrawer from './components/debug/DebugDrawer'
+import HelpOverlayProvider from './components/help/HelpOverlayProvider'
 
 function resolveTheme(theme: AppState['ui']['theme']): 'light' | 'dark' {
   if (theme !== 'system') return theme
@@ -79,40 +80,45 @@ function App() {
   }, [])
 
   return (
-    <div className="flex min-h-screen flex-col items-center sm:px-4 sm:py-6">
-      <div className="app-panel sm:rounded-2xl sm:p-6 md:p-8">
-        <AppHeader
-          theme={state.ui.theme}
-          onThemeChange={(theme) => dispatch({ type: 'ui/set-theme', theme })}
-        />
+    <HelpOverlayProvider>
+      <div className="flex min-h-screen flex-col items-center sm:px-4 sm:py-6">
+        <div className="app-panel sm:rounded-2xl sm:p-6 md:p-8">
+          <AppHeader
+            theme={state.ui.theme}
+            onThemeChange={(theme) => dispatch({ type: 'ui/set-theme', theme })}
+          />
 
-        <ModeSwitcher mode={state.mode} onChange={(mode) => dispatch({ type: 'mode/set', mode })} />
+          <ModeSwitcher
+            mode={state.mode}
+            onChange={(mode) => dispatch({ type: 'mode/set', mode })}
+          />
 
-        <ResultSummary vm={vm} />
+          <ResultSummary vm={vm} />
 
-        <WorkspaceLayout
-          primary={<ModeWorkspace mode={state.mode} state={state} vm={vm} dispatch={dispatch} />}
-          secondary={
-            <ResultDetails
-              vm={vm}
-              copyPrefs={state.copy}
-              onTogglePrefix={() => dispatch({ type: 'copy/toggle-prefix' })}
-              onToggleSpace={() => dispatch({ type: 'copy/toggle-space' })}
-              onCopyEndianChange={(endian) => dispatch({ type: 'copy/set-endian', endian })}
-            />
-          }
-        />
+          <WorkspaceLayout
+            primary={<ModeWorkspace mode={state.mode} state={state} vm={vm} dispatch={dispatch} />}
+            secondary={
+              <ResultDetails
+                vm={vm}
+                copyPrefs={state.copy}
+                onTogglePrefix={() => dispatch({ type: 'copy/toggle-prefix' })}
+                onToggleSpace={() => dispatch({ type: 'copy/toggle-space' })}
+                onCopyEndianChange={(endian) => dispatch({ type: 'copy/set-endian', endian })}
+              />
+            }
+          />
 
-        {/* Read-only command reference: no selection, no mode/raw side effects. */}
-        <CommandReference />
+          {/* Read-only command reference: no selection, no mode/raw side effects. */}
+          <CommandReference />
 
-        <DebugDrawer
-          open={state.ui.debugOpen}
-          state={state}
-          onToggle={() => dispatch({ type: 'ui/toggle-debug' })}
-        />
+          <DebugDrawer
+            open={state.ui.debugOpen}
+            state={state}
+            onToggle={() => dispatch({ type: 'ui/toggle-debug' })}
+          />
+        </div>
       </div>
-    </div>
+    </HelpOverlayProvider>
   )
 }
 

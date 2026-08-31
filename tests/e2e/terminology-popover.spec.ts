@@ -64,6 +64,32 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     await expect(trigger).toBeFocused()
   })
 
+  test('键盘连续打开第二个术语时全局最多一个浮层（无 pointerdown 也单开）', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+
+    // 纯键盘路径：Enter 打开 A（摘要配置字节），Tab 到 B（当前格式）再 Enter。
+    const triggerA = page.locator(VM_TRIGGER)
+    await triggerA.focus()
+    await triggerA.press('Enter')
+    await expect(page.locator(VM_POPOVER)).toBeVisible()
+
+    await triggerA.press('Tab')
+    const triggerB = page.locator(LINEAR_TRIGGER)
+    await expect(triggerB).toBeFocused()
+    await triggerB.press('Enter')
+
+    // 修复的缺陷：键盘激活不产生 pointerdown，旧实现允许两个浮层同时保持。
+    await expect(page.locator(VM_POPOVER)).toHaveCount(0)
+    await expect(page.locator(LINEAR_POPOVER)).toBeVisible()
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(1)
+
+    // Escape 由协调层单一监听器处理：焦点确定恢复到最后激活的触发器。
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(0)
+    await expect(triggerB).toBeFocused()
+  })
+
   test('触屏 viewport（390px）点击打开且无 body 横向溢出', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await settle(page)

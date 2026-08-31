@@ -1,8 +1,9 @@
-import { useEffect, useId, useState } from 'react'
+import { useId, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { autoUpdate, flip, offset, shift, size, useFloating } from '@floating-ui/react-dom'
 import { getGlossaryTerm } from '../../app/terminology'
 import type { TermId } from '../../app/terminology'
+import { useHelpOverlay } from '../help/help-overlay-context'
 
 interface Props {
   termId: TermId
@@ -15,11 +16,11 @@ interface Props {
  *
  * - The trigger is a real, focusable <button> that looks like inline text with
  *   a dotted underline (not a normal button surface).
- * - Click toggles; opening a second term closes the first (each instance owns
- *   its own local open state, and the document-level outside-pointer handler
- *   closes any open popover).
+ * - Click toggles; the app-level help overlay (HelpOverlayProvider) owns the
+ *   single-open contract, so opening a second term — by mouse OR keyboard —
+ *   closes the first, and one document listener handles outside-close and
+ *   Escape with deterministic focus restore (v2.6.0).
  * - Clicking outside closes; clicking inside the popover does not.
- * - Escape closes and restores focus to the trigger.
  * - Works on touch (pointer events + click) — never hover-dependent.
  * - Floating UI keeps it inside the viewport (flip/shift/size/autoUpdate) and
  *   portal-rendered so it never affects the surrounding layout.
@@ -29,8 +30,16 @@ interface Props {
  */
 export default function TechnicalTerm({ termId, children }: Props) {
   const term = getGlossaryTerm(termId)
-  const [open, setOpen] = useState(false)
   const panelId = useId()
+  const help = useHelpOverlay()
+  // The overlay tracks surface INSTANCES, not concepts: the same TermId can be
+  // mounted in several places (config summary + workspace term row), and only
+  // the trigger the user interacted with may show its popover.
+  const surfaceKey = useMemo(
+    () => ({ kind: 'term' as const, id: termId + '#' + panelId }),
+    [termId, panelId],
+  )
+  const open = help.isActive(surfaceKey)
 
   const { refs, floatingStyles } = useFloating<HTMLButtonElement>({
     open,
@@ -50,33 +59,6 @@ export default function TechnicalTerm({ termId, children }: Props) {
     whileElementsMounted: autoUpdate,
   })
 
-  // Outside pointer down closes the popover (but not pointer down inside the
-  // trigger or inside the popover itself).
-  useEffect(() => {
-    if (!open) return
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node
-      if (refs.reference.current?.contains(target)) return
-      if (refs.floating.current?.contains(target)) return
-      setOpen(false)
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [open, refs])
-
-  // Escape closes and restores focus to the trigger.
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setOpen(false)
-        refs.reference.current?.focus()
-      }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [open, refs])
-
   if (!term) return <>{children ?? null}</>
 
   return (
@@ -89,7 +71,7 @@ export default function TechnicalTerm({ termId, children }: Props) {
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         aria-describedby={open ? panelId : undefined}
-        onClick={() => setOpen((value) => !value)}
+        onClick={(event) => help.toggleTerm(surfaceKey, event.currentTarget)}
       >
         {children ?? term.token}
       </button>
@@ -100,6 +82,7 @@ export default function TechnicalTerm({ termId, children }: Props) {
             // prop，因此用 callback ref 直接把定位写入 DOM style。
             ref={(node: HTMLDivElement | null) => {
               refs.setFloating(node)
+              help.registerSurface(surfaceKey, node)
               const floating = refs.floating.current
               if (floating == null) return
               for (const [key, value] of Object.entries(floatingStyles)) {
