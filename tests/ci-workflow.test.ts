@@ -74,6 +74,7 @@ const FULL_TIER_RUN_COMMANDS = [
   'npm run test:coverage',
   'npx playwright install --with-deps chromium',
   'npm run test:e2e',
+  'npm run test:e2e:mobile',
   'npm run build',
   'npm run check:tailwind-scope',
   'npm run test:e2e:release',
@@ -259,6 +260,53 @@ describe('ci.yml full-tier gating', () => {
     // hidden behind the full-tier condition.
     const block = findStepByRun('npm run check:release-docs-commands')
     expect(normalize(block)).not.toContain(`if: ${FULL_TIER_CONDITION}`)
+  })
+})
+
+describe('ci.yml e2e job light-tier install gating', () => {
+  function e2eSection(): string {
+    return workflow.split(/^ {2}e2e:\n/m)[1] ?? ''
+  }
+
+  function findE2EStepByRun(runCommand: string): string {
+    const pattern = new RegExp(
+      `^ {8}run: ${runCommand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`,
+      'm',
+    )
+    const match = stepBlocks(e2eSection()).find((block) => pattern.test(block))
+    if (!match) throw new Error(`e2e step with run "${runCommand}" not found`)
+    return match
+  }
+
+  it('skips the e2e dependency installation for light-only changes', () => {
+    // v2.6.1: the scope is already computed before this step, and every
+    // downstream e2e step is full-tier gated — running npm ci on light-only
+    // PRs wasted the whole job's install for nothing. The gate keeps
+    // failing closed: full/mixed/unknown still install and verify.
+    expect(normalize(findE2EStepByRun('npm ci'))).toContain(`if: ${FULL_TIER_CONDITION}`)
+  })
+
+  it('keeps every heavy e2e step behind the same fail-closed condition', () => {
+    for (const runCommand of [
+      'npm ci',
+      'npx playwright install --with-deps chromium',
+      'npm run build',
+      'npm run test:e2e',
+      'npm run test:e2e:mobile',
+      'npm run test:e2e:release',
+    ]) {
+      expect(normalize(findE2EStepByRun(runCommand))).toContain(`if: ${FULL_TIER_CONDITION}`)
+    }
+  })
+
+  it('keeps the quality job dependency installation unconditional for the light gates', () => {
+    // The quality job runs the light gates (format, markdown math, release
+    // docs commands, hygiene) which need the real toolchain — its npm ci
+    // must never hide behind the full tier.
+    const qualitySection = workflow.split(/^ {2}quality:\n/m)[1] ?? ''
+    const install = stepBlocks(qualitySection).find((block) => /^ {8}run: npm ci\s*$/m.test(block))
+    expect(install).toBeDefined()
+    expect(normalize(install!)).not.toContain(`if: ${FULL_TIER_CONDITION}`)
   })
 })
 

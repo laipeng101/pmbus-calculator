@@ -145,7 +145,11 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node scripts/classify-ci-scope.mjs --event "$EVENT_NAME" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
 
+      # v2.6.1: every downstream e2e step is full-tier gated, so installing
+      # dependencies on light-only PRs wasted the job. The gate fails closed:
+      # full/mixed/unknown and workflow_dispatch still install and verify.
       - name: Install dependencies
+        if: steps.scope.outputs.run_full != 'false'
         run: npm ci
 
       - name: Install Playwright browsers
