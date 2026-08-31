@@ -26,20 +26,33 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
+      # Tag resolution and SemVer validation are pure shell: they need no
+      # repository source and must run BEFORE checkout so the checkout ref
+      # itself is bound to the exact release tag.
       - name: Resolve release tag
         id: resolve
         env:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "release" ]; then
             echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
           else
+            # A manual dispatch deploys the INPUT tag only from that exact tag
+            # ref: a run started on main, any branch, or a different tag can
+            # never inject another tag here.
+            if [ "$REF_TYPE" != "tag" ]; then
+              echo "::error::workflow_dispatch must be run on a tag ref (got ref_type: ${REF_TYPE})"
+              exit 1
+            fi
+            if [ "$REF_NAME" != "$INPUT_RELEASE_TAG" ]; then
+              echo "::error::workflow_dispatch ref (${REF_NAME}) must equal inputs.release_tag (${INPUT_RELEASE_TAG})"
+              exit 1
+            fi
             echo "tag=${INPUT_RELEASE_TAG}" >> "$GITHUB_OUTPUT"
           fi
 
@@ -53,6 +66,37 @@ jobs:
             exit 1
           fi
           echo "VERSION=$RELEASE_TAG" >> "$GITHUB_ENV"
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.resolve.outputs.tag }}
+          persist-credentials: false
+
+      # The verifier scripts (release-assets-verify / download /
+      # verify-downloaded-assets) run from this working tree, so the tree
+      # itself must be the deployed tag: an annotated tag object, a 40-hex
+      # peeled commit, and a detached HEAD exactly at that commit.
+      - name: Verify checkout matches the resolved tag
+        env:
+          RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag_type="$(git cat-file -t "refs/tags/${RELEASE_TAG}")"
+          if [ "$tag_type" != "tag" ]; then
+            echo "::error::refs/tags/${RELEASE_TAG} must be an annotated tag (got: ${tag_type})"
+            exit 1
+          fi
+          peeled="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          if ! printf '%s' "$peeled" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::peeled tag commit is not a 40-hex SHA: ${peeled}"
+            exit 1
+          fi
+          head_sha="$(git rev-parse HEAD)"
+          if [ "$head_sha" != "$peeled" ]; then
+            echo "::error::checked-out HEAD ${head_sha} != peeled tag commit ${peeled}"
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -76,6 +120,10 @@ jobs:
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" > release-metadata.json
+
+          # The metadata must describe exactly the resolved tag, not merely
+          # "a release found for this tag path".
+          jq -e --arg tag "${RELEASE_TAG}" '.tag_name == $tag' release-metadata.json >/dev/null
 
           # Asset readiness gate (v2.5.8, scripts/release-assets-verify.mjs):
           # draft/prerelease/tag contract, asset presence, uniqueness,
