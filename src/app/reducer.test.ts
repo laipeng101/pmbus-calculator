@@ -1524,6 +1524,21 @@ describe('appReducer — state transitions', () => {
       }
     })
 
+    it('commits a compensated scientific lexeme: raw 0x0007 → 0x0001 with lexeme provenance (v2.6.2)', () => {
+      // The audit vector: binary64 value exactly 1, Y=1 under m=1,b=0,R=0.
+      // The v2.5.12 boundary rejected it silently (UI valid, reducer no-op,
+      // no error anywhere); the compensated boundary must commit it like any
+      // other legal finite request.
+      const s = directWith(1, 0, 0)
+      const committed = appReducer(s, { type: 'value/set', value: '7' })
+      expect(committed.raw).toBe(0x0007)
+      const text = `1${'0'.repeat(501)}e-501`
+      const next = appReducer(committed, { type: 'value/set', value: text })
+      expect(next).not.toBe(committed)
+      expect(next.raw).toBe(0x0001)
+      expect(next.valueRequest).toEqual({ mode: 'DIRECT', value: 1, text })
+    })
+
     it('fails closed when the lexeme is not an exact decimal (defensive)', () => {
       // classifyFloatText would reject these before the reducer; a direct
       // dispatch must still not fabricate a state change.
