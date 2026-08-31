@@ -1,7 +1,7 @@
 {
   "name": "pmbus-calculator",
   "private": true,
-  "version": "2.5.15",
+  "version": "2.6.0",
   "type": "module",
   "engines": {
     "node": ">=22.20.0 <23 || >=24.19.0 <25",

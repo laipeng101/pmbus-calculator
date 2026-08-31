@@ -3,15 +3,17 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-31（v2.5.15——完整语义 E2E 套件（desktop 310 + mobile 14）
-以生产构建为主要验收目标（`vite preview` 精确 dist、官方 `/pmbus-calculator/`
-前缀挂载、verify/CI 单次 build、strictPort 且不复用未知服务器）；统一
-`appUrl()` URL 合同与 `app-base-url` 目标守卫 spec；焦点测试从真实键盘入口
-断言具体控件并以页内 Tab/Shift+Tab 往返验证，不再依赖页尾环境焦点假设；
-调试面板 canonical 入口改显式 `?debug`；发布文档命令门禁修复重定向截断与
-引号不平衡两个假阳性（显式有限语法：至多一处尾部重定向 + 逐 token 引号
-平衡）；REPOSITORY_HYGIENE/CONTRIBUTING 清理漂移副本并以 Playwright↔cleaner
-一致性测试守护；无任何 `src/` 产品源码变更）
+最后更新：2026-08-31（v2.6.0——全局帮助浮层体系（M42）：帮助概念术语经
+`TechnicalTerm` 推广到页头、五种模式与结果区/命令参考等全部代表放置面
+（每概念 ≥1 生产放置面由 `TERM_PLACEMENT_SURFACES` 契约守护）；全部按钮/
+按钮型控件经 `ControlTooltip` + `CONTROL_HELP` registry 获得统一悬停与
+键盘焦点说明（fine-pointer 双门禁、click 单次、触屏不劫持）；两类浮层
+共享 `HelpOverlayProvider` 全局单开（Escape 焦点恢复、外点关闭）；原生
+`title` 帮助全部移除并由 `check:no-title-help` 门禁拒绝回潮；VID 相对值
+禁用原因改为可见段落；LINEAR11 指数 N 与 VOUT_MODE 参数 N 术语拆分消歧；
+`vout-mode-formats.ts` 统一格式标签/术语副本；删除无引用的
+`ResultInspector.tsx`；视觉场景归一为静止态（截图前指针归零、提交后
+释放焦点））
 
 ## 当前产品基线
 
@@ -36,7 +38,7 @@
 ## 当前里程碑
 
 ```text
-M0–M39 complete；stable release v2.5.15；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v2.6.0；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -174,7 +176,24 @@ M0–M39 complete；stable release v2.5.15；production distribution: GitHub Pag
   截断后缀；显式有限语法：至多一处尾部 stdout 重定向 + 逐 token 引号
   平衡，其余形态显式拒绝）——REPOSITORY_HYGIENE/CONTRIBUTING 漂移副本
   对齐 + Playwright↔cleaner 产物一致性测试。无 `src/` 产品源码变更。
-- 当前：无进行中的功能里程碑；v2.5.15 已发布，M40–M41 complete。
+- M42（v2.6.0）：全局帮助浮层体系——概念术语与控件说明两类触发策略统一：
+  Phase 1 术语数据合同扩容（`terminology.ts` 23 概念含 `source`/`specRef`/
+  `scope` 元数据与 `TERM_PLACEMENT_SURFACES` 放置面契约；`control-help.ts`
+  typed `CONTROL_HELP` registry 29 个控件说明；`vout-mode-formats.ts` 消除
+  FORMAT 标签/术语双副本；LINEAR11 指数 N 与 VOUT_MODE 参数 N 术语拆分）；
+  Phase 2 `HelpOverlayProvider` 全局单开（实例级 surface key、Escape 焦点
+  恢复、外点关闭、卸载清理）+ `ControlTooltip` render-prop（fine-pointer
+  双门禁 hover、focus-visible 打开、blur/Escape 关闭、click 单次、触屏
+  不劫持、`role="tooltip"` 无 aria-expanded）；Phase 3 术语推广到页头/
+  五模式/结果区/命令参考全部代表放置面（键盘连续单开、放置覆盖矩阵、
+  同名 N 作用域区分 E2E；28 张 visual 基线按协议逐图审查更新）；Phase 4
+  全部按钮/按钮型控件接线 + 三处原生 title 移除（ThemeToggle、L11 N 锁、
+  VID 相对值）+ `check:no-title-help` 门禁（verify 链与 CI quality job）
+  - VID 相对值可见禁用原因段落 + 视觉场景静止态归一（截图前指针归零、
+    提交后释放焦点，8 张 stress 基线逐图审查更新、其余 20 张不变）；Phase 5
+    删除零引用 `ResultInspector.tsx`；Phase 6 文档与发布。UI_CONVENTIONS §7
+    重写为「帮助浮层：术语气泡与控件说明」双合同。
+- 当前：无进行中的功能里程碑；v2.6.0 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
