@@ -3,17 +3,15 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-31（v2.6.0——全局帮助浮层体系（M42）：帮助概念术语经
-`TechnicalTerm` 推广到页头、五种模式与结果区/命令参考等全部代表放置面
-（每概念 ≥1 生产放置面由 `TERM_PLACEMENT_SURFACES` 契约守护）；全部按钮/
-按钮型控件经 `ControlTooltip` + `CONTROL_HELP` registry 获得统一悬停与
-键盘焦点说明（fine-pointer 双门禁、click 单次、触屏不劫持）；两类浮层
-共享 `HelpOverlayProvider` 全局单开（Escape 焦点恢复、外点关闭）；原生
-`title` 帮助全部移除并由 `check:no-title-help` 门禁拒绝回潮；VID 相对值
-禁用原因改为可见段落；LINEAR11 指数 N 与 VOUT_MODE 参数 N 术语拆分消歧；
-`vout-mode-formats.ts` 统一格式标签/术语副本；删除无引用的
-`ResultInspector.tsx`；视觉场景归一为静止态（截图前指针归零、提交后
-释放焦点））
+最后更新：2026-08-31（v2.6.1——发布完整性、帮助系统契约与 CI 效率加固：
+Pages 手动部署绑定被部署 tag 的 ref 并校验 annotated tag/HEAD/Release 元数据
+一致；`TechnicalTerm` 与 `ControlTooltip` 对称的卸载清理（provider active
+surface 不再残留 detached trigger、document 监听 add/remove 对称）；
+`TERM_PLACEMENT_SURFACES` 字符串清单退役，E2E 改为从真实 DOM 触发器累计
+术语 id 并与 `GLOSSARY_TERM_IDS` 精确相等；UI_CONVENTIONS §7 术语 disclosure
+关闭态 `aria-expanded="false"` 合同纠偏；e2e job light-tier 跳过 `npm ci`；
+desktop 语义 E2E 以本地无 retry 实验采纳 CI 2 workers；SMBus/LE 字节序引用
+精度收窄）
 
 ## 当前产品基线
 
@@ -38,7 +36,7 @@
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v2.6.0；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v2.6.1；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -193,7 +191,19 @@ M0–M42 complete；stable release v2.6.0；production distribution: GitHub Page
     提交后释放焦点，8 张 stress 基线逐图审查更新、其余 20 张不变）；Phase 5
     删除零引用 `ResultInspector.tsx`；Phase 6 文档与发布。UI_CONVENTIONS §7
     重写为「帮助浮层：术语气泡与控件说明」双合同。
-- 当前：无进行中的功能里程碑；v2.6.0 已发布，M40–M42 complete。
+- v2.6.1（PATCH）：发布完整性与帮助系统契约加固——Pages `workflow_dispatch`
+  必须在被部署 tag 的 ref 上发起，checkout 绑定解析出的 annotated tag 并校验
+  peeled commit/HEAD/Release 元数据一致（`tests/pages-workflow.test.ts` 合同
+  先红后绿）；`TechnicalTerm` 卸载时与 `ControlTooltip` 对称地
+  `closeIfActive`（jsdom provider 合同 + 应用级模式切换 E2E，StrictMode 监听
+  对称）；删除只被单测读取的 `TERM_PLACEMENT_SURFACES`，E2E 从真实 DOM 触发器
+  累计术语 id 并断言与 `GLOSSARY_TERM_IDS` 精确相等（23/23）；UI_CONVENTIONS
+  §7 术语 disclosure 关闭态 `aria-expanded="false"` 合同纠偏 + E2E 属性断言；
+  e2e job light-tier 跳过 `npm ci`；本地无 retry 实验（1-worker 105s →
+  2-worker 中位 59s，零 flake、repeat-each=10 压力 1210 次零失败）采纳
+  desktop 语义 E2E CI 2 workers；SMBus/LE 字节序引用精度收窄（§7.6 明示范围
+  为浮点数据）。数值算法零变更、visual 基线零变化。
+- 当前：无进行中的功能里程碑；v2.6.1 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
