@@ -29,7 +29,15 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     await settle(page)
     await switchToVoutMode(page)
 
-    await page.locator(VM_TRIGGER).click()
+    const vmTrigger = page.locator(VM_TRIGGER)
+
+    // v2.6.1 disclosure 关闭态合同：collapsed 携带 aria-expanded="false"，
+    // aria-controls/aria-describedby 只在打开时存在。
+    await expect(vmTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(await vmTrigger.getAttribute('aria-controls')).toBeNull()
+    expect(await vmTrigger.getAttribute('aria-describedby')).toBeNull()
+
+    await vmTrigger.click()
     await expect(page.locator(VM_POPOVER)).toBeVisible()
     await expect(page.locator(VM_TRIGGER)).toHaveAttribute('aria-expanded', 'true')
     await expect(page.locator(VM_TRIGGER)).toHaveAttribute('aria-controls', /.+/)
@@ -48,6 +56,11 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     // 点击气泡外关闭
     await page.mouse.click(8, 8)
     await expect(page.locator(LINEAR_POPOVER)).toHaveCount(0)
+    // 关闭后 disclosure 属性回到收起态合同。
+    const linearTrigger = page.locator(LINEAR_TRIGGER)
+    await expect(linearTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(await linearTrigger.getAttribute('aria-controls')).toBeNull()
+    expect(await linearTrigger.getAttribute('aria-describedby')).toBeNull()
   })
 
   test('键盘：触发器可聚焦，Enter 打开，Escape 关闭并恢复焦点', async ({ page }) => {
@@ -63,6 +76,10 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     await page.keyboard.press('Escape')
     await expect(page.locator(VM_POPOVER)).toHaveCount(0)
     await expect(trigger).toBeFocused()
+    // Escape 关闭后同样回到 aria-expanded="false" 的收起态。
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(await trigger.getAttribute('aria-controls')).toBeNull()
+    expect(await trigger.getAttribute('aria-describedby')).toBeNull()
   })
 
   test('键盘连续打开第二个术语时全局最多一个浮层（无 pointerdown 也单开）', async ({ page }) => {
