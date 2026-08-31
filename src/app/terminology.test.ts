@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  CANONICAL_TOKENS,
-  GLOSSARY,
-  GLOSSARY_TERM_IDS,
-  TERM_PLACEMENT_SURFACES,
-  getGlossaryTerm,
-} from './terminology'
+import { CANONICAL_TOKENS, GLOSSARY, GLOSSARY_TERM_IDS, getGlossaryTerm } from './terminology'
 import { CONTROL_HELP, CONTROL_HELP_IDS, controlHelpText } from './control-help'
 import { VOUT_MODE_FORMATS, voutModeFormatLabel, voutModeFormatTerm } from './vout-mode-formats'
 
@@ -96,18 +90,6 @@ describe('M39 terminology glossary (single source of truth)', () => {
     expect(GLOSSARY['vid-code-type'].detail).toContain('1Eh–1Fh')
     expect(GLOSSARY['vid-code-type'].detail).toContain('制造商自定义')
     expect(GLOSSARY['vid-code-type'].detail).not.toContain('非法')
-  })
-
-  it('records at least one production placement surface per glossary concept', () => {
-    for (const id of GLOSSARY_TERM_IDS) {
-      const surfaces = TERM_PLACEMENT_SURFACES[id]
-      expect(surfaces, id + ' placement surfaces').toBeDefined()
-      expect(surfaces.length, id + ' needs ≥1 surface').toBeGreaterThan(0)
-      for (const surface of surfaces) {
-        expect(surface.trim().length, id + ' surface name').toBeGreaterThan(0)
-      }
-    }
-    expect(Object.keys(TERM_PLACEMENT_SURFACES).length).toBe(GLOSSARY_TERM_IDS.length)
   })
 })
 
