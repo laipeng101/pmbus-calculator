@@ -29,7 +29,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // v2.6.1: two CI workers adopted on measured no-retry evidence (zero
+  // flake/retry across full-suite and repeat-each=10 stress runs, ≥20%
+  // wall-clock gain, per-test contexts keep suites isolated).
+  workers: process.env.CI ? 2 : undefined,
   reporter: [
     ['list'],
     ['html', { outputFolder: './tests/e2e/report', open: 'never' }],
