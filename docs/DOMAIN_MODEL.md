@@ -132,7 +132,11 @@ PMBusMath.decodeDirect(y, …))`）与经验证的安全回录文本生成
   trim 换取额外预算，直接 dispatch 超长文本是严格 no-op；
   `checkExactLexemeBoundary` 在任何 BigInt 构造之前以纯字符串工作完成
   raw 长度/语法/指数移位检查（O(1)/O(n)），兆字节粘贴在微秒级被拒绝；
-  短输入的空白语义（首尾空白 trim、`0e-400`/`-0.0e-999` 等任何指数下的
+  v2.6.2 起指数移位下界按尾零补偿后的 effective shift 度量：尾零是保量值的
+  O(n) 字符串规范化，BigInt 构造前先剥离（`1000…0e-501` 精确值 1 是合法
+  请求而非静默 no-op）；上界保持句法 shift 不变，分类合法输入
+  （|Number| ≥ 5e-324）可证明不会触碰下界网。短输入的空白语义（首尾空白
+  trim、`0e-400`/`-0.0e-999` 等任何指数下的
   true zero）不变。UI 显示明确的「输入过长，未提交」错误并保留旧 raw 与
   旧请求；超长粘贴在进入 React draft state 之前被拒绝（不把超长字符串
   驻留在组件状态中），不静默截断、不改写为 ±Infinity/±0。

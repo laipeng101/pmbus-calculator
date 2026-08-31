@@ -612,3 +612,100 @@ describe('raw lexeme resource boundary (v2.5.13)', () => {
     expect(parseDecimalExactRational(' 0e-400 ')).toEqual({ numerator: 0n, denominator: 1n })
   })
 })
+
+describe('compensated scientific lexemes (v2.6.2)', () => {
+  // The audit vector: a mantissa whose trailing zeros exactly cancel a deep
+  // negative exponent is a legal finite request — Number(text) is exactly 1 —
+  // yet the v2.5.12 boundary measured the SYNTACTIC shift (exp − fracLen) and
+  // rejected it as shift-out-of-range, so the UI classified it valid, the
+  // reducer silently no-op'd, and no error appeared anywhere. Trailing-zero
+  // cancellation is magnitude-preserving O(n) string work performed BEFORE
+  // any BigInt construction; the underflow net must measure the EFFECTIVE
+  // shift (shift + trailing zeros), floored at the historical −500 and at a
+  // raw-length-derived bound no classify-valid lexeme can cross.
+  const AUDIT_VECTOR = `1${'0'.repeat(501)}e-501`
+
+  it('accepts the 507-character audit vector as exact 1/1', () => {
+    expect(AUDIT_VECTOR.length).toBe(507)
+    expect(Number(AUDIT_VECTOR)).toBe(1)
+    expect(checkExactLexemeBoundary(AUDIT_VECTOR)).toEqual({ ok: true })
+    expect(parseDecimalExactRational(AUDIT_VECTOR)).toEqual({ numerator: 1n, denominator: 1n })
+  })
+
+  it('keeps explicit signs and partial compensation exact', () => {
+    expect(parseDecimalExactRational(`-1${'0'.repeat(501)}e-501`)).toEqual({
+      numerator: -1n,
+      denominator: 1n,
+    })
+    expect(parseDecimalExactRational(`+1${'0'.repeat(501)}e-501`)).toEqual({
+      numerator: 1n,
+      denominator: 1n,
+    })
+    // 451-digit mantissa with 450 trailing zeros: value = 10^450 × 10^-501
+    // = 10^-51 — only the compensated part cancels, the rest stays in the
+    // effective shift.
+    const partial = `1${'0'.repeat(450)}e-501`
+    expect(checkExactLexemeBoundary(partial)).toEqual({ ok: true })
+    expect(parseDecimalExactRational(partial)).toEqual({
+      numerator: 1n,
+      denominator: 10n ** 51n,
+    })
+  })
+
+  it('keeps trailing zeros of a long mantissa exact across e-500/e-501/e-502', () => {
+    // mantissa = 1 followed by 500 zeros = 10^500; the 500 trailing zeros
+    // cancel 500 orders of the exponent in every row.
+    const mantissa = `1${'0'.repeat(500)}`
+    expect(Number(`${mantissa}e-500`)).toBe(1)
+    expect(parseDecimalExactRational(`${mantissa}e-500`)).toEqual({
+      numerator: 1n,
+      denominator: 1n,
+    })
+    expect(parseDecimalExactRational(`${mantissa}e-501`)).toEqual({
+      numerator: 1n,
+      denominator: 10n,
+    })
+    expect(parseDecimalExactRational(`${mantissa}e-502`)).toEqual({
+      numerator: 1n,
+      denominator: 100n,
+    })
+  })
+
+  it('accepts a classify-valid deep-shift lexeme with significant digits (golden case)', () => {
+    // ~9.000…009 × 10^502 × 10^-502: finite non-zero binary64 value with 503
+    // significant digits and a syntactic shift of −502. The historical −500
+    // net cannot host it; the raw-length-derived bound can — this lexeme is
+    // exactly parseable within the same BigInt budget as any 4096-char paste.
+    const deep = `9${'0'.repeat(501)}9e-502`
+    expect(Number(deep)).toBeGreaterThan(0)
+    expect(Number(deep)).toBeLessThan(Infinity)
+    expect(checkExactLexemeBoundary(deep)).toEqual({ ok: true })
+    const exact = parseDecimalExactRational(deep)
+    expect(exact).toEqual({
+      numerator: BigInt(`9${'0'.repeat(501)}9`),
+      denominator: 10n ** 502n,
+    })
+  })
+
+  it('keeps the underflow net fail-closed for genuinely deep classify-invalid lexemes', () => {
+    // classifyFloatText rejects these as underflow upstream (binary64 ±0);
+    // the boundary must keep rejecting them even on a direct dispatch.
+    expect(checkExactLexemeBoundary('1e-501')).toEqual({ ok: false, reason: 'shift-out-of-range' })
+    expect(parseDecimalExactRational('1e-501')).toBeNull()
+    expect(checkExactLexemeBoundary('1e-99999')).toEqual({
+      ok: false,
+      reason: 'shift-out-of-range',
+    })
+    // Zeros keep their legal signed-zero contract at any exponent.
+    expect(parseDecimalExactRational('-0.0e-999')).toEqual({ numerator: 0n, denominator: 1n })
+  })
+
+  it('bounds the compensated BigInt work: stripping only cancels trailing zeros', () => {
+    // The constructed BigInt is the STRIPPED mantissa — never larger than the
+    // significant digit span; a 4096-char compensated lexeme strips to '1'.
+    const compensated = `1${'0'.repeat(4089)}e-4091`
+    expect(compensated.length).toBe(DIRECT_EXACT_MAX_LEXEME_LENGTH)
+    expect(checkExactLexemeBoundary(compensated)).toEqual({ ok: true })
+    expect(parseDecimalExactRational(compensated)).toEqual({ numerator: 1n, denominator: 100n })
+  })
+})

@@ -472,6 +472,26 @@ test.describe('DIRECT 精确十进制输入边界（v2.5.13）', () => {
     await expect(page.getByText(/数值超出可表示范围/)).toBeVisible()
     await expect(hexInput(page)).toHaveValue('0000')
   })
+
+  test('尾零补偿的合法科学计数法精确提交：raw 0001、无字段错误、量化 exact（v2.6.2）', async ({
+    page,
+  }) => {
+    // 审计最小向量：507 字符、binary64 值恰为 1。v2.5.12 边界按句法移位
+    // 拒绝它，UI 判 valid、reducer 静默 no-op、无任何错误；补偿化边界必须
+    // 像其他合法有限请求一样提交（真实剪贴板粘贴 → 单次 change 提交）。
+    const text = `1${'0'.repeat(501)}e-501`
+    expect(text.length).toBe(507)
+    await pasteIntoValueInput(page, text)
+    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(page.getByText(/输入过长|输入下溢|超出可表示范围/)).toHaveCount(0)
+    await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
+    await expect(quantizationPanel(page)).toContainText(text)
+    // 无横向溢出：507 字符请求文本必须换行显示。
+    const { scrollWidth, clientWidth } = await page
+      .locator('body')
+      .evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }))
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
+  })
 })
 
 test.describe('DIRECT 被拒编辑的事务边界（v2.5.14 正式站反例，1280×900）', () => {

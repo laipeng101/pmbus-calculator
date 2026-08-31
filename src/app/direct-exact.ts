@@ -264,6 +264,29 @@ export type ExactLexemeBoundary =
   | { ok: false; reason: 'overlong' | 'syntax' | 'shift-out-of-range' }
 
 /**
+ * Fail-closed underflow-net slack (v2.6.2). A lexeme `classifyFloatText`
+ * accepts as a finite value has |Number(text)| ≥ 5e-324, so its mantissa must
+ * carry at least (−effectiveShift − 323) digit characters; a raw string of
+ * length L can therefore only reach the exact path with a representable value
+ * when effectiveShift ≥ −(L + 323). The net rejects below that floor (and
+ * below the historical −500) — exactly the lexemes binary64 already collapses
+ * to ±0 — and provably never rejects a classify-valid input.
+ */
+const UNDERFLOW_SHIFT_SLACK_DIGITS = 323
+
+/**
+ * Magnitude-preserving O(n) trailing-zero normalization of one decimal
+ * mantissa digit string (v2.6.2): `digits × 10^k === stripped × 10^(k + tz)`.
+ * Pure string work, shared by the boundary check (effective shift) and the
+ * exact parse (BigInt construction budget) so the two can never drift.
+ */
+function stripTrailingZeros(digits: string): { stripped: string; trailingZeros: number } {
+  let end = digits.length
+  while (end > 0 && digits.charCodeAt(end - 1) === 0x30) end--
+  return { stripped: digits.slice(0, end), trailingZeros: digits.length - end }
+}
+
+/**
  * Boundary classification of one candidate exact lexeme (v2.5.12). Exported
  * so tests (and future callers) can prove rejection happens BEFORE BigInt
  * construction; `parseDecimalExactRational` consumes this on every call.
@@ -273,6 +296,14 @@ export type ExactLexemeBoundary =
  * reducer-side dispatch. Whitespace padding can no longer buy extra lexeme
  * budget (`' '.repeat(1_000_000) + '1'` is overlong even though it trims to
  * `'1'`), and short-input whitespace semantics are unchanged.
+ *
+ * v2.6.2: the underflow net measures the EFFECTIVE shift after magnitude-
+ * preserving trailing-zero cancellation (value = ±stripped × 10^(shift+tz)),
+ * so a mantissa whose trailing zeros cancel a deep negative exponent
+ * (`1000…0e-501`, exact value 1) is the legal finite request it is instead of
+ * a silent shift-out-of-range no-op. The upper bound stays on the syntactic
+ * shift: trailing zeros can only increase the effective shift, so it remains
+ * strictly fail-closed for huge positive exponents.
  */
 export function checkExactLexemeBoundary(text: string): ExactLexemeBoundary {
   const raw = String(text)
@@ -289,12 +320,17 @@ export function checkExactLexemeBoundary(text: string): ExactLexemeBoundary {
   if (!/[1-9]/.test(intPart + fracPart)) return { ok: true }
   const exp = match[5] !== undefined ? Number(match[5]) : 0
   if (!Number.isSafeInteger(exp)) return { ok: false, reason: 'shift-out-of-range' }
-  // value = ±digits × 10^(exp − fracLen). Non-zero magnitudes that could
-  // overflow binary64 (>1e308) or underflow past the subnormal range are
-  // rejected by classifyFloatText upstream (out-of-range / underflow); the
-  // bounds below fail closed if such a lexeme ever reaches this path.
+  // value = ±digits × 10^(exp − fracLen) = ±stripped × 10^(shift + tz).
+  // Non-zero magnitudes whose binary64 conversion overflows or underflows
+  // are rejected by classifyFloatText upstream (out-of-range / underflow);
+  // the bounds below fail closed if such a lexeme ever reaches this path.
   const shift = exp - fracPart.length
-  if (shift > 400 || shift < -500) return { ok: false, reason: 'shift-out-of-range' }
+  const { trailingZeros } = stripTrailingZeros(intPart + fracPart)
+  const effectiveShift = shift + trailingZeros
+  const underflowFloor = -Math.max(500, raw.length + UNDERFLOW_SHIFT_SLACK_DIGITS)
+  if (shift > 400 || effectiveShift < underflowFloor) {
+    return { ok: false, reason: 'shift-out-of-range' }
+  }
   return { ok: true }
 }
 
@@ -305,7 +341,11 @@ export function checkExactLexemeBoundary(text: string): ExactLexemeBoundary {
  * literals and any other text return null so callers can fail closed.
  * v2.5.12: the O(1)/O(n) boundary check (length cap, syntax, exponent
  * shift) runs BEFORE any BigInt construction — an overlong paste is
- * rejected without big-integer cost.
+ * rejected without big-integer cost. v2.6.2: trailing-zero cancellation
+ * (same shared normalization the boundary measures its effective shift
+ * against) strips the mantissa before construction, so compensated
+ * scientific lexemes parse with a BigInt no larger than their significant
+ * digit span.
  */
 export function parseDecimalExactRational(text: string): ExactRational | null {
   const boundary = checkExactLexemeBoundary(text)
@@ -321,11 +361,16 @@ export function parseDecimalExactRational(text: string): ExactRational | null {
   if (!/[1-9]/.test(intPart + fracPart)) return { numerator: 0n, denominator: 1n }
   // Non-zero magnitudes only reach here, so the mantissa digit string is
   // well-formed and bounded by DIRECT_EXACT_MAX_LEXEME_LENGTH.
-  const digits = BigInt(intPart + fracPart)
+  // v2.6.2: magnitude-preserving trailing-zero cancellation BEFORE BigInt
+  // construction — the constructed BigInt is the stripped mantissa, never
+  // larger than the significant digit span, and the effective shift was
+  // verified by the boundary check without any BigInt work.
   const exp = match[5] !== undefined ? Number(match[5]) : 0
-  // value = ±digits × 10^(exp − fracLen); the shift bounds were verified by
-  // the boundary check without any BigInt work.
-  const shift = exp - fracPart.length
+  const { stripped, trailingZeros } = stripTrailingZeros(intPart + fracPart)
+  // Defensive: a non-zero mantissa always keeps a digit after stripping.
+  const digits = BigInt(stripped === '' ? '0' : stripped)
+  // value = ±stripped × 10^(exp − fracLen + tz).
+  const shift = exp - fracPart.length + trailingZeros
   if (shift >= 0) return normalize(sign * digits * pow10(shift), 1n)
   return normalize(sign * digits, pow10(-shift))
 }
