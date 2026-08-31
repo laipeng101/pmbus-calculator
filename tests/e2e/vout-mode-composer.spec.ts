@@ -281,3 +281,131 @@ test.describe('M37 公式/配置器布局与溢出', () => {
     expect(scrollHeight).toBeLessThanOrEqual(1400)
   })
 })
+
+test.describe('v2.6.2 VOUT_MODE radio 键盘合同（roving tabindex + 方向键）', () => {
+  // ARIA APG radio pattern：选中项是唯一 tab stop；ArrowRight/Down 下一项、
+  // ArrowLeft/Up 上一项，循环并跳过 disabled；焦点到达即选择。
+  test('standalone abs/rel 组：方向键移动焦点并选择，循环，Space 幂等', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+
+    const abs = page.getByRole('radio', { name: '绝对值' })
+    const rel = page.getByRole('radio', { name: '相对值' })
+
+    // 选中项是唯一 roving tab stop。
+    await expect(abs).toHaveAttribute('tabindex', '0')
+    await expect(rel).toHaveAttribute('tabindex', '-1')
+
+    await abs.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(rel).toBeFocused()
+    await expect(rel).toHaveAttribute('aria-checked', 'true')
+    await expect(abs).toHaveAttribute('aria-checked', 'false')
+    await expect(page.locator(CANONICAL)).toContainText('0x98')
+    await expect(page.locator(STATUS)).toContainText('相对 LINEAR')
+    // 焦点到达即成为新的 roving tab stop。
+    await expect(rel).toHaveAttribute('tabindex', '0')
+    await expect(abs).toHaveAttribute('tabindex', '-1')
+
+    // ArrowLeft 回到上一项。
+    await page.keyboard.press('ArrowLeft')
+    await expect(abs).toBeFocused()
+    await expect(abs).toHaveAttribute('aria-checked', 'true')
+    await expect(page.locator(CANONICAL)).toContainText('0x18')
+
+    // ArrowDown 同 Right、ArrowUp 同 Left。
+    await page.keyboard.press('ArrowDown')
+    await expect(rel).toBeFocused()
+    await page.keyboard.press('ArrowUp')
+    await expect(abs).toBeFocused()
+
+    // 从第一项向后循环到最后一项。
+    await page.keyboard.press('ArrowLeft')
+    await expect(rel).toBeFocused()
+
+    // Space 在已选中的 radio 上是幂等 no-op。
+    await page.keyboard.press('Space')
+    await expect(page.locator(CANONICAL)).toContainText('0x98')
+  })
+
+  test('standalone format 组：方向键沿 LINEAR→VID→DIRECT→IEEE Half 行走并循环', async ({
+    page,
+  }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+
+    const linear = page.getByRole('radio', { name: 'LINEAR' })
+    const vid = page.getByRole('radio', { name: 'VID' })
+    const direct = page.getByRole('radio', { name: 'DIRECT' })
+    const half = page.getByRole('radio', { name: 'IEEE Half' })
+
+    await expect(linear).toHaveAttribute('tabindex', '0')
+    for (const other of [vid, direct, half]) {
+      await expect(other).toHaveAttribute('tabindex', '-1')
+    }
+
+    await linear.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(vid).toBeFocused()
+    await expect(vid).toHaveAttribute('aria-checked', 'true')
+    await expect(page.locator(CANONICAL)).toContainText('0x38')
+
+    await page.keyboard.press('ArrowRight')
+    await expect(direct).toBeFocused()
+    await expect(page.locator(CANONICAL)).toContainText('0x40')
+
+    await page.keyboard.press('ArrowRight')
+    await expect(half).toBeFocused()
+    await expect(page.locator(CANONICAL)).toContainText('0x60')
+
+    // 从最后一项向后循环回第一项。
+    await page.keyboard.press('ArrowRight')
+    await expect(linear).toBeFocused()
+    await expect(linear).toHaveAttribute('aria-checked', 'true')
+    await expect(linear).toHaveAttribute('tabindex', '0')
+    await expect(half).toHaveAttribute('tabindex', '-1')
+
+    // 从第一项向前循环到最后一项。
+    await page.keyboard.press('ArrowLeft')
+    await expect(half).toBeFocused()
+    await expect(half).toHaveAttribute('aria-checked', 'true')
+  })
+
+  test('选择 VID 后 ArrowRight/Left 跳过 disabled 相对值，焦点停回绝对值', async ({ page }) => {
+    await settle(page)
+    await switchToVoutMode(page)
+
+    await page.getByRole('radio', { name: 'VID' }).click()
+    const abs = page.getByRole('radio', { name: '绝对值' })
+    const rel = page.getByRole('radio', { name: '相对值' })
+    await expect(rel).toBeDisabled()
+
+    await abs.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(abs).toBeFocused()
+    await expect(abs).toHaveAttribute('aria-checked', 'true')
+    await page.keyboard.press('ArrowLeft')
+    await expect(abs).toBeFocused()
+    await expect(page.locator(CANONICAL)).toContainText('0x38')
+  })
+
+  test('L16 embedded abs/rel 组同样支持方向键且不破坏 canonical 回写', async ({ page }) => {
+    await settle(page)
+    await switchToL16(page)
+
+    const abs = page.getByRole('radio', { name: '绝对值' })
+    const rel = page.getByRole('radio', { name: '相对值' })
+
+    await expect(abs).toHaveAttribute('tabindex', '0')
+    await abs.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(rel).toBeFocused()
+    await expect(rel).toHaveAttribute('aria-checked', 'true')
+    await expect(page.locator(CANONICAL)).toContainText('0x98')
+    await expect(page.locator(STATUS)).toContainText('相对 LINEAR')
+
+    await page.keyboard.press('ArrowLeft')
+    await expect(abs).toBeFocused()
+    await expect(page.locator(CANONICAL)).toContainText('0x18')
+  })
+})

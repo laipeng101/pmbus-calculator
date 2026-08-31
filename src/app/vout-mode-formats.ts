@@ -49,3 +49,20 @@ export function voutModeFormatTerm(format: number): TermId {
 export function voutModeFormatLabel(format: number): string {
   return findFormat(format).label
 }
+
+/**
+ * Visible disabled reasons for the L16-embedded bits[6:5] lock (v2.6.2).
+ * One source feeds the bit aria-labels, the disabled-bit tooltip params AND
+ * the always-visible reason line: a natively disabled button emits no pointer
+ * or focus events, so the reason must exist outside any hover overlay too.
+ */
+export const L16_FORMAT_BIT_DISABLED_HINTS = {
+  linked: '格式位固定为 LINEAR',
+  'non-linear': '格式位不可在本页切换（当前字节非 LINEAR）',
+} as const
+
+export function l16FormatBitDisabledHint(source: 'linked' | 'non-linear' | undefined): string {
+  return source === 'non-linear'
+    ? L16_FORMAT_BIT_DISABLED_HINTS['non-linear']
+    : L16_FORMAT_BIT_DISABLED_HINTS.linked
+}
