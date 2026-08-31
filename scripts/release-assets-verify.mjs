@@ -10,14 +10,24 @@
  * upload-in-progress asset must never be mistaken for a ready one.
  *
  * Input: a GitHub REST release object (JSON file) with the shape
- *   { tag_name, draft, prerelease, assets: [{ name, state, size, browser_download_url }] }
+ *   { tag_name, draft, prerelease, immutable, assets: [{ name, state, size, browser_download_url }] }
  * Produced by `GET /releases/tags/<tag>` (published) or
  * `gh api repos/OWNER/REPO/releases --jq '.[] | select(.tag_name=="<tag>")'`
  * (drafts are not reachable via /releases/tags).
  *
  * Modes:
- *   --mode published (default): draft must be false — the Pages entry gate.
+ *   --mode published (default): draft must be false and the release must
+ *     report `immutable: true` — the Pages entry gate (docs/RELEASING.md:
+ *     Pages 只部署不可变 GitHub Release 资产). A release that is not
+ *     immutable (false, absent, null, or any non-true value) is rejected so
+ *     tag assets can never be swapped after a verified deployment. Manual
+ *     workflow_dispatch runs the workflow AND these verifier scripts from
+ *     the dispatched tag's tree, so this gate protects releases whose tree
+ *     carries it (v2.6.2+); older mutable releases must never be dispatched
+ *     for deployment (see docs/RELEASING.md).
  *   --mode draft: draft must be true — the operator's pre-publish check.
+ *     A draft is never immutable on GitHub, so this mode does NOT enforce
+ *     the immutable field.
  * Both modes require prerelease === false and an exact tag match, because a
  * prerelease or retagged release must never reach the stable Pages flow.
  *
@@ -43,7 +53,8 @@
  * Exit codes (documented contract; tests pin them):
  *   0  ready — JSON resolution on stdout
  *   2  usage error, unreadable/invalid JSON, or malformed release shape
- *   3  release metadata contract violation (tag mismatch, draft/prerelease)
+ *   3  release metadata contract violation (tag mismatch, draft/prerelease,
+ *      non-immutable published release)
  *   4  asset list empty
  *   5  duplicate asset name among the expected assets
  *   6  an expected asset is missing
@@ -127,7 +138,7 @@ export function resolveReleaseAssets(release, options) {
     throw new ReleaseVerifyError(2, 'release metadata must be a JSON object')
   }
   const rec =
-    /** @type {{ tag_name?: unknown, draft?: unknown, prerelease?: unknown, assets?: unknown }} */ (
+    /** @type {{ tag_name?: unknown, draft?: unknown, prerelease?: unknown, immutable?: unknown, assets?: unknown }} */ (
       release
     )
   if (typeof rec.tag_name !== 'string') {
@@ -154,6 +165,17 @@ export function resolveReleaseAssets(release, options) {
     throw new ReleaseVerifyError(
       3,
       `release ${tag} is a prerelease; the stable Pages flow only deploys stable releases`,
+    )
+  }
+  if (mode === 'published' && rec.immutable !== true) {
+    // Fail closed on any non-true value (false, absent, null, string): the
+    // Pages flow must only ever deploy releases whose assets GitHub has
+    // made immutable (docs/RELEASING.md). Drafts are never immutable, so
+    // --mode draft does not run this check.
+    throw new ReleaseVerifyError(
+      3,
+      `release ${tag} is not immutable (immutable: ${JSON.stringify(rec.immutable ?? null)}); ` +
+        'the Pages flow only deploys immutable releases',
     )
   }
 

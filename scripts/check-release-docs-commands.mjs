@@ -337,7 +337,15 @@ export function buildMetadata(repo, tag, dir, zipName, sumsName, draft) {
     state: 'uploaded',
     browser_download_url: urlFor(name),
   })
-  return { tag_name: tag, draft, prerelease: false, assets: [asset(zipName), asset(sumsName)] }
+  return {
+    tag_name: tag,
+    draft,
+    prerelease: false,
+    // Live REST shape: published releases report `immutable: true`; a GitHub
+    // draft is not immutable yet (the published-mode gate enforces it — v2.6.2).
+    immutable: !draft,
+    assets: [asset(zipName), asset(sumsName)],
+  }
 }
 
 /**

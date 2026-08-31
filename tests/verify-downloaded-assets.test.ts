@@ -89,7 +89,15 @@ function metadata(
   if (overrides?.zip !== null) assets.push(zip)
   if (overrides?.sums !== null) assets.push(sums)
   if (overrides?.extra) assets.push(...overrides.extra)
-  return { tag_name: TAG, draft: overrides?.draft ?? false, prerelease: false, assets }
+  // Live REST shape: published releases report `immutable: true`; a GitHub
+  // draft is not immutable yet (draft mode never enforces it — v2.6.2).
+  return {
+    tag_name: TAG,
+    draft: overrides?.draft ?? false,
+    prerelease: false,
+    immutable: !(overrides?.draft ?? false),
+    assets,
+  }
 }
 
 /** Fix metadata sizes after touching local files (size gate must pass). */
@@ -274,6 +282,26 @@ describe('verifyDownloadedAssets: metadata classes stay owned by the shared reso
     const meta = metadata(dir, { draft: true })
     expect(() => verify(dir, meta, 'published')).toThrowError(
       expect.objectContaining({ code: 3, message: expect.stringMatching(/is a draft/) }),
+    )
+  })
+
+  it('exit 3: a published-mode gate rejects non-immutable metadata (v2.6.2 inheritance)', () => {
+    // The downloaded-asset gate must inherit the shared published immutable
+    // contract for free — one implementation in resolveReleaseAssets.
+    const dir = newDirWithValidAssets()
+    const meta = metadata(dir)
+    meta.immutable = false
+    expect(() => verify(dir, meta, 'published')).toThrowError(
+      expect.objectContaining({ code: 3, message: expect.stringMatching(/immutable/) }),
+    )
+  })
+
+  it('exit 3: a published-mode gate rejects metadata without the immutable field', () => {
+    const dir = newDirWithValidAssets()
+    const meta = metadata(dir)
+    delete meta.immutable
+    expect(() => verify(dir, meta, 'published')).toThrowError(
+      expect.objectContaining({ code: 3, message: expect.stringMatching(/immutable/) }),
     )
   })
 })
