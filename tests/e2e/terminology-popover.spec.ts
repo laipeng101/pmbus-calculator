@@ -228,4 +228,38 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     await vmN.click()
     await expect(vmPopover).not.toContainText('位于两字节 word 的 bits[15:11]')
   })
+
+  // v2.6.1 卸载状态合同（应用级）：只有 L11 渲染的术语随 Ctrl+2 模式切换被
+  // 条件渲染卸载时，provider 的 active surface 必须同步清理——无残留 portal、
+  // 切回 L11 无 stale 自动重开、新浮层全局仍恰好一个、Escape 恢复到当前有效
+  // 触发器（绝不尝试恢复到已卸载元素）。provider 状态本身由
+  // src/components/help/help-overlay.test.tsx 的 jsdom 合同守护。
+  test('v2.6.1 模式切换卸载术语后无 stale surface，Escape 恢复到有效触发器', async ({ page }) => {
+    await settle(page)
+
+    // 打开只属于 L11 的术语（LINEAR11 N 范围提示）。
+    const l11n = page.getByTestId('term-trigger-linear11-exponent')
+    await l11n.click()
+    await expect(page.locator('[data-testid="term-popover-linear11-exponent"]')).toBeVisible()
+
+    // 真实键盘 Ctrl+2 切到 L16：该触发器被条件渲染卸载。
+    await page.keyboard.press('Control+2')
+    await expect(page.getByTestId('term-trigger-ulinear16')).toBeVisible()
+    await expect(page.locator('[data-testid="term-popover-linear11-exponent"]')).toHaveCount(0)
+
+    // 切回 L11 也不得出现 stale 自动重开的浮层。
+    await page.keyboard.press('Control+1')
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(0)
+
+    // 打开新的帮助浮层后全局仍恰好一个。
+    const hex = page.getByTestId('term-trigger-hex').first()
+    await hex.click()
+    await expect(page.locator('[data-testid="term-popover-hex"]').first()).toBeVisible()
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(1)
+
+    // Escape 恢复到当前有效触发器。
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(0)
+    await expect(hex).toBeFocused()
+  })
 })
