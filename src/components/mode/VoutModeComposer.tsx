@@ -1,7 +1,6 @@
 import type { AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { VoutModeInfoVM } from '../../app/view-model'
-import type { VoutModeFormat } from '../../legacy/vout-mode'
 import { VID_CODE_TABLE } from '../../legacy/vout-mode'
 import { PMBusMath } from '../../legacy/pmbus-math'
 import DecimalInput from '../inputs/DecimalInput'
@@ -10,7 +9,7 @@ import HexInput from '../inputs/HexInput'
 import ExponentEditor from '../formula/ExponentEditor'
 import LinearFormulaEditor from '../formula/LinearFormulaEditor'
 import TechnicalTerm from '../term/TechnicalTerm'
-import type { TermId } from '../../app/terminology'
+import { VOUT_MODE_FORMATS, voutModeFormatTerm } from '../../app/vout-mode-formats'
 import { getBitRegions } from '../../app/bit-regions'
 import BitFieldGrid from '../bits/BitFieldGrid'
 import VoutModeExplanations from './VoutModeExplanations'
@@ -23,20 +22,6 @@ interface Props {
   dispatch: React.Dispatch<AppAction>
   /** L16 embedded editor locks bits[6:5] and shows the linked/non-linear source. */
   embedded?: boolean
-}
-
-const FORMATS: Array<{ value: VoutModeFormat; label: string }> = [
-  { value: 0, label: 'LINEAR' },
-  { value: 1, label: 'VID' },
-  { value: 2, label: 'DIRECT' },
-  { value: 3, label: 'IEEE Half' },
-]
-
-const FORMAT_TERM_ID: Record<VoutModeFormat, TermId> = {
-  0: 'linear',
-  1: 'vid',
-  2: 'direct',
-  3: 'binary16',
 }
 
 function vidOptionLabel(v: { code: number; kind: string; reservedReason?: string }): string {
@@ -133,7 +118,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             aria-label="格式（bits[6:5]）"
             className="vout-seg vout-seg-format"
           >
-            {FORMATS.map((f) => (
+            {VOUT_MODE_FORMATS.map((f) => (
               <button
                 key={f.value}
                 type="button"
@@ -158,7 +143,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           <span className="text-xs color-text-muted">配置字节：</span>
           <TechnicalTerm termId="vout-mode" />
           <span className="text-xs color-text-muted">当前格式：</span>
-          <TechnicalTerm termId={FORMAT_TERM_ID[info.format]} />
+          <TechnicalTerm termId={voutModeFormatTerm(info.format)} />
         </div>
       )}
 
