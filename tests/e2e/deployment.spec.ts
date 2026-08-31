@@ -124,4 +124,81 @@ test.describe('GitHub Pages production deployment', () => {
     await valueInput.fill('12.5')
     await expect(hexInput).toHaveValue('F819')
   })
+
+  // v2.6.2 正式站验收：审计修复的四个用户可见行为必须在线上构建中成立。
+  test.describe('v2.6.2 audit acceptance (production)', () => {
+    test('DIRECT 尾零补偿科学计数法向量提交为 raw 0001', async ({ page }) => {
+      await page.goto(deploymentUrl!)
+      await page.getByRole('tab', { name: /DIRECT/ }).click()
+      for (const [id, value] of [
+        ['#direct-coeff-m-input', '1'],
+        ['#direct-coeff-b-input', '1'],
+        ['#direct-coeff-r-input', '17'],
+      ] as const) {
+        await page.locator(id).fill(value)
+        await page.locator(id).press('Tab')
+      }
+
+      const text = `1${'0'.repeat(501)}e-501`
+      await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+      await page.evaluate((t) => navigator.clipboard.writeText(t), text)
+      const valueInput = page.locator('#value-input')
+      await valueInput.click()
+      await page.keyboard.press('ControlOrMeta+a')
+      await page.keyboard.press('ControlOrMeta+v')
+
+      await expect(page.locator('#raw-hex-input')).toHaveValue('0001')
+      await expect(page.getByText(/输入过长|输入下溢|超出可表示范围/)).toHaveCount(0)
+      await expect(page.getByTestId('quantization-error')).toHaveAttribute('data-kind', 'ok')
+    })
+
+    test('控件 tooltip 可悬停驻留（SC 1.4.13）：移入浮层不关闭', async ({ page }) => {
+      await page.goto(deploymentUrl!)
+      const button = page.locator('header button[aria-label^="当前主题"]')
+      const tooltip = page.locator('[data-testid="control-tooltip-theme-toggle"]')
+
+      await button.hover()
+      await expect(tooltip).toBeVisible()
+      await tooltip.hover()
+      await expect(tooltip).toBeVisible()
+      await button.hover()
+      await expect(tooltip).toBeVisible()
+      await page.mouse.move(8, 300)
+      await expect(tooltip).toHaveCount(0)
+    })
+
+    test('VOUT_MODE radio 方向键行走并选择（roving tabindex）', async ({ page }) => {
+      await page.goto(deploymentUrl!)
+      await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+
+      const abs = page.getByRole('radio', { name: '绝对值' })
+      const rel = page.getByRole('radio', { name: '相对值' })
+      await expect(abs).toHaveAttribute('tabindex', '0')
+      await expect(rel).toHaveAttribute('tabindex', '-1')
+
+      await abs.focus()
+      await page.keyboard.press('ArrowRight')
+      await expect(rel).toBeFocused()
+      await expect(rel).toHaveAttribute('aria-checked', 'true')
+      await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
+      await expect(rel).toHaveAttribute('tabindex', '0')
+      await expect(abs).toHaveAttribute('tabindex', '-1')
+    })
+
+    test('L16 bits[6:5] 禁用原因在 overlay 外可见并关联到位按钮', async ({ page }) => {
+      await page.goto(deploymentUrl!)
+      await page.getByRole('tab', { name: /LINEAR16/ }).click()
+
+      const reason = page.locator('#vout-bits65-disabled-reason')
+      await expect(reason).toBeVisible()
+      await expect(reason).toContainText('格式位固定为 LINEAR')
+      for (const index of [5, 6]) {
+        const bit = page.getByRole('button', {
+          name: new RegExp('第 ' + index + ' 位，格式位固定为 LINEAR'),
+        })
+        await expect(bit).toBeDisabled()
+        await expect(bit).toHaveAttribute('aria-describedby', 'vout-bits65-disabled-reason')
+      }
+    })
+  })
 })

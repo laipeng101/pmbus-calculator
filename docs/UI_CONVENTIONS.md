@@ -102,15 +102,18 @@
   守护）：collapsed 时携带 `aria-expanded="false"`；打开时切换为
   `aria-expanded="true"` 并携带 `aria-controls` / `aria-describedby`（两者只在
   打开时存在）。内容保持非交互说明；未来加入可点击内容必须升级为非模态 dialog。
-- **控件说明触发策略（hover + focus）**：fine pointer 悬停即显示、移开即消失
-  （双门禁：`matchMedia('(hover: hover) and (pointer: fine)')` + 事件
+- **控件说明触发策略（hover + focus）**：fine pointer 悬停即显示；浮层可悬停、
+  可驻留——指针移入浮层或回到触发器都保持显示，指针离开两者后才关闭，离开触发器
+  后有 150ms 确定性宽限（WCAG 2.2 SC 1.4.13 Hoverable/Persistent/Dismissible，
+  v2.6.2 起；双门禁：`matchMedia('(hover: hover) and (pointer: fine)')` + 事件
   `pointerType === 'mouse'`，触屏首 tap 永不被劫持）；键盘 `:focus-visible` 打开、
   blur 或 Escape 关闭；click 原动作只执行一次，浮层不得拦截、延迟或二次触发。
   浮层是 `role="tooltip"` + 触发器 `aria-describedby`（仅打开时），**没有**
   `aria-expanded`——触发器不是 disclosure。
 - **禁用控件**：原生 `disabled` 不产生指针/焦点事件，其「为什么不可用」必须有
-  浮层之外的可见、键盘/触屏可达路径（如 VOUT_MODE 相对值在 VID 下的可见禁用原因
-  段落）；tooltip 只是补充，不是唯一通道。
+  浮层之外的可见、键盘/触屏可达路径（VOUT_MODE 相对值在 VID 下的可见禁用原因
+  段落、L16 内嵌 bits[6:5] 的可见禁用原因行 v2.6.2）；可见原因经
+  `aria-describedby` 关联到禁用控件，tooltip 只是补充，不是唯一通道。
 - **单一数据源**：术语中文解释只在 `src/app/terminology.ts`；控件说明文案只在
   `src/app/control-help.ts` 的 `CONTROL_HELP` registry（带类型的 per-id 参数模板）。
   组件不得内联复制这些文案；新控件说明先扩 registry 再包 `ControlTooltip`。
@@ -276,7 +279,10 @@
 - L16 内嵌 VOUT_MODE 使用 `density="compact"`：只缩小尺寸与间距，不得退化成无分组单行。
 - on-bit 着色、图例与禁用态都由 `src/app/bit-regions.ts` 的 region 定义驱动；
   颜色只传达分区，不得作为唯一信息（文本图例、bit range 与 disabled 状态必须同时存在）。
-- L16 的 bits[6:5] 固定 `00`：必须真正 `disabled`，ARIA 注明“格式位固定为 LINEAR”。
+- L16 的 bits[6:5] 固定 `00`：必须真正 `disabled`，ARIA 注明“格式位固定为 LINEAR”；
+  禁用原因同时有浮层之外的可见行（`vout-bits65-disabled-reason`，linked 与非
+  LINEAR 两种措辞来自 `src/app/vout-mode-formats.ts` 单一来源），并经
+  `aria-describedby` 关联到这两个位按钮（v2.6.2）。
 - 位按钮可访问名形如“第 7 位，绝对值/相对值，当前为 0”（16 位无语义位保持
   “位 15: 0”既有合同），不得双语重复。
 - 几何/结构合同测试在 `tests/e2e/bit-field-grid.spec.ts`。
