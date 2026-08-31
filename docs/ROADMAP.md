@@ -3,12 +3,14 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-08-31（v2.6.2——审计修复：published Release `immutable`
-fail-closed 验证与历史 mutable Release 操作停止策略；DIRECT 尾零补偿科学
-计数法词素边界（classify-valid 不再被静默拒绝，数学语义零变更）；控件
-tooltip SC 1.4.13 可悬停/可驻留；VOUT_MODE radio ARIA APG 键盘合同
-（roving tabindex + 方向键 + 跳过 disabled）；L16 内嵌 bits[6:5] 禁用原因
-浮层外可见 + aria-describedby；删除零消费者 focus-navigation 死代码）
+最后更新：2026-08-31（v2.6.3——test-only PATCH：修正 v2.6.2 正式站验收
+测试的 DIRECT 系数错误（(1,1,17) 下 V=1 不可表示、Y 饱和 0x7FFF；修正为
+direct-fidelity 同组 (1,0,0)），应用 dist 与 v2.6.2 零差异。v2.6.2 本体：
+审计修复——published Release `immutable` fail-closed 验证与历史 mutable
+Release 操作停止策略；DIRECT 尾零补偿科学计数法词素边界（数学语义零变更）；
+控件 tooltip SC 1.4.13 可悬停/可驻留；VOUT_MODE radio ARIA APG 键盘合同；
+L16 内嵌 bits[6:5] 禁用原因浮层外可见 + aria-describedby；删除零消费者
+focus-navigation 死代码）
 
 ## 当前产品基线
 
@@ -33,7 +35,7 @@ tooltip SC 1.4.13 可悬停/可驻留；VOUT_MODE radio ARIA APG 键盘合同
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v2.6.2；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v2.6.3；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -213,7 +215,11 @@ M0–M42 complete；stable release v2.6.2；production distribution: GitHub Page
   来源 `vout-mode-formats.ts`）；删除零消费者 `focus-navigation.ts`；
   UI_CONVENTIONS §7/§14 更新；L16 三个桌面 visual 基线随新可见行更新
   （25 张不变）；deployment 新增 v2.6.2 正式站验收组 4 条。
-- 当前：无进行中的功能里程碑；v2.6.2 已发布，M40–M42 complete。
+- v2.6.3（PATCH，test-only）：修正 v2.6.2 发布 smoke 中 DIRECT 验收用例的
+  系数错误（(1,1,17) 下 V=1 超出 Y 16 位表示范围、应用按合同饱和 0x7FFF；
+  根因是测试抄错系数组，非应用缺陷），修正为 (1,0,0) 并对正式站实测通过
+  （raw 0001）；应用 dist 与 v2.6.2 零差异（仅版本字符串注入不同）。
+- 当前：无进行中的功能里程碑；v2.6.3 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
