@@ -98,9 +98,10 @@
   是高频瞬态 UI 状态，不持久化）。单一 document `pointerdown` 监听负责外点关闭，
   单一 `keydown` 监听负责 Escape 关闭并把焦点恢复到触发器。
 - **术语气泡触发策略（click-only）**：只通过点击 / Enter / Space / 触屏 tap 切换；
-  不随悬停打开。触发器是 disclosure：打开时携带 `aria-expanded` / `aria-controls` /
-  `aria-describedby`（关闭时不声明 expanded）。内容保持非交互说明；未来加入可点击
-  内容必须升级为非模态 dialog。
+  不随悬停打开。触发器是 disclosure，ARIA 合同（v2.6.1 起以实现为准并受 E2E
+  守护）：collapsed 时携带 `aria-expanded="false"`；打开时切换为
+  `aria-expanded="true"` 并携带 `aria-controls` / `aria-describedby`（两者只在
+  打开时存在）。内容保持非交互说明；未来加入可点击内容必须升级为非模态 dialog。
 - **控件说明触发策略（hover + focus）**：fine pointer 悬停即显示、移开即消失
   （双门禁：`matchMedia('(hover: hover) and (pointer: fine)')` + 事件
   `pointerType === 'mouse'`，触屏首 tap 永不被劫持）；键盘 `:focus-visible` 打开、

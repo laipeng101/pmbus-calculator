@@ -82,7 +82,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     token: 'SMBus',
     name: '系统管理总线',
     detail:
-      'PMBus 所基于的系统管理总线；PMBus word 在线上默认低字节在前、高位在前（Part II §7.6）。',
+      'PMBus 所基于的系统管理总线；PMBus word 在线上默认低字节在前、高位在前（Part II §7.6 对浮点数据明示，其余 word 类型由 SMBus/PMBus 传输规则规定）。',
     source: 'smbus',
     scope: '总线与规范',
   },
@@ -256,7 +256,8 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     id: 'le',
     token: 'LE',
     name: '小端序',
-    detail: '小端字节序：PMBus/SMBus word 在线上默认低字节在前（Part II §7.6）。',
+    detail:
+      '小端字节序：PMBus/SMBus word 在线上默认低字节在前、字节内高位在前（Part II §7.6 对浮点数据明示）；BE 仅是本工具的显示/复制选项，不改变线上顺序。',
     source: 'generic',
     specRef: 'Part II §7.6',
     scope: '字节序（线上默认）',
@@ -295,43 +296,6 @@ export const GLOSSARY_TERM_IDS: readonly TermId[] = Object.keys(GLOSSARY) as Ter
 
 /** Canonical token allowlist derived from the glossary (never hand-duplicated). */
 export const CANONICAL_TOKENS: readonly string[] = GLOSSARY_TERM_IDS.map((id) => GLOSSARY[id].token)
-
-/**
- * Canonical production placement surfaces per glossary concept (v2.6.0 global
- * rollout). Every glossary entry must keep at least one real production
- * surface; duplicate surfaces may share the same id/content. The per-mode
- * E2E reachability matrix consumes representative surfaces from this list.
- */
-export const TERM_PLACEMENT_SURFACES: Record<TermId, readonly string[]> = {
-  pmbus: ['app-header-title'],
-  smbus: ['app-header-scope-note'],
-  'vout-mode': [
-    'app-header-format-subtitle',
-    'vout-composer-term-row',
-    'vout-config-summary',
-    'command-reference-hint',
-  ],
-  'vout-command': ['vout-composer-relative-note'],
-  'abs-rel': ['vout-composer-term-row'],
-  'vid-code-type': ['vout-composer-vid-caption'],
-  linear: ['vout-composer-term-row', 'vout-config-summary'],
-  linear11: ['app-header-format-subtitle', 'workspace-l11-heading'],
-  'linear11-exponent': ['workspace-l11-range-hint'],
-  linear16: ['app-header-format-subtitle', 'workspace-l16-heading'],
-  ulinear16: ['workspace-l16-payload-caption'],
-  slinear16: ['workspace-l16-payload-caption'],
-  vid: ['vout-composer-term-row', 'vout-config-summary'],
-  direct: ['app-header-format-subtitle', 'workspace-direct-heading'],
-  binary16: ['app-header-format-subtitle', 'workspace-half-heading'],
-  'fp-special': ['workspace-half-note'],
-  'twos-complement': ['workspace-direct-coeff-note'],
-  quantization: ['error-delta-label'],
-  hex: ['workspace-hex-label', 'result-raw-hex-label'],
-  le: ['result-bytes-le-label'],
-  be: ['result-bytes-be-label', 'workspace-l16-byteorder-note'],
-  exponent: ['vout-composer-term-row'],
-  transaction: ['command-reference-table-header'],
-}
 
 export function getGlossaryTerm(id: string): GlossaryTerm | undefined {
   return GLOSSARY[id as TermId]

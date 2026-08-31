@@ -4,6 +4,59 @@
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-08-31
+
+### Fixed
+
+- **Pages 手动部署来源绑定**：`workflow_dispatch` 部署路径此前在 checkout 默认
+  ref 之后才解析输入 tag，验证脚本（`release-assets-verify` / `download` /
+  `verify-downloaded-assets`）来自 dispatch 时的 ref 树而非被部署 tag 的树。
+  现在 tag 解析与 SemVer 验证前置于 checkout（纯 shell，不依赖仓库源码），
+  dispatch 必须在被部署 tag 的 ref 上发起（`github.ref_type == "tag"` 且
+  `github.ref_name == inputs.release_tag`），checkout 显式绑定解析出的 tag
+  （`persist-credentials: false`），并在 checkout 后校验 annotated tag、40 位
+  peeled commit、`HEAD` 一致与 Release 元数据 `tag_name` 完全匹配。
+  `release published` 路径行为不变。新增 `tests/pages-workflow.test.ts`
+  workflow 合同测试。
+- **术语浮层卸载状态**：`TechnicalTerm` 在自身浮层为 active surface 时被卸载
+  （如 Ctrl+1..5 模式切换对仅 L11 渲染的术语）会残留 provider 的 detached
+  trigger 引用并泄漏共享 document 监听（jsdom 合同实测 added=2/removed=0）。
+  现在与 `ControlTooltip` 对称地在卸载时 `closeIfActive`。应用级 E2E 锁定
+  「模式切换后无残留 portal、全局单开、Escape 恢复到有效触发器」；provider
+  状态本身由新增 `src/components/help/help-overlay.test.tsx` jsdom 合同守护
+  （真实 Provider + TechnicalTerm + Probe，StrictMode 监听对称性）。注：React
+  19 的实例级 `useId` 让重挂载获得不同 surfaceKey，掩盖了应用级可见症状——
+  jsdom provider 合同是本缺陷的失败门，E2E 为回归锁。
+- **ARIA 关闭态合同文档纠偏**：术语触发器 collapsed 态实际输出
+  `aria-expanded="false"`，`docs/UI_CONVENTIONS.md` §7 曾写「关闭时不声明
+  expanded」；按常见 disclosure 语义保留实现并修正文档——`aria-controls` /
+  `aria-describedby` 仅打开时存在，控件 tooltip 仍无 `aria-expanded`；E2E
+  补齐关闭态与 Escape 后的属性断言。
+- **规范引用精度**：SMBus / LE 术语中「word 线上低字节在前」的引用收窄为
+  「Part II §7.6 对浮点数据明示」（通用传输规则来自 SMBus/PMBus），事实陈述
+  不变。
+
+### Changed
+
+- **术语放置覆盖单一事实源**：删除只被单测读取、且引用了不存在 testid 的
+  `TERM_PLACEMENT_SURFACES` 字符串清单及其仅检查非空字符串的单测；
+  `tests/e2e/terminology-popover.spec.ts` 直接导入 `GLOSSARY_TERM_IDS`，在
+  页头、五种模式、结果区、显式编码请求（quantization）、relative（
+  VOUT_COMMAND）、VID（vid-code-type）与展开的命令参考等真实页面状态中，从
+  `data-testid="term-trigger-<id>"` 累计出现过的术语 id，断言与 registry
+  完全相等——无缺失、无未知 id、不依赖手写全量清单，动态 format 与状态性
+  术语均在对应状态覆盖。
+- **CI light-tier 不再空转安装**：e2e job 的 `npm ci` 在 light-only 变更时
+  跳过（scope 先行、`!= 'false'` fail-closed 门不变；quality job 的 light
+  gates 所需安装保持无条件；workflow_dispatch 恒 full）；workflow 合同测试
+  同步扩展（含 mobile 步骤的 full-tier 门断言补全）。
+- **CI 语义 E2E 双 worker**：desktop 语义套件在 CI 以 2 个 worker 运行。
+  采纳依据为本地无 retry 实验：1-worker 105s → 2-worker 三轮 59/59/58s
+  （中位改善 44%，零 flake、零 retry、326 逻辑测试数守恒），六个高时序风险
+  spec 的 2-worker × repeat-each=10 压力共 1210 次执行零失败、零 skip；
+  mobile / release / visual 的 worker 策略不变，决策由
+  `tests/playwright-default-config.test.ts` 钉住。
+
 ## [2.6.0] - 2026-08-31
 
 ### Added

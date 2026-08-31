@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { appUrl } from './helpers/app-url'
+import { GLOSSARY_TERM_IDS } from '../../src/app/terminology'
 
 async function settle(page: Page) {
   await page.goto(appUrl())
@@ -28,7 +29,15 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     await settle(page)
     await switchToVoutMode(page)
 
-    await page.locator(VM_TRIGGER).click()
+    const vmTrigger = page.locator(VM_TRIGGER)
+
+    // v2.6.1 disclosure 关闭态合同：collapsed 携带 aria-expanded="false"，
+    // aria-controls/aria-describedby 只在打开时存在。
+    await expect(vmTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(await vmTrigger.getAttribute('aria-controls')).toBeNull()
+    expect(await vmTrigger.getAttribute('aria-describedby')).toBeNull()
+
+    await vmTrigger.click()
     await expect(page.locator(VM_POPOVER)).toBeVisible()
     await expect(page.locator(VM_TRIGGER)).toHaveAttribute('aria-expanded', 'true')
     await expect(page.locator(VM_TRIGGER)).toHaveAttribute('aria-controls', /.+/)
@@ -47,6 +56,11 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     // 点击气泡外关闭
     await page.mouse.click(8, 8)
     await expect(page.locator(LINEAR_POPOVER)).toHaveCount(0)
+    // 关闭后 disclosure 属性回到收起态合同。
+    const linearTrigger = page.locator(LINEAR_TRIGGER)
+    await expect(linearTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(await linearTrigger.getAttribute('aria-controls')).toBeNull()
+    expect(await linearTrigger.getAttribute('aria-describedby')).toBeNull()
   })
 
   test('键盘：触发器可聚焦，Enter 打开，Escape 关闭并恢复焦点', async ({ page }) => {
@@ -62,6 +76,10 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     await page.keyboard.press('Escape')
     await expect(page.locator(VM_POPOVER)).toHaveCount(0)
     await expect(trigger).toBeFocused()
+    // Escape 关闭后同样回到 aria-expanded="false" 的收起态。
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(await trigger.getAttribute('aria-controls')).toBeNull()
+    expect(await trigger.getAttribute('aria-describedby')).toBeNull()
   })
 
   test('键盘连续打开第二个术语时全局最多一个浮层（无 pointerdown 也单开）', async ({ page }) => {
@@ -139,67 +157,64 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     expect(nestedInteractive).toBe(0)
   })
 
-  // v2.6.0 全局放置覆盖矩阵：每个模式/区域断言代表性术语触发器真实可达，
-  // 内容正确性由各模式的代表气泡逐点验证（避免为每个 token 复制完整交互用例）。
-  test('v2.6.0 放置覆盖矩阵：页头、五模式、结果区与命令参考代表术语可达', async ({ page }) => {
+  // v2.6.0 全局放置覆盖（v2.6.1 起单一事实源）：遍历全部代表放置面状态，
+  // 从真实 DOM 的 term-trigger-* testid 累计出现过的术语 id，最终断言与
+  // glossary registry 的 GLOSSARY_TERM_IDS 完全相等——无缺失（每个概念至少
+  // 一个真实生产放置）、无未知 id（不依赖手写全量清单）。动态 format 术语
+  // （LINEAR/VID/DIRECT/binary16）与随 provenance/relative 状态出现的术语
+  // 都在对应状态中覆盖。交互正确性（点击、键盘、触屏、防裁切、内容）由
+  // 本文件其余用例逐点验证，集合测试只负责全量 reachability。
+  test('v2.6.0 放置覆盖矩阵：全部术语在真实 DOM 中可达（registry 派生）', async ({ page }) => {
     await settle(page)
-
-    // 页头：PMBus + 副标题五个格式 token + SMBus。
-    await expect(page.getByTestId('term-trigger-pmbus')).toBeVisible()
-    for (const id of ['linear11', 'linear16', 'direct', 'binary16', 'vout-mode', 'smbus']) {
-      await expect(page.getByTestId('term-trigger-' + id).first()).toBeVisible()
+    const seen = new Set<string>()
+    const collect = async () => {
+      const ids: string[] = await page
+        .locator('[data-testid^="term-trigger-"]')
+        .evaluateAll((els) =>
+          els.map((el) => (el.getAttribute('data-testid') ?? '').slice('term-trigger-'.length)),
+        )
+      for (const id of ids) {
+        expect(id.length, 'term trigger testid must carry a term id').toBeGreaterThan(0)
+        seen.add(id)
+      }
     }
 
-    // 结果区（数值模式通用）：Hex / LE / BE 标签触发器。
-    await expect(page.getByTestId('term-trigger-hex').first()).toBeVisible()
-    await expect(page.getByTestId('term-trigger-le')).toBeVisible()
-    await expect(page.getByTestId('term-trigger-be').first()).toBeVisible()
+    // 默认 L11：页头（PMBus/SMBus/副标题格式 token）+ L11 工作区 + 结果区。
+    await collect()
 
-    // L11：章节标题 + 范围提示里的 LINEAR11 N。
-    await expect(
-      page.getByRole('heading', { name: /LINEAR11 参数/ }).getByTestId('term-trigger-linear11'),
-    ).toBeVisible()
-    await expect(page.getByTestId('term-trigger-linear11-exponent')).toBeVisible()
+    // quantization 只随显式编码请求（provenance）渲染。
+    const valueInput = page.locator('#value-input')
+    await valueInput.fill('0.999999')
+    await valueInput.press('Tab')
+    await expect(page.getByTestId('quantization-error')).toBeVisible()
+    await collect()
 
-    // L16：标题 + payload 说明行两个 payload 标签。
+    // L16 / DIRECT / HALF 工作区。
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    await expect(
-      page
-        .getByRole('heading', { name: /LINEAR16 \/ VOUT 参数/ })
-        .getByTestId('term-trigger-linear16'),
-    ).toBeVisible()
-    await expect(page.getByTestId('term-trigger-ulinear16')).toBeVisible()
-    await expect(page.getByTestId('term-trigger-slinear16')).toBeVisible()
-
-    // DIRECT：标题 + 二补码。
+    await collect()
     await page.getByRole('tab', { name: /^DIRECT/ }).click()
-    await expect(
-      page.getByRole('heading', { name: /DIRECT 系数/ }).getByTestId('term-trigger-direct'),
-    ).toBeVisible()
-    await expect(page.getByTestId('term-trigger-twos-complement')).toBeVisible()
-
-    // HALF：标题 + 特殊值（binary16 在页头副标题也出现，h3 实例是最后一个）。
+    await collect()
     await page.getByRole('tab', { name: /^HALF/ }).click()
-    await expect(page.getByTestId('term-trigger-binary16').last()).toBeVisible()
-    await expect(page.getByTestId('term-trigger-fp-special')).toBeVisible()
+    await collect()
 
-    // VOUT_MODE：术语行 abs-rel/exponent + VID code type（切换到 VID 格式）。
+    // VOUT_MODE LINEAR：术语行 + 配置摘要。
     await switchToVoutMode(page)
-    await expect(
-      page.locator('[data-testid="vout-term-row"] [data-testid="term-trigger-abs-rel"]'),
-    ).toBeVisible()
-    await expect(
-      page.locator('[data-testid="vout-term-row"] [data-testid="term-trigger-exponent"]'),
-    ).toBeVisible()
-    await page.getByRole('radio', { name: 'VID' }).click()
-    await expect(page.getByTestId('term-trigger-vid-code-type')).toBeVisible()
+    await collect()
 
-    // 命令参考：事务列表头触发器 + 提示行 VOUT_MODE。
+    // relative 说明行的 VOUT_COMMAND 术语（bit7=1 且非 offset payload）。
+    await page.getByRole('radio', { name: '相对值' }).click()
+    await collect()
+
+    // VID 格式：VID + VID Code Type。
+    await page.getByRole('radio', { name: '绝对值' }).click()
+    await page.getByRole('radio', { name: 'VID' }).click()
+    await collect()
+
+    // 命令参考：事务列表头 + VOUT_MODE 提示。
     await page.locator('#command-reference-toggle').click()
-    await expect(page.getByTestId('term-trigger-transaction')).toBeVisible()
-    await expect(
-      page.locator('[data-testid="command-reference"] [data-testid="term-trigger-vout-mode"]'),
-    ).toBeVisible()
+    await collect()
+
+    expect([...seen].sort()).toEqual([...GLOSSARY_TERM_IDS].sort())
   })
 
   test('v2.6.0 同名 N 按作用域区分：LINEAR11 N 与 VOUT_MODE N 展示不同且正确的解释', async ({
@@ -229,5 +244,39 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     // 两个气泡的主张互不越界：VOUT_MODE N 的气泡不把 LINEAR11 word 位域当作主解释。
     await vmN.click()
     await expect(vmPopover).not.toContainText('位于两字节 word 的 bits[15:11]')
+  })
+
+  // v2.6.1 卸载状态合同（应用级）：只有 L11 渲染的术语随 Ctrl+2 模式切换被
+  // 条件渲染卸载时，provider 的 active surface 必须同步清理——无残留 portal、
+  // 切回 L11 无 stale 自动重开、新浮层全局仍恰好一个、Escape 恢复到当前有效
+  // 触发器（绝不尝试恢复到已卸载元素）。provider 状态本身由
+  // src/components/help/help-overlay.test.tsx 的 jsdom 合同守护。
+  test('v2.6.1 模式切换卸载术语后无 stale surface，Escape 恢复到有效触发器', async ({ page }) => {
+    await settle(page)
+
+    // 打开只属于 L11 的术语（LINEAR11 N 范围提示）。
+    const l11n = page.getByTestId('term-trigger-linear11-exponent')
+    await l11n.click()
+    await expect(page.locator('[data-testid="term-popover-linear11-exponent"]')).toBeVisible()
+
+    // 真实键盘 Ctrl+2 切到 L16：该触发器被条件渲染卸载。
+    await page.keyboard.press('Control+2')
+    await expect(page.getByTestId('term-trigger-ulinear16')).toBeVisible()
+    await expect(page.locator('[data-testid="term-popover-linear11-exponent"]')).toHaveCount(0)
+
+    // 切回 L11 也不得出现 stale 自动重开的浮层。
+    await page.keyboard.press('Control+1')
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(0)
+
+    // 打开新的帮助浮层后全局仍恰好一个。
+    const hex = page.getByTestId('term-trigger-hex').first()
+    await hex.click()
+    await expect(page.locator('[data-testid="term-popover-hex"]').first()).toBeVisible()
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(1)
+
+    // Escape 恢复到当前有效触发器。
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(0)
+    await expect(hex).toBeFocused()
   })
 })
