@@ -308,7 +308,10 @@ test.describe('计算器真实用户流程', () => {
     const spaceBtn = page.getByRole('button', { name: '字节空格' })
     await spaceBtn.scrollIntoViewIfNeeded()
     await spaceBtn.evaluate((el: HTMLButtonElement) => el.click())
-    const endianBtn = page.getByRole('button', { name: 'BE', exact: true })
+    // v2.6.0: 结果面板的 BE 术语触发器同名，字节序按钮必须按组收窄。
+    const endianBtn = page
+      .getByLabel('Hex 复制顺序')
+      .getByRole('button', { name: 'BE', exact: true })
     await endianBtn.scrollIntoViewIfNeeded()
     await endianBtn.evaluate((el: HTMLButtonElement) => el.click())
 
@@ -320,10 +323,9 @@ test.describe('计算器真实用户流程', () => {
       'aria-pressed',
       'false',
     )
-    await expect(page.getByRole('button', { name: 'BE', exact: true })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
+    await expect(
+      page.getByLabel('Hex 复制顺序').getByRole('button', { name: 'BE', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true')
 
     await page.reload()
 
@@ -335,10 +337,9 @@ test.describe('计算器真实用户流程', () => {
       'aria-pressed',
       'false',
     )
-    await expect(page.getByRole('button', { name: 'BE', exact: true })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
+    await expect(
+      page.getByLabel('Hex 复制顺序').getByRole('button', { name: 'BE', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true')
 
     const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('1234')

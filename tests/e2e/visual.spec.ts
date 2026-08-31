@@ -63,6 +63,10 @@ async function setDirectStress(page: Page) {
   await page.getByLabel('DIRECT 系数 r').fill('12')
   await page.getByLabel('DIRECT 系数 r').press('Tab')
   await fillRaw(page, '8FC3')
+  // v2.6.0 起系数网格之后存在可聚焦术语触发器，焦点移动会让浏览器滚动页面；
+  // 场景基线统一取自然页首位置，避免滚动状态进入截图。
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.waitForTimeout(60)
 }
 
 async function switchToVoutMode(page: Page) {

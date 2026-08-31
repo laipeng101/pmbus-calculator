@@ -1,5 +1,6 @@
-import ThemeToggle from '../feedback/ThemeToggle'
 import type { Theme } from '../../app/state'
+import ThemeToggle from '../feedback/ThemeToggle'
+import TechnicalTerm from '../term/TechnicalTerm'
 
 interface Props {
   theme: Theme
@@ -12,17 +13,21 @@ export default function AppHeader({ theme, onThemeChange }: Props) {
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-xl font-bold tracking-tight md:text-2xl color-accent">
-            PMBus 数值格式计算器
+            <TechnicalTerm termId="pmbus" /> 数值格式计算器
           </h1>
           <span data-testid="version-badge" className="version-badge">
             v{__APP_VERSION__}
           </span>
         </div>
         <p className="mt-0.5 break-words text-sm color-text-secondary">
-          LINEAR11 / LINEAR16 / DIRECT / binary16 / VOUT_MODE
+          <TechnicalTerm termId="linear11" /> / <TechnicalTerm termId="linear16" /> /{' '}
+          <TechnicalTerm termId="direct" /> /{' '}
+          <TechnicalTerm termId="binary16">binary16</TechnicalTerm> /{' '}
+          <TechnicalTerm termId="vout-mode" />
         </p>
         <p className="mt-0.5 text-xs color-text-muted">
-          数值格式换算，不实现完整 PMBus/SMBus 协议栈
+          数值格式换算，不实现完整 PMBus/
+          <TechnicalTerm termId="smbus" /> 协议栈
         </p>
       </div>
       <ThemeToggle theme={theme} onChange={onThemeChange} />

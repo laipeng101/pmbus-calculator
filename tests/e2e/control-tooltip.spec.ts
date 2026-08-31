@@ -56,10 +56,14 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
   test('键盘 focus-visible 打开，blur（Tab 离开）关闭；Escape 关闭并恢复焦点', async ({ page }) => {
     await settle(page)
 
-    // 真实键盘 Tab 到主题按钮：focus-visible 路径打开 tooltip。
-    await page.keyboard.press('Tab')
+    // 真实键盘 Tab 进入页头：v2.6.0 起页头术语触发器在主题按钮之前，用有界
+    // Tab 循环前进到主题按钮，focus-visible 路径打开 tooltip。
     const button = page.locator(THEME_BUTTON)
     const tooltip = page.locator(THEME_TOOLTIP)
+    for (let i = 0; i < 20; i++) {
+      if (await button.evaluate((el) => el.matches(':focus'))) break
+      await page.keyboard.press('Tab')
+    }
     await expect(button).toBeFocused()
     await expect(tooltip).toBeVisible()
 

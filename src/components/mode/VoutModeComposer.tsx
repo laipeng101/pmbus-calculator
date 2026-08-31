@@ -142,6 +142,14 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         <div className="vout-term-row" data-testid="vout-term-row">
           <span className="text-xs color-text-muted">配置字节：</span>
           <TechnicalTerm termId="vout-mode" />
+          <span className="text-xs color-text-muted">bit7 语义：</span>
+          <TechnicalTerm termId="abs-rel" />
+          {info.format === 0 && (
+            <>
+              <span className="text-xs color-text-muted">指数：</span>
+              <TechnicalTerm termId="exponent" />
+            </>
+          )}
           <span className="text-xs color-text-muted">当前格式：</span>
           <TechnicalTerm termId={voutModeFormatTerm(info.format)} />
         </div>
@@ -203,17 +211,22 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           )}
           {info.isRelative && (
             <p className="vout-param-note text-xs">
-              {state.l16.payloadKind === 'slinear16-offset'
-                ? 'bit7 相对值仅作用于 §8.5 相对阈值命令；当前 SLINEAR16 offset 是有符号命令 payload（§13.3/§13.4），bit7 不参与其数学，无需标称参考值。'
-                : '相对 LINEAR：payload 与 VOUT_COMMAND 同格式，解出比值 R；最终电压需要 VOUT_COMMAND 标称参考值。'}
+              {state.l16.payloadKind === 'slinear16-offset' ? (
+                'bit7 相对值仅作用于 §8.5 相对阈值命令；当前 SLINEAR16 offset 是有符号命令 payload（§13.3/§13.4），bit7 不参与其数学，无需标称参考值。'
+              ) : (
+                <>
+                  相对 LINEAR：payload 与 <TechnicalTerm termId="vout-command" />
+                  同格式，解出比值 R；最终电压需要 VOUT_COMMAND 标称参考值。
+                </>
+              )}
             </p>
           )}
         </div>
       ) : info.format === 1 ? (
         <div className="vout-param-vid">
-          <label className="text-xs color-text-muted" htmlFor="vout-vid-code-select">
-            VID 代码类型（无符号，0～31）
-          </label>
+          <div className="text-xs color-text-muted">
+            <TechnicalTerm termId="vid-code-type">VID 代码类型</TechnicalTerm>（无符号，0～31）
+          </div>
           <select
             id="vout-vid-code-select"
             aria-label="VID 代码类型"

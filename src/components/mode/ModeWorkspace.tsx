@@ -10,6 +10,7 @@ import ExponentEditor from '../formula/ExponentEditor'
 import LinearFormulaEditor from '../formula/LinearFormulaEditor'
 import VoutModeComposer from './VoutModeComposer'
 import HalfSpecialCard from './HalfSpecialCard'
+import TechnicalTerm from '../term/TechnicalTerm'
 import { MODE_PANEL_ID, modeTabId } from './modeTabs'
 import { LockIcon, UnlockIcon } from '../icons/Icon'
 import MathFormula from '../math/MathFormula'
@@ -36,7 +37,9 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
             原始数据
           </h3>
           <div className="flex items-start gap-2">
-            <label className="mt-2 text-sm color-text-muted">Hex</label>
+            <div className="mt-2 text-sm color-text-muted">
+              <TechnicalTerm termId="hex" />
+            </div>
             <HexInput
               id="raw-hex-input"
               value={vm.rawHexDigits}
@@ -62,15 +65,26 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
       {/* Mode-specific workspace */}
       <section className="rounded-xl p-4 panel-surface-muted">
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider color-text-secondary">
-          {mode === 'L11'
-            ? 'LINEAR11 参数'
-            : mode === 'L16'
-              ? 'LINEAR16 / VOUT 参数'
-              : mode === 'DIRECT'
-                ? 'DIRECT 系数'
-                : mode === 'VOUT_MODE'
-                  ? 'VOUT_MODE 配置'
-                  : 'IEEE 754 binary16（半精度）'}
+          {mode === 'L11' ? (
+            <>
+              <TechnicalTerm termId="linear11" /> 参数
+            </>
+          ) : mode === 'L16' ? (
+            <>
+              <TechnicalTerm termId="linear16" /> / VOUT 参数
+            </>
+          ) : mode === 'DIRECT' ? (
+            <>
+              <TechnicalTerm termId="direct" /> 系数
+            </>
+          ) : mode === 'VOUT_MODE' ? (
+            'VOUT_MODE 配置'
+          ) : (
+            <>
+              <TechnicalTerm termId="binary16" />
+              （半精度）
+            </>
+          )}
         </h3>
 
         {mode === 'L11' && (
@@ -115,9 +129,13 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
             {/* Range hint */}
             <div className="text-center text-xs color-text-muted">
-              {vm.nRangeText
-                ? `可表示范围: ${vm.nRangeText}`
-                : 'Y 范围: -1024 ~ 1023 · N 范围: -16 ~ 15'}
+              {vm.nRangeText ? (
+                <>
+                  可表示范围: {vm.nRangeText}（<TechnicalTerm termId="linear11-exponent" />）
+                </>
+              ) : (
+                'Y 范围: -1024 ~ 1023 · N 范围: -16 ~ 15'
+              )}
             </div>
 
             {/* Physical value input — encodes via findBestLinear11 / manual N */}
@@ -181,7 +199,12 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 </select>
               </label>
               <span className="text-xs color-text-muted">
-                PMBus/SMBus word 默认低字节在前；BE 仅用于寄存器显示或复制
+                PMBus/SMBus word 默认低字节在前；
+                <TechnicalTerm termId="be" /> 仅用于寄存器显示或复制
+              </span>
+              <span className="text-xs color-text-muted">
+                解释语义：
+                <TechnicalTerm termId="ulinear16" /> · <TechnicalTerm termId="slinear16" />
               </span>
             </div>
 
@@ -310,7 +333,8 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
             </div>
 
             <div className="text-center text-xs color-text-muted">
-              m、b 为 16 位有符号整数；R 为 8 位有符号整数；m ≠ 0。系数非法时不会静默接受。
+              <TechnicalTerm termId="twos-complement" />
+              整数：m、b 为 16 位，R 为 8 位；m ≠ 0。系数非法时不会静默接受。
             </div>
           </div>
         )}
@@ -318,8 +342,9 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         {mode === 'HALF' && (
           <div className="space-y-4">
             <p className="text-sm color-text-secondary">
-              IEEE 754 binary16（半精度）：符号 1 位、指数 5 位、尾数 10 位。物理值输入支持
-              +0、-0、NaN、+Infinity、-Infinity。
+              <TechnicalTerm termId="binary16" />
+              （半精度）：符号 1 位、指数 5 位、尾数 10 位。物理值输入支持 +0、-0、
+              <TechnicalTerm termId="fp-special">NaN、+Infinity、-Infinity</TechnicalTerm>。
             </p>
             <ValueInput vm={vm} dispatch={dispatch} />
             {vm.halfSpecial && <HalfSpecialCard semantics={vm.halfSpecial} />}
