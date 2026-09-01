@@ -130,6 +130,21 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     await expect(physicalCopyButton(page)).toBeEnabled()
     const alerts = page.locator('section[aria-label="提示信息"]')
     await expect(alerts.getByText(/计算下溢/)).toHaveCount(0)
+    // R=0 是非符合性数据（§8.5.2）：数学结果保持精确 0，但状态级告警必须出现。
+    await expect(alerts.getByText(/要求相对值恒为正/)).toHaveCount(1)
+  })
+
+  test('§8.5.2 非符合性向量：98/0000 nominal 12 → X=0、R=0 告警、复制可用', async ({ page }) => {
+    await setupRelative(page, '0000')
+    await nominal(page).fill('12')
+    // 数学结果保持精确 0 —— 不伪造饱和或错误结果。
+    await expect(resultValue(page)).toHaveText('0')
+    const alerts = page.locator('section[aria-label="提示信息"]')
+    await expect(alerts.getByText(/要求相对值恒为正/)).toHaveCount(1)
+    await expect(alerts.getByText(/§8\.5\.2/)).toHaveCount(1)
+    await expect(alerts.getByText(/计算下溢/)).toHaveCount(0)
+    await expect(alerts.getByText(/超出 JavaScript Number 可表示范围/)).toHaveCount(0)
+    await expect(physicalCopyButton(page)).toBeEnabled()
   })
 
   test('nominal=0 是 decode-only 真零：98/FFFF nominal 0 → 0', async ({ page }) => {
@@ -137,6 +152,10 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     await nominal(page).fill('0')
     await expect(resultValue(page)).toHaveText('0')
     await expect(physicalCopyButton(page)).toBeEnabled()
+    // ratio ≠ 0：不是 R=0 非符合性状态。
+    await expect(
+      page.locator('section[aria-label="提示信息"]').getByText(/要求相对值恒为正/),
+    ).toHaveCount(0)
   })
 
   test('缺参考值：98/0200 nominal 空 → 比值可见、结果 —（既有行为）', async ({ page }) => {

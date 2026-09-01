@@ -4,6 +4,36 @@
 
 ## [Unreleased]
 
+## [2.6.4] - 2026-09-01
+
+### Added
+
+- **relative ULINEAR16 R=0 非符合性告警（Part II §8.5.2）**：规范要求相对值
+  恒为正，L16 页此前只诊断派生溢出/下溢，提交的 `R=0`（raw 0000）会无标注地
+  显示为精确 0。现在 view-model 经共享 `resolveL16Relative` 的同一 ratio 解码
+  输出 warning `l16-relative-zero-ratio`：数学结果保持精确 `V_NOM × 0 = 0`，
+  不伪造饱和或错误，物理值复制保持可用；告警区分 `nominal=0` 的 decode-only
+  真零与 signed offset（bit7 不参与数学），标称参考缺失时仍然出现。验收向量
+  `0x98 / 0000 | 12 → R=0, X=0` 具备状态级单测与 E2E 覆盖。
+
+### Changed
+
+- **DIRECT generic signed 契约澄清**：DIRECT 页脚注、README 与 DOMAIN_MODEL
+  §2.3 明确本页 Y 按 §7.4 generic 契约为 16 位有符号（raw=FFFF → −1）；Part II
+  §8.1.1/§8.4.3 规定输出电压命令数据为无符号正值语义，该 VOUT 输出上下文需要
+  命令/器件数据，本产品不内置 unsigned profile、不静默重解释 Y；
+  `decodeDirect` 等受保护算法零变更。relative DIRECT（0xC0）与 relative Half
+  （0xE0）的要求警告与说明卡统一补充「相对值必须为正（§8.5.2）」，绝对
+  sibling（0x40/0x60）保持无该表述。
+
+### Docs
+
+- **legacy HTML 已知数值偏差披露**：MIGRATION_MATRIX 新增离线归档两处已知
+  偏差——`findBestLinear11` 的 `1e-15` epsilon tie 判定（早于 v2.5.10
+  strictly-nearest + 全范围饱和合同）与 `encodeHalf` 的 `Math.round` 非对称
+  舍入（不符合 IEEE 754 RNE）；README legacy 段落指向该披露并声明 React
+  应用为数值权威。归档文件本身零修改。
+
 ## [2.6.3] - 2026-08-31
 
 ### Fixed

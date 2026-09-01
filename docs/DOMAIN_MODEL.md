@@ -60,7 +60,10 @@
 - L16 payload 是独立于 VOUT_MODE 字节的命令 payload 语义，分两种：
   - `ULINEAR16`：`X = Y_u × 2^N`，`Y_u` 是无符号 16 位整数 `0..65535`；absolute LINEAR
     直接解出电压，relative LINEAR 解出无量纲正比例 `R = Y_u × 2^N`，最终电压
-    `X = V_NOM × R`（`raw=0` 时 `R=0`，规范要求 relative value 为正，标记为非符合性）。
+    `X = V_NOM × R`（`raw=0` 时 `R=0`，规范要求 relative value 为正，标记为非符合性；
+    v2.6.4 起 view-model 对该状态输出 warning `l16-relative-zero-ratio`——数学结果
+    保持精确 0，不伪造饱和或错误，告警不依赖标称参考是否提交，且与 `nominal=0` 的
+    decode-only 真零（ratio≠0）、signed offset（bit7 不参与数学）互斥）。
     标称参考值缺失是可达的提交状态（v2.5.8）：真实清空标称输入并 blur/Enter 通过
     `l16/clear-nominal-vout` 把 `l16.nominalVout` 置回 `null`（幂等，只影响该通道，
     不改 raw / VOUT_MODE / payload kind / 字节序）；`null`（未提供参考值，只显示比值，
@@ -83,6 +86,12 @@
 - `m === 0` 时解码返回 `NaN`，UI 显示错误提示，不得崩溃。
 - `Y` 是 16-bit signed（`-32768..32767`）；`state.raw` 是唯一编码事实来源，
   `Y = toSigned(raw, 16)` 始终派生自 `raw`，`state.direct` 只保存 `m/b/R`。
+- **generic signed 契约与 VOUT 输出语义（v2.6.4）**：DIRECT 页的 `Y` 始终按 §7.4
+  generic 契约处理为 16 位有符号整数（`raw=FFFF` → `-1`）。Part II §8.1.1 规定
+  Linear/Direct 输出电压相关命令的数据为无符号正值、§8.4.3 规定 VOUT_COMMAND 的
+  计算结果「is converted to a 16 bit unsigned binary integer」——该 VOUT 输出语义
+  属于命令/器件上下文，本产品不内置 unsigned profile，generic 页不静默重解释 `Y`；
+  无符号 VOUT_DIRECT 语义只能在有器件数据手册为前提的显式 profile 中表达。
 - `m`、`b` 必须是 signed 16-bit integer（`-32768..32767`）；`R` 必须是 signed 8-bit integer（`-128..127`）。
 - 系数非法（浮点数、超范围、`m=0`）必须显示明确错误，不得静默接受。
 - 编码舍入策略（legacy 兼容）：`Y = clamp(Math.round((m × Value + b) × 10^R), -32768, 32767)`。

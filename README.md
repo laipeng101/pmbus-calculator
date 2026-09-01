@@ -8,9 +8,9 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 > **Scope:** this tool converts numeric formats; it is **not** a PMBus/SMBus controller, bus-transport implementation, command executor, device-profile engine, or conformance test suite. It covers the common numeric-format semantics across multiple PMBus revisions and does **not** claim full PMBus 1.5 protocol compliance (including the 1.5 security extensions).
 >
-> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v2.6.3`)
+> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v2.6.4`)
 >
-> **Stable version:** [`v2.6.3`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v2.6.3) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v2.6.3/SHA256SUMS.txt)
+> **Stable version:** [`v2.6.4`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v2.6.4) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v2.6.4/SHA256SUMS.txt)
 
 ---
 
@@ -54,7 +54,7 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 | **DIRECT**          | Linear transform with three device-specific coefficients                   | $X = \frac{1}{m}\left(Y \times 10^{-R} - b\right)$                               |
 | **IEEE Half**       | IEEE 754 binary16 (1-bit sign, 5-bit exponent, 10-bit mantissa)            | IEEE 754 binary16 piecewise decode (zero / subnormal / normal / ±Infinity / NaN) |
 
-> These four tabs are four independent converters; this page does not claim any device capability. Which format(s) a device uses is decided by its datasheet — and under PMBus Rev. 1.3 Part II §7.2 that choice is device-wide, not per command: a device that uses IEEE Half for numerical data must use **only** IEEE Half for all of its numerical commands, and a device that uses any LINEAR or DIRECT format for any numerical data must **not** use IEEE Half for any command. The datasheet determines format adoption only — it does not change the binary16 value-decoding formula, so HALF conversion never needs device coefficients (only DIRECT needs device-specific m/b/R per §7.4).
+> These four tabs are four independent converters; this page does not claim any device capability. Which format(s) a device uses is decided by its datasheet — and under PMBus Rev. 1.3 Part II §7.2 that choice is device-wide, not per command: a device that uses IEEE Half for numerical data must use **only** IEEE Half for all of its numerical commands, and a device that uses any LINEAR or DIRECT format for any numerical data must **not** use IEEE Half for any command. The datasheet determines format adoption only — it does not change the binary16 value-decoding formula, so HALF conversion never needs device coefficients (only DIRECT needs device-specific m/b/R per §7.4). The DIRECT tab encodes Y as a generic signed 16-bit integer per §7.4; PMBus Part II §8.1.1/§8.4.3 restrict output-voltage command data to unsigned positive values — that VOUT output context requires command/device data and is not silently reinterpreted on the DIRECT tab.
 
 ---
 
@@ -64,6 +64,8 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 `pmbus-calculator.html` is a self-contained single HTML file — no build step, no server required.
 It remains in the repository root for **repository-internal offline compatibility purposes**: only necessary corrections are accepted, and it is no longer the Pages product entry point. GitHub Pages serves the React web app at the root (HTTP 200); only the legacy `/pmbus-calculator.html` path returns 404.
+
+> Known numeric deviations in this archive (epsilon-based L11 tie handling without the modern full-range saturation contract, and `Math.round` half-up mantissa rounding in `encodeHalf` instead of IEEE 754 round-to-nearest-even) are documented in [docs/MIGRATION_MATRIX.md](docs/MIGRATION_MATRIX.md); the React app is the numeric authority.
 
 **Open locally:**
 
@@ -83,7 +85,7 @@ npm test         # runs Vitest
 
 **Static build package:** the production build in `dist/` is a static bundle and must be used through an HTTP static server (for example `npm run preview` or any static hosting service). Directly double-clicking `dist/index.html` via `file://` is not supported.
 
-**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys the immutable `v2.6.3` Release asset. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
+**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys the immutable `v2.6.4` Release asset. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
 
 **Workflow:**
 

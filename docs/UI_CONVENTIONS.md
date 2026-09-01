@@ -324,6 +324,14 @@
   字节（含 0x98 等 bit7=1）下保留物理值输入、signed 编码、范围与量化读数，且必须出现
   「bit7 对本 payload 不参与数学」说明；`ULINEAR16` + relative 才显示标称参考输入、
   relative 警示与阻断卡，阻断卡不得宣称 signed offset 页「需要 nominal」。
+- **relative ULINEAR16 的 R=0 非符合性告警（v2.6.4，Part II §8.5.2）**：提交的
+  比值 `R = 0`（raw 0000）是规范意义上的非符合性数据——InfoPanel 输出 warning
+  `l16-relative-zero-ratio`（单一来源 `resolveL16Relative` 的同一 ratio 解码），
+  文案区分两类真零：`nominal=0`（decode-only 真零，ratio≠0）与 signed offset
+  （bit7 不参与数学）都不触发；标称参考缺失时告警仍然出现（非符合性是 committed
+  raw 的属性）。数学结果保持精确 0，不伪造饱和/错误，物理值复制保持可用；
+  `l16-relative-overflow` / `l16-relative-underflow` 与本告警互斥（零比值不可能
+  溢出或下溢）。
 - 手动 `l16/set-slinear-y` 是 raw 变更：提交后面板隐藏（组件返回 null）、计算步骤
   不再包含量化 intermediate；非法/过渡输入不得改变 raw，也不得清除仍有效的请求。
 - 非 LINEAR 共享字节的 L16 页面 fail closed（v2.5.2，Part II §8.4）：无物理值输入、
@@ -380,12 +388,13 @@
   四个表面全部 switch 在该判别式的 `req.id` 上（字段解析仍可读取
   format/parameter），E2E helper 不再把所有表面拼接成单一字符串——逐表面独立断言。
 - DIRECT 字节（`0x40`/`0xC0` 等）：状态与警告必须继续要求器件 m/b/R 系数
-  （§7.4），relative 组合再叠加 VOUT_COMMAND 标称参考值（§8.5.2）；`0xC0` 的
+  （§7.4），relative 组合再叠加 VOUT_COMMAND 标称参考值与相对值必须为正（§8.5.2）；
+  `0xC0` 的
   **InfoPanel 警告本身**必须同时包含 m/b/R 与标称参考值，不得靠其他表面拼出。
 - IEEE Half 字节（`0x60`/`0xE0` 等）：所有用户可见表面必须表述「标准
   IEEE 754 binary16（§7.6 / §8.4.4），换算不依赖器件数值」，并指向 HALF 模式页；
   **禁止出现「需器件资料」「器件 Profile」「m/b/R」「DIRECT 系数」等反向禁词**。
-  `0xE0` 额外表述需要标称参考值（§8.5.2），`0x60` 不出现该表述。
+  `0xE0` 额外表述需要标称参考值与相对值必须为正（§8.5.2），`0x60` 不出现该表述。
 - 参数非零（`0x61`/`0xE1` 等）保持「参数必须为 00000b（§8.3 Table 2）」error 级，
   不进入任何格式要求分支。
 - **合法性与可计算性正交（v2.5.5）**：VID Code Type `1Eh`/`1Fh` 是 §8.4.2 Table 3
