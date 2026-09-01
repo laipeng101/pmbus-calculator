@@ -5,7 +5,7 @@
 > M0–M10.1 的完整历史质量矩阵与 WEB-0000…WEB-0023 变更日志已冻结到
 > [`archive/web-refactor-m0-m10.1/MIGRATION_MATRIX_FULL.md`](archive/web-refactor-m0-m10.1/MIGRATION_MATRIX_FULL.md)。
 
-最后更新：2026-08-25（v2.0.0：产品定位、Pages/legacy 定位与命令参考说明对齐）
+最后更新：2026-09-01（v2.6.4：legacy HTML 已知数值偏差披露）
 
 ## 当前 parity
 
@@ -16,6 +16,19 @@
 | L11/L16/DIRECT/HALF | Done：四种模式双向闭环，E2E 覆盖桌面 + 移动 Chromium                                      |
 | 复制/主题/偏好      | Done：复制工具、主题与偏好持久化已接入新应用                                              |
 | legacy HTML         | 保留仓库内离线兼容用途，只接受必要纠偏；不再作为 Pages 产品入口                           |
+
+## legacy HTML 已知数值偏差（v2.6.4 披露，离线归档内接受）
+
+`pmbus-calculator.html` 是仓库内离线兼容归档（见下），与当前应用存在两处已知数值
+行为差异。二者都是历史实现的既成事实，不属于待修复缺陷——除非被定性为「必要纠偏」，
+否则按归档政策保持原样；权威数值行为以当前应用（`src/legacy/pmbus-math.ts`）为准：
+
+- **`findBestLinear11` tie 判定**：归档实现以 `1e-15` epsilon 判定误差相等（约
+  1161 行），且缺少 v2.5.10 起现代实现的严格最近值（strictly-nearest）与全范围
+  饱和合同；自动 N 搜索的 tie/越界结果可能与当前应用不同。
+- **`encodeHalf` 舍入方向**：归档实现用 `Math.round` 处理尾数（约 1216 行），.5
+  向 +∞ 舍入，不符合 IEEE 754 round-to-nearest-even（如 `1 + 2^-11` 的编码与
+  IEEE RNE 不同）；当前 HALF 模式页按 RNE 合同实现。
 
 ## Deferred / Blocked items
 

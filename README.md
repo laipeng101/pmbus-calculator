@@ -65,6 +65,8 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 `pmbus-calculator.html` is a self-contained single HTML file — no build step, no server required.
 It remains in the repository root for **repository-internal offline compatibility purposes**: only necessary corrections are accepted, and it is no longer the Pages product entry point. GitHub Pages serves the React web app at the root (HTTP 200); only the legacy `/pmbus-calculator.html` path returns 404.
 
+> Known numeric deviations in this archive (epsilon-based L11 tie handling without the modern full-range saturation contract, and `Math.round` half-up mantissa rounding in `encodeHalf` instead of IEEE 754 round-to-nearest-even) are documented in [docs/MIGRATION_MATRIX.md](docs/MIGRATION_MATRIX.md); the React app is the numeric authority.
+
 **Open locally:**
 
 1. Clone or download the repository.
