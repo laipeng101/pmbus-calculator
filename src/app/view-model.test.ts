@@ -479,6 +479,75 @@ describe('toCalculatorViewModel', () => {
     expect(zeroNominal.physicalValueCopy).toBeUndefined()
   })
 
+  test('relative ULINEAR16 R=0 is flagged §8.5.2-non-compliant while the math stays exact (v2.6.4)', () => {
+    // Acceptance vector: 98 / 0000 | 12 → R=0, X=0. The result card keeps the
+    // exact mathematical zero — the new warning only flags spec non-compliance
+    // (Part II §8.5.2: "The relative value is always a positive value"), it
+    // never fakes a saturation or an error result.
+    const vm = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0000,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 12 },
+      }),
+    )
+    expect(vm.valueText).toBe('0')
+    const zeroRatio = vm.warnings.find((w) => w.id === 'l16-relative-zero-ratio')
+    expect(zeroRatio?.level).toBe('warning')
+    expect(zeroRatio?.text).toContain('§8.5.2')
+    expect(zeroRatio?.text).toContain('非符合性')
+    expect(vm.warnings.some((w) => w.id === 'l16-relative-underflow')).toBe(false)
+    expect(vm.warnings.some((w) => w.id === 'l16-relative-overflow')).toBe(false)
+    expect(vm.physicalValueCopy).toBeUndefined()
+  })
+
+  test('R=0 non-compliance warning is scoped to relative ULINEAR16 (v2.6.4)', () => {
+    // nominal=0 with ratio≠0 is a decode-only true zero — no ratio violation.
+    const zeroNominal = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0xffff,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 0 },
+      }),
+    )
+    expect(zeroNominal.valueText).toBe('0')
+    expect(zeroNominal.warnings.some((w) => w.id === 'l16-relative-zero-ratio')).toBe(false)
+    // SLINEAR16 offset ignores bit7 — no ratio semantics, no warning.
+    const offset = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0000,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'slinear16-offset', nominalVout: 12 },
+      }),
+    )
+    expect(offset.warnings.some((w) => w.id === 'l16-relative-zero-ratio')).toBe(false)
+    // Absolute LINEAR has no relative-ratio semantics at all.
+    const absolute = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0000,
+        voutMode: { byte: 0x18 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 12 },
+      }),
+    )
+    expect(absolute.warnings.some((w) => w.id === 'l16-relative-zero-ratio')).toBe(false)
+    // A missing reference keeps the ratio visible; the committed R=0 is still
+    // non-compliant data and must stay flagged without a nominal.
+    const noNominal = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0000,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'ulinear16', nominalVout: null },
+      }),
+    )
+    expect(noNominal.valueText).toBe('—')
+    expect(noNominal.warnings.some((w) => w.id === 'l16-relative-zero-ratio')).toBe(true)
+  })
+
   test('huge finite nominal with ratio=1 stays fully computed and copyable (v2.5.9)', () => {
     // 98 / 0100 | 1e308: finite result — a large committed reference is not a
     // range error and must not disable the physical-value copy.

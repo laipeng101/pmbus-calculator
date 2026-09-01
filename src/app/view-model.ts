@@ -492,12 +492,17 @@ function buildL16BlockVM(
 }
 
 /**
- * Shared relative-ULINEAR16 derivation classification (v2.5.9): null for
+ * Shared relative-ULINEAR16 resolution (v2.5.9, extended v2.6.4): null for
  * every state that is not "relative ULINEAR16 with a LINEAR shared byte".
- * The result card, warnings and the physical-value copy all answer the
- * overflow/underflow question from this one resolution.
+ * The result card, warnings and the physical-value copy answer the
+ * overflow/underflow question from `result`, and the §8.5.2 relative-value
+ * compliance question from the same single decoded `ratio` (the spec requires
+ * the relative value to be positive, so a committed R=0 is non-compliant
+ * data — the math itself stays an exact zero).
  */
-function resolveL16RelativeResult(state: AppState): RelativeVoltageResult | null {
+function resolveL16Relative(
+  state: AppState,
+): { result: RelativeVoltageResult; ratio: number } | null {
   if (state.mode !== 'L16') return null
   const eff = effectiveL16VoutMode(state)
   if (eff.source === 'non-linear') return null
@@ -505,7 +510,11 @@ function resolveL16RelativeResult(state: AppState): RelativeVoltageResult | null
   if (a.format !== 0 || !a.isRelative) return null
   if (state.l16.payloadKind !== 'ulinear16') return null
   const ratio = PMBusMath.decodeUlinear16(state.raw, a.linearExponent ?? 0).value
-  return resolveRelativeVoltage(state.l16.nominalVout, ratio)
+  return { result: resolveRelativeVoltage(state.l16.nominalVout, ratio), ratio }
+}
+
+function resolveL16RelativeResult(state: AppState): RelativeVoltageResult | null {
+  return resolveL16Relative(state)?.result ?? null
 }
 
 /**
@@ -683,18 +692,30 @@ function buildWarnings(state: AppState): WarningVM[] {
       })
       // v2.5.9: derivation-range diagnostics come from the shared relative
       // classifier — same source as the result card, formula and steps.
-      const relativeResult = resolveL16RelativeResult(state)
-      if (relativeResult?.kind === 'overflow') {
+      // v2.6.4: the §8.5.2 compliance answer also comes from that one
+      // resolution — the committed ratio must be positive; R=0 stays an exact
+      // mathematical zero but is flagged as non-compliant data. The signed
+      // offset payload has no ratio semantics (checked above), and the
+      // overflow/underflow branches already exclude a zero ratio by
+      // construction (a zero factor can only produce a finite product).
+      const relative = resolveL16Relative(state)
+      if (relative?.result.kind === 'overflow') {
         warnings.push({
           id: 'l16-relative-overflow',
           level: 'warning',
           text: `${RELATIVE_VOLTAGE_OVERFLOW_NOTE}；最终电压显示为 —，标称值与比值仍按输入显示，原始 Hex/LE/BE 复制不受影响。`,
         })
-      } else if (relativeResult?.kind === 'underflow') {
+      } else if (relative?.result.kind === 'underflow') {
         warnings.push({
           id: 'l16-relative-underflow',
           level: 'warning',
           text: `${RELATIVE_VOLTAGE_UNDERFLOW_NOTE}；最终电压显示为 —，标称值与比值仍按输入显示，原始 Hex/LE/BE 复制不受影响。`,
+        })
+      } else if (relative?.ratio === 0) {
+        warnings.push({
+          id: 'l16-relative-zero-ratio',
+          level: 'warning',
+          text: `当前 relative ULINEAR16 解码比值 R = 0（raw ${formatByteHex(state.raw)}，Y_u = 0）；Part II §8.5.2 要求相对值恒为正，该提交标记为非符合性。R = 0 是数学精确结果，不是派生下溢或饱和。`,
         })
       }
     } else {

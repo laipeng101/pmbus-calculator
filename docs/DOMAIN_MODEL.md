@@ -60,7 +60,10 @@
 - L16 payload 是独立于 VOUT_MODE 字节的命令 payload 语义，分两种：
   - `ULINEAR16`：`X = Y_u × 2^N`，`Y_u` 是无符号 16 位整数 `0..65535`；absolute LINEAR
     直接解出电压，relative LINEAR 解出无量纲正比例 `R = Y_u × 2^N`，最终电压
-    `X = V_NOM × R`（`raw=0` 时 `R=0`，规范要求 relative value 为正，标记为非符合性）。
+    `X = V_NOM × R`（`raw=0` 时 `R=0`，规范要求 relative value 为正，标记为非符合性；
+    v2.6.4 起 view-model 对该状态输出 warning `l16-relative-zero-ratio`——数学结果
+    保持精确 0，不伪造饱和或错误，告警不依赖标称参考是否提交，且与 `nominal=0` 的
+    decode-only 真零（ratio≠0）、signed offset（bit7 不参与数学）互斥）。
     标称参考值缺失是可达的提交状态（v2.5.8）：真实清空标称输入并 blur/Enter 通过
     `l16/clear-nominal-vout` 把 `l16.nominalVout` 置回 `null`（幂等，只影响该通道，
     不改 raw / VOUT_MODE / payload kind / 字节序）；`null`（未提供参考值，只显示比值，
