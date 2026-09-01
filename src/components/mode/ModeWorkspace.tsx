@@ -339,7 +339,9 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
             <div className="text-center text-xs color-text-muted">
               <TechnicalTerm termId="twos-complement" />
-              整数：m、b 为 16 位，R 为 8 位；m ≠ 0。系数非法时不会静默接受。
+              整数：m、b 为 16 位，R 为 8 位；m ≠ 0。系数非法时不会静默接受。Y 按 §7.4 generic
+              契约为有符号 16 位；输出电压命令的 DIRECT 数据按 §8.1.1/§8.4.3
+              为无符号正值语义，需命令/器件上下文，本页不提供 unsigned profile。
             </div>
           </div>
         )}

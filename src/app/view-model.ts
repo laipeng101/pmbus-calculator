@@ -745,7 +745,7 @@ function buildWarnings(state: AppState): WarningVM[] {
           warnings.push({
             id: 'vout-mode-direct-profile',
             level: 'warning',
-            text: `VOUT_MODE ${hex} 为相对 DIRECT 格式；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能换算 word ↔ 物理值（Part II §7.4），相对阈值还需要 VOUT_COMMAND 标称参考值才能得到最终电压（§8.5.2）。`,
+            text: `VOUT_MODE ${hex} 为相对 DIRECT 格式；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能换算 word ↔ 物理值（Part II §7.4），相对阈值还需要 VOUT_COMMAND 标称参考值才能得到最终电压，且相对值必须为正（§8.5.2）。`,
           })
           break
         case 'half-absolute':
@@ -762,7 +762,7 @@ function buildWarnings(state: AppState): WarningVM[] {
           warnings.push({
             id: 'vout-mode-half-standard',
             level: 'warning',
-            text: `VOUT_MODE ${hex} 为相对 IEEE Half 格式；payload 是标准 IEEE 754 binary16（Part II §7.6 / §8.4.4），word ↔ 数值换算不依赖器件数值，但相对阈值需要 VOUT_COMMAND 标称参考值才能得到最终电压（§8.5.2）。`,
+            text: `VOUT_MODE ${hex} 为相对 IEEE Half 格式；payload 是标准 IEEE 754 binary16（Part II §7.6 / §8.4.4），word ↔ 数值换算不依赖器件数值，但相对阈值需要 VOUT_COMMAND 标称参考值才能得到最终电压，且相对值必须为正（§8.5.2）。`,
           })
           break
         case 'vid-relative-invalid':

@@ -128,4 +128,9 @@ describe('v2.5.4 DIRECT 与 IEEE Half 的 requirement 语义拆分', () => {
       expect(copy).not.toContain('标准 IEEE 754 binary16')
     })
   }
+
+  it('0xC0 relative DIRECT states the §8.5.2 positivity rule; 0x40 stays absolute-scoped', () => {
+    expect(explanationCopy(0xc0)).toContain('相对值必须为正')
+    expect(explanationCopy(0x40)).not.toContain('相对值必须为正')
+  })
 })

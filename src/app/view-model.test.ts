@@ -548,6 +548,32 @@ describe('toCalculatorViewModel', () => {
     expect(noNominal.warnings.some((w) => w.id === 'l16-relative-zero-ratio')).toBe(true)
   })
 
+  test('relative DIRECT/Half requirement warnings state the §8.5.2 positivity rule (v2.6.4)', () => {
+    // Part II §8.5.2: the relative value is always positive — the relative
+    // DIRECT/Half requirement copy must carry the same rule as relative LINEAR.
+    const direct = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0xc0 } }))
+    expect(direct.warnings.find((w) => w.id === 'vout-mode-direct-profile')?.text).toContain(
+      '相对值必须为正',
+    )
+    const half = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0xe0 } }))
+    expect(half.warnings.find((w) => w.id === 'vout-mode-half-standard')?.text).toContain(
+      '相对值必须为正',
+    )
+    // Absolute siblings stay free of relative-value copy.
+    const directAbsolute = toCalculatorViewModel(
+      make({ mode: 'VOUT_MODE', voutMode: { byte: 0x40 } }),
+    )
+    expect(
+      directAbsolute.warnings.find((w) => w.id === 'vout-mode-direct-profile')?.text,
+    ).not.toContain('相对值必须为正')
+    const halfAbsolute = toCalculatorViewModel(
+      make({ mode: 'VOUT_MODE', voutMode: { byte: 0x60 } }),
+    )
+    expect(
+      halfAbsolute.warnings.find((w) => w.id === 'vout-mode-half-standard')?.text,
+    ).not.toContain('相对值必须为正')
+  })
+
   test('huge finite nominal with ratio=1 stays fully computed and copyable (v2.5.9)', () => {
     // 98 / 0100 | 1e308: finite result — a large committed reference is not a
     // range error and must not disable the physical-value copy.

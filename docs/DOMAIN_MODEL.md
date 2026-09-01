@@ -86,6 +86,12 @@
 - `m === 0` 时解码返回 `NaN`，UI 显示错误提示，不得崩溃。
 - `Y` 是 16-bit signed（`-32768..32767`）；`state.raw` 是唯一编码事实来源，
   `Y = toSigned(raw, 16)` 始终派生自 `raw`，`state.direct` 只保存 `m/b/R`。
+- **generic signed 契约与 VOUT 输出语义（v2.6.4）**：DIRECT 页的 `Y` 始终按 §7.4
+  generic 契约处理为 16 位有符号整数（`raw=FFFF` → `-1`）。Part II §8.1.1 规定
+  Linear/Direct 输出电压相关命令的数据为无符号正值、§8.4.3 规定 VOUT_COMMAND 的
+  计算结果「is converted to a 16 bit unsigned binary integer」——该 VOUT 输出语义
+  属于命令/器件上下文，本产品不内置 unsigned profile，generic 页不静默重解释 `Y`；
+  无符号 VOUT_DIRECT 语义只能在有器件数据手册为前提的显式 profile 中表达。
 - `m`、`b` 必须是 signed 16-bit integer（`-32768..32767`）；`R` 必须是 signed 8-bit integer（`-128..127`）。
 - 系数非法（浮点数、超范围、`m=0`）必须显示明确错误，不得静默接受。
 - 编码舍入策略（legacy 兼容）：`Y = clamp(Math.round((m × Value + b) × 10^R), -32768, 32767)`。
