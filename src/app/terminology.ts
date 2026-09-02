@@ -269,7 +269,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     detail:
       '大端序（高字节在前）是本工具 L16 Hex 输入/显示的字节流解释选项之一；不改变 PMBus 线上默认的低字节优先顺序。',
     source: 'project',
-    scope: '字节序（显示/复制选项）',
+    scope: '字节序（Hex 输入/显示选项）',
   },
   exponent: {
     id: 'exponent',

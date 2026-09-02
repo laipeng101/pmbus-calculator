@@ -40,7 +40,7 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 - 📱 **Fully responsive** — sticky result panel, adaptive grid, and touch-optimised controls for mobile.
 - 🔒 **N-lock toggle** — lock the exponent to a fixed value when fine-tuning firmware registers.
 - ⚙️ **VOUT_MODE support** — configure the `VOUT_MODE (0x20)` byte; bit7 (absolute/relative), bits[6:5] (mode) and bits[4:0] (parameter) are decoded per PMBus Part II §8.3.
-- 🔢 **Byte-order display** — PMBus/SMBus words are little-endian first; the BE view is only an input/display aid for register display or copy.
+- 🔢 **Byte order** — PMBus/SMBus words are little-endian first on the wire; the LINEAR16 Hex input/display interprets the byte stream in the selected byte order (BE `1234` and LE `3412` both mean the word `0x1234`).
 - 🔐 **Content Security Policy** — production build injects a CSP meta tag that restricts runtime resource origins; no external requests, no tracking. Inline styles are still allowed by `style-src` (Tailwind/runtime styles require `unsafe-inline`).
 
 ---

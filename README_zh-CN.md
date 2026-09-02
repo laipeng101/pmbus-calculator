@@ -42,7 +42,7 @@
 - 📱 **完整响应式设计** — Sticky 结果面板、自适应位网格、移动端触控优化。
 - 🔒 **N 值锁定切换** — 在微调固件寄存器时，可将指数锁定为固定值。
 - ⚙️ **VOUT_MODE 支持** — 可配置 `VOUT_MODE (0x20)` 字节；按 PMBus Part II §8.3 拆解 bit7（absolute/relative）、bits[6:5]（模式）与 bits[4:0]（参数）。
-- 🔢 **字节序显示** — PMBus/SMBus word 默认低字节在前；BE 视图只是显示/输入的辅助视角，用于寄存器显示或复制。
+- 🔢 **字节序** — PMBus/SMBus word 线上默认低字节在前；LINEAR16 的 Hex 输入/显示按所选字节序的字节流解释（BE `1234` 与 LE `3412` 同指 word `0x1234`）。
 - 🔐 **内容安全策略 (CSP)** — 生产构建注入 CSP meta，限制运行时资源来源；无外部请求，无任何追踪。`style-src` 暂时允许 `unsafe-inline`（Tailwind 与运行时样式需要内联样式）。
 
 ---
