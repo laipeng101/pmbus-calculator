@@ -158,6 +158,20 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
     await expect(page.locator('[data-testid="term-popover-vout-mode"]')).toHaveCount(0)
   })
 
+  test('术语行 N 触发器：真实 tap 打开、触摸外部关闭', async ({ page }) => {
+    // v2.6.7：独立术语行的 exponent（N）触发器 hitbox 修复后，真实触摸路径
+    // 必须保持同一开/关合同（tap 走 touchscreen，不是 click 的 mouse 路径）。
+    await page.getByRole('tab', { name: /VOUT_MODE/ }).tap()
+    const nTrigger = page
+      .getByTestId('vout-term-row')
+      .locator('[data-testid="term-trigger-exponent"]')
+    await nTrigger.tap()
+    await expect(page.locator('[data-testid="term-popover-exponent"]')).toBeVisible()
+    await expectNoBodyOverflow(page)
+    await page.touchscreen.tap(8, 8)
+    await expect(page.locator('[data-testid="term-popover-exponent"]')).toHaveCount(0)
+  })
+
   test('命令参考：390 下展开可读、表格在容器内横向滚动', async ({ page }) => {
     const toggle = page.locator('#command-reference-toggle')
     await toggle.tap()

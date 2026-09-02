@@ -140,6 +140,71 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     }
   })
 
+  test('v2.6.7 术语行触发器点击目标 ≥24×24px：三 viewport 几何、两两不重叠、无裁切', async ({
+    page,
+  }) => {
+    // UI_CONVENTIONS §10 合同：点击目标至少 24×24px。全局 .term-trigger 是
+    // inline 零 padding，单字符术语（N）在 flex 术语行中宽度仅 ~11.5px；
+    // 本用例把该行 scoped hitbox 合同锁定为几何断言（红→绿修复证明）。
+    // 本测试在同一 context 内多次 goto：persistence 会恢复上次 mode，导致
+    // 后续迭代的 settle() 落在 VOUT_MODE 页而等不到可见 KaTeX——每次导航
+    // 前清空持久化，保证每个 viewport 都从默认 LINEAR11 状态起步。
+    await page.addInitScript(() => localStorage.clear())
+    for (const viewport of [
+      { width: 360, height: 800 },
+      { width: 390, height: 844 },
+      { width: 1440, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport)
+      await settle(page)
+      await switchToVoutMode(page)
+
+      const rects = await page.locator('.vout-term-row .term-trigger').evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect()
+          return {
+            testid: el.getAttribute('data-testid'),
+            x: r.x,
+            y: r.y,
+            width: r.width,
+            height: r.height,
+          }
+        }),
+      )
+
+      // LINEAR 默认状态：VOUT_MODE / Absolute-Relative / N / LINEAR。
+      expect(rects.length, `term count at ${viewport.width}px`).toBe(4)
+      for (const r of rects) {
+        expect(r.width, `${r.testid} width at ${viewport.width}px`).toBeGreaterThanOrEqual(24)
+        expect(r.height, `${r.testid} height at ${viewport.width}px`).toBeGreaterThanOrEqual(24)
+        expect(r.x, `${r.testid} left edge at ${viewport.width}px`).toBeGreaterThanOrEqual(0)
+        expect(r.x + r.width, `${r.testid} right edge at ${viewport.width}px`).toBeLessThanOrEqual(
+          viewport.width,
+        )
+      }
+
+      // 两两不重叠（getBoundingClientRect 交集判定；flex gap 行合同）。
+      for (let i = 0; i < rects.length; i++) {
+        for (let j = i + 1; j < rects.length; j++) {
+          const a = rects[i]!
+          const b = rects[j]!
+          const overlaps =
+            a.x < b.x + b.width &&
+            b.x < a.x + a.width &&
+            a.y < b.y + b.height &&
+            b.y < a.y + a.height
+          expect(overlaps, `${a.testid} overlaps ${b.testid} at ${viewport.width}px`).toBe(false)
+        }
+      }
+
+      // scoped 修复不得引发 body 横向溢出。
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      )
+      expect(overflow, `body horizontal overflow at ${viewport.width}px`).toBe(false)
+    }
+  })
+
   test('术语触发器是真实 button，无嵌套交互控件', async ({ page }) => {
     await settle(page)
     await switchToVoutMode(page)
