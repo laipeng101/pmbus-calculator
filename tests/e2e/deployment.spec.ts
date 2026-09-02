@@ -205,4 +205,30 @@ test.describe('GitHub Pages production deployment', () => {
       }
     })
   })
+
+  // v2.6.4 正式站验收：relative ULINEAR16 R=0 是 §8.5.2 状态级非符合性告警，
+  // 数学结果保持精确 0——不伪造饱和/下溢（与 tests/e2e/l16-relative-range.spec.ts
+  // 的 §8.5.2 用例同一向量与单一来源 resolveL16Relative）。
+  test.describe('v2.6.4 relative L16 acceptance (production)', () => {
+    test('§8.5.2 非符合性向量：98/0000 nominal 12 → X=0、R=0 告警、复制可用', async ({ page }) => {
+      await page.goto(deploymentUrl!)
+      await page.getByRole('tab', { name: /LINEAR16/ }).click()
+      await page.getByRole('radio', { name: '相对值' }).click()
+      await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
+
+      await page.locator('#raw-hex-input').fill('0000')
+      await expect(page.locator('#raw-hex-input')).toHaveValue('0000')
+      await page.locator('#l16-nominal-vout').fill('12')
+
+      await expect(page.getByTestId('result-value')).toHaveText('0')
+
+      const alerts = page.locator('section[aria-label="提示信息"]')
+      await expect(alerts.getByText(/要求相对值恒为正/)).toHaveCount(1)
+      await expect(alerts.getByText(/§8\.5\.2/)).toHaveCount(1)
+      await expect(alerts.getByText(/计算下溢/)).toHaveCount(0)
+      await expect(alerts.getByText(/超出 JavaScript Number 可表示范围/)).toHaveCount(0)
+
+      await expect(page.getByRole('button', { name: '物理值' })).toBeEnabled()
+    })
+  })
 })
