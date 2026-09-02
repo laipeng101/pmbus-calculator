@@ -165,8 +165,14 @@ export const PMBusMath = {
     return { v: raw, n, value: raw * this.pow2(n) }
   },
 
-  encodeLinear16(v: number, _n: number): number {
-    return this.clamp(v, 0, 65535)
+  /**
+   * LINEAR16 encode, the inverse of decodeLinear16 (Part II §8.4.1): for a
+   * physical value X and VOUT_MODE exponent N the unsigned 16-bit payload is
+   * V = round(X / 2^N), clamped to 0..65535 (the established rounding
+   * contract, shared with encodeUlinear16).
+   */
+  encodeLinear16(v: number, n: number): number {
+    return this.clamp(Math.round(v / this.pow2(n)), 0, 65535)
   },
 
   /**

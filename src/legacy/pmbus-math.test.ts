@@ -66,11 +66,59 @@ describe('PMBusMath — smoke tests (mechanical migration)', () => {
   })
 
   describe('encodeLinear16', () => {
-    it('clamps to the unsigned 16-bit range', () => {
+    it('clamps to the unsigned 16-bit range at N=0', () => {
       expect(PMBusMath.encodeLinear16(0, 0)).toBe(0)
       expect(PMBusMath.encodeLinear16(12, 0)).toBe(12)
       expect(PMBusMath.encodeLinear16(-1, 0)).toBe(0)
       expect(PMBusMath.encodeLinear16(70000, 0)).toBe(65535)
+    })
+
+    it('scales by 2^N per the ULINEAR16 payload contract (Part II §8.4.1: Y_u = X / 2^N)', () => {
+      expect(PMBusMath.encodeLinear16(1, -8)).toBe(0x0100)
+      expect(PMBusMath.encodeLinear16(12, 2)).toBe(3)
+    })
+
+    it('encodes the PMBus Part II §8.5.2 worked example (3.3 V, N=-10)', () => {
+      expect(PMBusMath.encodeLinear16(3.3, -10)).toBe(3379)
+      expect(PMBusMath.decodeLinear16(3379, -10).value).toBe(3379 / 1024)
+    })
+
+    it('rounds to the nearest payload integer', () => {
+      expect(PMBusMath.encodeLinear16(13, 2)).toBe(3)
+      expect(PMBusMath.encodeLinear16(14, 2)).toBe(4)
+    })
+
+    it('saturates to the payload bounds outside the representable range', () => {
+      expect(PMBusMath.encodeLinear16(0, -8)).toBe(0)
+      expect(PMBusMath.encodeLinear16(0.001, -8)).toBe(0)
+      expect(PMBusMath.encodeLinear16(65535 * Math.pow(2, -8), -8)).toBe(0xffff)
+      expect(PMBusMath.encodeLinear16(70000, -8)).toBe(0xffff)
+      expect(PMBusMath.encodeLinear16(1e9, -8)).toBe(0xffff)
+    })
+
+    it('round-trips through decodeLinear16 within half an LSB for non-saturated payloads', () => {
+      const ns = [-10, -8, -1, 0, 2]
+      const vs = [0.001, 1, 3.3, 12, 100, 70000]
+      for (const n of ns) {
+        for (const v of vs) {
+          const payload = PMBusMath.encodeLinear16(v, n)
+          expect(Number.isInteger(payload)).toBe(true)
+          if (payload > 0 && payload < 65535) {
+            const decoded = PMBusMath.decodeLinear16(payload, n).value
+            expect(Math.abs(decoded - v)).toBeLessThanOrEqual(Math.pow(2, n) / 2)
+          }
+        }
+      }
+    })
+
+    it('matches the canonical encodeUlinear16 contract for the same inputs', () => {
+      const ns = [-10, -8, -1, 0, 2]
+      const vs = [0.001, 1, 3.3, 12, 100, 65535 * Math.pow(2, -8), 70000]
+      for (const n of ns) {
+        for (const v of vs) {
+          expect(PMBusMath.encodeLinear16(v, n)).toBe(PMBusMath.encodeUlinear16(v, n))
+        }
+      }
     })
   })
 
