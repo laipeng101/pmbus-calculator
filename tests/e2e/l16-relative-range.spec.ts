@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { appUrl } from './helpers/app-url'
+import { leByteStreamText } from './helpers/byte-order'
 
 /**
  * Relative ULINEAR16 derivation-range diagnostics (v2.5.9).
@@ -46,8 +47,10 @@ async function setupRelative(page: Page, raw: string) {
   await page.getByRole('tab', { name: /LINEAR16/ }).click()
   await page.getByRole('radio', { name: '相对值' }).click()
   await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
-  await hexInput(page).fill(raw)
-  await expect(hexInput(page)).toHaveValue(raw)
+  // `raw` is the register word; the Hex field takes its LE byte stream.
+  const typed = leByteStreamText(raw)
+  await hexInput(page).fill(typed)
+  await expect(hexInput(page)).toHaveValue(typed)
 }
 
 test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
@@ -188,10 +191,10 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     await expect(resultValue(page)).toHaveText('2e+307')
     await expect(physicalCopyButton(page)).toBeEnabled()
 
-    // 下溢：切到 N=-16（0x90）、raw 0001、nominal 5e-324
+    // 下溢：切到 N=-16（0x90）、raw 0001（输入其 LE 字节流 0100）、nominal 5e-324
     await page.locator('#l16-n-input').fill('-16')
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x90')
-    await hexInput(page).fill('0001')
+    await hexInput(page).fill(leByteStreamText('0001'))
     await nominal(page).fill('5e-324')
     await expect(resultValue(page)).toHaveText('—')
     await expect(physicalCopyButton(page)).toBeDisabled()

@@ -1050,8 +1050,11 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     voutModeInfo = voutModePage
   }
 
+  // Mirror of the raw/set-from-hex parse: displayedRaw is the byte stream of
+  // `raw` in the selected byte order (LE swaps the word, BE reads as the word
+  // itself), so the hex field round-trips exactly with what the parser accepts.
   const displayedRaw =
-    state.mode === 'L16' && state.byteOrder === 'be' ? PMBusMath.swapBytes(raw) : raw
+    state.mode === 'L16' && state.byteOrder === 'le' ? PMBusMath.swapBytes(raw) : raw
   const formula = getFormulaPresentation(state)
   const formulaText = formula.plainText
 

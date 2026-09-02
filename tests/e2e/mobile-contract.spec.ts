@@ -76,7 +76,8 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
     const vInput = page.getByLabel('V（16 位无符号，0～65535）')
     await vInput.fill('+12')
     await vInput.press('Tab')
-    await expect(page.locator(HEX_INPUT)).toHaveValue('000C')
+    // raw word 0x000C；字段显示所选序（默认 LE）的字节流。
+    await expect(page.locator(HEX_INPUT)).toHaveValue('0C00')
     await vInput.fill('70000')
     await vInput.press('Tab')
     await expect(vInput).toHaveValue('65535')

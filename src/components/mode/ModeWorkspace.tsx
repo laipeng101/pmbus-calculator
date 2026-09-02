@@ -204,8 +204,8 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 </select>
               </label>
               <span className="text-xs color-text-muted">
-                PMBus/SMBus word 默认低字节在前；
-                <TechnicalTerm termId="be" /> 仅用于寄存器显示或复制
+                PMBus/SMBus word 默认低字节在前； Hex 输入/显示按所选字节序的字节流解释（
+                <TechnicalTerm termId="be" /> = 高字节在前）
               </span>
               <span className="text-xs color-text-muted">
                 解释语义：

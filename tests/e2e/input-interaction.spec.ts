@@ -157,7 +157,8 @@ test.describe('L16（390×844 dark）：V 非法整数、clamp 合同、无 body
     await vInput.fill('12')
     await vInput.press('Tab')
     await expectNoFieldError(page, 'l16-v-input')
-    await expect(hexInput).toHaveValue('000C')
+    // raw word 0x000C；字段显示所选序（默认 LE）的字节流。
+    await expect(hexInput).toHaveValue('0C00')
 
     await expectNoBodyHorizontalOverflow(page)
   })
