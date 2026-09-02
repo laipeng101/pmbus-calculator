@@ -3,11 +3,11 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-02（v2.6.5——PATCH：L16 Hex 字节序 byte-stream 语义修复。
-BE（高字节在前）`1234` 与 LE（低字节在前）`3412` 同指寄存器 word `0x1234`，
-解析/显示/物理值/LE-BE copy 全部同向；此前 BE 输入被稳定反向解码。切换字节序
-不改 raw 与物理值；copy bytes、C 宏与 rawWordHex 仍派生自未交换 raw word；
-DOMAIN_MODEL §4、术语气泡与页面提示文案同步）
+最后更新：2026-09-03（v2.6.6——PATCH：legacy `PMBusMath.encodeLinear16` 指数语义修复。
+该导出 helper 此前忽略指数 `n`、只做 `clamp(v, 0, 65535)`；现按 PMBus Part II
+§8.4.1 ULINEAR16 编码方向实现 `round(X / 2^N)` 后 clamp 到 `0..65535`，与
+`encodeUlinear16` 合同一致；生产 L16 编码路径不受影响。新增 §8.5.2 golden 与
+round-trip 覆盖；MIGRATION_MATRIX 新增 legacy 归档第三处已知数值偏差披露）
 
 ## 当前产品基线
 
@@ -32,7 +32,7 @@ DOMAIN_MODEL §4、术语气泡与页面提示文案同步）
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v2.6.5；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v2.6.6；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -222,6 +222,12 @@ M0–M42 complete；stable release v2.6.5；production distribution: GitHub Page
   DOMAIN_MODEL，算法零变更）+ 0xC0/0xE0 §8.5.2 正值条款；MIGRATION_MATRIX
   legacy HTML 已知数值偏差披露（L11 epsilon tie、encodeHalf Math.round vs
   RNE）。
+- v2.6.6（PATCH）：legacy `PMBusMath.encodeLinear16` 指数语义修复——该导出 helper
+  此前忽略指数 `n`、只做 `clamp(v, 0, 65535)`，与 `decodeLinear16` 不对称且不符合
+  §8.4.1 ULINEAR16 编码方向；现实现 `round(X / 2^N)` 后 clamp 到 `0..65535`，与
+  `encodeUlinear16` 合同一致（生产 L16 编码路径本就使用后者，产品行为不变）；
+  新增 §8.5.2 官方算例 golden、非零正/负 N、舍入、饱和、round-trip 与 canonical
+  helper 一致性覆盖；MIGRATION_MATRIX 披露 legacy 归档同函数 raw-clamp 偏差。
 - v2.6.5（PATCH）：L16 Hex 字节序 byte-stream 语义修复——`raw/set-from-hex` 与
   `displayedRaw` 的交换条件从 `be` 纠正为 `le`（Hex 输入/显示是所选字节序的字节流：
   BE `1234` 与 LE `3412` 同指 word `0x1234`，此前 BE 输入稳定反向解码为 0x3412）；
@@ -230,7 +236,7 @@ M0–M42 complete；stable release v2.6.5；production distribution: GitHub Page
   同向更新，新增 l16-byte-order 闭环 E2E 与共享 `leByteStreamText` 测试助手；
   desktop-dark-l16-stress 视觉基线经逐图审查后更新；DOMAIN_MODEL §4、terminology
   le/be 与页面提示文案同步。
-- 当前：无进行中的功能里程碑；v2.6.5 已发布，M40–M42 complete。
+- 当前：无进行中的功能里程碑；v2.6.6 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

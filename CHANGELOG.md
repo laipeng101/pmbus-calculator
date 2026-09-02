@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.6.6] - 2026-09-03
+
 ### Fixed
 
 - **legacy `PMBusMath.encodeLinear16` 指数语义修复（P2）**：该导出 helper 此前忽略
