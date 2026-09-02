@@ -3,11 +3,11 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-03（v2.6.6——PATCH：legacy `PMBusMath.encodeLinear16` 指数语义修复。
-该导出 helper 此前忽略指数 `n`、只做 `clamp(v, 0, 65535)`；现按 PMBus Part II
-§8.4.1 ULINEAR16 编码方向实现 `round(X / 2^N)` 后 clamp 到 `0..65535`，与
-`encodeUlinear16` 合同一致；生产 L16 编码路径不受影响。新增 §8.5.2 golden 与
-round-trip 覆盖；MIGRATION_MATRIX 新增 legacy 归档第三处已知数值偏差披露）
+最后更新：2026-09-03（v2.6.7——PATCH：VOUT_MODE 独立术语行 `N` 触发器点击目标
+修复。该按钮实测 11.5625×24 px，低于 UI_CONVENTIONS §10 的 24×24px 合同；现在
+`.vout-term-row .term-trigger` 上 scoped `min-inline-size/min-block-size: 24px`
+并居中文本，仅作用独立术语行，句内术语不放大。新增三 viewport 几何回归与
+mobile 真实 tap 回归；四张 VOUT_MODE 视觉基线逐图审查后更新）
 
 ## 当前产品基线
 
@@ -32,7 +32,7 @@ round-trip 覆盖；MIGRATION_MATRIX 新增 legacy 归档第三处已知数值�
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v2.6.6；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v2.6.7；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -222,6 +222,14 @@ M0–M42 complete；stable release v2.6.6；production distribution: GitHub Page
   DOMAIN_MODEL，算法零变更）+ 0xC0/0xE0 §8.5.2 正值条款；MIGRATION_MATRIX
   legacy HTML 已知数值偏差披露（L11 epsilon tie、encodeHalf Math.round vs
   RNE）。
+- v2.6.7（PATCH）：VOUT_MODE 独立术语行 `N` 触发器点击目标修复——该按钮实测
+  `11.5625×24 px`，低于 UI_CONVENTIONS §10「点击目标至少 24×24px」合同（全局
+  `.term-trigger` 为零 padding inline 元素，单字符术语在 flex 行内形成过窄命中区）；
+  现以 scoped `.vout-term-row .term-trigger { min-inline-size/min-block-size: 24px }`
+  居中文本修复，仅作用独立术语行（全仓唯一渲染点），句内术语、页头、结果区、
+  命令参考与配置摘要不放大；新增三 viewport（360/390/1440）几何回归（≥24×24、
+  两两不重叠、无裁切、无 body 溢出）与 mobile-contract 真实 touchscreen tap
+  回归；四张 VOUT_MODE 视觉基线经逐图成对审查后更新。
 - v2.6.6（PATCH）：legacy `PMBusMath.encodeLinear16` 指数语义修复——该导出 helper
   此前忽略指数 `n`、只做 `clamp(v, 0, 65535)`，与 `decodeLinear16` 不对称且不符合
   §8.4.1 ULINEAR16 编码方向；现实现 `round(X / 2^N)` 后 clamp 到 `0..65535`，与
@@ -236,7 +244,7 @@ M0–M42 complete；stable release v2.6.6；production distribution: GitHub Page
   同向更新，新增 l16-byte-order 闭环 E2E 与共享 `leByteStreamText` 测试助手；
   desktop-dark-l16-stress 视觉基线经逐图审查后更新；DOMAIN_MODEL §4、terminology
   le/be 与页面提示文案同步。
-- 当前：无进行中的功能里程碑；v2.6.6 已发布，M40–M42 complete。
+- 当前：无进行中的功能里程碑；v2.6.7 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

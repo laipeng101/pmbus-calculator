@@ -1263,6 +1263,14 @@ select:disabled,
   gap: 6px;
 }
 
+/* v2.6.7：本行触发器是独立控件而非句内 token；按 UI_CONVENTIONS §10
+   约束点击目标最小 24×24px。仅作用于本行，不放大其他句内术语。 */
+.vout-term-row .term-trigger {
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  text-align: center;
+}
+
 .vout-seg {
   display: inline-flex;
   border: 1px solid var(--color-border);
