@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [2.6.7] - 2026-09-03
+
+### Fixed
+
+- **VOUT_MODE 独立术语行 `N` 触发器点击目标 ≥24×24px（P2）**：术语行的
+  exponent（`N`）触发按钮实测仅 `11.5625×24 px`，低于 `docs/UI_CONVENTIONS.md`
+  §10「点击目标至少 24×24px」合同——全局 `.term-trigger` 是零 padding 的
+  inline 元素，单字符术语在 flex 术语行中形成过窄命中区。现在为
+  `.vout-term-row .term-trigger` 增加 scoped `min-inline-size/min-block-size:
+24px` 并居中文本，仅作用于该独立控件行；页头、正文、结果区、命令参考与配置
+  摘要中的句内术语触发器排版与命中策略不变。新增三 viewport（360/390/1440）
+  几何回归（≥24×24、两两不重叠、无裁切、无 body 横向溢出）与 mobile-contract
+  真实 touchscreen tap 开/关路径；四张 VOUT_MODE 视觉基线经逐图成对审查后更新，
+  变化全部限于术语行及其换行级联。
+
 ## [2.6.6] - 2026-09-03
 
 ### Fixed
