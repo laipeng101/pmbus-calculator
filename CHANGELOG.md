@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **legacy `PMBusMath.encodeLinear16` 指数语义修复（P2）**：该导出 helper 此前忽略
+  指数参数 `n`，只返回 `clamp(v, 0, 65535)`，与同对 `decodeLinear16`
+  （`X = V × 2^N`）不对称，也不符合 PMBus Part II §8.4.1 ULINEAR16 编码方向
+  （`Y_u = X / 2^N`）——例如 `encodeLinear16(1, -8)` 返回 `1` 而非 `0x0100`，
+  且可能泄漏非整数 payload。现在按既定舍入合同实现 `round(X / 2^N)` 后 clamp 到
+  `0..65535`，与 canonical `encodeUlinear16` 一致（生产 L16 编码路径本就使用
+  后者，产品行为不变）。新增 §8.5.2 官方算例 golden、非零正/负 N、舍入、饱和、
+  round-trip 与 canonical helper 一致性覆盖。`pmbus-calculator.html` 离线归档
+  保持原实现，差异已在 MIGRATION_MATRIX 披露。
+
 ## [2.6.5] - 2026-09-02
 
 ### Fixed
