@@ -257,7 +257,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     token: 'LE',
     name: '小端序',
     detail:
-      '小端字节序：PMBus/SMBus word 在线上默认低字节在前、字节内高位在前（Part II §7.6 对浮点数据明示）；BE 仅是本工具的显示/复制选项，不改变线上顺序。',
+      '小端字节序：PMBus/SMBus word 在线上默认低字节在前、字节内高位在前（Part II §7.6 对浮点数据明示）；本工具的 L16 Hex 输入/显示按所选字节序的字节流解释，不改变线上顺序。',
     source: 'generic',
     specRef: 'Part II §7.6',
     scope: '字节序（线上默认）',
@@ -265,10 +265,11 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
   be: {
     id: 'be',
     token: 'BE',
-    name: '大端显示',
-    detail: '大端序仅用于本工具的寄存器显示或复制选项，不改变 PMBus 线上默认的低字节优先顺序。',
+    name: '大端字节序',
+    detail:
+      '大端序（高字节在前）是本工具 L16 Hex 输入/显示的字节流解释选项之一；不改变 PMBus 线上默认的低字节优先顺序。',
     source: 'project',
-    scope: '字节序（显示/复制选项）',
+    scope: '字节序（Hex 输入/显示选项）',
   },
   exponent: {
     id: 'exponent',

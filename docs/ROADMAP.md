@@ -3,11 +3,11 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-01（v2.6.4——PATCH：relative ULINEAR16 R=0 按 §8.5.2
-标记非符合性（warning `l16-relative-zero-ratio`，数学结果保持精确 0）；
-DIRECT 页/README/DOMAIN_MODEL 明确 §7.4 generic signed 契约、不内置
-unsigned profile；0xC0/0xE0 relative 要求文案统一 §8.5.2 正值条款；
-MIGRATION_MATRIX 披露 legacy HTML 两处已知数值偏差）
+最后更新：2026-09-02（v2.6.5——PATCH：L16 Hex 字节序 byte-stream 语义修复。
+BE（高字节在前）`1234` 与 LE（低字节在前）`3412` 同指寄存器 word `0x1234`，
+解析/显示/物理值/LE-BE copy 全部同向；此前 BE 输入被稳定反向解码。切换字节序
+不改 raw 与物理值；copy bytes、C 宏与 rawWordHex 仍派生自未交换 raw word；
+DOMAIN_MODEL §4、术语气泡与页面提示文案同步）
 
 ## 当前产品基线
 
@@ -32,7 +32,7 @@ MIGRATION_MATRIX 披露 legacy HTML 两处已知数值偏差）
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v2.6.4；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v2.6.5；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -222,7 +222,15 @@ M0–M42 complete；stable release v2.6.4；production distribution: GitHub Page
   DOMAIN_MODEL，算法零变更）+ 0xC0/0xE0 §8.5.2 正值条款；MIGRATION_MATRIX
   legacy HTML 已知数值偏差披露（L11 epsilon tie、encodeHalf Math.round vs
   RNE）。
-- 当前：无进行中的功能里程碑；v2.6.4 已发布，M40–M42 complete。
+- v2.6.5（PATCH）：L16 Hex 字节序 byte-stream 语义修复——`raw/set-from-hex` 与
+  `displayedRaw` 的交换条件从 `be` 纠正为 `le`（Hex 输入/显示是所选字节序的字节流：
+  BE `1234` 与 LE `3412` 同指 word `0x1234`，此前 BE 输入稳定反向解码为 0x3412）；
+  切换字节序不改 raw 与物理值，copy bytes/C 宏/rawWordHex 保持未交换 raw 派生；
+  不足 4 位输入按数值左补零成规范 4 位再按字节序解释；固化旧行为的单测与 L16 E2E
+  同向更新，新增 l16-byte-order 闭环 E2E 与共享 `leByteStreamText` 测试助手；
+  desktop-dark-l16-stress 视觉基线经逐图审查后更新；DOMAIN_MODEL §4、terminology
+  le/be 与页面提示文案同步。
+- 当前：无进行中的功能里程碑；v2.6.5 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

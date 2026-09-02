@@ -272,7 +272,11 @@ PMBusMath.decodeDirect(y, …))`）与经验证的安全回录文本生成
 
 - `state.raw` 是未交换的 16-bit raw word（寄存器值），是编码的唯一事实来源。
 - “on-wire LE/BE bytes” 是 raw word 在总线上的字节序列：LE = `[low, high]`，BE = `[high, low]`。
-- L16 在 `byteOrder === 'be'` 时，Hex 输入/显示按字节交换解释；`rawWordHex` 始终显示未交换 raw word。
+- L16 的 Hex 输入/显示是所选字节序的 2 字节 byte stream（v2.6.5）：BE（高字节在前）
+  `1234` 与 LE（低字节在前）`3412` 都表示 word `0x1234`。解析与显示共用同一变换
+  （LE 交换、BE 原样），不足 4 位的输入先按数值左补零成规范 4 位再按字节序解释；
+  切换 `byteOrder` 只翻转 Hex 呈现顺序，不改 `state.raw` 与物理值。
+  `rawWordHex` 始终显示未交换 raw word。
 - 复制偏好（`copy.endian`）只影响 Hex 复制文本；C 宏始终输出未交换 raw word；
   LE bytes / BE bytes 复制按钮输出独立的 byte-array 文本。
 

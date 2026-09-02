@@ -340,9 +340,21 @@ describe('toCalculatorViewModel', () => {
       expect(vm.nRangeText).toBe('0 ~ 255.99609375')
     })
 
-    test('rawHex is byte-swapped in BE mode', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
-      expect(vm.rawHex).toBe('0x3412')
+    test('rawHex shows the byte stream of the selected order (BE word order, LE swapped)', () => {
+      const be = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
+      expect(be.rawHex).toBe('0x1234')
+      expect(be.rawHexDigits).toBe('1234')
+      const le = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'le' }))
+      expect(le.rawHex).toBe('0x3412')
+      expect(le.rawHexDigits).toBe('3412')
+    })
+
+    test('physical value follows the unswapped raw word in both byte orders', () => {
+      // VOUT_MODE 0x18 (absolute LINEAR, N=-8): raw 0x1234 → 4660 × 2^-8.
+      const be = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
+      const le = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'le' }))
+      expect(be.valueText).toBe('18.203125')
+      expect(le.valueText).toBe('18.203125')
     })
 
     test('rawWordHex stays un-swapped regardless of byte order', () => {

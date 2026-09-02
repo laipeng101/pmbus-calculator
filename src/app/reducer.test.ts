@@ -833,23 +833,36 @@ describe('appReducer — state transitions', () => {
   })
 
   describe('raw/set-from-hex with L16 byte order', () => {
-    it('swaps bytes in BE mode', () => {
-      const be: AppState = {
-        ...base,
-        mode: 'L16',
-        byteOrder: 'be',
-      }
-      const s = appReducer(be, { type: 'raw/set-from-hex', hex: '1234' })
-      expect(s.raw).toBe(0x3412)
+    // v2.6.5: the hex text is the byte stream in the selected byte order —
+    // BE (high byte first) '1234' and LE (low byte first) '3412' both mean the
+    // register word 0x1234. state.raw is never stored swapped.
+    const l16 = (byteOrder: 'le' | 'be'): AppState => ({ ...base, mode: 'L16', byteOrder })
+
+    it('parses BE input as a high-byte-first byte stream (no swap)', () => {
+      const s = appReducer(l16('be'), { type: 'raw/set-from-hex', hex: '1234' })
+      expect(s.raw).toBe(0x1234)
     })
 
-    it('does not swap in LE mode', () => {
-      const le: AppState = {
-        ...base,
-        mode: 'L16',
-        byteOrder: 'le',
-      }
-      const s = appReducer(le, { type: 'raw/set-from-hex', hex: '1234' })
+    it('parses LE input as a low-byte-first byte stream (swap)', () => {
+      const s = appReducer(l16('le'), { type: 'raw/set-from-hex', hex: '3412' })
+      expect(s.raw).toBe(0x1234)
+    })
+
+    it('same digits map to different raw words under the two orders', () => {
+      const le = appReducer(l16('le'), { type: 'raw/set-from-hex', hex: '1234' })
+      const be = appReducer(l16('be'), { type: 'raw/set-from-hex', hex: '1234' })
+      expect(le.raw).toBe(0x3412)
+      expect(be.raw).toBe(0x1234)
+    })
+
+    it('byte order does not apply outside L16 (L11 hex stays the word itself)', () => {
+      const s = appReducer(
+        { ...base, mode: 'L11', byteOrder: 'be' },
+        {
+          type: 'raw/set-from-hex',
+          hex: '1234',
+        },
+      )
       expect(s.raw).toBe(0x1234)
     })
   })

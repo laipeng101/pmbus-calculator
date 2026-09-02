@@ -56,7 +56,8 @@ test.describe('M16 result stress geometry', () => {
     await switchMode(page, /LINEAR16/)
     await page.locator('#vout-mode-input').fill('13')
     await page.locator('#vout-mode-input').press('Tab')
-    await fillRaw(page, '8FC3')
+    // word 0x8FC3 的 LE 字节流（v2.6.5：Hex 字段是所选序的 byte stream）。
+    await fillRaw(page, 'C38F')
     await expect(page.locator('#value-input')).toHaveValue('4.49255371094')
 
     await switchMode(page, /DIRECT/)

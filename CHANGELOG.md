@@ -4,6 +4,31 @@
 
 ## [Unreleased]
 
+## [2.6.5] - 2026-09-02
+
+### Fixed
+
+- **L16 Hex 字节序 byte-stream 语义修复（P1）**：L16 页的 Hex 输入/显示现在是
+  所选字节序的 2 字节字节流——BE（高字节在前）输入 `1234` 与 LE（低字节在前）
+  输入 `3412` 都表示寄存器 word `0x1234`。此前解析（`raw/set-from-hex`）与显示
+  （`displayedRaw`）在 `byteOrder === 'be'` 时才交换，方向与 LE/BE 标签相反：
+  BE 输入 `1234` 被稳定反向解码为 `0x3412`（VOUT_MODE `0x18` 下物理值
+  52.0703125 而非 18.203125），且「原始 Hex」显示与实际 raw、LE/BE 字节数组
+  互相矛盾。修复后解析与显示共用同一变换（LE 交换、BE 原样），切换字节序只
+  翻转 Hex 呈现顺序，不改 raw 与物理值；LE/BE 字节数组、Hex 复制、C 宏与
+  `rawWordHex` 继续派生自未交换 raw word，持久化格式与偏好不变。不足 4 位的
+  输入先按数值左补零成规范 4 位再按字节序解释（`parseHexStrict` 语义不变）。
+- 固化反向行为的单测（reducer/view-model）与 L16 相关 E2E 断言同向更新；
+  新增 `l16-byte-order` 闭环 E2E（BE 输入→物理值→切 LE→显示翻转→LE 输入回环、
+  物理值编码后切换字节序）与共享 `leByteStreamText` 测试助手；
+  `desktop-dark-l16-stress` 视觉基线经新旧逐图审查后更新。
+
+### Changed
+
+- DOMAIN_MODEL §4 重写为字节流合同；terminology `le`/`be` 条目与 L16 页
+  字节序提示措辞同步（不再声称 BE「仅用于寄存器显示或复制」）；copy 偏好
+  （`copy.endian`）与其帮助文案不变。
+
 ## [2.6.4] - 2026-09-01
 
 ### Added

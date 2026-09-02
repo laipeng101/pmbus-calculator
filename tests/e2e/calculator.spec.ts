@@ -72,7 +72,8 @@ test.describe('计算器真实用户流程', () => {
     await vInput.fill('+12')
     await vInput.press('Tab')
     await expect(vInput).toHaveValue('12')
-    await expect(hexInput).toHaveValue('000C')
+    // raw word 0x000C；字段显示所选序（默认 LE）的字节流。
+    await expect(hexInput).toHaveValue('0C00')
 
     await vInput.fill('70000')
     await vInput.press('Tab')

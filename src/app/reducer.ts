@@ -210,11 +210,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'raw/set-from-hex': {
       const parsed = parseHexStrict(action.hex, 4)
       if (parsed.ok === false) return state
-      // In L16 + big-endian mode, hex input is byte-swapped into the internal
-      // little-endian PMBus word.  Over-long input is rejected above, so no
-      // silent truncation occurs here.
+      // v2.6.5: the hex text is the byte stream in the selected byte order —
+      // LE (low byte first) '3412' means the word 0x1234, so the parsed word
+      // is byte-swapped; BE (high byte first) '1234' already reads as the
+      // word itself.  Over-long input is rejected above, so no silent
+      // truncation occurs here.
       const raw =
-        state.mode === 'L16' && state.byteOrder === 'be'
+        state.mode === 'L16' && state.byteOrder === 'le'
           ? PMBusMath.swapBytes(parsed.value)
           : parsed.value
       return withRaw(state, raw)
