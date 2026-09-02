@@ -5,7 +5,7 @@
 > M0–M10.1 的完整历史质量矩阵与 WEB-0000…WEB-0023 变更日志已冻结到
 > [`archive/web-refactor-m0-m10.1/MIGRATION_MATRIX_FULL.md`](archive/web-refactor-m0-m10.1/MIGRATION_MATRIX_FULL.md)。
 
-最后更新：2026-09-03（legacy HTML 已知数值偏差披露新增 `encodeLinear16` 指数语义）
+最后更新：2026-09-03（v2.6.6：legacy HTML 已知数值偏差披露新增 `encodeLinear16` 指数语义）
 
 ## 当前 parity
 
