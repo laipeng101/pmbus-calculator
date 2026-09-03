@@ -186,3 +186,103 @@ describe('pages.yml preserved release-security contracts', () => {
     }
   })
 })
+
+describe('pages.yml release-to-source byte binding', () => {
+  it('rebuilds the release zip from the checked-out tagged source before deployment', () => {
+    const rebuild = normalize(findStepByName('Rebuild release zip from the tagged source'))
+    expect(rebuild).toContain('set -euo pipefail')
+    // Fresh build + deterministic asset generation from the tag checkout.
+    expect(rebuild).toContain('npm run build')
+    expect(rebuild).toContain('npm run release:prepare-assets -- --force')
+    // The rebuilt asset name derives from package.json (single naming
+    // source); it must match the deployed tag explicitly, not implicitly.
+    expect(rebuild).toContain("jq -r '.version' package.json")
+    expect(rebuild).toContain('does not match the deployed tag')
+    expect(rebuild).toContain('exit 1')
+  })
+
+  it('compares the rebuilt zip with the release zip byte-for-byte', () => {
+    const compare = normalize(findStepByName('Compare rebuilt zip with the release zip'))
+    expect(compare).toContain('node scripts/verify-release-rebuild.mjs')
+    expect(compare).toContain('--expected "pmbus-calculator-${VERSION}-web.zip"')
+    expect(compare).toContain('--actual "release-output/pmbus-calculator-${VERSION}-web.zip"')
+  })
+
+  it('runs the rebuild and comparison after byte verification and before extraction/deployment', () => {
+    const order = [
+      stepIndexByName('Verify downloaded release assets'),
+      stepIndexByName('Rebuild release zip from the tagged source'),
+      stepIndexByName('Compare rebuilt zip with the release zip'),
+      stepIndexByName('Extract release assets to _site'),
+      stepIndexByName('Deploy to GitHub Pages'),
+    ]
+    expect(order.every((index) => index >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+})
+
+describe('pages.yml pre-deploy preconditions', () => {
+  it('installs the Playwright browsers before the irreversible deploy step', () => {
+    const installIndex = stepIndexByName('Install Playwright browsers')
+    expect(installIndex).toBeGreaterThan(stepIndexByName('Install dependencies'))
+    expect(installIndex).toBeLessThan(stepIndexByName('Deploy to GitHub Pages'))
+  })
+
+  it('runs the local release smoke on the rebuilt bytes before deployment', () => {
+    const smoke = normalize(findStepByName('Run local release smoke'))
+    expect(smoke).toContain('run: npm run test:e2e:release')
+    // Same-bytes precondition: the smoke may only run after the rebuilt
+    // dist was byte-bound to the downloaded release zip.
+    expect(stepIndexByName('Run local release smoke')).toBeGreaterThan(
+      stepIndexByName('Compare rebuilt zip with the release zip'),
+    )
+    expect(stepIndexByName('Run local release smoke')).toBeLessThan(
+      stepIndexByName('Deploy to GitHub Pages'),
+    )
+  })
+
+  it('keeps every preparable precondition before deploy and remote-only checks after', () => {
+    const order = [
+      stepIndexByName('Rebuild release zip from the tagged source'),
+      stepIndexByName('Compare rebuilt zip with the release zip'),
+      stepIndexByName('Install Playwright browsers'),
+      stepIndexByName('Run local release smoke'),
+      stepIndexByName('Extract release assets to _site'),
+      stepIndexByName('Deploy to GitHub Pages'),
+      stepIndexByName('Run remote deployment smoke'),
+    ]
+    expect(order.every((index) => index >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+
+  it('uploads the local release smoke report when that smoke fails before deploy', () => {
+    const step = normalize(findStepByName('Upload local release smoke report on failure'))
+    expect(step).toContain("if: failure() && steps.release-smoke.outcome == 'failure'")
+    expect(step).toContain('tests/e2e/report-release')
+  })
+})
+
+describe('pages.yml post-deploy full-manifest entity verification', () => {
+  it('verifies the deployed Pages entities from the extracted _site tree after deploy', () => {
+    const step = normalize(findStepByName('Verify deployed Pages entities'))
+    expect(step).toContain('node scripts/verify-pages-entities.mjs')
+    expect(step).toContain('--site _site')
+    expect(step).toContain('--base-url "${DEPLOYMENT_URL}"')
+    // The cache-busting token is the GitHub run id, never a hard-coded value.
+    expect(step).toContain('--query "${GITHUB_RUN_ID}"')
+    // The manifest is derived at runtime from the verified _site tree: no
+    // file count, asset name or Pages root path may be hard-coded.
+    expect(step).not.toMatch(/65|v2\.6|\/pmbus-calculator\//)
+  })
+
+  it('runs the full-manifest verification after deploy and before the remote smoke', () => {
+    const order = [
+      stepIndexByName('Extract release assets to _site'),
+      stepIndexByName('Deploy to GitHub Pages'),
+      stepIndexByName('Verify deployed Pages entities'),
+      stepIndexByName('Run remote deployment smoke'),
+    ]
+    expect(order.every((index) => index >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+})

@@ -180,6 +180,52 @@ jobs:
             --tag "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --mode published \
             > downloaded-assets.json
 
+      # Release-to-source provenance binding: the checked-out tree IS the
+      # resolved annotated tag (verified above), so a fresh deterministic
+      # build + asset generation from it must reproduce the downloaded
+      # release zip byte-for-byte. A zip that is well-formed, safely
+      # packaged and checksum-consistent but was NOT produced from the
+      # tagged source fails here — before extraction or deployment.
+      - name: Rebuild release zip from the tagged source
+        env:
+          RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # package.json version is the single release-naming source
+          # (check:release-contract); assert it matches the deployed tag so
+          # the rebuilt asset name cannot silently diverge from the
+          # downloaded one.
+          pkg_version="$(jq -r '.version' package.json)"
+          if [ "v${pkg_version}" != "${RELEASE_TAG}" ]; then
+            echo "::error::package.json version (v${pkg_version}) does not match the deployed tag (${RELEASE_TAG})"
+            exit 1
+          fi
+          npm run build
+          npm run release:prepare-assets -- --force
+
+      - name: Compare rebuilt zip with the release zip
+        env:
+          VERSION: ${{ steps.resolve.outputs.tag }}
+        run: |
+          node scripts/verify-release-rebuild.mjs \
+            --expected "pmbus-calculator-${VERSION}-web.zip" \
+            --actual "release-output/pmbus-calculator-${VERSION}-web.zip" \
+            > rebuilt-release-zip.json
+
+      # All preparable deploy preconditions live BEFORE actions/deploy-pages:
+      # if any of them fails, the previous published site stays untouched.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Local release smoke on the SAME bytes that will be deployed: the
+      # rebuilt dist is byte-bound to the downloaded release zip by the
+      # comparison step above, so this smoke exercises the deploy payload
+      # before anything is published. Only smokes that need the live
+      # deployment URL run after deploy-pages.
+      - name: Run local release smoke
+        id: release-smoke
+        run: npm run test:e2e:release
+
       - name: Extract release assets to _site
         env:
           VERSION: ${{ steps.resolve.outputs.tag }}
@@ -201,8 +247,24 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+      # Full-manifest entity gate on the LIVE site: after deploy, enumerate
+      # EVERY file from the already-verified extracted _site (bytes bound to
+      # the tagged build and the release zip above) and GET each real relative
+      # URL from the deployment origin. Each entity must land same-origin with
+      # HTTP 200, identity encoding and byte-equal length+SHA-256; a missing
+      # file, 200 HTML fallback, cross-origin redirect or stale edge inside
+      # the manifest fails here even if the first screen renders. No file
+      # count / asset name / root path is hard-coded — the manifest is the
+      # _site tree itself. The unique-run cache-busting token is the GitHub
+      # run id, never stored in the repo.
+      - name: Verify deployed Pages entities
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          node scripts/verify-pages-entities.mjs \
+            --site _site --base-url "${DEPLOYMENT_URL}" \
+            --query "${GITHUB_RUN_ID}" \
+            > pages-entities.json
 
       - name: Run remote deployment smoke
         id: smoke
@@ -210,8 +272,16 @@ jobs:
           DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
         run: npm run test:e2e:deployment
 
+      - name: Upload local release smoke report on failure
+        if: failure() && steps.release-smoke.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-release
+          path: tests/e2e/report-release
+          retention-days: 7
+
       - name: Upload deployment smoke report on failure
-        if: failure() && steps.deployment.outcome == 'success'
+        if: failure() && steps.smoke.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report-deployment
