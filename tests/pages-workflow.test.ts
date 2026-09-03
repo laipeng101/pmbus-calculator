@@ -261,3 +261,28 @@ describe('pages.yml pre-deploy preconditions', () => {
     expect(step).toContain('tests/e2e/report-release')
   })
 })
+
+describe('pages.yml post-deploy full-manifest entity verification', () => {
+  it('verifies the deployed Pages entities from the extracted _site tree after deploy', () => {
+    const step = normalize(findStepByName('Verify deployed Pages entities'))
+    expect(step).toContain('node scripts/verify-pages-entities.mjs')
+    expect(step).toContain('--site _site')
+    expect(step).toContain('--base-url "${DEPLOYMENT_URL}"')
+    // The cache-busting token is the GitHub run id, never a hard-coded value.
+    expect(step).toContain('--query "${GITHUB_RUN_ID}"')
+    // The manifest is derived at runtime from the verified _site tree: no
+    // file count, asset name or Pages root path may be hard-coded.
+    expect(step).not.toMatch(/65|v2\.6|\/pmbus-calculator\//)
+  })
+
+  it('runs the full-manifest verification after deploy and before the remote smoke', () => {
+    const order = [
+      stepIndexByName('Extract release assets to _site'),
+      stepIndexByName('Deploy to GitHub Pages'),
+      stepIndexByName('Verify deployed Pages entities'),
+      stepIndexByName('Run remote deployment smoke'),
+    ]
+    expect(order.every((index) => index >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+})

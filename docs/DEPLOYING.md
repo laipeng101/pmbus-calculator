@@ -6,8 +6,9 @@
 
 - **正式站点只部署稳定 GitHub Release 资产。** 每次部署都从指定的 Release 下载
   `pmbus-calculator-<tag>-web.zip` 与 `SHA256SUMS.txt`，校验通过后解压为静态站点。
-- **不部署 main 的未发布构建。** Pages 工作流不执行 `npm run build`，也不会把 main
-  上的未发布提交发布到生产站点。
+- **不部署 main 的未发布构建。** Pages 工作流只从**被部署 tag 本身** fresh
+  rebuild，且该 rebuild 必须与 Release ZIP 逐字节一致；上传给 Pages 的字节永远是
+  **已下载并验证的 Release ZIP**（解压的 `_site`），不是 rebuild 产物本身。
 - **不改动已发布 tag 与 Release。** 已发布的 tag 和 Release 是不可变资产；部署失败
   时不得通过移动 tag、替换资产或重新构建同名包来“修复”。
 - Pages 故障不修改任何已发布的 tag、Release 和资产；若部署需要改变产品字节，应停止部署，
@@ -83,9 +84,28 @@ https://laipeng101.github.io/pmbus-calculator/
    必须包含 `index.html` 和 `assets/`；`index.html` 必须包含 production CSP；
    script 和 stylesheet 必须使用相对资源路径；不得包含 `/src/main.tsx`
    （该合同由上一步的共享 python 校验器统一执行）。
-7. 解压到临时 `_site` 目录。
-8. 上传 GitHub Pages artifact 并执行 `actions/deploy-pages`。
-9. 在同一工作流中对真实部署 URL 执行远程 Playwright smoke（`npm run test:e2e:deployment`）。
+7. **Release→tag 源码机械绑定（deploy 前）**：workflow 已在第 1-5 步
+   确认 checkout 的 HEAD 就是被解析 annotated tag 的 peeled commit；本步骤在该
+   checkout 上 fresh 执行 `npm run build` 与 `npm run release:prepare-assets
+-- --force`（确定性资产生成），并断言 `package.json` 版本与部署 tag 一致，
+   随后用 `scripts/verify-release-rebuild.mjs` 将 rebuild 的 zip 与已下载
+   Release zip **逐字节比较**（流式比较，首字节差异即失败）。一个格式合法、
+   ZIP 安全、checksum 自洽但**并非由该 tag 源码生成**的 Release zip 在此失败，
+   且发生在解压/部署之前。
+8. **可预备的部署前置条件全部在 `actions/deploy-pages` 之前**：
+   Playwright Chromium 安装与**本地 release smoke**（`npm run test:e2e:release`）
+   在 deploy 前执行；本地 smoke 作用于与 Release zip 字节绑定的 rebuild 产物。
+   任一前置失败时 deploy 尚未开始，线上旧版不受影响。
+9. 解压到临时 `_site` 目录。
+10. 上传 GitHub Pages artifact 并执行 `actions/deploy-pages`。
+11. **部署后全清单实体验证**：从本次已验证的 `_site`（字节绑定
+    于 Release zip）**动态枚举完整清单**，对每个相对 URL 执行带总 deadline 与
+    并发上限的 identity GET；每项要求最终 URL 同源、HTTP 200、非意外
+    Content-Encoding、实体长度与 SHA-256 与清单一致，并显式拒绝 200 HTML
+    fallback。清单文件数与 asset 名全部来自运行时枚举，不硬编码。失败按类
+    分级退出（status 21 / origin 23 / content-encoding 24 / fallback 25 /
+    length 26 / hash 27 / timeout 28 / deadline 29 / network 20 / 配置 3）。
+12. 在同一工作流中对真实部署 URL 执行远程 Playwright smoke（`npm run test:e2e:deployment`）。
 
 ## 远程 smoke
 
@@ -95,6 +115,23 @@ https://laipeng101.github.io/pmbus-calculator/
 - 覆盖：HTTPS URL、页面可加载、标题包含 PMBus、模式切换/只读命令参考/结果面板可见、
   production CSP meta 存在、无 page error、document/script/stylesheet/font/image/fetch
   无 4xx/5xx、资源位于 Pages origin、390px viewport 无横向滚动、L11 输入/结果闭环。
+
+## 部署后全清单实体验证
+
+- 脚本：`scripts/verify-pages-entities.mjs`（`.github/workflows/pages.yml` 的
+  "Verify deployed Pages entities" 步骤，位于 deploy-pages 之后、远程 smoke 之前）。
+- 清单**动态**来自已解压、已字节验证的 `_site`：每个文件产生一个相对 URL，文件数
+  与 asset 名不硬编码。
+- 每项检查：安全解析相对路径（拒绝 `..`/绝对/反斜杠/URL 特殊字符/带 scheme 引用）；
+  最终（含 redirect 后）URL 必须同源且位于 base pathname 前缀内；请求显式
+  `Accept-Encoding: identity` + `Cache-Control: no-cache`；GitHub run id 作为
+  唯一 cache-busting query（`--query`），不进仓库、不进 stdout/stderr 诊断；
+  无任何凭据；HTTP 200；非 identity Content-Encoding 失败；实体长度与 SHA-256
+  与 `_site` 本地字节一致；非 index 实体返回 200 `text/html` 且字节不符 → 显式
+  HTML-fallback 失败分类。
+- 并发默认 8（`--concurrency`），每请求超时默认 30s（`--request-timeout-ms`），
+  共享总 deadline 默认 120s（`--deadline-ms`）。任一失败非零退出并按类分级；
+  stdout 只有一个 JSON 汇总对象，诊断走 stderr。
 
 ## 回滚方式
 

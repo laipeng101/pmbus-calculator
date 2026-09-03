@@ -247,6 +247,25 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
 
+      # Full-manifest entity gate on the LIVE site: after deploy, enumerate
+      # EVERY file from the already-verified extracted _site (bytes bound to
+      # the tagged build and the release zip above) and GET each real relative
+      # URL from the deployment origin. Each entity must land same-origin with
+      # HTTP 200, identity encoding and byte-equal length+SHA-256; a missing
+      # file, 200 HTML fallback, cross-origin redirect or stale edge inside
+      # the manifest fails here even if the first screen renders. No file
+      # count / asset name / root path is hard-coded — the manifest is the
+      # _site tree itself. The unique-run cache-busting token is the GitHub
+      # run id, never stored in the repo.
+      - name: Verify deployed Pages entities
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          node scripts/verify-pages-entities.mjs \
+            --site _site --base-url "${DEPLOYMENT_URL}" \
+            --query "${GITHUB_RUN_ID}" \
+            > pages-entities.json
+
       - name: Run remote deployment smoke
         id: smoke
         env:
@@ -262,7 +281,7 @@ jobs:
           retention-days: 7
 
       - name: Upload deployment smoke report on failure
-        if: failure() && steps.deployment.outcome == 'success'
+        if: failure() && steps.smoke.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report-deployment

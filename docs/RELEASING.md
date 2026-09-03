@@ -197,8 +197,11 @@ npm run test:e2e:visual
 ### 5. Pages 部署与线上 smoke
 
 1. `release published` 事件自动触发 Pages workflow（或手动 dispatch 传入 tag）；
-   等待其成功。部署顺序与校验细节见 `docs/DEPLOYING.md`（Release → Pages →
-   deployment smoke）。
+   等待其成功。部署顺序与校验细节见 `docs/DEPLOYING.md`（Release → tag-rebuild
+   字节绑定 → deploy 前前置 → Pages → 全清单实体验证 → deployment smoke）。
+   workflow 会用被部署 tag 的 checkout fresh rebuild，要求 rebuild zip 与 Release
+   zip 逐字节一致后才允许 deploy；部署后从已验证 `_site` 动态枚举全清单逐实体
+   校验线上字节。
 2. 对正式 Pages URL 执行 `DEPLOYMENT_URL=<url> npm run test:e2e:deployment`；
    全部 deployment tests 必须真实运行并通过，不得记为 skip。
 3. 确认线上页面来自对应 Release 资产，而非 main 临时构建。
