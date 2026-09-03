@@ -186,3 +186,37 @@ describe('pages.yml preserved release-security contracts', () => {
     }
   })
 })
+
+describe('pages.yml release-to-source byte binding', () => {
+  it('rebuilds the release zip from the checked-out tagged source before deployment', () => {
+    const rebuild = normalize(findStepByName('Rebuild release zip from the tagged source'))
+    expect(rebuild).toContain('set -euo pipefail')
+    // Fresh build + deterministic asset generation from the tag checkout.
+    expect(rebuild).toContain('npm run build')
+    expect(rebuild).toContain('npm run release:prepare-assets -- --force')
+    // The rebuilt asset name derives from package.json (single naming
+    // source); it must match the deployed tag explicitly, not implicitly.
+    expect(rebuild).toContain("jq -r '.version' package.json")
+    expect(rebuild).toContain('does not match the deployed tag')
+    expect(rebuild).toContain('exit 1')
+  })
+
+  it('compares the rebuilt zip with the release zip byte-for-byte', () => {
+    const compare = normalize(findStepByName('Compare rebuilt zip with the release zip'))
+    expect(compare).toContain('node scripts/verify-release-rebuild.mjs')
+    expect(compare).toContain('--expected "pmbus-calculator-${VERSION}-web.zip"')
+    expect(compare).toContain('--actual "release-output/pmbus-calculator-${VERSION}-web.zip"')
+  })
+
+  it('runs the rebuild and comparison after byte verification and before extraction/deployment', () => {
+    const order = [
+      stepIndexByName('Verify downloaded release assets'),
+      stepIndexByName('Rebuild release zip from the tagged source'),
+      stepIndexByName('Compare rebuilt zip with the release zip'),
+      stepIndexByName('Extract release assets to _site'),
+      stepIndexByName('Deploy to GitHub Pages'),
+    ]
+    expect(order.every((index) => index >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+})
