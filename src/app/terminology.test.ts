@@ -32,11 +32,24 @@ describe('M39 terminology glossary (single source of truth)', () => {
     expect(GLOSSARY.smbus.source).toBe('smbus')
   })
 
-  it('never presents project UI labels as PMBus normative naming', () => {
+  it('presents the LINEAR16 family as PMBus 1.3.1 normative naming', () => {
+    // PMBus 1.3.1 Part II names all three linear formats: §8.4.1 LINEAR16
+    // Formats, §8.4.1.1 ULINEAR16 Format (unsigned, direct output voltage),
+    // §8.4.1.2 SLINEAR16 Format (two's-complement offset).
+    expect(GLOSSARY.linear16.source).toBe('pmbus-spec')
+    expect(GLOSSARY.linear16.specRef).toBe('Part II §8.4.1')
     for (const id of ['ulinear16', 'slinear16'] as const) {
-      expect(GLOSSARY[id].source).toBe('project')
-      expect(GLOSSARY[id].detail).toContain('非 PMBus 规范命名')
+      expect(GLOSSARY[id].source, id).toBe('pmbus-spec')
+      expect(GLOSSARY[id].detail, id).not.toContain('非 PMBus 规范命名')
+      expect(GLOSSARY[id].detail, id).toContain('1.3.1 正式格式名')
+      expect(GLOSSARY[id].detail, id).toContain('1.3 旧文统称 Linear Mode')
     }
+    expect(GLOSSARY.ulinear16.specRef).toBe('Part II §8.4.1.1')
+    expect(GLOSSARY.ulinear16.detail).toContain('16 位无符号整数')
+    expect(GLOSSARY.ulinear16.detail).toContain('VOUT_COMMAND')
+    expect(GLOSSARY.slinear16.specRef).toBe('Part II §8.4.1.2')
+    expect(GLOSSARY.slinear16.detail).toContain('16 位二补码')
+    expect(GLOSSARY.slinear16.detail).toContain('VOUT_TRIM')
     // Project copy/display behaviour states its own scope instead of a rule.
     expect(GLOSSARY.be.source).toBe('project')
     expect('c-macro' in GLOSSARY).toBe(false)
