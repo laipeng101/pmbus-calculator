@@ -3,8 +3,12 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-03（v2.6.7——PATCH：VOUT_MODE 独立术语行 `N` 触发器点击目标
-修复。该按钮实测 11.5625×24 px，低于 UI_CONVENTIONS §10 的 24×24px 合同；现在
+最后更新：2026-09-03（v2.6.8——PATCH：PMBus 1.3.1 provenance 可复现（manifest
+补 1.3.1 Parts I–III 官方实体，`EXPECTED_DOCUMENT_COUNT` 4→7）+ L16 术语文案
+与 PMBus 1.3.1 对齐（ULINEAR16/SLINEAR16 为 §8.4.1.1/§8.4.1.2 正式命名，删除
+「非 PMBus 规范命名」错误断言）。前一版 v2.6.7 为 VOUT_MODE 独立术语行 `N`
+触发器点击目标修复。该按钮实测 11.5625×24 px，低于 UI_CONVENTIONS §10 的
+24×24px 合同；现在
 `.vout-term-row .term-trigger` 上 scoped `min-inline-size/min-block-size: 24px`
 并居中文本，仅作用独立术语行，句内术语不放大。新增三 viewport 几何回归与
 mobile 真实 tap 回归；四张 VOUT_MODE 视觉基线逐图审查后更新）
@@ -33,7 +37,7 @@ mobile 真实 tap 回归；四张 VOUT_MODE 视觉基线逐图审查后更新）
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v2.6.7；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v2.6.8；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -223,6 +227,12 @@ M0–M42 complete；stable release v2.6.7；production distribution: GitHub Page
   DOMAIN_MODEL，算法零变更）+ 0xC0/0xE0 §8.5.2 正值条款；MIGRATION_MATRIX
   legacy HTML 已知数值偏差披露（L11 epsilon tie、encodeHalf Math.round vs
   RNE）。
+- v2.6.8（PATCH）：PMBus 1.3.1 provenance 可复现——manifest 补 1.3.1 Parts
+  I–III 官方实体（官方归档 URL，bytes/SHA-256 fresh 下载验证），声明与实体
+  一致；L16 术语文案与 PMBus 1.3.1 对齐——ULINEAR16/SLINEAR16 是 §8.4.1.1/
+  §8.4.1.2 正式命名（1.3 旧文统称 Linear Mode），glossary 改 pmbus-spec 来源
+  并删除「非 PMBus 规范命名」错误断言；算法、VOUT_MODE 位域、raw、字节序、
+  持久化零变更；视觉基线不受影响。
 - v2.6.7（PATCH）：VOUT_MODE 独立术语行 `N` 触发器点击目标修复——该按钮实测
   `11.5625×24 px`，低于 UI_CONVENTIONS §10「点击目标至少 24×24px」合同（全局
   `.term-trigger` 为零 padding inline 元素，单字符术语在 flex 行内形成过窄命中区）；
@@ -245,7 +255,7 @@ M0–M42 complete；stable release v2.6.7；production distribution: GitHub Page
   同向更新，新增 l16-byte-order 闭环 E2E 与共享 `leByteStreamText` 测试助手；
   desktop-dark-l16-stress 视觉基线经逐图审查后更新；DOMAIN_MODEL §4、terminology
   le/be 与页面提示文案同步。
-- 当前：无进行中的功能里程碑；v2.6.7 已发布，M40–M42 complete。
+- 当前：无进行中的功能里程碑；v2.6.8 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
