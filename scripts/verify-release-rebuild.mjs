@@ -77,10 +77,14 @@ function parseArgs(argv) {
   const args = { expected: null, actual: null, help: false }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
-    if (arg === '--expected') {
-      args.expected = argv[++i]
-    } else if (arg === '--actual') {
-      args.actual = argv[++i]
+    if (arg === '--expected' || arg === '--actual') {
+      const value = argv[i + 1]
+      if (value === undefined || value.startsWith('--')) {
+        fail(2, `${arg} requires a value\n${USAGE}`)
+      }
+      if (arg === '--expected') args.expected = value
+      else args.actual = value
+      i++
     } else if (arg === '--help' || arg === '-h') {
       args.help = true
     } else if (arg.startsWith('--')) {

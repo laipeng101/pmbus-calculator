@@ -140,6 +140,7 @@ describe('verify-release-rebuild byte gate', () => {
     expect(runCli(['--bogus', 'x']).status).toBe(2)
     expect(runCli([file, file]).status).toBe(2)
     expect(runCli(['--expected', file]).status).toBe(2)
+    expect(runCli(['--expected', '--actual', file]).status).toBe(2)
     expect(runCli([]).status).toBe(2)
   })
 
