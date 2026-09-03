@@ -270,25 +270,25 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
   }) => {
     const vInput = page.locator('#l16-v-input')
     await valueInput(page).fill('1')
-    // raw word 0x0100；字段显示所选序（默认 LE）的字节流。
-    await expect(hexInput(page)).toHaveValue('0001')
+    // raw word 0x0100；Raw Word 字段始终显示 canonical 数值原字。
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(quantizationPanel(page)).toHaveCount(1)
 
-    // Hex 编辑清除 provenance；此时 V 字段显示 259（raw 0x0103，输入其 LE 字节流 0301）
-    await hexInput(page).fill('0301')
+    // Hex 编辑清除 provenance；此时 V 字段显示 259（raw 0x0103 原字直接输入）
+    await hexInput(page).fill('0103')
     await expect(quantizationPanel(page)).toHaveCount(0)
     await expect(vInput).toHaveValue('259')
 
     // V 编辑器经 raw/set 提交（raw 路径）：真实键盘重输 256 是真实事务，
     // raw 回到 0100，但请求来源已被 raw 路径清除，面板保持隐藏
     await realKeyboardRetype(vInput, '256')
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(quantizationPanel(page)).toHaveCount(0)
 
     // 对照路径：物理值输入的显式重输重新建立编码请求（ValueInput 的
     // 显式请求语义不被数值去重破坏）
     await realKeyboardRetype(valueInput(page), '1')
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(quantizationPanel(page)).toHaveCount(1)
     await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
     await expectNoBodyHorizontalOverflow(page)
@@ -302,10 +302,10 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
     await expect(nominal).toBeVisible()
 
-    // 先建立 ratio=1 的 raw：word 0x0100 → R = 256×2^-8 = 1（输入其 LE 字节流
-    // 0001；relative 页无物理值输入，fail-closed；此后 result-value 是「标称值 × 1」）
-    await hexInput(page).fill('0001')
-    await expect(hexInput(page)).toHaveValue('0001')
+    // 先建立 ratio=1 的 raw：word 0x0100 → R = 256×2^-8 = 1（canonical 原字
+    // 直接输入；relative 页无物理值输入，fail-closed；此后 result-value 是「标称值 × 1」）
+    await hexInput(page).fill('0100')
+    await expect(hexInput(page)).toHaveValue('0100')
 
     await nominal.fill('5')
     await expect(nominal).toHaveValue('5')

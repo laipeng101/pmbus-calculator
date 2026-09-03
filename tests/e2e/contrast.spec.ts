@@ -130,9 +130,9 @@ test.describe('contrast', () => {
         configurable: true,
       })
     })
-    const copyHex = page.getByRole('button', { name: 'Hex（LE）' })
-    await copyHex.scrollIntoViewIfNeeded()
-    await copyHex.click()
+    const copyRaw = page.getByRole('button', { name: 'Raw Word' })
+    await copyRaw.scrollIntoViewIfNeeded()
+    await copyRaw.click()
     const success = page.locator('.copy-feedback')
     await expect(success).toBeVisible()
     const successStyles = await success.evaluate((el) => {
@@ -152,7 +152,7 @@ test.describe('contrast', () => {
         configurable: true,
       })
     })
-    await copyHex.click()
+    await copyRaw.click()
     await expect(page.locator('.copy-feedback')).toContainText('复制失败')
     const errorStyles = await page.locator('.copy-feedback').evaluate((el) => {
       const cs = getComputedStyle(el)

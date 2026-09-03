@@ -243,8 +243,8 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
     await expect(page.getByText('-128 ~ 127.99609375')).toBeVisible()
     await page.locator('#value-input').fill('1')
     await page.locator('#value-input').press('Tab')
-    // raw word 0x0100；字段显示所选序（默认 LE）的字节流。
-    await expect(rawHex(page)).toHaveValue(/0001/i)
+    // raw word 0x0100；Raw Word 字段始终显示 canonical 数值原字。
+    await expect(rawHex(page)).toHaveValue(/0100/i)
     await expect(page.locator('[data-testid="result-value"]')).toContainText('1')
 
     // Quantization readout is back too — exact at this vector.

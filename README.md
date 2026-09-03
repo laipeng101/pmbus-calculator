@@ -8,9 +8,9 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 > **Scope:** this tool converts numeric formats; it is **not** a PMBus/SMBus controller, bus-transport implementation, command executor, device-profile engine, or conformance test suite. It covers the common numeric-format semantics across multiple PMBus revisions and does **not** claim full PMBus 1.5 protocol compliance (including the 1.5 security extensions).
 >
-> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v2.6.8`)
+> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v3.0.0`)
 >
-> **Stable version:** [`v2.6.8`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v2.6.8) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v2.6.8/SHA256SUMS.txt)
+> **Stable version:** [`v3.0.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.0.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.0.0/SHA256SUMS.txt)
 
 ---
 
@@ -40,7 +40,7 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 - 📱 **Fully responsive** — sticky result panel, adaptive grid, and touch-optimised controls for mobile.
 - 🔒 **N-lock toggle** — lock the exponent to a fixed value when fine-tuning firmware registers.
 - ⚙️ **VOUT_MODE support** — configure the `VOUT_MODE (0x20)` byte; bit7 (absolute/relative), bits[6:5] (mode) and bits[4:0] (parameter) are decoded per PMBus Part II §8.3.
-- 🔢 **Byte order** — PMBus/SMBus words are little-endian first on the wire; the LINEAR16 Hex input/display interprets the byte stream in the selected byte order (BE `1234` and LE `3412` both mean the word `0x1234`).
+- 🔢 **Canonical Raw Word & wire bytes** — the main Raw Word hex always means the numeric 16-bit word (`3412` is `0x3412`, never reinterpreted); SMBus/PMBus wire bytes (low byte first, SMBus 3.0 §6.5.4) and an MSB-first representation are shown and copied separately.
 - 🔐 **Content Security Policy** — production build injects a CSP meta tag that restricts runtime resource origins; no external requests, no tracking. Inline styles are still allowed by `style-src` (Tailwind/runtime styles require `unsafe-inline`).
 
 ---
@@ -85,7 +85,7 @@ npm test         # runs Vitest
 
 **Static build package:** the production build in `dist/` is a static bundle and must be used through an HTTP static server (for example `npm run preview` or any static hosting service). Directly double-clicking `dist/index.html` via `file://` is not supported.
 
-**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys the immutable `v2.6.8` Release asset. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
+**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys the immutable `v3.0.0` Release asset. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
 
 **Workflow:**
 

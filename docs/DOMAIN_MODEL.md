@@ -66,7 +66,7 @@
     decode-only 真零（ratio≠0）、signed offset（bit7 不参与数学）互斥）。
     标称参考值缺失是可达的提交状态（v2.5.8）：真实清空标称输入并 blur/Enter 通过
     `l16/clear-nominal-vout` 把 `l16.nominalVout` 置回 `null`（幂等，只影响该通道，
-    不改 raw / VOUT_MODE / payload kind / 字节序）；`null`（未提供参考值，只显示比值，
+    不改 raw / VOUT_MODE / payload kind）；`null`（未提供参考值，只显示比值，
     最终电压为 `—`）与显式输入 `0`（decode-only 合同的合法显示值）是两个不同状态。
   - `SLINEAR16 offset`：`X_offset = Y_s × 2^N`，`Y_s` 是 16 位二补码 `-32768..32767`
     （Part II §13.3 VOUT_TRIM / §13.4 VOUT_CAL_OFFSET）；bit7 不参与该 payload 的数学，
@@ -268,17 +268,32 @@ PMBusMath.decodeDirect(y, …))`）与经验证的安全回录文本生成
   Absolute/Relative、bits[6:5] format、bits[4:0] parameter；raw 位/Hex 编辑 lossless
   （可构造 `0xA0`/`0x41`/`0xE1`），语义控件 canonicalize，`Normalize` 显式规范化。
 
-## 4. 字节序
+## 4. 字节序与序列化分层（v3.0.0 canonical Raw Word 合同）
 
-- `state.raw` 是未交换的 16-bit raw word（寄存器值），是编码的唯一事实来源。
-- “on-wire LE/BE bytes” 是 raw word 在总线上的字节序列：LE = `[low, high]`，BE = `[high, low]`。
-- L16 的 Hex 输入/显示是所选字节序的 2 字节 byte stream（v2.6.5）：BE（高字节在前）
-  `1234` 与 LE（低字节在前）`3412` 都表示 word `0x1234`。解析与显示共用同一变换
-  （LE 交换、BE 原样），不足 4 位的输入先按数值左补零成规范 4 位再按字节序解释；
-  切换 `byteOrder` 只翻转 Hex 呈现顺序，不改 `state.raw` 与物理值。
-  `rawWordHex` 始终显示未交换 raw word。
-- 复制偏好（`copy.endian`）只影响 Hex 复制文本；C 宏始终输出未交换 raw word；
-  LE bytes / BE bytes 复制按钮输出独立的 byte-array 文本。
+- `state.raw` 是 canonical 的无符号 16-bit raw word（数值位型），是编码的唯一事实来源。
+  主 Raw Word Hex 输入/显示、位网格、公式操作数、decode/encode、Raw Word 复制与
+  C 宏都指向同一 `state.raw`；主 Raw Word 不受任何 byte order 偏好影响，
+  `parse(formatRawWordHex(raw)) === raw` 对合法的全部 16-bit raw、全部数值模式成立
+  （包括 L16 下输入 `3412` 即 raw `0x3412`）。
+- serialization 与 raw identity 是不同层：byte sequence 不得伪装成另一个 numeric
+  raw word。字节序只存在于 Wire Bytes 显示/复制层；改变任何复制/显示偏好都不得改变
+  `state.raw`、主 Raw Word、位网格、公式 raw、decoded value、encoded value、量化
+  provenance 与 C macro raw。
+- SMBus/PMBus word 的线上字节序按规范明确定义——word 数据按低字节在前传输：
+  SMBus 3.0 §6.5.4 写事务明示 word 数据 low byte first，§6.5.5 读事务图中
+  Data Byte Low 在前；PMBus Part I §5.6.3.2.4 确认 DS=0 默认按 SMBus 标准
+  （最低有效字节在前）。对 raw `0x1234`：SMBus / PMBus Wire Bytes = `34 12`
+  （`[low, high]`）。
+- MSB-first / 高字节在前（`12 34`）只是另一种 byte representation（显示/导出对照），
+  不是 SMBus/PMBus word 的另一种合法 wire order，不得让用户误以为它是线上顺序。
+- 复制模型是显式 representation action：Copy Raw Word（canonical 数值，仅受 0x 前缀
+  偏好影响）、Copy SMBus/PMBus Wire Bytes（低字节在前，`wireBytes`）、
+  Copy MSB-first Bytes（高字节在前，`msbFirstBytes`）、Copy C Macro（canonical
+  raw word）。字节顺序没有全局偏好开关。
+- 已删除的 v2.x 合同：`AppState.byteOrder`、`byte-order/set`、`copy.endian`、
+  `copy/set-endian` 与「L16 主 Hex 是所选字节序的 byte stream」（v2.6.5 引入）
+  一并移除；持久化层不再读取 `pmbus-calculator:byteOrder` 键与旧 copy JSON 中的
+  `endian` 字段，旧存储中的这些遗留值被显式忽略，不得污染新状态。
 
 ## 5. 命令与 profile
 

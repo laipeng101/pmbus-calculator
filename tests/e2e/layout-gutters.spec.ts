@@ -61,7 +61,7 @@ test.describe('gutter alignment', () => {
     ]) {
       await page.setViewportSize(viewport)
       await page.goto(appUrl())
-      const buttons = page.getByRole('button', { name: /Hex|LE 字节|BE 字节|物理值|C 代码/ })
+      const buttons = page.getByRole('button', { name: /Raw Word|Wire 字节|MSB-first 字节|物理值|C 代码/ })
       const count = await buttons.count()
       expect(count).toBeGreaterThanOrEqual(5)
       for (let i = 0; i < count; i++) {
@@ -75,24 +75,24 @@ test.describe('gutter alignment', () => {
   test('copy toolbar uses balanced 6-column rows', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto(appUrl())
-    const first = page.getByRole('button', { name: 'Hex（LE）' })
-    const le = page.getByRole('button', { name: 'LE 字节' })
-    const be = page.getByRole('button', { name: 'BE 字节' })
+    const first = page.getByRole('button', { name: 'Raw Word' })
+    const wire = page.getByRole('button', { name: 'Wire 字节' })
+    const msb = page.getByRole('button', { name: 'MSB-first 字节' })
     const value = page.getByRole('button', { name: '物理值' })
     const c = page.getByRole('button', { name: 'C 代码' })
 
     const boxes = {
       first: await first.boundingBox(),
-      le: await le.boundingBox(),
-      be: await be.boundingBox(),
+      wire: await wire.boundingBox(),
+      msb: await msb.boundingBox(),
       value: await value.boundingBox(),
       c: await c.boundingBox(),
     }
     for (const [name, box] of Object.entries(boxes)) {
       if (box == null) throw new Error(`${name} missing box`)
     }
-    expect(Math.abs((boxes.first as DOMRect).y - (boxes.le as DOMRect).y)).toBeLessThanOrEqual(1)
-    expect(Math.abs((boxes.first as DOMRect).y - (boxes.be as DOMRect).y)).toBeLessThanOrEqual(1)
+    expect(Math.abs((boxes.first as DOMRect).y - (boxes.wire as DOMRect).y)).toBeLessThanOrEqual(1)
+    expect(Math.abs((boxes.first as DOMRect).y - (boxes.msb as DOMRect).y)).toBeLessThanOrEqual(1)
     expect(Math.abs((boxes.value as DOMRect).y - (boxes.c as DOMRect).y)).toBeLessThanOrEqual(1)
     expect((boxes.value as DOMRect).y).toBeGreaterThan((boxes.first as DOMRect).y)
   })

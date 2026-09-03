@@ -82,8 +82,8 @@ test.describe('SLINEAR16 offset under relative VOUT_MODE (v2.5.1)', () => {
     await enterRelativeL16(page, 'slinear16-offset')
     await setValue(page, '3.3')
 
-    // raw word 0x034D；字段显示所选序（默认 LE）的字节流。
-    await expect(rawHex(page)).toHaveValue(/4D03/i)
+    // raw word 0x034D；Raw Word 字段始终显示 canonical 数值原字。
+    await expect(rawHex(page)).toHaveValue(/034D/i)
     await expect(page.locator('[data-testid="result-value"]')).toContainText('3.30078125')
     await expect(panel(page)).toContainText('-0.000781 (-0.0237%)')
     await expect(panel(page)).toHaveAttribute('data-kind', 'warn')
@@ -101,8 +101,8 @@ test.describe('SLINEAR16 offset under relative VOUT_MODE (v2.5.1)', () => {
     await ysEditor.fill('1')
     await ysEditor.press('Tab')
 
-    // raw word 0x0001；字段显示 LE 字节流。
-    await expect(rawHex(page)).toHaveValue(/0100/i)
+    // raw word 0x0001；Raw Word 字段始终显示 canonical 数值原字。
+    await expect(rawHex(page)).toHaveValue(/0001/i)
     await expect(panel(page)).toHaveCount(0)
 
     // Expand the calculation walkthrough: no quantization intermediate.
@@ -118,8 +118,8 @@ test.describe('SLINEAR16 offset under relative VOUT_MODE (v2.5.1)', () => {
     await expect(page.getByText('-128 ~ 127.99609375')).toBeVisible()
 
     await setValue(page, '200')
-    // raw word 0x7FFF；字段显示 LE 字节流。
-    await expect(rawHex(page)).toHaveValue(/FF7F/i)
+    // raw word 0x7FFF；Raw Word 字段始终显示 canonical 数值原字。
+    await expect(rawHex(page)).toHaveValue(/7FFF/i)
     await expect(panel(page)).toHaveAttribute('data-kind', 'error')
     await expect(panel(page)).toContainText('饱和')
   })

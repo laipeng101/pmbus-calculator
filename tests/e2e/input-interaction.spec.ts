@@ -157,8 +157,8 @@ test.describe('L16（390×844 dark）：V 非法整数、clamp 合同、无 body
     await vInput.fill('12')
     await vInput.press('Tab')
     await expectNoFieldError(page, 'l16-v-input')
-    // raw word 0x000C；字段显示所选序（默认 LE）的字节流。
-    await expect(hexInput).toHaveValue('0C00')
+    // raw word 0x000C；Raw Word 字段始终显示 canonical 数值原字。
+    await expect(hexInput).toHaveValue('000C')
 
     await expectNoBodyHorizontalOverflow(page)
   })
@@ -384,11 +384,11 @@ test.describe('全局快捷键：编辑区不触发、非编辑区触发', () =>
     await expect(hexInput).toHaveValue('F819')
   })
 
-  test('焦点在 L16 字节序 select 内按 Ctrl+1：不切换', async ({ page }) => {
+  test('焦点在 L16 数据解释 select 内按 Ctrl+1：不切换', async ({ page }) => {
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    const endianSelect = page.getByLabel('L16 字节序')
-    await endianSelect.focus()
-    await endianSelect.press('Control+1')
+    const payloadSelect = page.getByLabel('L16 数据解释类型')
+    await payloadSelect.focus()
+    await payloadSelect.press('Control+1')
     await expect(page.getByRole('tab', { name: /LINEAR16/ })).toHaveAttribute(
       'aria-selected',
       'true',

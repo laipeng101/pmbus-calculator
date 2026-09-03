@@ -152,7 +152,7 @@
 - **标称参考值可回到缺失状态（v2.5.8）**：relative ULINEAR16 的标称输入真实删除
   全部内容后 blur/Enter 提交 `l16/clear-nominal-vout`（`nominalVout = null`）——
   字段保持空、最终电压显示 `—`、公式与计算步骤不再输出由旧标称推出的电压；
-  `null` 与显式输入 `0` 是两个状态，清除不改 raw/VOUT_MODE/payload/字节序，
+  `null` 与显式输入 `0` 是两个状态，清除不改 raw/VOUT_MODE/payload，
   重新输入合法值后恢复计算。非空非法文本不得悄悄变为 0 或清除：保留字段错误与
   最后有效 committed 值；非空过渡态（`1e`、`-` 等）blur 经共享
   `fixFloatTextOnBlur` 归一化后按其值提交（与物理值输入一致），不以静默恢复
