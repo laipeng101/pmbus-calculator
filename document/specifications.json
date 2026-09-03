@@ -53,6 +53,48 @@
       "redistributionStatus": "not-established-by-project"
     },
     {
+      "id": "pmbus-1.3.1-part-i",
+      "title": "PMBus Specification, Revision 1.3.1, Part I",
+      "revision": "1.3.1",
+      "publishedDate": "2015-03-13",
+      "officialLandingPage": "https://pmbus.org/specification-archives/",
+      "downloadUrl": "https://pmbusprod.wpenginepowered.com/wp-content/uploads/2022/01/PMBus-Specification-Rev-1-3-1-Part-I-20150313.pdf",
+      "fileName": "PMBus-Specification-Rev-1-3-1-Part-I-20150313.pdf",
+      "bytes": 178631,
+      "sha256": "68a8063ec2e6badaf2fe8e437f9b2feaf9b7d51889f48b69c8024ff8a51f5ca0",
+      "rightsHolder": "System Management Interface Forum, Inc. (SMIF)",
+      "rightsNotice": "Third-party specification. The official source may carry its own rights notices. It is not covered by this project's MIT License.",
+      "redistributionStatus": "not-established-by-project"
+    },
+    {
+      "id": "pmbus-1.3.1-part-ii",
+      "title": "PMBus Specification, Revision 1.3.1, Part II",
+      "revision": "1.3.1",
+      "publishedDate": "2015-03-13",
+      "officialLandingPage": "https://pmbus.org/specification-archives/",
+      "downloadUrl": "https://pmbusprod.wpenginepowered.com/wp-content/uploads/2022/01/PMBus-Specification-Rev-1-3-1-Part-II-20150313.pdf",
+      "fileName": "PMBus-Specification-Rev-1-3-1-Part-II-20150313.pdf",
+      "bytes": 678599,
+      "sha256": "1717c59615032ea66bf867316e4be076bfa10bf983dab9aff9b7ed4aed2c7ec6",
+      "rightsHolder": "System Management Interface Forum, Inc. (SMIF)",
+      "rightsNotice": "Third-party specification. The official source may carry its own rights notices. It is not covered by this project's MIT License.",
+      "redistributionStatus": "not-established-by-project"
+    },
+    {
+      "id": "pmbus-1.3.1-part-iii",
+      "title": "PMBus Specification, Revision 1.3.1, Part III",
+      "revision": "1.3.1",
+      "publishedDate": "2015-03-13",
+      "officialLandingPage": "https://pmbus.org/specification-archives/",
+      "downloadUrl": "https://pmbusprod.wpenginepowered.com/wp-content/uploads/2022/01/PMBus-Specification-Rev-1-3-1-Part-III-20150313.pdf",
+      "fileName": "PMBus-Specification-Rev-1-3-1-Part-III-20150313.pdf",
+      "bytes": 258382,
+      "sha256": "407605b76545ad368e910f278b6b49984b4386f91dfc5b81f8a2411c98980b8d",
+      "rightsHolder": "System Management Interface Forum, Inc. (SMIF)",
+      "rightsNotice": "Third-party specification. The official source may carry its own rights notices. It is not covered by this project's MIT License.",
+      "redistributionStatus": "not-established-by-project"
+    },
+    {
       "id": "smbus-3.0",
       "title": "System Management Bus (SMBus) Specification, version 3.0",
       "revision": "3.0",

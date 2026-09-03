@@ -15,7 +15,8 @@ mobile 真实 tap 回归；四张 VOUT_MODE 视觉基线逐图审查后更新）
   控制器或一致性实现；不覆盖总线传输、命令执行、设备 Profile、PMBus 1.5 安全扩展与 Part IV。
 - Web-first PMBus Calculator 是主线；技术栈为 Vite + React 19 + TypeScript + Tailwind CSS + Vitest + Playwright。
 - L11 / L16 / DIRECT / HALF 四种模式均已双向闭环，并统一“字段解析 → 公式 → 计算过程 → 结果”展示，有 Vitest + Playwright 回归覆盖。
-- PMBus 规范基线：PMBus 1.3（validated reference）。Rev 1.3.1 冲突仍以显式 conflict 模型呈现；
+- PMBus 规范基线：PMBus 1.3 / 1.3.1（validated reference，manifest 含两版 Parts I–III 实体）。
+  Rev 1.3.1 冲突仍以显式 conflict 模型呈现；
   官方当前发布版本为 1.5，但本仓库不评估、不声明 1.5 兼容性，`document/specifications.json`
   仅记录 1.5 为 currentPublishedRevision，不伪装成完整 1.5 基线。
 - 维护基线：第三方规范 PDF 不进入当前 Git tree；官方来源、字节数和 SHA-256 统一维护在
