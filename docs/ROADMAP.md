@@ -3,15 +3,14 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-03（v2.6.8——PATCH：PMBus 1.3.1 provenance 可复现（manifest
-补 1.3.1 Parts I–III 官方实体，`EXPECTED_DOCUMENT_COUNT` 4→7）+ L16 术语文案
-与 PMBus 1.3.1 对齐（ULINEAR16/SLINEAR16 为 §8.4.1.1/§8.4.1.2 正式命名，删除
-「非 PMBus 规范命名」错误断言）。前一版 v2.6.7 为 VOUT_MODE 独立术语行 `N`
-触发器点击目标修复。该按钮实测 11.5625×24 px，低于 UI_CONVENTIONS §10 的
-24×24px 合同；现在
-`.vout-term-row .term-trigger` 上 scoped `min-inline-size/min-block-size: 24px`
-并居中文本，仅作用独立术语行，句内术语不放大。新增三 viewport 几何回归与
-mobile 真实 tap 回归；四张 VOUT_MODE 视觉基线逐图审查后更新）
+最后更新：2026-09-04（v3.0.0——MAJOR breaking：canonical Raw Word 领域模型
+重构。`state.raw` 成为 L11/L16/DIRECT/HALF 唯一的 canonical 16-bit raw word，
+v2.6.5 的 L16 主 Hex 字节流语义删除（`3412` 恒为 `0x3412`）；`byteOrder`、
+`byte-order/set`、`copy.endian`、`copy/set-endian` 删除；序列化分层为
+SMBus / PMBus Wire Bytes（低字节在前，SMBus 3.0 §6.5.4/§6.5.5）与
+MSB-first 表示；复制改为显式 representation actions；持久化旧键显式忽略。
+ADR 0003、DOMAIN_MODEL §4、AGENTS 同步。前一版 v2.6.8 为 PMBus 1.3.1
+provenance 可复现 + L16 术语对齐）
 
 ## 当前产品基线
 
@@ -37,7 +36,7 @@ mobile 真实 tap 回归；四张 VOUT_MODE 视觉基线逐图审查后更新）
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v2.6.8；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v3.0.0；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -241,6 +240,19 @@ M0–M42 complete；stable release v2.6.8；production distribution: GitHub Page
   命令参考与配置摘要不放大；新增三 viewport（360/390/1440）几何回归（≥24×24、
   两两不重叠、无裁切、无 body 溢出）与 mobile-contract 真实 touchscreen tap
   回归；四张 VOUT_MODE 视觉基线经逐图成对审查后更新。
+- v3.0.0（MAJOR，breaking）：canonical Raw Word 领域模型重构——`state.raw`
+  是全部数值模式唯一的 canonical 16-bit raw word（主 Hex、位网格、公式、
+  decode/encode、Raw Word 复制、C 宏一致，`parse(format(raw))===raw` 恒成立）；
+  v2.6.5 的 L16 主 Hex 字节流语义与 `byteOrder`/`copy.endian` 抽象删除；
+  字节序只存在于 serialization 层——SMBus / PMBus Wire Bytes（低字节在前，
+  SMBus 3.0 §6.5.4/§6.5.5、PMBus Part I §5.6.3.2.4）与 MSB-first 表示分别
+  命名；复制改为显式 Raw Word / Wire 字节 / MSB-first 字节 actions；持久化
+  旧 `byteOrder`/`endian` 键显式忽略并回归锁定；`rawBytesLE/BE` 更名
+  `wireBytes/msbFirstBytes`；新增 `canonical-raw-word.test.ts` 跨模式不变量
+  与 golden vectors（L16 0x14 C000→12 / BFFF→11.999755859375、L11 C100、
+  DIRECT 1234、HALF 3C00→1）；22/28 视觉基线逐图审查更新（VOUT_MODE 与
+  命令参考场景不受影响）；受保护算法零变更；ADR 0003、DOMAIN_MODEL §4、
+  AGENTS、双 README 同步。
 - v2.6.6（PATCH）：legacy `PMBusMath.encodeLinear16` 指数语义修复——该导出 helper
   此前忽略指数 `n`、只做 `clamp(v, 0, 65535)`，与 `decodeLinear16` 不对称且不符合
   §8.4.1 ULINEAR16 编码方向；现实现 `round(X / 2^N)` 后 clamp 到 `0..65535`，与
@@ -255,7 +267,7 @@ M0–M42 complete；stable release v2.6.8；production distribution: GitHub Page
   同向更新，新增 l16-byte-order 闭环 E2E 与共享 `leByteStreamText` 测试助手；
   desktop-dark-l16-stress 视觉基线经逐图审查后更新；DOMAIN_MODEL §4、terminology
   le/be 与页面提示文案同步。
-- 当前：无进行中的功能里程碑；v2.6.8 已发布，M40–M42 complete。
+- 当前：无进行中的功能里程碑；v3.0.0 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

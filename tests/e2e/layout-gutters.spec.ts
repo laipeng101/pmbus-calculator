@@ -61,7 +61,9 @@ test.describe('gutter alignment', () => {
     ]) {
       await page.setViewportSize(viewport)
       await page.goto(appUrl())
-      const buttons = page.getByRole('button', { name: /Raw Word|Wire 字节|MSB-first 字节|物理值|C 代码/ })
+      const buttons = page.getByRole('button', {
+        name: /Raw Word|Wire 字节|MSB-first 字节|物理值|C 代码/,
+      })
       const count = await buttons.count()
       expect(count).toBeGreaterThanOrEqual(5)
       for (let i = 0; i < count; i++) {

@@ -18,9 +18,7 @@ test.describe('canonical Raw Word 闭环', () => {
     msb: aux(page).getByText('0x 12 34', { exact: true }),
   })
 
-  test('输入 1234 解码 18.203125，Wire 字节显示 34 12 且 Raw Word 保持原字', async ({
-    page,
-  }) => {
+  test('输入 1234 解码 18.203125，Wire 字节显示 34 12 且 Raw Word 保持原字', async ({ page }) => {
     await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
 

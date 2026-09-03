@@ -178,7 +178,9 @@ test.describe('M16 result stress geometry', () => {
     await expect(formatGroup.getByRole('button', { name: '字节空格' })).toBeVisible()
 
     // v3.0.0: the endian order group is gone — explicit copy actions replaced it.
-    await expect(page.locator('[role="group"][aria-labelledby="copy-hex-order-label"]')).toHaveCount(0)
+    await expect(
+      page.locator('[role="group"][aria-labelledby="copy-hex-order-label"]'),
+    ).toHaveCount(0)
 
     const focusables = page.locator('.copy-prefs button')
     expect(await focusables.count()).toBe(2)

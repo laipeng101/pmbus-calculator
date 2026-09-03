@@ -4,6 +4,44 @@
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-09-04
+
+### Changed
+
+- **MAJOR breaking：canonical Raw Word 领域模型重构**。`state.raw` 成为 L11 /
+  L16 / DIRECT / HALF 全部数值模式唯一的 canonical 无符号 16-bit raw word：
+  主 Raw Word Hex 输入/显示、位网格、公式操作数、decode/encode、Raw Word 复制
+  与 C 宏都指向同一数值原字，`parse(formatRawWordHex(raw)) === raw` 对合法的
+  全部 16-bit raw 成立，主 Raw Word 不受任何 byte order 偏好影响。
+- **v2.6.5 的 L16 主 Hex 字节流语义被否定**：旧合同下 L16 + LE 时主 Hex
+  输入/显示是所选字节序的 2 字节 byte stream（`3412` 表示 word `0x1234`），
+  同一界面不同面板对 "raw" 使用不同定义（Hex 字段 `8FC3` 而位网格 `C38F`）。
+  新合同下 L16 输入 `3412` 就是 raw `0x3412`；线上字节顺序只存在于
+  serialization 层。
+- **SMBus/PMBus Wire Bytes 命名精确化**：word 事务线上按低字节在前传输
+  （SMBus 3.0 §6.5.4/§6.5.5；PMBus Part I §5.6.3.2.4 DS=0 默认）。结果面板
+  两行字节显示更名为「SMBus / PMBus Wire Bytes（低字节在前）」与
+  「MSB-first 字节（高字节在前）」——后者是另一种 byte representation，
+  不是另一种合法 wire order。view-model 字段 `rawBytesLE`/`rawBytesBE`
+  更名为 `wireBytes`/`msbFirstBytes`。
+- **复制模型改为显式 representation actions**：Raw Word（canonical 数值，
+  受 0x 前缀偏好影响）、Wire 字节（低字节在前）、MSB-first 字节（高字节在前）、
+  物理值、C 代码；0x 前缀与字节空格偏好保留并继续作用于 Hex/字节复制。
+- UI 术语：主 Hex 输入标签与结果面板行统一为 Raw Word（新增 `raw-word`
+  术语条目）；glossary LE/BE 条目按规范重写（LE = 线上低字节在前；
+  BE = MSB-first 表示）；L16 页字节序下拉删除，提示文案引用
+  SMBus 3.0 §6.5.4。
+
+### Removed
+
+- `AppState.byteOrder` 字段、`byte-order/set` action、L16 字节序下拉、
+  `copy.endian` 字段与 `copy/set-endian` action；「Hex 复制顺序」偏好组。
+  字节顺序不再作为全局偏好存在，只随显式复制动作选择表示。
+- 持久化：`pmbus-calculator:byteOrder` 键与 `pmbus-calculator:copy` JSON 中的
+  `endian` 字段不再读取；旧存储遗留值被显式忽略（copy 字段逐字段挑选），
+  回归测试证明旧偏好不换位新 Raw Word、不产生非法 state。其余偏好
+  （主题、模式、0x 前缀、字节空格）合同不变。
+
 ## [2.6.8] - 2026-09-03
 
 ### Fixed
