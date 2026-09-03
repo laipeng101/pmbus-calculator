@@ -168,13 +168,26 @@ export interface CalculatorViewModel {
   mode: AppMode
   valueText: string
   valueLabel: string
+  /**
+   * The main Raw Word hex ('0x' + 4 digits) — always the canonical numeric
+   * raw word in every mode (v3.0.0). Identical to rawWordHex.
+   */
   rawHex: string
   /** Digit-only raw hex (no 0x prefix) for fixed-prefix inputs. */
   rawHexDigits: string
-  /** Internal 16-bit raw word, never byte-swapped for display. */
+  /** Canonical unsigned 16-bit raw word, never byte-swapped for display. */
   rawWordHex: string
-  rawBytesLE: string
-  rawBytesBE: string
+  /**
+   * SMBus / PMBus wire bytes, low byte first (SMBus 3.0 §6.5.4/§6.5.5:
+   * word data moves low byte first). Serialization only — derived from the
+   * canonical raw word and never re-entering raw identity.
+   */
+  wireBytes: string
+  /**
+   * MSB-first (high byte first) byte representation of the same raw word —
+   * a display/export alternative, NOT another wire order.
+   */
+  msbFirstBytes: string
   cMacroText: string
   formulaText: string
   formulaLatex: string
@@ -703,13 +716,13 @@ function buildWarnings(state: AppState): WarningVM[] {
         warnings.push({
           id: 'l16-relative-overflow',
           level: 'warning',
-          text: `${RELATIVE_VOLTAGE_OVERFLOW_NOTE}；最终电压显示为 —，标称值与比值仍按输入显示，原始 Hex/LE/BE 复制不受影响。`,
+          text: `${RELATIVE_VOLTAGE_OVERFLOW_NOTE}；最终电压显示为 —，标称值与比值仍按输入显示，Raw Word / Wire 字节复制不受影响。`,
         })
       } else if (relative?.result.kind === 'underflow') {
         warnings.push({
           id: 'l16-relative-underflow',
           level: 'warning',
-          text: `${RELATIVE_VOLTAGE_UNDERFLOW_NOTE}；最终电压显示为 —，标称值与比值仍按输入显示，原始 Hex/LE/BE 复制不受影响。`,
+          text: `${RELATIVE_VOLTAGE_UNDERFLOW_NOTE}；最终电压显示为 —，标称值与比值仍按输入显示，Raw Word / Wire 字节复制不受影响。`,
         })
       } else if (relative?.ratio === 0) {
         warnings.push({
@@ -1050,20 +1063,17 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     voutModeInfo = voutModePage
   }
 
-  // Mirror of the raw/set-from-hex parse: displayedRaw is the byte stream of
-  // `raw` in the selected byte order (LE swaps the word, BE reads as the word
-  // itself), so the hex field round-trips exactly with what the parser accepts.
-  const displayedRaw =
-    state.mode === 'L16' && state.byteOrder === 'le' ? PMBusMath.swapBytes(raw) : raw
+  // v3.0.0: the main Raw Word hex is the canonical numeric raw word in every
+  // mode — parse(format(raw)) === raw holds without any byte-order transform,
+  // mirroring the raw/set-from-hex reducer exactly.
   const formula = getFormulaPresentation(state)
   const formulaText = formula.plainText
 
-  const rawHex =
-    state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(displayedRaw)
+  const rawHex = state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(raw)
   const rawHexDigits =
     state.mode === 'VOUT_MODE'
       ? byteDigits(state.voutMode.byte)
-      : (displayedRaw & 0xffff).toString(16).toUpperCase().padStart(4, '0')
+      : (raw & 0xffff).toString(16).toUpperCase().padStart(4, '0')
 
   // HALF §7.6.2 special-value semantics: derived from the current raw word so
   // BOTH user paths (raw Hex edit and physical-value encode) surface the same
@@ -1081,12 +1091,12 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   if (relativeResult?.kind === 'overflow') {
     physicalValueCopyUnavailability = {
       available: false,
-      reason: `物理值复制不可用：${RELATIVE_VOLTAGE_OVERFLOW_NOTE}。原始 Hex/LE/BE 复制仍可用。`,
+      reason: `物理值复制不可用：${RELATIVE_VOLTAGE_OVERFLOW_NOTE}。Raw Word / Wire 字节复制仍可用。`,
     }
   } else if (relativeResult?.kind === 'underflow') {
     physicalValueCopyUnavailability = {
       available: false,
-      reason: `物理值复制不可用：${RELATIVE_VOLTAGE_UNDERFLOW_NOTE}。原始 Hex/LE/BE 复制仍可用。`,
+      reason: `物理值复制不可用：${RELATIVE_VOLTAGE_UNDERFLOW_NOTE}。Raw Word / Wire 字节复制仍可用。`,
     }
   }
 
@@ -1103,7 +1113,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     } else {
       physicalValueCopyUnavailability = {
         available: false,
-        reason: `物理值复制不可用：显示值 ${directFidelity.approxValueText} 是精度折叠的近似，且当前无法生成经验证的精确回录文本。请使用 raw/LE/BE 复制，或直接编辑 raw / Y 保留位级真值。`,
+        reason: `物理值复制不可用：显示值 ${directFidelity.approxValueText} 是精度折叠的近似，且当前无法生成经验证的精确回录文本。请使用 Raw Word / Wire 字节复制，或直接编辑 raw / Y 保留位级真值。`,
       }
     }
   }
@@ -1116,11 +1126,11 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     rawHex,
     rawHexDigits,
     rawWordHex: state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(raw),
-    rawBytesLE: formatBytes(le, {
+    wireBytes: formatBytes(le, {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
     }),
-    rawBytesBE: formatBytes(be, {
+    msbFirstBytes: formatBytes(be, {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
     }),

@@ -7,7 +7,6 @@
 import { CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE } from '../legacy/vout-mode'
 
 export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF' | 'VOUT_MODE'
-export type Endian = 'le' | 'be'
 export type Theme = 'light' | 'dark' | 'system'
 export type Linear16PayloadKind = 'ulinear16' | 'slinear16-offset'
 
@@ -31,9 +30,16 @@ export type ValueRequest =
 
 export interface AppState {
   mode: AppMode
+  /**
+   * Canonical unsigned 16-bit raw word (v3.0.0): the single numeric bit-pattern
+   * truth behind the main Raw Word Hex field, the bit grid, the formula
+   * operand, decode/encode, the raw-word copy and the C macro. Byte order
+   * never touches this identity — it exists only in the wire-byte
+   * serialization layer (display/copy of the low-byte-first / MSB-first
+   * sequences).
+   */
   raw: number
   commandKey: string | null
-  byteOrder: Endian
 
   /**
    * Shared VOUT_MODE data byte (0..255) — the single source of truth for both
@@ -94,7 +100,6 @@ export interface AppState {
   copy: {
     prefix0x: boolean
     spaceBetweenBytes: boolean
-    endian: Endian
   }
 
   ui: {
@@ -107,7 +112,6 @@ export const INITIAL_STATE: AppState = {
   mode: 'L11',
   raw: 0,
   commandKey: null,
-  byteOrder: 'le',
 
   voutMode: {
     byte: CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE,
@@ -137,7 +141,6 @@ export const INITIAL_STATE: AppState = {
   copy: {
     prefix0x: true,
     spaceBetweenBytes: true,
-    endian: 'le',
   },
 
   ui: {

@@ -30,7 +30,12 @@ export function getQuantizationTextColorToken(kind: QuantizationKind): string {
   }
 }
 
-/** Copy label for the primary Hex button; reflects the current copy endianness. */
-export function getCopyHexLabel(endian: 'le' | 'be'): string {
-  return endian === 'be' ? 'Hex（BE）' : 'Hex（LE）'
+/**
+ * Copy text for the Raw Word action (v3.0.0). Always the canonical numeric
+ * raw word — the `0x` prefix follows the shared copy prefix preference, and
+ * no byte-order preference can ever reinterpret the value.
+ */
+export function formatRawWordCopyText(rawWordHex: string, prefix0x: boolean): string {
+  const digits = rawWordHex.replace(/^0x/i, '')
+  return prefix0x ? `0x${digits}` : digits
 }

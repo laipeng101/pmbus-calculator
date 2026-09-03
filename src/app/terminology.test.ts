@@ -168,7 +168,8 @@ describe('v2.6.0 control help registry (single source of truth)', () => {
     expect(controlHelpText('copy-pref-prefix', { pressed: true })).toContain('点击关闭')
     expect(controlHelpText('copy-pref-prefix', { pressed: false })).toContain('点击开启')
     expect(controlHelpText('copy-pref-space', { pressed: true })).toContain('空格')
-    expect(controlHelpText('copy-pref-endian-be', { pressed: false })).toContain('BE')
+    expect(controlHelpText('copy-wire-bytes', undefined)).toContain('低字节在前')
+    expect(controlHelpText('copy-msb-first-bytes', undefined)).toContain('MSB-first')
   })
 
   it('composes format help from the glossary instead of copying definitions', () => {

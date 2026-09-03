@@ -1,4 +1,4 @@
-import type { AppMode, Endian, Linear16PayloadKind, Theme } from './state'
+import type { AppMode, Linear16PayloadKind, Theme } from './state'
 import type { VoutModeFormat } from '../legacy/vout-mode'
 
 export type AppAction =
@@ -27,9 +27,7 @@ export type AppAction =
   | { type: 'l16/apply-calculator-linear-example' }
   | { type: 'direct/set-y'; y: string }
   | { type: 'direct/set-coeff'; name: 'm' | 'b' | 'r'; value: string }
-  | { type: 'byte-order/set'; endian: Endian }
   | { type: 'copy/toggle-prefix' }
   | { type: 'copy/toggle-space' }
-  | { type: 'copy/set-endian'; endian: Endian }
   | { type: 'ui/set-theme'; theme: Theme }
   | { type: 'ui/toggle-debug' }

@@ -210,16 +210,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'raw/set-from-hex': {
       const parsed = parseHexStrict(action.hex, 4)
       if (parsed.ok === false) return state
-      // v2.6.5: the hex text is the byte stream in the selected byte order —
-      // LE (low byte first) '3412' means the word 0x1234, so the parsed word
-      // is byte-swapped; BE (high byte first) '1234' already reads as the
-      // word itself.  Over-long input is rejected above, so no silent
-      // truncation occurs here.
-      const raw =
-        state.mode === 'L16' && state.byteOrder === 'le'
-          ? PMBusMath.swapBytes(parsed.value)
-          : parsed.value
-      return withRaw(state, raw)
+      // v3.0.0: the Raw Word Hex field IS the canonical numeric raw word in
+      // every mode — '3412' always means 0x3412. Byte order is a wire-byte
+      // serialization concern only and never reinterprets this input.
+      return withRaw(state, parsed.value)
     }
 
     case 'raw/set': {
@@ -500,9 +494,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       })
     }
 
-    case 'byte-order/set':
-      return { ...state, byteOrder: action.endian }
-
     case 'copy/toggle-prefix':
       return {
         ...state,
@@ -517,9 +508,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           spaceBetweenBytes: !state.copy.spaceBetweenBytes,
         },
       }
-
-    case 'copy/set-endian':
-      return { ...state, copy: { ...state.copy, endian: action.endian } }
 
     case 'ui/set-theme':
       return { ...state, ui: { ...state.ui, theme: action.theme } }

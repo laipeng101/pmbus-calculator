@@ -32,15 +32,13 @@ export type ControlHelpId =
   | 'vout-normalize'
   | 'vout-apply-example'
   | 'vout-explanations-toggle'
-  | 'copy-hex'
-  | 'copy-le-bytes'
-  | 'copy-be-bytes'
+  | 'copy-raw-word'
+  | 'copy-wire-bytes'
+  | 'copy-msb-first-bytes'
   | 'copy-physical'
   | 'copy-c-macro'
   | 'copy-pref-prefix'
   | 'copy-pref-space'
-  | 'copy-pref-endian-le'
-  | 'copy-pref-endian-be'
   | 'steps-toggle'
   | 'command-ref-toggle'
   | 'debug-toggle'
@@ -69,15 +67,13 @@ export interface ControlHelpParams {
   'vout-normalize': undefined
   'vout-apply-example': undefined
   'vout-explanations-toggle': { count: number }
-  'copy-hex': { endian: 'le' | 'be' }
-  'copy-le-bytes': undefined
-  'copy-be-bytes': undefined
+  'copy-raw-word': { prefixed: boolean }
+  'copy-wire-bytes': undefined
+  'copy-msb-first-bytes': undefined
   'copy-physical': { available: boolean; usesOverride: boolean; unavailableReason?: string }
   'copy-c-macro': undefined
   'copy-pref-prefix': { pressed: boolean }
   'copy-pref-space': { pressed: boolean }
-  'copy-pref-endian-le': { pressed: boolean }
-  'copy-pref-endian-be': { pressed: boolean }
   'steps-toggle': { count: number }
   'command-ref-toggle': { count: number }
   'debug-toggle': { open: boolean }
@@ -242,21 +238,20 @@ export const CONTROL_HELP: ControlHelpRegistry = {
     render: ({ count }) =>
       `展开/收起当前字节的规范说明（共 ${count} 条）。说明为只读内容，不改变任何状态。`,
   },
-  'copy-hex': {
-    name: 'Hex 复制',
-    render: ({ endian }) =>
-      `复制 raw word 的 Hex 文本。字节顺序由「Hex 复制顺序」偏好决定（当前 ${
-        endian === 'be' ? 'BE，高字节在前' : 'LE，低字节在前'
-      }），并受「0x 前缀」「字节空格」偏好影响。`,
+  'copy-raw-word': {
+    name: 'Raw Word 复制',
+    render: ({ prefixed }) =>
+      `复制 canonical Raw Word 的 Hex 文本（始终是未交换的 16 位数值，与 Raw Word 输入框、位网格一致）。当前${prefixed ? '带 0x 前缀' : '不带 0x 前缀'}；字节顺序偏好不影响该复制。`,
   },
-  'copy-le-bytes': {
-    name: 'LE 字节复制',
+  'copy-wire-bytes': {
+    name: 'Wire 字节复制',
     render: () =>
-      '复制显式的 LE 字节序列（低字节在前，PMBus 线上默认顺序），不受 Hex 复制偏好影响。',
+      '复制 SMBus / PMBus Wire Bytes（低字节在前）：SMBus 3.0 §6.5.4/§6.5.5 规定 word 数据按低字节在前传输。这是序列化表示，不改变 Raw Word。',
   },
-  'copy-be-bytes': {
-    name: 'BE 字节复制',
-    render: () => '复制显式的 BE 字节序列（高字节在前），仅用于显示/对照，不改变线上默认顺序。',
+  'copy-msb-first-bytes': {
+    name: 'MSB-first 字节复制',
+    render: () =>
+      '复制 MSB-first 字节（高字节在前）。这是另一种字节序列表示，仅用于显示/对照，不是 SMBus/PMBus word 的线上顺序。',
   },
   'copy-physical': {
     name: '物理值复制',
@@ -286,20 +281,6 @@ export const CONTROL_HELP: ControlHelpRegistry = {
       pressed
         ? '字节空格当前开启：Hex 复制文本在字节之间插入空格。点击关闭。'
         : '字节空格当前关闭：Hex 复制文本的字节连续排列。点击开启。',
-  },
-  'copy-pref-endian-le': {
-    name: 'Hex 复制顺序 LE',
-    render: ({ pressed }) =>
-      pressed
-        ? 'Hex 复制顺序当前为 LE（低字节在前）。点击 BE 可切换为高字节在前。'
-        : '点击把 Hex 复制顺序设为 LE（低字节在前，PMBus 线上默认顺序）。',
-  },
-  'copy-pref-endian-be': {
-    name: 'Hex 复制顺序 BE',
-    render: ({ pressed }) =>
-      pressed
-        ? 'Hex 复制顺序当前为 BE（高字节在前）。点击 LE 可恢复线上默认顺序。'
-        : '点击把 Hex 复制顺序设为 BE（高字节在前），仅影响复制文本的字节顺序。',
   },
   'steps-toggle': {
     name: '计算过程折叠',
