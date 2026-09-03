@@ -212,6 +212,20 @@ jobs:
             --actual "release-output/pmbus-calculator-${VERSION}-web.zip" \
             > rebuilt-release-zip.json
 
+      # All preparable deploy preconditions live BEFORE actions/deploy-pages:
+      # if any of them fails, the previous published site stays untouched.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Local release smoke on the SAME bytes that will be deployed: the
+      # rebuilt dist is byte-bound to the downloaded release zip by the
+      # comparison step above, so this smoke exercises the deploy payload
+      # before anything is published. Only smokes that need the live
+      # deployment URL run after deploy-pages.
+      - name: Run local release smoke
+        id: release-smoke
+        run: npm run test:e2e:release
+
       - name: Extract release assets to _site
         env:
           VERSION: ${{ steps.resolve.outputs.tag }}
@@ -233,14 +247,19 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
       - name: Run remote deployment smoke
         id: smoke
         env:
           DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
         run: npm run test:e2e:deployment
+
+      - name: Upload local release smoke report on failure
+        if: failure() && steps.release-smoke.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-release
+          path: tests/e2e/report-release
+          retention-days: 7
 
       - name: Upload deployment smoke report on failure
         if: failure() && steps.deployment.outcome == 'success'

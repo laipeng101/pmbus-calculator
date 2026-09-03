@@ -220,3 +220,44 @@ describe('pages.yml release-to-source byte binding', () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order)
   })
 })
+
+describe('pages.yml pre-deploy preconditions', () => {
+  it('installs the Playwright browsers before the irreversible deploy step', () => {
+    const installIndex = stepIndexByName('Install Playwright browsers')
+    expect(installIndex).toBeGreaterThan(stepIndexByName('Install dependencies'))
+    expect(installIndex).toBeLessThan(stepIndexByName('Deploy to GitHub Pages'))
+  })
+
+  it('runs the local release smoke on the rebuilt bytes before deployment', () => {
+    const smoke = normalize(findStepByName('Run local release smoke'))
+    expect(smoke).toContain('run: npm run test:e2e:release')
+    // Same-bytes precondition: the smoke may only run after the rebuilt
+    // dist was byte-bound to the downloaded release zip.
+    expect(stepIndexByName('Run local release smoke')).toBeGreaterThan(
+      stepIndexByName('Compare rebuilt zip with the release zip'),
+    )
+    expect(stepIndexByName('Run local release smoke')).toBeLessThan(
+      stepIndexByName('Deploy to GitHub Pages'),
+    )
+  })
+
+  it('keeps every preparable precondition before deploy and remote-only checks after', () => {
+    const order = [
+      stepIndexByName('Rebuild release zip from the tagged source'),
+      stepIndexByName('Compare rebuilt zip with the release zip'),
+      stepIndexByName('Install Playwright browsers'),
+      stepIndexByName('Run local release smoke'),
+      stepIndexByName('Extract release assets to _site'),
+      stepIndexByName('Deploy to GitHub Pages'),
+      stepIndexByName('Run remote deployment smoke'),
+    ]
+    expect(order.every((index) => index >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+
+  it('uploads the local release smoke report when that smoke fails before deploy', () => {
+    const step = normalize(findStepByName('Upload local release smoke report on failure'))
+    expect(step).toContain("if: failure() && steps.release-smoke.outcome == 'failure'")
+    expect(step).toContain('tests/e2e/report-release')
+  })
+})
