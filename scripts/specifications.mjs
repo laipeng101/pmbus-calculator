@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const MANIFEST_PATH = 'document/specifications.json'
-const EXPECTED_DOCUMENT_COUNT = 4
+const EXPECTED_DOCUMENT_COUNT = 7
 
 export const DEFAULT_CACHE_DIR = '.cache/specifications'
 export const DEFAULT_TIMEOUT_MS = 30_000

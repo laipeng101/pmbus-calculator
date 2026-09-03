@@ -4,6 +4,29 @@
 
 ## [Unreleased]
 
+## [2.6.8] - 2026-09-03
+
+### Fixed
+
+- **PMBus 1.3.1 provenance 可复现（P2）**：`document/specifications.json` 的
+  `validatedReference` 此前声称 "PMBus 1.3/1.3.1 public archive"，但 manifest
+  只有 1.3 Parts I–III 与 SMBus 3.0 四条实体，1.3.1 声明无法经 manifest 重取或
+  哈希复验。现在补充 1.3.1 Parts I–III 三条官方实体（pmbus.org 归档 URL；
+  bytes/SHA-256 于 2026-09-03 fresh 下载验证：Part I 178631 B / `68a8063e…`、
+  Part II 678599 B / `1717c596…`、Part III 258382 B / `407605b7…`），
+  `EXPECTED_DOCUMENT_COUNT` 4→7，manifest 契约测试同步覆盖 id/revision/landing
+  page；`docs/ROADMAP.md` validated reference 句与 manifest 对齐（1.3→1.3/1.3.1）。
+  不跟踪任何 PDF；规范 PDF 仍只进 git-ignored `.cache/specifications/`。
+- **L16 术语文案与 PMBus 1.3.1 对齐（P2）**：ULINEAR16 / SLINEAR16 并非本项目
+  自创标签——PMBus 1.3.1 Part II 正式命名三种线性格式：§8.4.1 LINEAR16
+  Formats、§8.4.1.1 ULINEAR16 Format（直接设置输出电压的命令如 VOUT_COMMAND
+  使用 16 位无符号整数）、§8.4.1.2 SLINEAR16 Format（为输出电压加减偏移的命令
+  如 VOUT_TRIM 使用 16 位二补码整数）。此前 glossary 将两者标为 project 来源并
+  断言「非 PMBus 规范命名」，与规范相反。现在两条均为 `pmbus-spec` 来源并精确
+  锚定 §8.4.1.1/§8.4.1.2，detail 说明 1.3 旧文统称 Linear Mode 的命名变化，
+  §13.3/§13.4 偏移命令语义保留在正文；LINEAR16 保持 §8.4.1 总类条目。
+  编码/解码数学、VOUT_MODE 位域、raw、字节序与持久化零变更。
+
 ## [2.6.7] - 2026-09-03
 
 ### Fixed

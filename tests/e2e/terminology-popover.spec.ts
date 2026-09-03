@@ -282,6 +282,34 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     expect([...seen].sort()).toEqual([...GLOSSARY_TERM_IDS].sort())
   })
 
+  test('v2.6.8 L16 术语：ULINEAR16 / SLINEAR16 popover 是 PMBus 1.3.1 正式命名', async ({
+    page,
+  }) => {
+    await settle(page)
+    await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    const uTrigger = page.getByTestId('term-trigger-ulinear16')
+    await expect(uTrigger).toBeVisible()
+    await uTrigger.click()
+    const uPopover = page.locator('[data-testid="term-popover-ulinear16"]')
+    await expect(uPopover).toContainText('1.3.1 正式格式名')
+    await expect(uPopover).toContainText('§8.4.1.1')
+    await expect(uPopover).toContainText('16 位无符号整数')
+    await expect(uPopover).not.toContainText('非 PMBus 规范命名')
+    await page.keyboard.press('Escape')
+
+    const sTrigger = page.getByTestId('term-trigger-slinear16')
+    await expect(sTrigger).toBeVisible()
+    await sTrigger.click()
+    const sPopover = page.locator('[data-testid="term-popover-slinear16"]')
+    await expect(sPopover).toContainText('1.3.1 正式格式名')
+    await expect(sPopover).toContainText('§8.4.1.2')
+    await expect(sPopover).toContainText('16 位二补码')
+    await expect(sPopover).toContainText('VOUT_TRIM')
+    await expect(sPopover).not.toContainText('非 PMBus 规范命名')
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(0)
+  })
+
   test('v2.6.0 同名 N 按作用域区分：LINEAR11 N 与 VOUT_MODE N 展示不同且正确的解释', async ({
     page,
   }) => {

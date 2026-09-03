@@ -9,9 +9,11 @@
  * translation. This module is the only place those Chinese definitions live —
  * components must not duplicate them.
  *
- * Provenance contract (v2.6.0):
+ * Provenance contract (v2.6.0, naming aligned to PMBus 1.3.1 in v2.6.8):
  * - `source` classifies each entry; project UI labels must never masquerade
- *   as PMBus/SMBus normative naming (ULINEAR16 / SLINEAR16 are project tags).
+ *   as PMBus/SMBus normative naming. Conversely, LINEAR16 / ULINEAR16 /
+ *   SLINEAR16 ARE PMBus 1.3.1 Part II §8.4.1 family names (§8.4.1.1 / §8.4.1.2),
+ *   so they are normative entries, not project tags.
  * - Normative entries (`source: 'pmbus-spec'`) carry an exact `specRef`.
  * - The same display token may appear on several ids only when `scope`
  *   disambiguates them (the two N entries: LINEAR11 word vs VOUT_MODE).
@@ -161,7 +163,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     token: 'LINEAR16',
     name: '16 位线性格式',
     detail:
-      '输出电压线性格式（Part II §8.4.1）：电压 = V × 2^N；V 为 16 位无符号整数（0～65535），N 来自 VOUT_MODE 参数位 bits[4:0]。',
+      '输出电压线性格式总类（Part II §8.4.1）：电压 = V × 2^N；V 为 16 位无符号整数（0～65535），N 来自 VOUT_MODE 参数位 bits[4:0]。1.3.1 按命令语义正式命名为 ULINEAR16（直接设置输出电压）与 SLINEAR16（加减偏移）。',
     source: 'pmbus-spec',
     specRef: 'Part II §8.4.1',
     scope: '输出电压 word',
@@ -169,20 +171,21 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
   ulinear16: {
     id: 'ulinear16',
     token: 'ULINEAR16',
-    name: '16 位无符号线性数',
+    name: '16 位无符号线性格式',
     detail:
-      '本项目用于区分无符号输出电压 word 的 UI/领域标签（非 PMBus 规范命名）：Y_u 为 16 位无符号整数（0～65535），按 X = Y_u × 2^N 解码（Part II §8.4.1）。',
-    source: 'project',
+      'PMBus 1.3.1 正式格式名（Part II §8.4.1.1；1.3 旧文统称 Linear Mode）：直接设置输出电压的命令（如 VOUT_COMMAND）使用 16 位无符号整数 Y_u（0～65535），按 X = Y_u × 2^N 解码，N 来自 VOUT_MODE bits[4:0]。',
+    source: 'pmbus-spec',
+    specRef: 'Part II §8.4.1.1',
     scope: 'L16 payload（无符号）',
   },
   slinear16: {
     id: 'slinear16',
     token: 'SLINEAR16',
-    name: '16 位有符号线性偏移量',
+    name: '16 位有符号线性偏移格式',
     detail:
-      '本项目用于二补码偏移 payload 的 UI/领域标签（非 PMBus 规范命名）：Y_s 为 16 位二补码，按 X_offset = Y_s × 2^N 解码；对应 VOUT_TRIM / VOUT_CAL_OFFSET 的偏移语义（Part II §13.3/§13.4），这两条命令在 VID 输出电压格式下不可用。',
-    source: 'project',
-    specRef: 'Part II §13.3/§13.4',
+      'PMBus 1.3.1 正式格式名（Part II §8.4.1.2；1.3 旧文统称 Linear Mode）：为输出电压加减偏移的命令（如 VOUT_TRIM / VOUT_CAL_OFFSET，Part II §13.3/§13.4）使用 16 位二补码 Y_s，按 X_offset = Y_s × 2^N 解码；这两条命令在 VID 输出电压格式下不可用。',
+    source: 'pmbus-spec',
+    specRef: 'Part II §8.4.1.2',
     scope: 'L16 payload（偏移）',
   },
   vid: {

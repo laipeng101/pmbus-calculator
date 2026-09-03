@@ -98,7 +98,7 @@ function makeDocument(overrides: Record<string, unknown> = {}) {
 }
 
 function makeTestManifest(overrides: Record<string, unknown> = {}) {
-  const documents = ['doc-1', 'doc-2', 'doc-3', 'doc-4'].map((id) =>
+  const documents = ['doc-1', 'doc-2', 'doc-3', 'doc-4', 'doc-5', 'doc-6', 'doc-7'].map((id) =>
     makeDocument({ id, fileName: `${id}.pdf`, downloadUrl: `${ALLOWED_DOWNLOAD_URL}?id=${id}` }),
   )
   return { schemaVersion: 1, documents, ...overrides }
@@ -206,20 +206,37 @@ function redirectResponse(location: string, url = ALLOWED_DOWNLOAD_URL) {
 }
 
 describe('specifications manifest validation', () => {
-  it('current manifest has 4 valid records', async () => {
+  it('current manifest has 7 valid records covering the claimed 1.3/1.3.1 baseline', async () => {
     const manifest = await fs.readFile(path.resolve('document/specifications.json'), 'utf8')
     const parsed = JSON.parse(manifest)
     const validation = validateManifest(parsed)
 
     expect(validation.ok).toBe(true)
     expect(validation.errors).toEqual([])
-    expect(parsed.documents).toHaveLength(4)
+    expect(parsed.documents).toHaveLength(7)
     expect(parsed.documents.map((document: { id: string }) => document.id)).toEqual([
       'pmbus-1.3-part-i',
       'pmbus-1.3-part-ii',
       'pmbus-1.3-part-iii',
+      'pmbus-1.3.1-part-i',
+      'pmbus-1.3.1-part-ii',
+      'pmbus-1.3.1-part-iii',
       'smbus-3.0',
     ])
+    // The validatedReference claim names 1.3.1, so every claimed revision must
+    // have a real manifest entity on the official landing page.
+    const byId = new Map<string, Record<string, unknown>>(
+      parsed.documents.map((document: { id: string }): [string, Record<string, unknown>] => [
+        document.id,
+        document,
+      ]),
+    )
+    for (const id of ['pmbus-1.3.1-part-i', 'pmbus-1.3.1-part-ii', 'pmbus-1.3.1-part-iii']) {
+      expect(byId.get(id)?.revision, id).toBe('1.3.1')
+      expect(byId.get(id)?.officialLandingPage, id).toBe(
+        'https://pmbus.org/specification-archives/',
+      )
+    }
   })
 
   it('rejects duplicate id', () => {
@@ -999,7 +1016,7 @@ describe('specifications CLI', () => {
 
     expect(run.status).toBe(0)
     expect(run.stdout).toContain('specs:check OK')
-    expect(run.stdout).toContain('manifest entries: 4')
+    expect(run.stdout).toContain('manifest entries: 7')
   })
 
   it('list succeeds and prints manifest entries without downloading', async () => {
