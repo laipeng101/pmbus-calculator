@@ -29,6 +29,11 @@
  *     `?cb=<token>`, so the token never lives in the repo) avoids a stale
  *     edge. Without --query the gate still verifies, just without
  *     cache-busting.
+ *   - Every request is bounded end-to-end: the per-request timer and the
+ *     shared-deadline abort forwarding stay armed until the response body has
+ *     been fully consumed (or the attempt failed), so a host that sends 200
+ *     headers quickly and then stalls the body still exits 28/29 instead of
+ *     hanging the gate.
  *   - No credentials; no Authorization/Cookie headers are ever sent or
  *     printed, and production diagnostics never echo the cache-busting query,
  *     headers or full URLs — only the logical path and a failure class.
@@ -362,10 +367,12 @@ async function verifyEntity(baseUrl, entity, options) {
   options.signal.addEventListener('abort', onOuterAbort, { once: true })
   const requestTimer = setTimeout(() => controller.abort(), options.requestTimeoutMs)
 
-  /** @type {Response} */
-  let response
+  // The per-request timer and the shared-deadline forwarding live until the
+  // entity's response body has been FULLY consumed (or the attempt fails):
+  // a host that sends 200 headers quickly and then stalls the body must hit
+  // the same timeout/deadline budget as one that never responds at all.
   try {
-    response = await fetch(target.href, {
+    const response = await fetch(target.href, {
       method: 'GET',
       redirect: 'follow',
       headers: {
@@ -376,7 +383,90 @@ async function verifyEntity(baseUrl, entity, options) {
       },
       signal: controller.signal,
     })
+
+    // Redirect and origin contract: the landing URL must stay same-origin and
+    // within the base pathname prefix.
+    const finalUrl = new URL(response.url || target.href)
+    if (finalUrl.origin !== baseUrl.origin) {
+      throw new PagesVerifyError(23, 'origin', `final URL left the Pages origin: ${relative}`)
+    }
+    const prefix = baseUrl.pathname.endsWith('/') ? baseUrl.pathname : baseUrl.pathname + '/'
+    const inPrefix =
+      prefix === '/' ||
+      finalUrl.pathname === baseUrl.pathname ||
+      finalUrl.pathname.startsWith(prefix)
+    if (!inPrefix) {
+      throw new PagesVerifyError(23, 'origin', `final URL left the Pages pathname: ${relative}`)
+    }
+    const redirects = response.redirected ? 1 : 0
+
+    if (response.status !== 200) {
+      throw new PagesVerifyError(
+        21,
+        'status',
+        `HTTP ${response.status} for ${relative} (expected 200)`,
+      )
+    }
+
+    // A non-identity Content-Encoding on a 200 means the host transformed the
+    // entity; the local-hash comparison would be meaningless.
+    const contentEncoding = response.headers.get('content-encoding')
+    if (contentEncoding !== null && contentEncoding.toLowerCase() !== 'identity') {
+      throw new PagesVerifyError(
+        24,
+        'content-encoding',
+        `entity served with Content-Encoding "${contentEncoding}" (identity required): ${relative}`,
+      )
+    }
+
+    const body = Buffer.from(await response.arrayBuffer())
+    const actualHash = sha256(body)
+    const sizeOk = body.length === entity.size
+    const contentOk = actualHash === entity.sha256
+
+    // A 200 text/html that is NOT index.html and does not match the manifest is
+    // the SPA/404 fallback signature (the real entity is a script/css/font
+    // served as the index page). Classify the evidence explicitly BEFORE the
+    // generic length/hash classes: a fallback usually differs in both, and
+    // "served as HTML" is the actionable fact.
+    const contentType = response.headers.get('content-type') ?? ''
+    const isIndex = relative === 'index.html'
+    if (!isIndex && contentType.includes('text/html') && !(sizeOk && contentOk)) {
+      throw new PagesVerifyError(
+        25,
+        'fallback',
+        `200 text/html fallback for ${relative} (expected ${describeEntity(relative)}, ` +
+          `entity ${body.length} bytes vs manifest ${entity.size})`,
+      )
+    }
+
+    if (!sizeOk) {
+      throw new PagesVerifyError(
+        26,
+        'length',
+        `${relative}: entity length ${body.length} != manifest ${entity.size} bytes`,
+      )
+    }
+
+    if (!contentOk) {
+      throw new PagesVerifyError(
+        27,
+        'hash',
+        `${relative}: entity sha256 ${actualHash} != manifest ${entity.sha256}`,
+      )
+    }
+
+    return {
+      relative,
+      ok: true,
+      status: response.status,
+      length: body.length,
+      sha256: actualHash,
+      redirects,
+      timingMs: Date.now() - started,
+    }
   } catch (error) {
+    if (error instanceof PagesVerifyError) throw error
     const cause = /** @type {{name?: string, code?: string}} */ (error)
     if (options.signal.aborted) {
       throw new PagesVerifyError(
@@ -387,7 +477,8 @@ async function verifyEntity(baseUrl, entity, options) {
     }
     if (cause.name === 'AbortError') {
       // The per-request timeout aborted this request (the shared deadline was
-      // ruled out above).
+      // ruled out above) — either before the response head arrived or while
+      // the response body was still being consumed.
       throw new PagesVerifyError(
         28,
         'timeout',
@@ -402,86 +493,6 @@ async function verifyEntity(baseUrl, entity, options) {
   } finally {
     clearTimeout(requestTimer)
     options.signal.removeEventListener('abort', onOuterAbort)
-  }
-
-  // Redirect and origin contract: the landing URL must stay same-origin and
-  // within the base pathname prefix.
-  const finalUrl = new URL(response.url || target.href)
-  if (finalUrl.origin !== baseUrl.origin) {
-    throw new PagesVerifyError(23, 'origin', `final URL left the Pages origin: ${relative}`)
-  }
-  const prefix = baseUrl.pathname.endsWith('/') ? baseUrl.pathname : baseUrl.pathname + '/'
-  const inPrefix =
-    prefix === '/' || finalUrl.pathname === baseUrl.pathname || finalUrl.pathname.startsWith(prefix)
-  if (!inPrefix) {
-    throw new PagesVerifyError(23, 'origin', `final URL left the Pages pathname: ${relative}`)
-  }
-  const redirects = response.redirected ? 1 : 0
-
-  if (response.status !== 200) {
-    throw new PagesVerifyError(
-      21,
-      'status',
-      `HTTP ${response.status} for ${relative} (expected 200)`,
-    )
-  }
-
-  // A non-identity Content-Encoding on a 200 means the host transformed the
-  // entity; the local-hash comparison would be meaningless.
-  const contentEncoding = response.headers.get('content-encoding')
-  if (contentEncoding !== null && contentEncoding.toLowerCase() !== 'identity') {
-    throw new PagesVerifyError(
-      24,
-      'content-encoding',
-      `entity served with Content-Encoding "${contentEncoding}" (identity required): ${relative}`,
-    )
-  }
-
-  const body = Buffer.from(await response.arrayBuffer())
-  const actualHash = sha256(body)
-  const sizeOk = body.length === entity.size
-  const contentOk = actualHash === entity.sha256
-
-  // A 200 text/html that is NOT index.html and does not match the manifest is
-  // the SPA/404 fallback signature (the real entity is a script/css/font
-  // served as the index page). Classify the evidence explicitly BEFORE the
-  // generic length/hash classes: a fallback usually differs in both, and
-  // "served as HTML" is the actionable fact.
-  const contentType = response.headers.get('content-type') ?? ''
-  const isIndex = relative === 'index.html'
-  if (!isIndex && contentType.includes('text/html') && !(sizeOk && contentOk)) {
-    throw new PagesVerifyError(
-      25,
-      'fallback',
-      `200 text/html fallback for ${relative} (expected ${describeEntity(relative)}, ` +
-        `entity ${body.length} bytes vs manifest ${entity.size})`,
-    )
-  }
-
-  if (!sizeOk) {
-    throw new PagesVerifyError(
-      26,
-      'length',
-      `${relative}: entity length ${body.length} != manifest ${entity.size} bytes`,
-    )
-  }
-
-  if (!contentOk) {
-    throw new PagesVerifyError(
-      27,
-      'hash',
-      `${relative}: entity sha256 ${actualHash} != manifest ${entity.sha256}`,
-    )
-  }
-
-  return {
-    relative,
-    ok: true,
-    status: response.status,
-    length: body.length,
-    sha256: actualHash,
-    redirects,
-    timingMs: Date.now() - started,
   }
 }
 

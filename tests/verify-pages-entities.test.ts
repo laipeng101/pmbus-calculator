@@ -12,7 +12,11 @@
 //   negative — 404, 200 HTML fallback, content flip, truncation,
 //     non-identity Content-Encoding, cross-origin redirect, unreachable
 //     origin, per-request timeout and shared deadline exhaustion each fail
-//     with their own exit code and a classified stderr diagnostic;
+//     with their own exit code and a classified stderr diagnostic. The
+//     timeout/deadline budget is additionally exercised against a stalled
+//     response BODY (200 head + partial chunk flushed, body never ended) —
+//     distinct from the pre-header hang — because the budget must cover the
+//     full response body consumption, not just the wait for headers;
 //   contract — unsafe relative paths, missing/empty/non-directory site,
 //     credentialed/queried base URLs and argv violations fail closed.
 //
@@ -81,21 +85,35 @@ interface FixtureServerOptions {
       status?: number
       body?: string | Buffer
       headers?: Record<string, string>
-      /** Never respond (simulates a hang). */
+      /** Never respond (simulates a hang before the response head). */
       hang?: boolean
       /** Delay before responding, in ms. */
       delayMs?: number
       /** Respond with a redirect instead of a body. */
       redirectTo?: string
+      /**
+       * Send the status/head (and an optional first body chunk) immediately,
+       * then never end the response body — the "headers fast, body stalled"
+       * failure shape that must stay inside the timeout/deadline budget.
+       */
+      stallBody?: boolean
     }
   >
   /** Serve the site tree's real bytes for any other path. */
   serveSite?: boolean
 }
 
+/** Observable proof that a stalled response flushed its head (and chunk). */
+interface StallRecord {
+  headFlushed: boolean
+  bodyChunkFlushed: boolean
+}
+
 interface FixtureServer {
   url: string
   close: () => Promise<void>
+  /** Per-path stall evidence, recorded by the fixture server itself. */
+  stalls: Map<string, StallRecord>
 }
 
 /**
@@ -108,7 +126,11 @@ function startFixtureServer(
   options: FixtureServerOptions = {},
 ): Promise<FixtureServer> {
   const { overrides = {}, serveSite = true } = options
+  const stalls = new Map<string, StallRecord>()
   const server = createServer((req, res) => {
+    // A client that gives up (timeout/deadline abort) destroys its socket; the
+    // resulting late write/ECONNRESET must not crash this process.
+    res.on('error', () => undefined)
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
     if (url.pathname.startsWith('/base/')) {
       const relative = decodeURIComponent(url.pathname.slice('/base/'.length))
@@ -116,7 +138,7 @@ function startFixtureServer(
       if (override !== undefined) {
         if (override.hang === true) return
         if (override.delayMs !== undefined && override.delayMs > 0) {
-          setTimeout(() => finish(override), override.delayMs)
+          setTimeout(() => finish(override, relative), override.delayMs)
           return
         }
         if (override.redirectTo !== undefined) {
@@ -124,7 +146,7 @@ function startFixtureServer(
           res.end()
           return
         }
-        finish(override)
+        finish(override, relative)
         return
       }
       if (serveSite) {
@@ -143,12 +165,28 @@ function startFixtureServer(
     res.writeHead(404, { 'Content-Type': 'text/plain' })
     res.end('not found')
 
-    function finish(override: NonNullable<FixtureServerOptions['overrides']>[string]): void {
+    function finish(
+      override: NonNullable<FixtureServerOptions['overrides']>[string],
+      relative: string,
+    ): void {
       const body = Buffer.from(override.body ?? '')
       res.writeHead(override.status ?? 200, {
         'Content-Type': override.headers?.['Content-Type'] ?? 'application/octet-stream',
         ...(override.headers ?? {}),
       })
+      if (override.stallBody === true) {
+        const record = stalls.get(relative) ?? { headFlushed: false, bodyChunkFlushed: false }
+        stalls.set(relative, record)
+        res.flushHeaders()
+        record.headFlushed = res.headersSent
+        if (body.length > 0) {
+          res.write(body, (error) => {
+            if (error === null || error === undefined) record.bodyChunkFlushed = true
+          })
+        }
+        // Deliberately never res.end(): the entity body stays open forever.
+        return
+      }
       res.end(body)
     }
   })
@@ -161,6 +199,7 @@ function startFixtureServer(
       }
       resolve({
         url: `http://127.0.0.1:${address.port}/base/`,
+        stalls,
         close: () =>
           new Promise((done) => {
             server.closeAllConnections()
@@ -188,13 +227,23 @@ interface CliResult {
 /**
  * Run the REAL CLI asynchronously so this process's event loop stays free and
  * the in-process fixture server can answer the child's requests (spawnSync
- * would deadlock the sweep). A generous safety timeout guards CI hangs.
+ * would deadlock the sweep). An optional safety timeout SIGKILLs a CLI that
+ * never exits (the pre-fix behavior for a stalled body) and resolves with a
+ * -1 sentinel status so the test fails with evidence instead of hanging.
  */
-function runCliAsync(args: string[]): Promise<CliResult> {
+function runCliAsync(args: string[], timeoutMs?: number): Promise<CliResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [SCRIPT, ...args])
     let stdout = ''
     let stderr = ''
+    let timedOut = false
+    let safetyTimer: ReturnType<typeof setTimeout> | undefined
+    if (timeoutMs !== undefined) {
+      safetyTimer = setTimeout(() => {
+        timedOut = true
+        child.kill('SIGKILL')
+      }, timeoutMs)
+    }
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', (chunk) => {
@@ -203,8 +252,14 @@ function runCliAsync(args: string[]): Promise<CliResult> {
     child.stderr.on('data', (chunk) => {
       stderr += String(chunk)
     })
-    child.on('error', reject)
-    child.on('close', (code) => resolve({ status: code, stdout, stderr }))
+    child.on('error', (error) => {
+      if (safetyTimer !== undefined) clearTimeout(safetyTimer)
+      reject(error)
+    })
+    child.on('close', (code) => {
+      if (safetyTimer !== undefined) clearTimeout(safetyTimer)
+      resolve({ status: timedOut ? -1 : code, stdout, stderr })
+    })
   })
 }
 
@@ -224,12 +279,14 @@ function parseReport(stdout: string): {
   okCount: number
   failures: number
   firstFailure: { path: string; class: number; category: string } | null
+  elapsedMs: number
 } {
   return JSON.parse(stdout) as {
     manifest: { count: number; bytes: number }
     okCount: number
     failures: number
     firstFailure: { path: string; class: number; category: string } | null
+    elapsedMs: number
   }
 }
 
@@ -543,6 +600,95 @@ describe('verify-pages-entities failure classes', () => {
     expect(report.firstFailure?.category).toBe('deadline')
     await server.close()
   })
+
+  it('fails a stalled response body with the per-request timeout class (headers already sent)', async () => {
+    const siteDir = makeTempDir()
+    writeTree(siteDir, {
+      'index.html': '<!doctype html><html><body>x</body></html>',
+      'assets/slow.js': deterministicBytes(64, 28),
+    })
+    const server = await startFixtureServer(siteDir, {
+      overrides: {
+        'assets/slow.js': { status: 200, body: 'partial', stallBody: true },
+      },
+    })
+
+    const result = await runCliAsync(
+      [
+        '--site',
+        siteDir,
+        '--base-url',
+        server.url,
+        '--request-timeout-ms',
+        '250',
+        '--deadline-ms',
+        '30000',
+      ],
+      8000,
+    )
+    expect(result.status).toBe(28)
+    expect(result.stderr).toContain('per-request timeout')
+    expect(result.stderr).toContain('assets/slow.js')
+    const report = parseReport(result.stdout)
+    expect(report.failures).toBe(1)
+    expect(report.okCount).toBe(1)
+    expect(report.firstFailure?.path).toBe('assets/slow.js')
+    expect(report.firstFailure?.class).toBe(28)
+    expect(report.firstFailure?.category).toBe('timeout')
+    // Headers-first proof: the fixture flushed the 200 head and the partial
+    // chunk at request time and never ended the body, so the abort that
+    // produced exit 28 fired while the response body was being consumed —
+    // not the pre-header hang:true scenario.
+    const stall = server.stalls.get('assets/slow.js')
+    expect(stall?.headFlushed).toBe(true)
+    expect(stall?.bodyChunkFlushed).toBe(true)
+    expect(report.elapsedMs).toBeLessThan(20000)
+    await server.close()
+  }, 15000)
+
+  it('fails a stalled response body with the deadline class when the shared deadline fires mid-body', async () => {
+    const siteDir = makeTempDir()
+    writeTree(siteDir, {
+      'index.html': '<!doctype html><html><body>x</body></html>',
+      'assets/slow.js': deterministicBytes(64, 29),
+    })
+    const server = await startFixtureServer(siteDir, {
+      overrides: {
+        'assets/slow.js': { status: 200, body: 'partial', stallBody: true },
+      },
+    })
+
+    const result = await runCliAsync(
+      [
+        '--site',
+        siteDir,
+        '--base-url',
+        server.url,
+        '--deadline-ms',
+        '300',
+        '--request-timeout-ms',
+        '10000',
+      ],
+      8000,
+    )
+    expect(result.status).toBe(29)
+    expect(result.stderr).toContain('deadline')
+    expect(result.stderr).toContain('assets/slow.js')
+    const report = parseReport(result.stdout)
+    expect(report.failures).toBe(1)
+    expect(report.okCount).toBe(1)
+    expect(report.firstFailure?.path).toBe('assets/slow.js')
+    expect(report.firstFailure?.class).toBe(29)
+    expect(report.firstFailure?.category).toBe('deadline')
+    // Same headers-first proof, with the shared deadline as the abort source:
+    // head + chunk were flushed at request time, the body never ended, and
+    // the deadline abort had to interrupt the in-flight body consumption.
+    const stall = server.stalls.get('assets/slow.js')
+    expect(stall?.headFlushed).toBe(true)
+    expect(stall?.bodyChunkFlushed).toBe(true)
+    expect(report.elapsedMs).toBeLessThan(20000)
+    await server.close()
+  }, 15000)
 })
 
 describe('verify-pages-entities local contract', () => {
