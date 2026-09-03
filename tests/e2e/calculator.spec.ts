@@ -221,7 +221,7 @@ test.describe('计算器真实用户流程', () => {
     await hexInput.fill('0001')
     await hexInput.press('Tab')
 
-    const copyRaw = page.getByRole('button', { name: 'Raw Word' })
+    const copyRaw = page.getByRole('button', { name: 'Raw Word Hex' })
     await copyRaw.scrollIntoViewIfNeeded()
     await copyRaw.evaluate((el: HTMLButtonElement) => el.click())
 
@@ -339,7 +339,7 @@ test.describe('计算器真实用户流程', () => {
     const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('1234')
     await hexInput.press('Tab')
-    const copyRaw = page.getByRole('button', { name: 'Raw Word' })
+    const copyRaw = page.getByRole('button', { name: 'Raw Word Hex' })
     await copyRaw.scrollIntoViewIfNeeded()
     await copyRaw.evaluate((el: HTMLButtonElement) => el.click())
 

@@ -361,15 +361,16 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     await page.keyboard.press('Control+1')
     await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(0)
 
-    // 打开新的帮助浮层后全局仍恰好一个。
-    const hex = page.getByTestId('term-trigger-hex').first()
-    await hex.click()
-    await expect(page.locator('[data-testid="term-popover-hex"]').first()).toBeVisible()
+    // 打开新的帮助浮层后全局仍恰好一个（v3.0.0：hex 触发器随主输入
+    // Raw Word 化迁移到 composer，本页（L11）上的通用触发器是 raw-word）。
+    const rawWord = page.getByTestId('term-trigger-raw-word').first()
+    await rawWord.click()
+    await expect(page.locator('[data-testid="term-popover-raw-word"]').first()).toBeVisible()
     await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(1)
 
     // Escape 恢复到当前有效触发器。
     await page.keyboard.press('Escape')
     await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(0)
-    await expect(hex).toBeFocused()
+    await expect(rawWord).toBeFocused()
   })
 })

@@ -62,7 +62,7 @@ test.describe('gutter alignment', () => {
       await page.setViewportSize(viewport)
       await page.goto(appUrl())
       const buttons = page.getByRole('button', {
-        name: /Raw Word|Wire 字节|MSB-first 字节|物理值|C 代码/,
+        name: /Raw Word Hex|Wire 字节|MSB-first 字节|物理值|C 代码/,
       })
       const count = await buttons.count()
       expect(count).toBeGreaterThanOrEqual(5)
@@ -77,7 +77,7 @@ test.describe('gutter alignment', () => {
   test('copy toolbar uses balanced 6-column rows', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto(appUrl())
-    const first = page.getByRole('button', { name: 'Raw Word' })
+    const first = page.getByRole('button', { name: 'Raw Word Hex' })
     const wire = page.getByRole('button', { name: 'Wire 字节' })
     const msb = page.getByRole('button', { name: 'MSB-first 字节' })
     const value = page.getByRole('button', { name: '物理值' })

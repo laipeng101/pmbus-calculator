@@ -65,10 +65,6 @@ export const PMBusMath = {
     return Math.max(min, Math.min(max, value))
   },
 
-  swapBytes(v: number): number {
-    return ((v & 0xff) << 8) | ((v >> 8) & 0xff)
-  },
-
   /** 2^N cache — performance optimization to avoid repeated Math.pow */
   pow2Cache: new Map<number, number>(),
 

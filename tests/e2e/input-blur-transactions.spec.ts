@@ -190,20 +190,20 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
     const nInput = page.locator('#l16-n-input')
 
     await valueInput(page).fill('1')
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(quantizationPanel(page)).toHaveCount(1)
 
     await untouchedFocusBlur(hexInput(page))
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(quantizationPanel(page)).toHaveCount(1)
 
     await untouchedFocusBlur(vInput)
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(vInput).toHaveValue('256')
     await expect(quantizationPanel(page)).toHaveCount(1)
 
     await untouchedFocusBlur(nInput)
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
     await expect(quantizationPanel(page)).toHaveCount(1)
     await expectNoBodyHorizontalOverflow(page)
@@ -214,13 +214,13 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
     const relative = page.getByRole('radio', { name: '相对值' })
 
     await valueInput(page).fill('1')
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(quantizationPanel(page)).toHaveCount(1)
 
     // 点击当前已选中的「绝对值」：不得清除 provenance（v2.5.7）
     await absolute.click()
     await expect(absolute).toHaveAttribute('aria-checked', 'true')
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
     await expect(quantizationPanel(page)).toHaveCount(1)
 
@@ -327,7 +327,7 @@ test.describe('L16 untouched blur（390×844 dark）', () => {
     await nominal.press('Tab')
     await expect(nominal).toHaveValue('')
     await expect(page.getByTestId('result-value')).toHaveText('—')
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
 
     // 重新输入合法值后恢复计算（5 × ratio 1 → 5）
@@ -761,8 +761,8 @@ test.describe('invalid draft blur 事务（v2.5.9）', () => {
     const nominal = page.locator('#l16-nominal-vout')
     await page.getByRole('radio', { name: '相对值' }).click()
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
-    await hexInput(page).fill('0001')
-    await expect(hexInput(page)).toHaveValue('0001')
+    await hexInput(page).fill('0100')
+    await expect(hexInput(page)).toHaveValue('0100')
 
     await nominal.fill('5')
     await expect(page.getByTestId('result-value')).toHaveText('5')
@@ -781,7 +781,7 @@ test.describe('invalid draft blur 事务（v2.5.9）', () => {
       '标称值无效：仅支持十进制非负数（可含小数与科学计数法）',
     )
     await expect(page.getByTestId('result-value')).toHaveText('5')
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
   })
 
@@ -792,7 +792,7 @@ test.describe('invalid draft blur 事务（v2.5.9）', () => {
     const nominal = page.locator('#l16-nominal-vout')
     await page.getByRole('radio', { name: '相对值' }).click()
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
-    await hexInput(page).fill('0001')
+    await hexInput(page).fill('0100')
 
     await nominal.click()
     await nominal.press('ControlOrMeta+a')

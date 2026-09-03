@@ -207,14 +207,14 @@ export interface CalculatorViewModel {
    * Present ONLY when the 物理值 copy must be disabled (v2.5.9): a relative
    * ULINEAR16 derivation range error (overflow / nonzero-factor underflow)
    * has no copyable physical value. Undefined means the copy stays enabled;
-   * raw Hex / LE / BE copies are never affected.
+   * Raw Word / wire-byte copies are never affected.
    */
   physicalValueCopy?: { available: false; reason: string }
   /**
    * DIRECT only, present ONLY when the displayed physical value is a
    * precision-folded approximation (v2.5.11): the 物理值 copy must hand out
    * the verified safe re-entry text instead of the approximation, with an
-   * explanatory note. The raw Hex / LE / BE / C-macro copies are unaffected.
+   * explanatory note. The Raw Word / wire-byte / C-macro copies are unaffected.
    */
   physicalValueCopyOverride?: { text: string; note: string }
   /**

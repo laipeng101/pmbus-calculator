@@ -206,7 +206,7 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
   test('复制工具与偏好按钮：hover 说明存在且物理值禁用原因来自同一模板', async ({ page }) => {
     await settle(page)
 
-    const rawCopy = page.getByRole('button', { name: 'Raw Word' })
+    const rawCopy = page.getByRole('button', { name: 'Raw Word Hex' })
     await rawCopy.hover()
     await expect(page.getByTestId('control-tooltip-copy-raw-word')).toContainText(
       'canonical Raw Word',

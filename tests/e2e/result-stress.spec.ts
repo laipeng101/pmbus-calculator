@@ -151,7 +151,7 @@ test.describe('M16 result stress geometry', () => {
     await settle(page)
 
     const buttons = page.getByRole('button', {
-      name: /Raw Word|Wire 字节|MSB-first 字节|物理值|C 代码/,
+      name: /Raw Word Hex|Wire 字节|MSB-first 字节|物理值|C 代码/,
     })
     const count = await buttons.count()
     expect(count).toBeGreaterThanOrEqual(5)
@@ -335,7 +335,7 @@ test.describe('M16 result stress geometry', () => {
       })
     })
 
-    const copyRaw = page.getByRole('button', { name: 'Raw Word' })
+    const copyRaw = page.getByRole('button', { name: 'Raw Word Hex' })
     await copyRaw.scrollIntoViewIfNeeded()
     const boxBefore = await copyRaw.boundingBox()
     await copyRaw.click()

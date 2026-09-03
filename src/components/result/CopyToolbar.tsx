@@ -74,8 +74,8 @@ export default function CopyToolbar({ vm, copyPrefs, onTogglePrefix, onToggleSpa
             <CopyButton
               className="col-span-2"
               triggerProps={triggerProps}
-              onClick={() => copy(rawWordText, 'Raw Word')}
-              label="Raw Word"
+              onClick={() => copy(rawWordText, 'Raw Word Hex')}
+              label="Raw Word Hex"
             />
           )}
         </ControlTooltip>

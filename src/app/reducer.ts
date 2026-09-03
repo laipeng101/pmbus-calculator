@@ -428,7 +428,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       // who really deleted the field content must be able to get back to the
       // missing-reference state instead of silently restoring the old value.
       // Clearing touches ONLY the nominal channel — raw, VOUT_MODE byte,
-      // payload kind and byte order stay untouched, and 0 remains a distinct
+      // payload kind stay untouched, and 0 remains a distinct
       // decode-only value (null ≠ 0).
       return state.l16.nominalVout === null
         ? state

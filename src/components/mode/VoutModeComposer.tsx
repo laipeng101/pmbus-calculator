@@ -390,9 +390,9 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
 
       {/* Expert Hex — lossless raw byte edit */}
       <div className="flex items-start gap-2">
-        <label className="mt-2 text-sm color-text-muted" htmlFor="vout-mode-input">
-          Hex
-        </label>
+        <div className="mt-2 text-sm color-text-muted">
+          <TechnicalTerm termId="hex" />
+        </div>
         <HexInput
           id="vout-mode-input"
           value={byteDigits(byte)}
