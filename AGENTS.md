@@ -73,13 +73,16 @@ tests/e2e/        Playwright 真实用户流程
 ## 5. 状态与组件规则
 
 - 状态入口：`src/app/state.ts` 的 `AppState`；使用 `useReducer`。
+- `state.raw` 是 canonical 的 16-bit raw word（v3.0.0）：主 Raw Word Hex、位网格、
+  公式操作数、decode/encode、Raw Word 复制与 C 宏都指向它；字节序只存在于
+  Wire Bytes serialization 层，规则见 `docs/DOMAIN_MODEL.md` §4。
 - Action 命名使用命名空间：`mode/set`、`command/set`、`raw/set-from-hex`、
   `bit/toggle`、`value/set`、`l11/set-n`、`l11/set-y`、`l11/toggle-auto-n`、
   `vout-mode/set-byte`、`vout-mode/toggle-bit`、`vout-mode/set-relative`、
   `vout-mode/set-format`、`vout-mode/set-linear-n`、`vout-mode/set-parameter`、
   `vout-mode/normalize`、`l16/set-payload-kind`、`l16/set-nominal-vout`、
   `direct/set-y`、`direct/set-coeff`、`copy/toggle-prefix`、
-  `copy/toggle-space`、`copy/set-endian`、`ui/set-theme`。
+  `copy/toggle-space`、`ui/set-theme`。
 - UI 统一使用 `toCalculatorViewModel(state)`；格式化结果不要在 JSX 中重复计算。
 - 组件只能：接收 props、显示 viewModel、dispatch(action)、维护局部 UI 状态（如 popover open）。
 - 主题由 `state.ui.theme` 驱动；`App.tsx` 负责把主题写到 `document.documentElement.dataset.theme`。

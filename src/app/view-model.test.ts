@@ -7,13 +7,12 @@ const BASE: AppState = {
   mode: 'L11',
   raw: 0,
   commandKey: null,
-  byteOrder: 'le',
   voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   valueRequest: null,
   l16: { payloadKind: 'ulinear16', nominalVout: null },
   direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-  copy: { prefix0x: true, spaceBetweenBytes: true, endian: 'le' },
+  copy: { prefix0x: true, spaceBetweenBytes: true },
   ui: { theme: 'system', debugOpen: false },
 }
 
@@ -340,26 +339,17 @@ describe('toCalculatorViewModel', () => {
       expect(vm.nRangeText).toBe('0 ~ 255.99609375')
     })
 
-    test('rawHex shows the byte stream of the selected order (BE word order, LE swapped)', () => {
-      const be = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
-      expect(be.rawHex).toBe('0x1234')
-      expect(be.rawHexDigits).toBe('1234')
-      const le = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'le' }))
-      expect(le.rawHex).toBe('0x3412')
-      expect(le.rawHexDigits).toBe('3412')
-    })
-
-    test('physical value follows the unswapped raw word in both byte orders', () => {
-      // VOUT_MODE 0x18 (absolute LINEAR, N=-8): raw 0x1234 → 4660 × 2^-8.
-      const be = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
-      const le = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'le' }))
-      expect(be.valueText).toBe('18.203125')
-      expect(le.valueText).toBe('18.203125')
-    })
-
-    test('rawWordHex stays un-swapped regardless of byte order', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234, byteOrder: 'be' }))
+    test('rawHex is the canonical raw word in every state (no byte-order transform)', () => {
+      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234 }))
+      expect(vm.rawHex).toBe('0x1234')
+      expect(vm.rawHexDigits).toBe('1234')
       expect(vm.rawWordHex).toBe('0x1234')
+    })
+
+    test('physical value derives from the same canonical raw word', () => {
+      // VOUT_MODE 0x18 (absolute LINEAR, N=-8): raw 0x1234 → 4660 × 2^-8.
+      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234 }))
+      expect(vm.valueText).toBe('18.203125')
     })
 
     test('quantization panel stays hidden without an explicit request (no fabricated zero)', () => {
@@ -1127,31 +1117,32 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
-  describe('copy options', () => {
-    test('prefix0x=true produces 0x prefix', () => {
+  describe('wire-byte serialization (v3.0.0)', () => {
+    test('wireBytes is the low-byte-first sequence (SMBus/PMBus wire order)', () => {
       const vm = toCalculatorViewModel(make({ raw: 0x1234 }))
-      expect(vm.rawBytesLE).toMatch(/^0x/)
+      expect(vm.wireBytes).toBe('0x 34 12')
+      expect(vm.msbFirstBytes).toBe('0x 12 34')
     })
 
     test('prefix0x=false omits 0x prefix', () => {
       const vm = toCalculatorViewModel(
         make({ raw: 0x1234, copy: { ...BASE.copy, prefix0x: false } }),
       )
-      expect(vm.rawBytesLE).not.toMatch(/^0x/)
+      expect(vm.wireBytes).not.toMatch(/^0x/)
     })
 
-    test('spaceBetweenBytes=false omits spaces between bytes', () => {
+    test('spaceBetweenBytes=false joins the bytes', () => {
       const vm = toCalculatorViewModel(
         make({ raw: 0x1234, copy: { ...BASE.copy, spaceBetweenBytes: false } }),
       )
       // prefix0x adds '0x ' (space after prefix), spaceBetweenBytes controls byte separation
-      expect(vm.rawBytesLE).toBe('0x 3412')
+      expect(vm.wireBytes).toBe('0x 3412')
     })
 
-    test('BE endian swaps bytes', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0x1234, byteOrder: 'be' }))
-      expect(vm.rawBytesLE).toBe('0x 34 12')
-      expect(vm.rawBytesBE).toBe('0x 12 34')
+    test('serialization never feeds back into the raw word identity', () => {
+      const vm = toCalculatorViewModel(make({ raw: 0x1234 }))
+      expect(vm.rawHex).toBe('0x1234')
+      expect(vm.rawWordHex).toBe('0x1234')
     })
   })
 

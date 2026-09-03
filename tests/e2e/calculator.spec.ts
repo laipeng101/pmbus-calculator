@@ -72,8 +72,8 @@ test.describe('计算器真实用户流程', () => {
     await vInput.fill('+12')
     await vInput.press('Tab')
     await expect(vInput).toHaveValue('12')
-    // raw word 0x000C；字段显示所选序（默认 LE）的字节流。
-    await expect(hexInput).toHaveValue('0C00')
+    // raw word 0x000C；Raw Word 字段始终显示 canonical 数值原字。
+    await expect(hexInput).toHaveValue('000C')
 
     await vInput.fill('70000')
     await vInput.press('Tab')
@@ -214,33 +214,39 @@ test.describe('计算器真实用户流程', () => {
     await expect(page.getByText(/标称参考值/).first()).toBeVisible()
   })
 
-  test('复制 Hex 使用当前偏好格式', async ({ page, context }) => {
+  test('复制 Raw Word 使用当前 0x 前缀偏好并保持 canonical 数值', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('0001')
     await hexInput.press('Tab')
 
-    const copyHex = page.getByRole('button', { name: 'Hex（LE）' })
-    await copyHex.scrollIntoViewIfNeeded()
-    await copyHex.evaluate((el: HTMLButtonElement) => el.click())
+    const copyRaw = page.getByRole('button', { name: 'Raw Word Hex' })
+    await copyRaw.scrollIntoViewIfNeeded()
+    await copyRaw.evaluate((el: HTMLButtonElement) => el.click())
 
     const clipboard = await page.evaluate(() => navigator.clipboard.readText())
-    expect(clipboard).toBe('0x 01 00')
+    expect(clipboard).toBe('0x0001')
   })
 
-  test('复制 LE bytes 与 C 宏默认使用未交换 raw word', async ({ page, context }) => {
+  test('复制 Wire 字节（低字节在前）与 C 宏使用 canonical raw word', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.goto(appUrl())
     const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('0001')
     await hexInput.press('Tab')
 
-    const leBtn = page.getByRole('button', { name: 'LE 字节' })
-    await leBtn.scrollIntoViewIfNeeded()
-    await leBtn.evaluate((el: HTMLButtonElement) => el.click())
+    const wireBtn = page.getByRole('button', { name: 'Wire 字节' })
+    await wireBtn.scrollIntoViewIfNeeded()
+    await wireBtn.evaluate((el: HTMLButtonElement) => el.click())
     let clipboard = await page.evaluate(() => navigator.clipboard.readText())
     expect(clipboard).toBe('0x 01 00')
+
+    const msbBtn = page.getByRole('button', { name: 'MSB-first 字节' })
+    await msbBtn.scrollIntoViewIfNeeded()
+    await msbBtn.evaluate((el: HTMLButtonElement) => el.click())
+    clipboard = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clipboard).toBe('0x 00 01')
 
     const cBtn = page.getByRole('button', { name: 'C 代码' })
     await cBtn.scrollIntoViewIfNeeded()
@@ -299,7 +305,7 @@ test.describe('计算器真实用户流程', () => {
     await expect(page.getByText(/M 必须是/)).toBeVisible()
   })
 
-  test('复制偏好（0x/空格/字节序）在 reload 后恢复并影响复制结果', async ({ page, context }) => {
+  test('复制偏好（0x/空格）在 reload 后恢复并影响复制结果', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.goto(appUrl())
 
@@ -309,12 +315,6 @@ test.describe('计算器真实用户流程', () => {
     const spaceBtn = page.getByRole('button', { name: '字节空格' })
     await spaceBtn.scrollIntoViewIfNeeded()
     await spaceBtn.evaluate((el: HTMLButtonElement) => el.click())
-    // v2.6.0: 结果面板的 BE 术语触发器同名，字节序按钮必须按组收窄。
-    const endianBtn = page
-      .getByLabel('Hex 复制顺序')
-      .getByRole('button', { name: 'BE', exact: true })
-    await endianBtn.scrollIntoViewIfNeeded()
-    await endianBtn.evaluate((el: HTMLButtonElement) => el.click())
 
     await expect(page.getByRole('button', { name: '0x 前缀' })).toHaveAttribute(
       'aria-pressed',
@@ -324,9 +324,6 @@ test.describe('计算器真实用户流程', () => {
       'aria-pressed',
       'false',
     )
-    await expect(
-      page.getByLabel('Hex 复制顺序').getByRole('button', { name: 'BE', exact: true }),
-    ).toHaveAttribute('aria-pressed', 'true')
 
     await page.reload()
 
@@ -338,18 +335,16 @@ test.describe('计算器真实用户流程', () => {
       'aria-pressed',
       'false',
     )
-    await expect(
-      page.getByLabel('Hex 复制顺序').getByRole('button', { name: 'BE', exact: true }),
-    ).toHaveAttribute('aria-pressed', 'true')
 
     const hexInput = page.locator('input[placeholder="0000"]')
     await hexInput.fill('1234')
     await hexInput.press('Tab')
-    const copyHex = page.getByRole('button', { name: 'Hex（BE）' })
-    await copyHex.scrollIntoViewIfNeeded()
-    await copyHex.evaluate((el: HTMLButtonElement) => el.click())
+    const copyRaw = page.getByRole('button', { name: 'Raw Word Hex' })
+    await copyRaw.scrollIntoViewIfNeeded()
+    await copyRaw.evaluate((el: HTMLButtonElement) => el.click())
 
     const clipboard = await page.evaluate(() => navigator.clipboard.readText())
+    // 0x 前缀偏好关闭后 Raw Word 复制不含前缀；数值仍是 canonical 原字。
     expect(clipboard).toBe('1234')
   })
 

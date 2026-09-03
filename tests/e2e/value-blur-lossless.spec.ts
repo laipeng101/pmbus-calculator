@@ -264,8 +264,8 @@ test.describe('LINEAR16 untouched blur（390×844 dark）', () => {
   })
 
   test('raw Hex 编辑后 untouched value blur：raw、结果、N 不变、误差隐藏', async ({ page }) => {
-    // word 0x0005 的 LE 字节流（v2.6.5：Hex 字段是所选序的 byte stream）。
-    await hexInput(page).fill('0500')
+    // word 0x0005（canonical 原字直接输入）。
+    await hexInput(page).fill('0005')
     await hexInput(page).press('Tab')
     await expect(valueInput(page)).toHaveValue('0.01953125')
     await expect(quantizationPanel(page)).toHaveCount(0)
@@ -273,7 +273,7 @@ test.describe('LINEAR16 untouched blur（390×844 dark）', () => {
     // 未编辑任何字符：focus -> blur 不创建 LINEAR16 编码请求
     await valueInput(page).click()
     await valueInput(page).press('Tab')
-    await expect(hexInput(page)).toHaveValue('0500')
+    await expect(hexInput(page)).toHaveValue('0005')
     await expect(valueInput(page)).toHaveValue('0.01953125')
     await expect(page.getByLabel('L16 N（指数）')).toHaveValue('-8')
     await expect(quantizationPanel(page)).toHaveCount(0)
@@ -281,15 +281,15 @@ test.describe('LINEAR16 untouched blur（390×844 dark）', () => {
   })
 
   test('显式编辑物理值仍提交（fill 1 -> raw 0100 且 exact provenance 出现）', async ({ page }) => {
-    // word 0x0005 的 LE 字节流。
-    await hexInput(page).fill('0500')
+    // word 0x0005。
+    await hexInput(page).fill('0005')
     await hexInput(page).press('Tab')
     await expect(quantizationPanel(page)).toHaveCount(0)
 
-    // N=-8：Y_u = X / 2^N = 1 / 2^-8 = 256 -> raw 0x0100（字段显示 LE 字节流 0001）
+    // N=-8：Y_u = X / 2^N = 1 / 2^-8 = 256 -> raw 0x0100（canonical 显示 0100）
     await valueInput(page).fill('')
     await valueInput(page).fill('1')
-    await expect(hexInput(page)).toHaveValue('0001')
+    await expect(hexInput(page)).toHaveValue('0100')
     await expect(valueInput(page)).toHaveValue('1')
     await expect(quantizationPanel(page)).toHaveCount(1)
     await expect(quantizationPanel(page)).toContainText('+0.000000')

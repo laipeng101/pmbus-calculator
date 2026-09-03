@@ -1,18 +1,11 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import type { AppState } from './state'
 import { INITIAL_STATE } from './state'
-import {
-  loadPersistedState,
-  persistByteOrder,
-  persistCopy,
-  persistMode,
-  persistTheme,
-} from './persistence'
+import { loadPersistedState, persistCopy, persistMode, persistTheme } from './persistence'
 
 const KEYS = {
   theme: 'pmbus-calculator:theme',
   mode: 'pmbus-calculator:mode',
-  byteOrder: 'pmbus-calculator:byteOrder',
   copy: 'pmbus-calculator:copy',
 } as const
 
@@ -62,28 +55,22 @@ describe('persistence', () => {
       expect(loadPersistedState(base)).toEqual(base)
     })
 
-    it('restores mode, theme, byteOrder, and copy preferences', () => {
+    it('restores mode, theme, and copy preferences', () => {
       store.store.set(KEYS.mode, 'L16')
       store.store.set(KEYS.theme, 'dark')
-      store.store.set(KEYS.byteOrder, 'be')
-      store.store.set(
-        KEYS.copy,
-        JSON.stringify({ prefix0x: false, spaceBetweenBytes: false, endian: 'be' }),
-      )
+      store.store.set(KEYS.copy, JSON.stringify({ prefix0x: false, spaceBetweenBytes: false }))
       const s = loadPersistedState(baseState())
       expect(s.mode).toBe('L16')
       expect(s.ui.theme).toBe('dark')
-      expect(s.byteOrder).toBe('be')
-      expect(s.copy).toEqual({ prefix0x: false, spaceBetweenBytes: false, endian: 'be' })
+      expect(s.copy).toEqual({ prefix0x: false, spaceBetweenBytes: false })
     })
 
-    it('restores prefix/space/endian settings after a simulated reload', () => {
+    it('restores prefix/space settings after a simulated reload', () => {
       const first = loadPersistedState(baseState())
-      persistCopy({ ...first.copy, prefix0x: false, spaceBetweenBytes: false, endian: 'be' })
+      persistCopy({ ...first.copy, prefix0x: false, spaceBetweenBytes: false })
       const second = loadPersistedState(baseState())
       expect(second.copy.prefix0x).toBe(false)
       expect(second.copy.spaceBetweenBytes).toBe(false)
-      expect(second.copy.endian).toBe('be')
     })
 
     it('restores the VOUT_MODE mode key', () => {
@@ -106,19 +93,15 @@ describe('persistence', () => {
       const s = loadPersistedState(base)
       expect(s.copy.prefix0x).toBe(false)
       expect(s.copy.spaceBetweenBytes).toBe(base.copy.spaceBetweenBytes)
-      expect(s.copy.endian).toBe(base.copy.endian)
     })
 
-    it('ignores invalid enum values for mode, theme, byteOrder, and copy.endian', () => {
+    it('ignores invalid enum values for mode and non-boolean copy fields', () => {
       store.store.set(KEYS.mode, 'L99')
       store.store.set(KEYS.theme, 'blue')
-      store.store.set(KEYS.byteOrder, 'middle')
-      store.store.set(KEYS.copy, JSON.stringify({ endian: 'middle', prefix0x: 'yes' }))
+      store.store.set(KEYS.copy, JSON.stringify({ prefix0x: 'yes' }))
       const s = loadPersistedState(baseState())
       expect(s.mode).toBe(baseState().mode)
       expect(s.ui.theme).toBe(baseState().ui.theme)
-      expect(s.byteOrder).toBe(baseState().byteOrder)
-      expect(s.copy.endian).toBe(baseState().copy.endian)
       expect(s.copy.prefix0x).toBe(baseState().copy.prefix0x)
     })
 
@@ -128,6 +111,26 @@ describe('persistence', () => {
       const s = loadPersistedState(baseState())
       expect(s.mode).toBe('DIRECT')
       expect(s.raw).toBe(baseState().raw)
+    })
+
+    // v3.0.0 persistence regression (breaking refactor): storage written by
+    // v2.x contains the removed `byteOrder` key and a `copy.endian` field.
+    // The stale preference must never leak into the new state shape (no
+    // `endian`/`byteOrder` property) or change any persisted channel.
+    it('ignores the removed v2 byteOrder key and copy.endian field', () => {
+      store.store.set(KEYS.mode, 'L16')
+      store.store.set('pmbus-calculator:byteOrder', 'be')
+      store.store.set(
+        KEYS.copy,
+        JSON.stringify({ prefix0x: true, spaceBetweenBytes: true, endian: 'be' }),
+      )
+      const base = baseState()
+      const s = loadPersistedState(base)
+      expect(s.mode).toBe('L16')
+      expect(Object.keys(s.copy).sort()).toEqual(['prefix0x', 'spaceBetweenBytes'])
+      expect(s).toEqual({ ...base, mode: 'L16' })
+      // Canonical raw word is untouched by the legacy endian preference.
+      expect(s.raw).toBe(base.raw)
     })
 
     it('does not pollute base state with invalid persisted data', () => {
@@ -165,13 +168,8 @@ describe('persistence', () => {
       expect(store.setItem).toHaveBeenCalledWith(KEYS.mode, 'HALF')
     })
 
-    it('persistByteOrder writes the byteOrder key', () => {
-      persistByteOrder('be')
-      expect(store.setItem).toHaveBeenCalledWith(KEYS.byteOrder, 'be')
-    })
-
-    it('persistCopy writes JSON copy preferences', () => {
-      const copy = { prefix0x: false, spaceBetweenBytes: true, endian: 'le' } as const
+    it('persistCopy writes JSON copy preferences without an endian field', () => {
+      const copy = { prefix0x: false, spaceBetweenBytes: true } as const
       persistCopy(copy)
       expect(store.setItem).toHaveBeenCalledWith(KEYS.copy, JSON.stringify(copy))
     })
@@ -187,8 +185,7 @@ describe('persistence', () => {
       expect(() => {
         persistTheme('dark')
         persistMode('L16')
-        persistByteOrder('be')
-        persistCopy({ prefix0x: true, spaceBetweenBytes: true, endian: 'le' })
+        persistCopy({ prefix0x: true, spaceBetweenBytes: true })
       }).not.toThrow()
     })
   })

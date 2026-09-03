@@ -27,8 +27,8 @@ describe('M16 non-zero stress golden cases', () => {
     const vm = toCalculatorViewModel(base({ mode: 'L11', raw: 0xa3c1 }))
     expect(vm.valueText).toBe('0.234619140625')
     expect(vm.rawHex).toBe('0xA3C1')
-    expect(vm.rawBytesLE).toBe('0x C1 A3')
-    expect(vm.rawBytesBE).toBe('0x A3 C1')
+    expect(vm.wireBytes).toBe('0x C1 A3')
+    expect(vm.msbFirstBytes).toBe('0x A3 C1')
     expect(vm.formulaText).toBe('Y=961 × 2^-12')
     expect(buildCMacro(null, vm.rawWordHex, vm.formulaText)).toBe(
       '#define RAW_VALUE 0xA3C1 /* Y=961 × 2^-12 */',

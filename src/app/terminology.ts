@@ -38,6 +38,7 @@ export type TermId =
   | 'fp-special'
   | 'twos-complement'
   | 'quantization'
+  | 'raw-word'
   | 'hex'
   | 'le'
   | 'be'
@@ -247,6 +248,15 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     specRef: 'Part II §7.8/§7.9',
     scope: '编码读数（全模式）',
   },
+  'raw-word': {
+    id: 'raw-word',
+    token: 'Raw Word',
+    name: '原始字',
+    detail:
+      'canonical 16 位原始字：本计算器唯一的无符号数值位型真值。Raw Word 输入/显示、位网格、公式操作数、decode/encode、Raw Word 复制与 C 宏都指向同一个 state.raw；字节顺序只存在于 Wire Bytes 显示/复制层，永远不会改写 Raw Word 的数值含义（v3.0.0 领域模型）。',
+    source: 'project',
+    scope: '原始字（全模式）',
+  },
   hex: {
     id: 'hex',
     token: 'Hex',
@@ -258,21 +268,21 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
   le: {
     id: 'le',
     token: 'LE',
-    name: '小端序',
+    name: '低字节在前',
     detail:
-      '小端字节序：PMBus/SMBus word 在线上默认低字节在前、字节内高位在前（Part II §7.6 对浮点数据明示）；本工具的 L16 Hex 输入/显示按所选字节序的字节流解释，不改变线上顺序。',
-    source: 'generic',
-    specRef: 'Part II §7.6',
-    scope: '字节序（线上默认）',
+      '低字节在前（least significant byte first）：SMBus/PMBus word 事务在线上的传输顺序——SMBus 3.0 §6.5.4 写事务明示 word 数据 low byte first，§6.5.5 读事务图中 Data Byte Low 在前，PMBus Part I §5.6.3.2.4 确认 DS=0 默认按 SMBus 标准（最低有效字节在前）。本工具的 Wire Bytes 显示/复制即该顺序；它不改变 Raw Word 的数值。',
+    source: 'smbus',
+    specRef: 'SMBus 3.0 §6.5.4/§6.5.5',
+    scope: '字节序（线上顺序）',
   },
   be: {
     id: 'be',
     token: 'BE',
-    name: '大端字节序',
+    name: 'MSB-first 表示',
     detail:
-      '大端序（高字节在前）是本工具 L16 Hex 输入/显示的字节流解释选项之一；不改变 PMBus 线上默认的低字节优先顺序。',
+      '高字节在前（MSB-first / 大端）字节序列表示：与线上顺序相反的另一种 serialization 表示，仅用于显示与对照，不是 SMBus/PMBus word 的合法线上顺序，也不会改写 Raw Word。',
     source: 'project',
-    scope: '字节序（Hex 输入/显示选项）',
+    scope: '字节序（MSB-first 表示）',
   },
   exponent: {
     id: 'exponent',

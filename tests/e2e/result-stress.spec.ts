@@ -56,8 +56,8 @@ test.describe('M16 result stress geometry', () => {
     await switchMode(page, /LINEAR16/)
     await page.locator('#vout-mode-input').fill('13')
     await page.locator('#vout-mode-input').press('Tab')
-    // word 0x8FC3 的 LE 字节流（v2.6.5：Hex 字段是所选序的 byte stream）。
-    await fillRaw(page, 'C38F')
+    // word 0x8FC3（canonical 原字直接输入）。
+    await fillRaw(page, '8FC3')
     await expect(page.locator('#value-input')).toHaveValue('4.49255371094')
 
     await switchMode(page, /DIRECT/)
@@ -151,7 +151,7 @@ test.describe('M16 result stress geometry', () => {
     await settle(page)
 
     const buttons = page.getByRole('button', {
-      name: /Hex（LE）|LE 字节|BE 字节|物理值|C 代码/,
+      name: /Raw Word Hex|Wire 字节|MSB-first 字节|物理值|C 代码/,
     })
     const count = await buttons.count()
     expect(count).toBeGreaterThanOrEqual(5)
@@ -177,18 +177,17 @@ test.describe('M16 result stress geometry', () => {
     await expect(formatGroup.getByRole('button', { name: '0x 前缀' })).toBeVisible()
     await expect(formatGroup.getByRole('button', { name: '字节空格' })).toBeVisible()
 
-    const orderGroup = page.locator('[role="group"][aria-labelledby="copy-hex-order-label"]')
-    await expect(orderGroup).toContainText('Hex 复制顺序')
-    await expect(orderGroup.getByRole('button', { name: 'LE', exact: true })).toBeVisible()
-    await expect(orderGroup.getByRole('button', { name: 'BE', exact: true })).toBeVisible()
+    // v3.0.0: the endian order group is gone — explicit copy actions replaced it.
+    await expect(
+      page.locator('[role="group"][aria-labelledby="copy-hex-order-label"]'),
+    ).toHaveCount(0)
 
-    // Focus order follows DOM order: format buttons then order buttons.
     const focusables = page.locator('.copy-prefs button')
-    expect(await focusables.count()).toBe(4)
+    expect(await focusables.count()).toBe(2)
     const labels = await focusables.evaluateAll((els) =>
       els.map((el) => (el as HTMLButtonElement).textContent?.trim() ?? ''),
     )
-    expect(labels).toEqual(['0x 前缀', '字节空格', 'LE', 'BE'])
+    expect(labels).toEqual(['0x 前缀', '字节空格'])
   })
 
   test('negative ordinary quantization error is informational, never danger', async ({ page }) => {
@@ -336,17 +335,17 @@ test.describe('M16 result stress geometry', () => {
       })
     })
 
-    const copyHex = page.getByRole('button', { name: 'Hex（LE）' })
-    await copyHex.scrollIntoViewIfNeeded()
-    const boxBefore = await copyHex.boundingBox()
-    await copyHex.click()
+    const copyRaw = page.getByRole('button', { name: 'Raw Word Hex' })
+    await copyRaw.scrollIntoViewIfNeeded()
+    const boxBefore = await copyRaw.boundingBox()
+    await copyRaw.click()
 
     const feedback = page.locator('.copy-feedback')
     await expect(feedback).toBeVisible()
     await expect(feedback).toHaveAttribute('role', 'status')
     await expect(feedback).toHaveAttribute('aria-live', 'polite')
 
-    const boxAfter = await copyHex.boundingBox()
+    const boxAfter = await copyRaw.boundingBox()
     expect(boxBefore?.x).toBeCloseTo(boxAfter?.x ?? 0, 5)
     expect(boxBefore?.y).toBeCloseTo(boxAfter?.y ?? 0, 5)
   })

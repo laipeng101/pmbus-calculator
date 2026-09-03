@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CalculatorViewModel } from '../../app/view-model'
 import type { AppState } from '../../app/state'
 import { copyTextToClipboard } from '../../app/copy-utils'
-import { getCopyHexLabel } from '../../app/result-presentation'
+import { formatRawWordCopyText } from '../../app/result-presentation'
 import ControlTooltip from '../help/ControlTooltip'
 import type { ControlTriggerProps } from '../help/ControlTooltip'
 import { CopyIcon } from '../icons/Icon'
@@ -12,20 +12,13 @@ interface Props {
   copyPrefs: AppState['copy']
   onTogglePrefix: () => void
   onToggleSpace: () => void
-  onCopyEndianChange: (endian: AppState['copy']['endian']) => void
 }
 
 type FeedbackKind = 'success' | 'error'
 
 const FEEDBACK_DURATION_MS = 1800
 
-export default function CopyToolbar({
-  vm,
-  copyPrefs,
-  onTogglePrefix,
-  onToggleSpace,
-  onCopyEndianChange,
-}: Props) {
+export default function CopyToolbar({ vm, copyPrefs, onTogglePrefix, onToggleSpace }: Props) {
   const [feedback, setFeedback] = useState<{ text: string; kind: FeedbackKind } | null>(null)
   const feedbackTimerRef = useRef<number | null>(null)
 
@@ -62,10 +55,11 @@ export default function CopyToolbar({
     [showFeedback],
   )
 
-  const copyHex = copyPrefs.endian === 'be' ? vm.rawBytesBE : vm.rawBytesLE
-  const copyHexLabel = getCopyHexLabel(copyPrefs.endian)
+  // v3.0.0: explicit representation actions replace the ambiguous endian
+  // switch — each button copies exactly the representation its name states.
+  const rawWordText = formatRawWordCopyText(vm.rawWordHex, copyPrefs.prefix0x)
   // v2.5.9: a relative-derivation range error disables the 物理值 copy with
-  // an accessible, visible reason; raw Hex / LE / BE copies stay available.
+  // an accessible, visible reason; Raw Word / wire-byte copies stay available.
   const physicalCopyUnavailable = vm.physicalValueCopy?.available === false
   // v2.5.11: a precision-folded DIRECT decode swaps the copied payload for
   // the verified safe re-entry text — the display approximation must never
@@ -75,33 +69,33 @@ export default function CopyToolbar({
   return (
     <div className="copy-toolbar space-y-3">
       <div className="grid grid-cols-6 gap-2">
-        <ControlTooltip help="copy-hex" params={{ endian: copyPrefs.endian }}>
+        <ControlTooltip help="copy-raw-word" params={{ prefixed: copyPrefs.prefix0x }}>
           {(triggerProps) => (
             <CopyButton
               className="col-span-2"
               triggerProps={triggerProps}
-              onClick={() => copy(copyHex, copyHexLabel)}
-              label={copyHexLabel}
+              onClick={() => copy(rawWordText, 'Raw Word Hex')}
+              label="Raw Word Hex"
             />
           )}
         </ControlTooltip>
-        <ControlTooltip help="copy-le-bytes" params={undefined}>
+        <ControlTooltip help="copy-wire-bytes" params={undefined}>
           {(triggerProps) => (
             <CopyButton
               className="col-span-2"
               triggerProps={triggerProps}
-              onClick={() => copy(vm.rawBytesLE, 'LE bytes')}
-              label="LE 字节"
+              onClick={() => copy(vm.wireBytes, 'Wire 字节')}
+              label="Wire 字节"
             />
           )}
         </ControlTooltip>
-        <ControlTooltip help="copy-be-bytes" params={undefined}>
+        <ControlTooltip help="copy-msb-first-bytes" params={undefined}>
           {(triggerProps) => (
             <CopyButton
               className="col-span-2"
               triggerProps={triggerProps}
-              onClick={() => copy(vm.rawBytesBE, 'BE bytes')}
-              label="BE 字节"
+              onClick={() => copy(vm.msbFirstBytes, 'MSB-first 字节')}
+              label="MSB-first 字节"
             />
           )}
         </ControlTooltip>
@@ -191,43 +185,6 @@ export default function CopyToolbar({
             )}
           </ControlTooltip>
         </div>
-        <div
-          role="group"
-          aria-labelledby="copy-hex-order-label"
-          className="flex flex-wrap items-center gap-2"
-        >
-          <span id="copy-hex-order-label" className="copy-pref-group-label">
-            Hex 复制顺序
-          </span>
-          <div className="inline-flex rounded-md p-0.5 surface-muted border-default">
-            <ControlTooltip
-              help="copy-pref-endian-le"
-              params={{ pressed: copyPrefs.endian === 'le' }}
-            >
-              {(triggerProps) => (
-                <EndianButton
-                  triggerProps={triggerProps}
-                  pressed={copyPrefs.endian === 'le'}
-                  onClick={() => onCopyEndianChange('le')}
-                  label="LE"
-                />
-              )}
-            </ControlTooltip>
-            <ControlTooltip
-              help="copy-pref-endian-be"
-              params={{ pressed: copyPrefs.endian === 'be' }}
-            >
-              {(triggerProps) => (
-                <EndianButton
-                  triggerProps={triggerProps}
-                  pressed={copyPrefs.endian === 'be'}
-                  onClick={() => onCopyEndianChange('be')}
-                  label="BE"
-                />
-              )}
-            </ControlTooltip>
-          </div>
-        </div>
       </div>
 
       {feedback && (
@@ -294,30 +251,6 @@ function PreferenceButton({
       onClick={onClick}
       aria-pressed={pressed}
       className="preference-button min-h-9 rounded-md px-2.5 py-1 font-medium"
-    >
-      {label}
-    </button>
-  )
-}
-
-function EndianButton({
-  pressed,
-  onClick,
-  label,
-  triggerProps,
-}: {
-  pressed: boolean
-  onClick: () => void
-  label: string
-  triggerProps?: ControlTriggerProps
-}) {
-  return (
-    <button
-      {...triggerProps}
-      type="button"
-      onClick={onClick}
-      aria-pressed={pressed}
-      className="endian-button min-h-8 rounded px-2.5 py-1 text-xs font-semibold"
     >
       {label}
     </button>

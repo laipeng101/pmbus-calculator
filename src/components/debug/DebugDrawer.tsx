@@ -71,10 +71,6 @@ export default function DebugDrawer({ open, state, onToggle }: Props) {
               <span className="color-text-primary">{state.commandKey ?? '—'}</span>
             </div>
             <div className="flex justify-between">
-              <span>字节序</span>
-              <span className="color-text-primary">{state.byteOrder.toUpperCase()}</span>
-            </div>
-            <div className="flex justify-between">
               <span>主题</span>
               <span className="color-text-primary">{state.ui.theme}</span>
             </div>

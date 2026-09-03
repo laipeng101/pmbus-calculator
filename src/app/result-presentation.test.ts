@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  getCopyHexLabel,
+  formatRawWordCopyText,
   getQuantizationTextColorToken,
   getResultValueSizeClass,
 } from './result-presentation'
@@ -28,9 +28,11 @@ describe('getQuantizationTextColorToken', () => {
   })
 })
 
-describe('getCopyHexLabel', () => {
-  it('reflects current copy endianness', () => {
-    expect(getCopyHexLabel('le')).toBe('Hex（LE）')
-    expect(getCopyHexLabel('be')).toBe('Hex（BE）')
+describe('formatRawWordCopyText', () => {
+  it('copies the canonical raw word with or without the 0x prefix', () => {
+    expect(formatRawWordCopyText('0x1234', true)).toBe('0x1234')
+    expect(formatRawWordCopyText('0x1234', false)).toBe('1234')
+    expect(formatRawWordCopyText('0xC000', true)).toBe('0xC000')
+    expect(formatRawWordCopyText('0x0000', false)).toBe('0000')
   })
 })

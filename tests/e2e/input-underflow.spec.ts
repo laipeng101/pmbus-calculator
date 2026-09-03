@@ -1,6 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 import { appUrl } from './helpers/app-url'
-import { leByteStreamText } from './helpers/byte-order'
 
 /**
  * 输入下溢合同（v2.5.10）：非零十进制文本经 binary64 转换得到 ±0 时，
@@ -89,10 +88,9 @@ async function setupRelative(page: Page, raw: string) {
   await page.getByRole('tab', { name: /LINEAR16/ }).click()
   await page.getByRole('radio', { name: '相对值' }).click()
   await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
-  // `raw` is the register word; the Hex field takes its LE byte stream.
-  const typed = leByteStreamText(raw)
-  await hexInput(page).fill(typed)
-  await expect(hexInput(page)).toHaveValue(typed)
+  // v3.0.0: the Hex field takes the canonical register word itself.
+  await hexInput(page).fill(raw)
+  await expect(hexInput(page)).toHaveValue(raw)
 }
 
 test.describe('输入下溢：非零十进制不得静默提交为 ±0（v2.5.10，1280×900 dark）', () => {
@@ -193,11 +191,11 @@ test.describe('输入下溢：非零十进制不得静默提交为 ±0（v2.5.10
     await page.getByRole('radio', { name: '绝对值' }).click()
     await valueInput(page).fill('2')
     await valueInput(page).press('Tab')
-    // raw word 0x0200；字段显示所选序（默认 LE）的字节流。
-    await expect(hexInput(page)).toHaveValue('0002')
+    // raw word 0x0200；Raw Word 字段始终显示 canonical 数值原字。
+    await expect(hexInput(page)).toHaveValue('0200')
     await valueInput(page).fill('1e-400')
     await expectUnderflowError(page, 'value-input-error')
-    await expect(hexInput(page)).toHaveValue('0002')
+    await expect(hexInput(page)).toHaveValue('0200')
 
     // DIRECT keeps its own coefficient workspace
     await page.getByRole('tab', { name: /DIRECT/ }).click()
@@ -241,7 +239,7 @@ test.describe('输入下溢：非零十进制不得静默提交为 ±0（v2.5.10
     // Ratio 2^-16 makes the product leave the double range: the DERIVATION
     // underflow diagnostic (v2.5.9) reports it on the visible InfoPanel —
     // a different error source from the input-underflow error above.
-    await hexInput(page).fill(leByteStreamText('0001'))
+    await hexInput(page).fill('0001')
     await expect(resultValue(page)).toHaveText('—')
     await expect(
       page.locator('[role="alert"]').filter({ hasText: '计算下溢：两个非零有限数相乘' }),
@@ -250,7 +248,7 @@ test.describe('输入下溢：非零十进制不得静默提交为 ±0（v2.5.10
     await expect(page.locator('#physical-value-copy-reason')).toBeVisible()
 
     // Recovery: ratio 1 restores the finite result without reload.
-    await hexInput(page).fill(leByteStreamText('0100'))
+    await hexInput(page).fill('0100')
     await expect(resultValue(page)).toHaveText('5e-324')
     await expect(physicalCopyButton(page)).toBeEnabled()
   })

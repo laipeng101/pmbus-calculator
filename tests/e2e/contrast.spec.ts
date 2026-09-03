@@ -54,14 +54,18 @@ test.describe('contrast', () => {
     for (const theme of ['light', 'dark'] as const) {
       await setTheme(page, theme)
       await page.goto(appUrl())
-      const pressed = page.locator('.copy-toolbar [aria-pressed="true"]').first()
-      const pressedStyles = await readContrast(pressed)
+      // 断言同一个偏好按钮在按下/未按下两个状态都满足对比度：不依赖其他
+      // aria-pressed 控件的存在，也不依赖 reload 后持久化偏好的具体取值
+      // （v3.0.0 移除字节序按钮后，旧「组内找 false」写法在第二轮失去目标）。
+      const prefixButton = page.getByRole('button', { name: '0x 前缀' })
+      await prefixButton.scrollIntoViewIfNeeded()
+      const pressedBefore = (await prefixButton.getAttribute('aria-pressed')) === 'true'
+      const pressedStyles = await readContrast(prefixButton)
       expect(await contrastOf(pressedStyles)).toBeGreaterThanOrEqual(4.5)
 
-      const prefixButton = page.getByRole('button', { name: '0x 前缀' })
       await prefixButton.click()
-      const unpressed = page.locator('.copy-toolbar [aria-pressed="false"]').first()
-      const unpressedStyles = await readContrast(unpressed)
+      await expect(prefixButton).toHaveAttribute('aria-pressed', pressedBefore ? 'false' : 'true')
+      const unpressedStyles = await readContrast(prefixButton)
       expect(await contrastOf(unpressedStyles)).toBeGreaterThanOrEqual(4.5)
     }
   })
@@ -130,9 +134,9 @@ test.describe('contrast', () => {
         configurable: true,
       })
     })
-    const copyHex = page.getByRole('button', { name: 'Hex（LE）' })
-    await copyHex.scrollIntoViewIfNeeded()
-    await copyHex.click()
+    const copyRaw = page.getByRole('button', { name: 'Raw Word Hex' })
+    await copyRaw.scrollIntoViewIfNeeded()
+    await copyRaw.click()
     const success = page.locator('.copy-feedback')
     await expect(success).toBeVisible()
     const successStyles = await success.evaluate((el) => {
@@ -152,7 +156,7 @@ test.describe('contrast', () => {
         configurable: true,
       })
     })
-    await copyHex.click()
+    await copyRaw.click()
     await expect(page.locator('.copy-feedback')).toContainText('复制失败')
     const errorStyles = await page.locator('.copy-feedback').evaluate((el) => {
       const cs = getComputedStyle(el)

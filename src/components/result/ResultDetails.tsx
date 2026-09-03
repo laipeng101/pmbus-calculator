@@ -11,24 +11,18 @@ interface Props {
   copyPrefs: AppState['copy']
   onTogglePrefix: () => void
   onToggleSpace: () => void
-  onCopyEndianChange: (endian: AppState['copy']['endian']) => void
 }
 
 /**
  * Auxiliary result tools shown in the workspace secondary column.
  *
  * The primary physical result lives in ResultSummary above the workspace; this
- * panel keeps raw Hex, byte order, quantization error, copy tools, warnings and
- * the collapsible calculation walkthrough. It deliberately does NOT carry the
- * result-panel live-region contract, so there is only one live result region.
+ * panel keeps the canonical Raw Word, the wire-byte serialization rows,
+ * quantization error, copy tools, warnings and the collapsible calculation
+ * walkthrough. It deliberately does NOT carry the result-panel live-region
+ * contract, so there is only one live result region.
  */
-export default function ResultDetails({
-  vm,
-  copyPrefs,
-  onTogglePrefix,
-  onToggleSpace,
-  onCopyEndianChange,
-}: Props) {
+export default function ResultDetails({ vm, copyPrefs, onTogglePrefix, onToggleSpace }: Props) {
   return (
     <section
       aria-label="辅助结果"
@@ -44,34 +38,35 @@ export default function ResultDetails({
 
         {vm.mode !== 'VOUT_MODE' && (
           <>
-            {/* Raw Hex */}
+            {/* Canonical Raw Word */}
             <div className="min-w-0">
               <div className="mb-1 text-xs color-text-muted">
-                原始 <TechnicalTerm termId="hex" />
+                Raw Word（
+                <TechnicalTerm termId="raw-word" />）
               </div>
               <div className="input-surface rounded-lg px-4 py-2 text-lg font-semibold">
                 {vm.rawHex}
               </div>
             </div>
 
-            {/* Byte Order */}
+            {/* Byte sequences: SMBus/PMBus wire order + MSB-first representation */}
             <div className="grid grid-cols-2 gap-3">
               <div className="min-w-0">
                 <div className="mb-1 text-xs color-text-muted">
-                  小端序（
+                  SMBus / PMBus Wire Bytes（低字节在前，
                   <TechnicalTerm termId="le" />）
                 </div>
                 <div className="input-surface rounded-lg px-3 py-2 text-sm font-medium">
-                  {vm.rawBytesLE}
+                  {vm.wireBytes}
                 </div>
               </div>
               <div className="min-w-0">
                 <div className="mb-1 text-xs color-text-muted">
-                  大端序（
+                  MSB-first 字节（高字节在前，
                   <TechnicalTerm termId="be" />）
                 </div>
                 <div className="input-surface rounded-lg px-3 py-2 text-sm font-medium">
-                  {vm.rawBytesBE}
+                  {vm.msbFirstBytes}
                 </div>
               </div>
             </div>
@@ -85,7 +80,6 @@ export default function ResultDetails({
               copyPrefs={copyPrefs}
               onTogglePrefix={onTogglePrefix}
               onToggleSpace={onToggleSpace}
-              onCopyEndianChange={onCopyEndianChange}
             />
           </>
         )}

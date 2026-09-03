@@ -3,13 +3,7 @@ import { appReducer, INITIAL_STATE } from './app/reducer'
 import type { AppState } from './app/state'
 import { useCalculatorViewModel } from './app/view-model'
 import { isEditableEventTarget } from './app/editable-target'
-import {
-  loadPersistedState,
-  persistByteOrder,
-  persistCopy,
-  persistMode,
-  persistTheme,
-} from './app/persistence'
+import { loadPersistedState, persistCopy, persistMode, persistTheme } from './app/persistence'
 import AppHeader from './components/layout/AppHeader'
 import WorkspaceLayout from './components/layout/WorkspaceLayout'
 import ModeSwitcher from './components/mode/ModeSwitcher'
@@ -41,7 +35,6 @@ function App() {
 
   useEffect(() => persistTheme(state.ui.theme), [state.ui.theme])
   useEffect(() => persistMode(state.mode), [state.mode])
-  useEffect(() => persistByteOrder(state.byteOrder), [state.byteOrder])
   useEffect(() => persistCopy(state.copy), [state.copy])
 
   // Keyboard shortcuts for mode switching: Ctrl+1..5 only outside editing
@@ -103,7 +96,6 @@ function App() {
                 copyPrefs={state.copy}
                 onTogglePrefix={() => dispatch({ type: 'copy/toggle-prefix' })}
                 onToggleSpace={() => dispatch({ type: 'copy/toggle-space' })}
-                onCopyEndianChange={(endian) => dispatch({ type: 'copy/set-endian', endian })}
               />
             }
           />

@@ -7,13 +7,12 @@ const BASE: AppState = {
   mode: 'L11',
   raw: 0,
   commandKey: null,
-  byteOrder: 'le',
   voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   valueRequest: null,
   l16: { payloadKind: 'ulinear16', nominalVout: null },
   direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-  copy: { prefix0x: true, spaceBetweenBytes: true, endian: 'le' },
+  copy: { prefix0x: true, spaceBetweenBytes: true },
   ui: { theme: 'system', debugOpen: false },
 }
 

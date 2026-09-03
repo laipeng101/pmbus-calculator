@@ -31,7 +31,7 @@ interface Props {
 export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
   return (
     <div role="tabpanel" id={MODE_PANEL_ID} aria-labelledby={modeTabId(mode)} className="space-y-4">
-      {/* Hex Input + 16-bit Bit Grid (not for the 1-byte VOUT_MODE calculator) */}
+      {/* Raw Word Hex Input + 16-bit Bit Grid (not for the 1-byte VOUT_MODE calculator) */}
       {mode !== 'VOUT_MODE' && (
         <section className="rounded-xl p-4 panel-surface-muted">
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider color-text-secondary">
@@ -39,14 +39,14 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
           </h3>
           <div className="flex items-start gap-2">
             <div className="mt-2 text-sm color-text-muted">
-              <TechnicalTerm termId="hex" />
+              <TechnicalTerm termId="raw-word" />
             </div>
             <HexInput
               id="raw-hex-input"
               value={vm.rawHexDigits}
               fixedPrefix="0x"
               maxDigits={4}
-              ariaLabel="原始数据 Hex"
+              ariaLabel="Raw Word（16 位原始字）"
               placeholder="0000"
               className="input-surface w-full rounded-lg px-3 py-2 text-base font-mono outline-none"
               onCommit={(text) => dispatch({ type: 'raw/set-from-hex', hex: text })}
@@ -185,27 +185,10 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 </select>
               </label>
 
-              <label
-                className="flex items-center gap-2 text-sm color-text-muted"
-                htmlFor="l16-byte-order"
-              >
-                <span>字节序</span>
-                <select
-                  id="l16-byte-order"
-                  value={state.byteOrder}
-                  onChange={(e) =>
-                    dispatch({ type: 'byte-order/set', endian: e.target.value as 'le' | 'be' })
-                  }
-                  className="panel-surface-muted rounded-lg px-3 py-2 text-sm outline-none"
-                  aria-label="L16 字节序"
-                >
-                  <option value="le">LE（低字节在前）</option>
-                  <option value="be">BE（高字节在前）</option>
-                </select>
-              </label>
               <span className="text-xs color-text-muted">
-                PMBus/SMBus word 默认低字节在前； Hex 输入/显示按所选字节序的字节流解释（
-                <TechnicalTerm termId="be" /> = 高字节在前）
+                Raw Word 是未交换的 16 位数值；SMBus/PMBus word 事务在线上按低字节在前传输 （SMBus
+                3.0 §6.5.4），线上字节顺序只在 Wire Bytes 显示/复制层出现 （
+                <TechnicalTerm termId="le" /> / <TechnicalTerm termId="be" />）
               </span>
               <span className="text-xs color-text-muted">
                 解释语义：

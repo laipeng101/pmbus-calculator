@@ -67,7 +67,9 @@ async function setL16Stress(page: Page) {
   await page.getByRole('tab', { name: /LINEAR16/ }).click()
   await page.locator('#vout-mode-input').fill('13')
   await page.locator('#vout-mode-input').press('Tab')
-  await fillRaw(page, '8FC3')
+  // v3.0.0: the Hex field takes the canonical word itself — the stress word
+  // stays 0xC38F exactly as under the v2.6.5 LE byte-stream contract.
+  await fillRaw(page, 'C38F')
 }
 
 async function setDirectStress(page: Page) {

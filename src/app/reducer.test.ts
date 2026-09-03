@@ -825,45 +825,52 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('byte-order/set', () => {
-    it('sets byteOrder', () => {
-      const s = appReducer(base, { type: 'byte-order/set', endian: 'be' })
-      expect(s.byteOrder).toBe('be')
-    })
-  })
-
-  describe('raw/set-from-hex with L16 byte order', () => {
-    // v2.6.5: the hex text is the byte stream in the selected byte order —
-    // BE (high byte first) '1234' and LE (low byte first) '3412' both mean the
-    // register word 0x1234. state.raw is never stored swapped.
-    const l16 = (byteOrder: 'le' | 'be'): AppState => ({ ...base, mode: 'L16', byteOrder })
-
-    it('parses BE input as a high-byte-first byte stream (no swap)', () => {
-      const s = appReducer(l16('be'), { type: 'raw/set-from-hex', hex: '1234' })
-      expect(s.raw).toBe(0x1234)
+  describe('raw/set-from-hex — canonical Raw Word contract (v3.0.0)', () => {
+    // The Raw Word Hex field IS the canonical numeric raw word in every mode:
+    // '3412' always means 0x3412. The v2.6.5 L16 LE byte-stream interpretation
+    // ('3412' meaning 0x1234) is intentionally deleted; wire bytes live only
+    // in the serialization layer (view-model wireBytes / msbFirstBytes).
+    it('parses L16 hex input as the canonical raw word (no byte-order swap)', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s = appReducer(l16, { type: 'raw/set-from-hex', hex: '3412' })
+      expect(s.raw).toBe(0x3412)
     })
 
-    it('parses LE input as a low-byte-first byte stream (swap)', () => {
-      const s = appReducer(l16('le'), { type: 'raw/set-from-hex', hex: '3412' })
-      expect(s.raw).toBe(0x1234)
+    it('the same digits mean the same word in every mode', () => {
+      for (const mode of ['L11', 'L16', 'DIRECT', 'HALF'] as const) {
+        const s = appReducer(base, { type: 'mode/set', mode })
+        const typed = appReducer(s, { type: 'raw/set-from-hex', hex: '1234' })
+        expect(typed.raw).toBe(0x1234)
+      }
     })
 
-    it('same digits map to different raw words under the two orders', () => {
-      const le = appReducer(l16('le'), { type: 'raw/set-from-hex', hex: '1234' })
-      const be = appReducer(l16('be'), { type: 'raw/set-from-hex', hex: '1234' })
-      expect(le.raw).toBe(0x3412)
-      expect(be.raw).toBe(0x1234)
+    it('round-trips the canonical display form: parse(format(raw)) === raw', () => {
+      const canonicalRawWords = [0x0000, 0x0001, 0x1234, 0x8000, 0xbfff, 0xc000, 0xffff]
+      for (const mode of ['L11', 'L16', 'DIRECT', 'HALF'] as const) {
+        const start = appReducer(base, { type: 'mode/set', mode })
+        for (const raw of canonicalRawWords) {
+          const s = appReducer(start, { type: 'raw/set', raw: String(raw) })
+          expect(s.raw).toBe(raw)
+          const digits = s.raw.toString(16).toUpperCase().padStart(4, '0')
+          const reparsed = appReducer(s, { type: 'raw/set-from-hex', hex: digits })
+          expect(reparsed.raw).toBe(raw)
+          // Lowercase and 0x-prefixed forms parse to the same word.
+          expect(
+            appReducer(s, { type: 'raw/set-from-hex', hex: '0x' + digits.toLowerCase() }).raw,
+          ).toBe(raw)
+        }
+      }
     })
 
-    it('byte order does not apply outside L16 (L11 hex stays the word itself)', () => {
-      const s = appReducer(
-        { ...base, mode: 'L11', byteOrder: 'be' },
-        {
-          type: 'raw/set-from-hex',
-          hex: '1234',
-        },
-      )
-      expect(s.raw).toBe(0x1234)
+    it('the main Raw Word hex view matches state.raw in L16 regardless of any preference', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s = appReducer(l16, { type: 'raw/set-from-hex', hex: 'c000' })
+      const vm = toCalculatorViewModel(s)
+      expect(vm.rawHex).toBe('0xC000')
+      expect(vm.rawHexDigits).toBe('C000')
+      expect(vm.rawWordHex).toBe('0xC000')
+      expect(vm.wireBytes).toBe('0x 00 C0')
+      expect(vm.msbFirstBytes).toBe('0x C0 00')
     })
   })
 
@@ -1284,13 +1291,6 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('copy/set-endian', () => {
-    it('sets endian', () => {
-      const s = appReducer(base, { type: 'copy/set-endian', endian: 'be' })
-      expect(s.copy.endian).toBe('be')
-    })
-  })
-
   describe('ui/set-theme', () => {
     it('sets theme', () => {
       const s = appReducer(base, { type: 'ui/set-theme', theme: 'dark' })
@@ -1385,7 +1385,6 @@ describe('appReducer — state transitions', () => {
       expect(cleared.raw).toBe(withNominal.raw)
       expect(cleared.voutMode.byte).toBe(withNominal.voutMode.byte)
       expect(cleared.l16.payloadKind).toBe(withNominal.l16.payloadKind)
-      expect(cleared.byteOrder).toBe(withNominal.byteOrder)
       expect(cleared.mode).toBe(withNominal.mode)
     })
 
