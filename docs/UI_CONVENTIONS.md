@@ -214,8 +214,29 @@
 ## 10. 视觉系统与验收
 
 - 表面最多三层：canvas / panel / panel-elevated；控件使用 control / control-hover / control-active。
+- **可编辑可供性（v3.1.0 起）**：真实可编辑控件（text/number/hex input、
+  select）使用 `.input-field` 家族（`--color-input-bg` + `--color-input-border`
+  语义 token 对）；只读展示/结果框使用 `.panel-surface-muted`（muted 底 +
+  subtle 边框）。两族在静止态、亮/暗主题、无 hover（触屏）下即可区分；
+  禁止新控件把可编辑表面与 muted 展示面复用同一 background+border 二元组，
+  也禁止在非输入元素上使用 `.input-field`/「input」命名类。`aria-invalid`
+  字段由 tokens.css 的 danger 边框 + ring 规则呈现错误态；带步进器的 Hex
+  字段用 `.hex-field` shell（外层单一边界，内部输入与 `+1`/`−1` 按钮共享，
+  `.hex-field-input` 无自身边框，焦点态由 `.hex-field:focus-within` 承载）。
+- **Hex 步进器合同（v3.1.0）**：只在语义上可步进的有界十六进制整数字段
+  启用（现仅 Raw Word 16 位与 VOUT_MODE 8 位）；范围由 `maxDigits` 推导，
+  边界对应按钮真实 `disabled`、永不回绕；输出大写固定位宽补零；合法草稿
+  从草稿值步进、空/非法草稿从 committed 值步进并清错；每次激活恰好一次
+  提交且不破坏 untouched-blur no-op（事务被消费）；步进按钮 `type="button"`、
+  `pointerdown`/`mousedown` preventDefault 保持输入框焦点、带字段上下文
+  可访问名、可 Tab、Enter/Space 激活；不劫持输入框 ArrowUp/ArrowDown；
+  目标尺寸 ≥24×24。方向合同：fine pointer 下 `+`/`−` 横向并排（shell 高度
+  与普通输入框一致，M36/M39 桌面布局预算不被推高）；coarse pointer 下
+  纵向堆叠便于拇指触达（步进区 ≥44px 宽、单按钮 ≥28px 高）；两种方向
+  共享同一 shell 边界与内部分隔线。
 - 阴影只用于 elevated、sticky result 和 popup；删除全局 `filter: brightness` hover。
-- 控件高度约 40px，紧凑按钮不低于 32–36px；点击目标至少 24×24px。
+- 控件高度约 40px，紧凑按钮不低于 32–36px（`.hex-step-btn` 步进按钮按上方
+  步进器合同的专用尺寸执行）；点击目标至少 24×24px。
 - 圆角：控件约 8px，panel 12px，shell 16px；间距以 8px 为基准。
 - 图标为 `currentColor` SVG，`aria-hidden=true`，按钮有可访问文本或 `aria-label`。
 - 中文为 UI 主语言；PMBus、L11、L16、DIRECT、HALF、Hex、LE/BE 等技术缩写保留。

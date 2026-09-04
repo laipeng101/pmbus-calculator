@@ -230,7 +230,7 @@ export default function ValueInput({ vm, dispatch }: Props) {
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
         }}
-        className="input-surface color-accent w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
+        className="input-field color-accent w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
         placeholder="0"
         aria-label="物理值"
       />

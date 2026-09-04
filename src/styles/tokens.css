@@ -4,13 +4,13 @@
  * from non-product files such as scripts/ and tests/ — e.g. the English word
  * "lowercase" in specification error messages); `@source '../'` then registers
  * src/ (relative to this file) as the only candidate source, minus the unit
- * tests colocated under src/ whose prose also yields candidates (e.g. "table"
- * in golden-table descriptions). index.html holds no utility classes and is
- * intentionally not scanned.
+ * tests colocated under src/ (both .ts and .tsx) whose prose also yields
+ * candidates (e.g. "table" in golden-table descriptions). index.html holds no
+ * utility classes and is intentionally not scanned.
  */
 @import 'tailwindcss' source(none);
 @source '../';
-@source not '../**/*.test.ts';
+@source not '../**/*.test.{ts,tsx}';
 
 /* =========================================================
    PMBus Calculator Design Tokens
@@ -62,6 +62,11 @@
   --color-control-active: #cbd5e1;
   --color-border-subtle: #e2e8f0;
   --color-border-strong: #cbd5e1;
+  /* Editable-field affordance: inputs must be distinguishable from
+     panel-surface-muted readouts at rest, without hover (touch has none).
+     Light: white well + slate-400 border on the muted panel. */
+  --color-input-bg: #ffffff;
+  --color-input-border: #94a3b8;
   --color-focus-ring: #3b82f6;
   --color-accent-solid: #1e40af;
   --color-on-accent: #ffffff;
@@ -128,6 +133,10 @@
     --color-control-active: #64748b;
     --color-border-subtle: #475569;
     --color-border-strong: #64748b;
+    /* Dark: sunken near-canvas well + slate-500 border against the #334155
+       muted surface — distinguishable at rest in the opposite direction. */
+    --color-input-bg: #0f172a;
+    --color-input-border: #64748b;
     --color-focus-ring: #93c5fd;
     --color-accent-solid: #2563eb;
     --color-on-accent: #ffffff;
@@ -185,6 +194,8 @@
   --color-control-active: #cbd5e1;
   --color-border-subtle: #e2e8f0;
   --color-border-strong: #cbd5e1;
+  --color-input-bg: #ffffff;
+  --color-input-border: #94a3b8;
   --color-focus-ring: #3b82f6;
   --color-accent-solid: #1e40af;
   --color-on-accent: #ffffff;
@@ -240,6 +251,8 @@
   --color-control-active: #64748b;
   --color-border-subtle: #475569;
   --color-border-strong: #64748b;
+  --color-input-bg: #0f172a;
+  --color-input-border: #64748b;
   --color-focus-ring: #93c5fd;
   --color-accent-solid: #2563eb;
   --color-on-accent: #ffffff;
@@ -758,11 +771,135 @@ select:disabled,
   white-space: nowrap;
 }
 
-.input-surface {
-  background: var(--color-surface-muted);
+/* Editable-field affordance (v3.1.0): real inputs/selects own this pair —
+   distinct from .panel-surface-muted readouts at rest, in both themes, with
+   no reliance on hover (touch devices have none). Covers rest / hover /
+   focus / error / disabled via the rules below and the global base layer. */
+.input-field {
+  background: var(--color-input-bg);
   color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-input-border);
   font-family: var(--font-mono);
+}
+
+/* Field-level error: danger border + ring on the exact control that is
+   invalid (aria-invalid) or whose HexInput shell holds an error (data-error). */
+.input-field[aria-invalid='true'],
+.hex-field[data-error='true'] {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 1px var(--color-danger);
+}
+
+/* Hex field shell (HexInput with stepper): the shell owns the editable
+   surface; the text input and the +1/-1 step buttons share it behind a
+   single border, separated only by an internal divider. Fine pointers get
+   a horizontal +/- pair so the shell keeps plain-input height (desktop
+   layout budgets, M36/M39); coarse pointers stack the pair for thumb
+   reach (media query below). */
+.hex-field {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  /* Resting height = vertical padding + text line + borders; the 26px
+     button floor below sets the flex line, so both button targets stay
+     above the WCAG 2.5.8 24x24 minimum with real slack. */
+  padding: 0.375rem 2px 0.375rem 0.75rem;
+  border-radius: 8px;
+}
+
+.hex-field-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+}
+
+.hex-field-input:focus-visible {
+  /* The shell carries the focus treatment (focus-within below); an extra
+     outline inside the shell would double the indicator. */
+  outline: none;
+}
+
+.hex-field:focus-within {
+  border-color: var(--color-focus-ring);
+  box-shadow: 0 0 0 1px var(--color-focus-ring);
+}
+
+.hex-stepper {
+  display: flex;
+  flex-direction: row;
+  flex: 0 0 auto;
+  /* 52px = two >=24px targets side by side + 1px divider; each button is
+     ~25.5px wide at rest. */
+  width: 3.25rem;
+  border-left: 1px solid var(--color-input-border);
+}
+
+.hex-step-btn {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 26px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.hex-step-btn + .hex-step-btn {
+  border-left: 1px solid var(--color-input-border);
+}
+
+.hex-step-btn:disabled {
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hex-field:hover:not([data-error='true']) {
+    box-shadow: 0 0 0 1px var(--color-focus-ring);
+  }
+
+  /* The shell owns hover/focus feedback; the inner input must not stack a
+     second ring on top of it. */
+  .hex-field .hex-field-input:hover {
+    box-shadow: none;
+  }
+
+  .hex-step-btn:hover:not(:disabled) {
+    background: var(--color-control-hover);
+    color: var(--color-text-primary);
+  }
+}
+
+/* Coarse pointers: stack the +/− pair vertically for thumb reach, with the
+   original touch geometry — bigger step targets (>=28px tall, 44px gutter),
+   shell grows to ~66px so both buttons keep their minimums. */
+@media (pointer: coarse) {
+  .hex-field {
+    min-height: 4.125rem;
+    padding: 2px 2px 2px 0.75rem;
+  }
+
+  .hex-stepper {
+    flex-direction: column;
+    width: 2.75rem;
+  }
+
+  .hex-step-btn {
+    min-height: 28px;
+  }
+
+  .hex-step-btn + .hex-step-btn {
+    border-left: none;
+    border-top: 1px solid var(--color-input-border);
+  }
 }
 
 .workspace-l16-block {

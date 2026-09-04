@@ -3,14 +3,13 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-04（v3.0.0——MAJOR breaking：canonical Raw Word 领域模型
-重构。`state.raw` 成为 L11/L16/DIRECT/HALF 唯一的 canonical 16-bit raw word，
-v2.6.5 的 L16 主 Hex 字节流语义删除（`3412` 恒为 `0x3412`）；`byteOrder`、
-`byte-order/set`、`copy.endian`、`copy/set-endian` 删除；序列化分层为
-SMBus / PMBus Wire Bytes（低字节在前，SMBus 3.0 §6.5.4/§6.5.5）与
-MSB-first 表示；复制改为显式 representation actions；持久化旧键显式忽略。
-ADR 0003、DOMAIN_MODEL §4、AGENTS 同步。前一版 v2.6.8 为 PMBus 1.3.1
-provenance 可复现 + L16 术语对齐）
+最后更新：2026-09-05（v3.1.0——MINOR：Hex `+1`/`−1` 步进器新能力（Raw Word
+16 位 / VOUT_MODE 8 位，范围由 `maxDigits` 推导、边界禁用不回绕、单次提交、
+blur/click 竞态以焦点保持解决）+ 可编辑字段静止态可供性（`--color-input-bg`
+/`--color-input-border` token + `.input-field` 家族取代 `.input-surface`，
+editable 与 muted 展示面在亮/暗静止态可区分，`aria-invalid` danger 边框）+
+Raw Word 编辑 shell 与 bit 网格 ≥8px scoped 间距。受保护算法、canonical
+raw、复制、持久化零变更。前一版 v3.0.0 为 canonical Raw Word MAJOR 重构）
 
 ## 当前产品基线
 
@@ -36,7 +35,7 @@ provenance 可复现 + L16 术语对齐）
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v3.0.0；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v3.1.0；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -267,7 +266,17 @@ M0–M42 complete；stable release v3.0.0；production distribution: GitHub Page
   同向更新，新增 l16-byte-order 闭环 E2E 与共享 `leByteStreamText` 测试助手；
   desktop-dark-l16-stress 视觉基线经逐图审查后更新；DOMAIN_MODEL §4、terminology
   le/be 与页面提示文案同步。
-- 当前：无进行中的功能里程碑；v3.0.0 已发布，M40–M42 complete。
+- v3.1.0（MINOR）：输入可发现性与 Hex 步进器——全部真实可编辑控件
+  （Hex/整数/十进制/下拉/标称值）以 `--color-input-bg`/`--color-input-border`
+  token + `.input-field` 家族与 muted 只读展示面在静止态（亮/暗、无 hover）
+  视觉区分，`aria-invalid` danger 边框；Raw Word（16 位）与 VOUT_MODE
+  （8 位）Hex 字段内嵌 `+1`/`−1` 步进器（范围由 `maxDigits` 推导、边界
+  真实 disabled 永不回绕、空/非法草稿从 committed 值步进、单次提交经既有
+  commit 路径、`pointerdown`/`mousedown` preventDefault 保持焦点消除
+  blur/click 竞态、键盘/触屏/WCAG 2.5.8 目标尺寸合同）；Raw Word 编辑
+  shell 与 bit 网格 ≥8px scoped 间距；`.input-surface` 删除、
+  ResultDetails 只读行迁回展示面。受保护算法零变更；视觉基线成对审查更新。
+- 当前：无进行中的功能里程碑；v3.1.0 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

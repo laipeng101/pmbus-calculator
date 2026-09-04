@@ -4,6 +4,46 @@
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-09-05
+
+### Added
+
+- **Hex `+1`/`−1` 步进器（新能力）**：Raw Word（16 位，`0x0000..0xFFFF`）与
+  VOUT_MODE（8 位，`0x00..0xFF`）Hex 输入框内嵌上下步进按钮。范围由
+  `maxDigits` 推导；边界处对应按钮真实 `disabled`，永不回绕；步进输出保持
+  大写、固定位宽、补零。合法草稿以草稿解析值为基值；空/非法过渡草稿以最后
+  committed 值为基值并把草稿替换为规范合法文本、清除字段错误。每次点击 /
+  键盘激活只经现有 `onCommit` 提交一次；步进按钮以 `pointerdown`/
+  `mousedown` `preventDefault` 保持输入框焦点，blur 提交路径不参与（事务被
+  消费，步进后 blur 仍是严格 no-op）。按钮 `type="button"`、带字段上下文的
+  可访问名（如「Raw Word（16 位原始字）增加 1」）、可 Tab、Enter/Space
+  激活、focus-visible 清晰。步进不劫持输入框 ArrowUp/ArrowDown。
+- **可编辑字段静止态可供性（affordance）**：新增 `--color-input-bg` /
+  `--color-input-border` 语义 token 与 `.input-field` 控件家族，覆盖
+  rest/hover/focus/error/disabled。亮色为白底 + slate-400 边框、暗色为
+  近画布下沉底 + slate-500 边框——与 `.panel-surface-muted` 只读展示面
+  （muted 底 + subtle 边框）在静止态即可区分，不依赖 hover（触屏无
+  hover）。全部真实可编辑控件迁移：Raw Word / VOUT_MODE Hex、物理值、
+  L16 V/Y_s、L11 Y、N 指数、DIRECT Y 与 m/b/R、L16 数据解释下拉、VID 代码
+  下拉、标称参考值。`aria-invalid` 字段显示 danger 边框 + ring。
+- **Raw Word 与位网格间距**：Raw Word 编辑 shell 与 16 位 bit 网格之间
+  建立稳定 `12px` 净垂直间距（在调用点 scoped，不改 BitFieldGrid 其他
+  消费者），dark/light、360/390/tablet/desktop 均无边框视觉重合。
+
+### Changed
+
+- `ResultDetails` 的 Raw Word / Wire Bytes / MSB-first 只读展示框从
+  `.input-surface` 迁移到 `.panel-surface-muted` 展示面——只读框不再复用
+  「input」命名与可编辑表面；`.input-surface` 类删除（零残留）。
+- 步进器 shell（`.hex-field`）由外层拥有可编辑表面，内部文本输入与步进
+  按钮共享同一视觉边界，仅用内部分隔线；方向合同：fine pointer 下 `+`/`−`
+  横向并排、shell 高度与普通输入框一致（不推高 M36/M39 桌面布局预算），
+  coarse pointer 下纵向堆叠、shell 约 66px（步进区 ≥44px 宽、单按钮
+  ≥28px 高，符合 WCAG 2.2 SC 2.5.8 与触屏合同）。
+- 领域零变更：受保护算法、VOUT_MODE 位语义、canonical raw、复制格式、
+  持久化偏好、untouched blur no-op、DIRECT 4096 门禁全部不变；步进只是
+  既有 `raw/set-from-hex` / `vout-mode/set-byte` commit 路径的新的调用方。
+
 ## [3.0.0] - 2026-09-04
 
 ### Changed

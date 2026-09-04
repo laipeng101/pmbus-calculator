@@ -166,7 +166,7 @@ export default function NominalVoutInput({ id, value, ariaLabel, onCommit, onCle
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
         }}
-        className="input-surface w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
+        className="input-field w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
         placeholder="未设置（相对比值仍可计算）"
       />
       {error && (

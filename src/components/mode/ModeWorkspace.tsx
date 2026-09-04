@@ -48,18 +48,24 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               maxDigits={4}
               ariaLabel="Raw Word（16 位原始字）"
               placeholder="0000"
-              className="input-surface w-full rounded-lg px-3 py-2 text-base font-mono outline-none"
+              stepper
+              className="w-full text-base"
               onCommit={(text) => dispatch({ type: 'raw/set-from-hex', hex: text })}
             />
           </div>
 
-          <BitFieldGrid
-            bitCount={16}
-            groups={vm.bitGroups}
-            regions={getBitRegions(mode, state.l16.payloadKind, state.voutMode.byte)}
-            onToggle={(index) => dispatch({ type: 'bit/toggle', bit: 15 - index })}
-            groupLabel="16 位编辑器"
-          />
+          {/* Scoped vertical gap: the editable Raw Word field and the bit
+              grid are separate interaction layers and need >=8px of air;
+              keep the spacing at this call site, not on BitFieldGrid. */}
+          <div className="mt-3">
+            <BitFieldGrid
+              bitCount={16}
+              groups={vm.bitGroups}
+              regions={getBitRegions(mode, state.l16.payloadKind, state.voutMode.byte)}
+              onToggle={(index) => dispatch({ type: 'bit/toggle', bit: 15 - index })}
+              groupLabel="16 位编辑器"
+            />
+          </div>
         </section>
       )}
 
@@ -101,7 +107,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                     value={state.l11.y}
                     ariaLabel="Y（11 位有符号整数）"
                     onCommit={(text) => dispatch({ type: 'l11/set-y', y: text })}
-                    className="surface border-default color-text-primary font-mono w-full rounded-lg px-2 py-2 text-center text-lg font-bold outline-none"
+                    className="input-field color-text-primary w-full rounded-lg px-2 py-2 text-center text-lg font-bold outline-none"
                   />
                 </div>
               }
@@ -177,7 +183,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                       payloadKind: e.target.value as 'ulinear16' | 'slinear16-offset',
                     })
                   }
-                  className="panel-surface-muted max-w-full min-w-0 rounded-lg px-3 py-2 text-sm outline-none"
+                  className="input-field max-w-full min-w-0 rounded-lg px-3 py-2 text-sm outline-none"
                   aria-label="L16 数据解释类型"
                 >
                   <option value="ulinear16">ULINEAR16（无符号）</option>
@@ -281,7 +287,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 value={vm.directY ?? 0}
                 ariaLabel="Y（16 位有符号，−32768～32767）"
                 onCommit={(text) => dispatch({ type: 'direct/set-y', y: text })}
-                className="input-surface w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
+                className="input-field w-full rounded-lg px-3 py-2 text-base font-semibold outline-none"
               />
             </div>
 
@@ -314,7 +320,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                         value: text,
                       })
                     }
-                    className="input-surface w-full rounded-lg px-3 py-2 text-sm outline-none"
+                    className="input-field w-full rounded-lg px-3 py-2 text-sm outline-none"
                   />
                 </div>
               ))}
