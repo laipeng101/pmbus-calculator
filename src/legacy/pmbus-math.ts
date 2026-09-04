@@ -320,7 +320,14 @@ export const PMBusMath = {
     return null
   },
 
-  /** SMBus PEC (CRC-8) per SMBus 3.0 Section 5.4 */
+  /**
+   * SMBus PEC (CRC-8, poly 0x07) per SMBus 3.0 §6.4 / §6.4.1.3. `bytes` is
+   * the complete PEC message assembled in wire order: every address byte
+   * with its R/W bit, the command byte, the read address after a repeated
+   * start (combined transactions), and the data bytes — word data goes low
+   * byte first (SMBus 3.0 §6.5.4/§6.5.5). The trailing PEC byte itself is
+   * not part of the input.
+   */
   calculatePEC(bytes: number[] | Uint8Array): number {
     let crc = 0
     for (const b of bytes) {
