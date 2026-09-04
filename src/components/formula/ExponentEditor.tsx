@@ -21,7 +21,7 @@ export default function ExponentEditor({ id, value, disabled, ariaLabel, onCommi
       disabled={disabled}
       ariaLabel={ariaLabel}
       onCommit={onCommit}
-      className="exponent-input surface border-default color-text-primary font-mono w-full rounded-md px-1.5 py-0 text-center text-sm font-bold outline-none disabled:opacity-60"
+      className="exponent-input input-field color-text-primary w-full rounded-md px-1.5 py-0 text-center text-sm font-bold outline-none disabled:opacity-60"
     />
   )
 }

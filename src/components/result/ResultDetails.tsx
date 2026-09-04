@@ -44,7 +44,9 @@ export default function ResultDetails({ vm, copyPrefs, onTogglePrefix, onToggleS
                 Raw Word（
                 <TechnicalTerm termId="raw-word" />）
               </div>
-              <div className="input-surface rounded-lg px-4 py-2 text-lg font-semibold">
+              {/* Read-only canonical Raw Word display: deliberately the muted
+                  display surface, never the editable .input-field pair. */}
+              <div className="panel-surface-muted font-mono rounded-lg px-4 py-2 text-lg font-semibold">
                 {vm.rawHex}
               </div>
             </div>
@@ -56,7 +58,7 @@ export default function ResultDetails({ vm, copyPrefs, onTogglePrefix, onToggleS
                   SMBus / PMBus Wire Bytes（低字节在前，
                   <TechnicalTerm termId="le" />）
                 </div>
-                <div className="input-surface rounded-lg px-3 py-2 text-sm font-medium">
+                <div className="panel-surface-muted font-mono rounded-lg px-3 py-2 text-sm font-medium">
                   {vm.wireBytes}
                 </div>
               </div>
@@ -65,7 +67,7 @@ export default function ResultDetails({ vm, copyPrefs, onTogglePrefix, onToggleS
                   MSB-first 字节（高字节在前，
                   <TechnicalTerm termId="be" />）
                 </div>
-                <div className="input-surface rounded-lg px-3 py-2 text-sm font-medium">
+                <div className="panel-surface-muted font-mono rounded-lg px-3 py-2 text-sm font-medium">
                   {vm.msbFirstBytes}
                 </div>
               </div>

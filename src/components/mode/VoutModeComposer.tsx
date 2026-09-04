@@ -289,7 +289,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
                       value={PMBusMath.toSigned(state.raw, 16)}
                       ariaLabel="Y_s（16 位二补码偏移，−32768～32767）"
                       onCommit={(text) => dispatch({ type: 'l16/set-slinear-y', y: text })}
-                      className="input-surface w-full rounded-lg px-2 py-2 text-center text-base font-semibold outline-none"
+                      className="input-field w-full rounded-lg px-2 py-2 text-center text-base font-semibold outline-none"
                     />
                   ) : (
                     <DecimalInput
@@ -297,7 +297,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
                       value={state.raw}
                       ariaLabel="V（16 位无符号，0～65535）"
                       onCommit={(text) => dispatch({ type: 'raw/set', raw: text })}
-                      className="input-surface w-full rounded-lg px-2 py-2 text-center text-base font-semibold outline-none"
+                      className="input-field w-full rounded-lg px-2 py-2 text-center text-base font-semibold outline-none"
                     />
                   )}
                 </div>
@@ -349,7 +349,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
             onChange={(e) =>
               dispatch({ type: 'vout-mode/set-parameter', parameter: Number(e.target.value) })
             }
-            className="panel-surface-muted w-full min-w-0 rounded-lg px-3 py-2 text-sm outline-none"
+            className="input-field w-full min-w-0 rounded-lg px-3 py-2 text-sm outline-none"
           >
             {VID_CODE_TABLE.map((v) => (
               <option key={v.code} value={v.code}>
@@ -400,7 +400,8 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           maxDigits={2}
           ariaLabel="VOUT_MODE"
           placeholder="18"
-          className="input-surface w-full rounded-lg px-3 py-2 text-sm outline-none"
+          stepper
+          className="w-full text-sm"
           onCommit={(text) => dispatch({ type: 'vout-mode/set-byte', hex: text })}
         />
       </div>

@@ -114,6 +114,39 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
     await expect(page.locator(VALUE_INPUT)).toHaveValue('1')
   })
 
+  test('Hex 步进器：真实触摸 tap 步进一次，coarse 目标合同（v3.1.0）', async ({ page }) => {
+    // coarse-pointer 几何合同：步进区宽 >=44px、单按钮高 >=28px、shell 高 >=66px
+    //（文档 ~66px 的下界，代码 min-height 4.125rem）。
+    const field = page.locator('[data-testid="raw-hex-input-field"]')
+    const up = page.locator('[data-testid="raw-hex-input-step-up"]')
+    const down = page.locator('[data-testid="raw-hex-input-step-down"]')
+    const metrics = await field.evaluate((el) => {
+      const fieldRect = el.getBoundingClientRect()
+      const upRect = el
+        .querySelector('[data-testid="raw-hex-input-step-up"]')
+        ?.getBoundingClientRect()
+      return {
+        shellHeight: fieldRect.height,
+        stepperWidth: upRect ? fieldRect.right - upRect.left : 0,
+        upHeight: upRect?.height ?? 0,
+      }
+    })
+    expect(metrics.shellHeight).toBeGreaterThanOrEqual(66)
+    expect(metrics.stepperWidth).toBeGreaterThanOrEqual(44)
+    expect(metrics.upHeight).toBeGreaterThanOrEqual(28)
+
+    // 真实触摸屏 tap 驱动同一 canonical state：0000 -> 0001 -> 0000。
+    await up.tap()
+    await expect(page.locator(HEX_INPUT)).toHaveValue('0001')
+    await expect(page.locator(VALUE_INPUT)).toHaveValue('1')
+    await down.tap()
+    await expect(page.locator(HEX_INPUT)).toHaveValue('0000')
+    // 触摸 tap 全程无 blur 提交副作用：本测试未先聚焦输入框（activeElement 是
+    // body，焦点保持合同由桌面 hex-stepper 套件的 activeElement 断言承担），
+    // 这里验证步进后输入框仍可用且 canonical 状态一致。
+    await expect(page.locator(RAW_HEX_INPUT)).toBeEnabled()
+  })
+
   test('模式 tab 依次触摸切换保持可用且无横向溢出', async ({ page }) => {
     for (const mode of [/LINEAR16/, /DIRECT/, /HALF/, /VOUT_MODE/, /LINEAR11/]) {
       await page.getByRole('tab', { name: mode }).tap()
