@@ -18,7 +18,7 @@ import type { QuantizationOutcome } from './quantization-error'
 import { formatPlainNumber } from './numeric-presentation'
 import { RELATIVE_VOLTAGE_OVERFLOW_NOTE, RELATIVE_VOLTAGE_UNDERFLOW_NOTE } from './relative-voltage'
 import {
-  analyzeDirectRoundTrip,
+  analyzeDirectTextReentry,
   formatExactDecimal,
   formatExactDelta,
   formatExactPercent,
@@ -280,12 +280,14 @@ function buildDirectSteps(
     intermediate('direct-y-minus-b', 'Y × 10^(-R) − b', formatPlainNumber(yMinusB)),
     intermediate('direct-inv-m', '1/m', formatPlainNumber(invM)),
   ]
-  // v2.5.11: when the exact §7.4 decode needs more precision than binary64
-  // carries, the steps must expose the exact value (fraction and, when it
-  // terminates, the exact decimal) so the folded binary64 display can never
-  // pass as the whole truth. Derived from the live raw — never stale.
-  const analysis = analyzeDirectRoundTrip(y, m, b, r)
-  if (analysis && !analysis.roundTripSafe) {
+  // v2.5.11, unified v3.1.1: when the DISPLAYED text cannot be re-entered
+  // safely (the real typed path encodes it to a different Y), the steps must
+  // expose the exact value (fraction and, when it terminates, the exact
+  // decimal) so the approximate display can never pass as the whole truth.
+  // Same analysis the fidelity/copy/warning surfaces consume — never a
+  // locally re-derived verdict.
+  const analysis = analyzeDirectTextReentry(y, m, b, r)
+  if (analysis && !analysis.displayRoundTripSafe) {
     intermediates.push(
       intermediate('direct-exact-value', '精确值（有理数）', formatExactRational(analysis.exact)),
     )

@@ -37,6 +37,7 @@
 
 import { PMBusMath } from '../legacy/pmbus-math'
 import { classifyFloatText } from './float-parse'
+import { formatPlainNumber } from './numeric-presentation'
 
 export interface ExactRational {
   /** Signed numerator; the sign is carried here. */
@@ -528,6 +529,78 @@ export function analyzeDirectRoundTrip(
 }
 
 /**
+ * TEXT re-entry analysis (v3.1.1): what a user actually re-enters is not
+ * the binary64 value but the DISPLAYED TEXT — the canonical plain-number
+ * presentation of the binary64 decode (ADR 0005) — and the reducer encodes
+ * that text through the exact typed path (`parseDecimalExactRational` +
+ * `encodeDirectExactFromRational`), never through the binary64 pipeline.
+ * The binary64 round trip of v2.5.11 answers a different question and is
+ * blind to display-formatting folds (e.g. m=1, b=1, R=12, Y=-1: the binary64
+ * value re-encodes to -1, but the displayed "-1" encodes to Y=0).
+ *
+ * This analysis is the single fact source for every DIRECT text-re-entry
+ * surface (display honesty, warnings, quantization note, calculation steps
+ * and the 物理值 copy contract): it derives the display text with the same
+ * `formatPlainNumber` policy that renders it, then submits that exact text
+ * through the same classification + exact encode the reducer uses. The
+ * binary64 verdict is retained as a diagnostic so messaging can name WHERE
+ * re-entry breaks: the binary64 representation itself, or only the display
+ * formatting on top of it.
+ */
+export type DirectReentryLossKind = 'binary64-representation' | 'display-formatting'
+
+export interface DirectTextReentryAnalysis {
+  /** Original signed Y (the payload word's field value). */
+  y: number
+  /** Exact §7.4 decode of (y, m, b, r). */
+  exact: ExactRational
+  /** Real product decode result — PMBusMath.decodeDirect in binary64. */
+  approxValue: number
+  /**
+   * Canonical display text of `approxValue` (the same string the result
+   * card, the physical-value input and the 物理值 copy hand out).
+   */
+  displayText: string
+  /**
+   * Y the real typed path assigns to `displayText`; null only if the
+   * display text somehow fails the exact parse (defensive fail-closed —
+   * unreachable for legal coefficients, where the display text is always a
+   * finite complete decimal).
+   */
+  displayReencodedY: number | null
+  /** True when re-entering the DISPLAY TEXT returns to y. */
+  displayRoundTripSafe: boolean
+  /** Diagnostic: Y the binary64 pipeline assigns to `approxValue`. */
+  b64ReencodedY: number
+  /** Diagnostic: binary64 pipeline round trip (the v2.5.11 verdict). */
+  b64RoundTripSafe: boolean
+}
+
+export function analyzeDirectTextReentry(
+  y: number,
+  m: number,
+  b: number,
+  r: number,
+): DirectTextReentryAnalysis | null {
+  const base = analyzeDirectRoundTrip(y, m, b, r)
+  if (!base) return null
+  const displayText = formatPlainNumber(base.approxValue)
+  const displayExact = parseDecimalExactRational(displayText)
+  const displayReencodedY =
+    displayExact === null ? null : encodeDirectExactFromRational(displayExact, m, b, r)
+  return {
+    y: base.y,
+    exact: base.exact,
+    approxValue: base.approxValue,
+    displayText,
+    displayReencodedY,
+    displayRoundTripSafe: displayReencodedY === base.y,
+    b64ReencodedY: base.reencodedY,
+    b64RoundTripSafe: base.roundTripSafe,
+  }
+}
+
+/**
  * Deterministic search bound for the safe re-entry text. The exact decode X
  * sits at the CENTER of its re-encode acceptance interval, whose T-space
  * half-width is 10^-R / (2|m|); the nearest decimal grid of step 10^-k is
@@ -596,13 +669,26 @@ function nearestDecimalText(x: ExactRational, k: number): string {
 }
 
 /**
+ * A verified re-entry text plus an honest label of what it is: `exact`
+ * means the string IS the exact §7.4 decode (a terminating decimal
+ * expansion); `approximate` means the exact value is a repeating decimal
+ * and the string is a finite approximation whose re-entry is verified to
+ * return to the original Y — it must never be presented as the exact value.
+ */
+export interface SafeDirectReentryText {
+  text: string
+  kind: 'exact' | 'approximate'
+}
+
+/**
  * Generate a decimal string that provably re-enters to the original Y:
- * terminating decimals prefer their exact expansion; repeating rationals
- * take the first verified nearest-decimal approximation inside the
- * deterministic digit bound. Every candidate — exact or approximate — is
- * re-parsed and re-encoded through the independent exact encoder before it
- * may be returned; null means no verified string exists within the bound
- * and callers must degrade safely (never hand out an unverified string).
+ * terminating decimals prefer their exact expansion (kind `exact`);
+ * repeating rationals take the first verified nearest-decimal approximation
+ * inside the deterministic digit bound (kind `approximate`). Every
+ * candidate — exact or approximate — is re-parsed and re-encoded through
+ * the independent exact encoder before it may be returned; null means no
+ * verified string exists within the bound and callers must degrade safely
+ * (never hand out an unverified string).
  */
 export function generateSafeDirectReentryText(
   exact: ExactRational,
@@ -611,12 +697,14 @@ export function generateSafeDirectReentryText(
   b: number,
   r: number,
   maxFractionDigits: number = SAFE_REENTRY_MAX_FRACTION_DIGITS,
-): string | null {
+): SafeDirectReentryText | null {
   const terminating = terminatingDecimalText(exact)
-  if (terminating !== null && reentryVerifies(terminating, y, m, b, r)) return terminating
+  if (terminating !== null && reentryVerifies(terminating, y, m, b, r)) {
+    return { text: terminating, kind: 'exact' }
+  }
   for (let k = 0; k <= maxFractionDigits; k++) {
     const candidate = nearestDecimalText(exact, k)
-    if (reentryVerifies(candidate, y, m, b, r)) return candidate
+    if (reentryVerifies(candidate, y, m, b, r)) return { text: candidate, kind: 'approximate' }
   }
   return null
 }

@@ -104,19 +104,31 @@
   不变；消除的是「exact → binary64 → 回录」的不可逆精度折叠。m=0 时
   精确参照返回 invalid，不伪造有理数；lexeme 不是完整十进制时 reducer
   fail-closed（UI 路径经 `classifyFloatText` 不可达）。
-- **精确参照与回程分析单一来源（v2.5.11）**：`src/app/direct-exact.ts`
-  提供 §7.4 的精确解码有理数（分母恒正、约分）、真实 binary64 管线的
-  回程分析（`roundTripSafe` 按构造等价于 `PMBusMath.encodeDirect(
-PMBusMath.decodeDirect(y, …))`）与经验证的安全回录文本生成
+- **精确参照与文本回录事实单一来源（v2.5.11；v3.1.1 统一为显示文本合同）**：
+  `src/app/direct-exact.ts` 提供 §7.4 的精确解码有理数（分母恒正、约分）、
+  真实 binary64 管线的回程分析（诊断保留）与经验证的安全回录文本生成
   （终止小数优先精确展开；循环有理数用有界经验证近似——候选串必须经
-  独立 parse + exact encode 回到原 Y，否则返回 null 触发安全降级）。
-  该模块是 fidelity 判断的单一来源；组件与测试不得用浮点比较自行推导。
-- **精度折叠的呈现（v2.5.11，UI_CONVENTIONS §15）**：当 raw 的精确解码值
-  超出 binary64 精度、显示值直接回输会编码为不同 Y 时，view-model 输出
-  `directFidelity`（精确有理数/十进制文本、近似显示值、回编 Y、经验证
-  回录文本）；警告 `direct-precision-fold`、量化读数注记（deltaKind 降为
-  warn）与计算步骤的精确值行全部消费同一解析。这不是 PMBus 公式错误，
-  也不表示 `encodeDirect(Number)` 有错——是显示层不可逆性的诚实标注；
+  独立 parse + exact encode 回到原 Y，否则返回 null 触发安全降级，并以
+  `exact`/`approximate` kind 如实标注文本性质）。
+  v3.1.1 起保真谓词由 `analyzeDirectTextReentry` 单一回答：**显示文本**
+  （`formatPlainNumber` 对 binary64 解码的 canonical 呈现，与结果卡/输入框/
+  复制同源）经与 reducer 完全相同的 typed 合同（classify → 精确 parse →
+  精确 encode）回编是否回到当前 Y。binary64 管线回程只是诊断——它对显示
+  格式化折叠全盲（(1,1,12) 全族 0 触发而 29491/65536 复制不安全）。
+  该模块是 fidelity 判断的单一来源；组件与测试不得用浮点比较或 binary64
+  guard 自行推导回录安全。
+- **回录不可安全时的呈现（v2.5.11；v3.1.1 按损失分层）**：当显示文本经
+  typed 编码会落到不同 Y 时，view-model 输出 `directFidelity`（精确有理数/
+  十进制文本、近似显示值、显示文本真实回编 Y、经验证回录文本及其
+  exact/approximate kind）；警告 `direct-precision-fold`、量化读数注记
+  （deltaKind 降为 warn）与计算步骤的精确值行全部消费同一解析。`lossKind`
+  区分两种损失并必须在文案中区分：`binary64-representation`（binary64 值
+  本身回编即改变 payload，如 (1,1,17)）与 `display-formatting`（binary64 值
+  可安全回录、仅 12 位有效数字显示文本不行，如 (1,1,12)、(3,1,16)）——不得
+  把所有折叠都称为「超出 binary64 精度」。循环有理数的经验证近似回录文本
+  不得冒充精确有限小数。m=0 时物理值复制禁用并给出可访问原因（占位符
+  `—` 不是可回录的物理值）。这不是 PMBus 公式错误，也不表示
+  `encodeDirect(Number)` 有错——是显示层不可逆性的诚实标注；
   raw/Y 编辑始终是位级真值的权威路径。
 - **精确请求 provenance 与 exact 分类（v2.5.12）**：`valueRequest` 是模式
   判别联合；DIRECT 保留 reducer 实际用于 exact 编码的同一 lexeme
