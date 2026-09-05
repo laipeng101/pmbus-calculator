@@ -97,6 +97,21 @@ describe('deriveL16Semantics — interpretation kinds', () => {
     })
   })
 
+  test('case 5b: a zero ratio can never classify as overflow or underflow, even with a huge nominal', () => {
+    const facts = deriveL16Semantics(
+      make({
+        voutMode: { byte: 0x83 },
+        raw: 0x0000,
+        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
+      }),
+    )
+    expect(facts.interpretation).toMatchObject({
+      kind: 'relative-ratio',
+      ratio: 0,
+      finalVoltage: { kind: 'finite', value: 0 },
+    })
+  })
+
   test('case 7: relative overflow → overflow final voltage, inputs preserved', () => {
     const facts = deriveL16Semantics(
       make({

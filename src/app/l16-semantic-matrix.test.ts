@@ -57,6 +57,15 @@ describe('L16 semantic matrix — absolute LINEAR (shared byte 0x18, N=-8)', () 
     expect(toCalculatorViewModel(make({ raw: 0xffff })).valueText).toBe('255.99609375')
     expect(toCalculatorViewModel(make({ raw: 0xffff })).nRangeText).toBe('0 ~ 255.99609375')
   })
+
+  test('case 15b: shared byte 0x00 (absolute LINEAR, N=0) is the all-zero edge', () => {
+    const vm = toCalculatorViewModel(make({ voutMode: { byte: 0x00 }, raw: 0x0c00 }))
+    expect(vm.valueText).toBe('3072')
+    expect(vm.formulaText).toBe('V=3072 × 2^0')
+    expect(vm.nRangeText).toBe('0 ~ 65535')
+    expect(vm.steps.find((s) => s.id === 'result')?.value).toBe('3072')
+    expect(vm.warnings.filter((w) => w.id.startsWith('l16-'))).toEqual([])
+  })
 })
 
 describe('L16 semantic matrix — relative ULINEAR16 (byte 0x83, N=3)', () => {
@@ -115,6 +124,21 @@ describe('L16 semantic matrix — relative ULINEAR16 (byte 0x83, N=3)', () => {
     const diag = vm.warnings.find((w) => w.id === 'l16-relative-zero-ratio')
     expect(diag?.level).toBe('warning')
     expect(diag?.text).toContain('§8.5.2')
+    expect(vm.physicalValueCopy).toBeUndefined()
+  })
+
+  test('case 15c: relative raw boundary 0xFFFF → max ratio stays a finite fact', () => {
+    const vm = toCalculatorViewModel(
+      make({
+        voutMode: { byte: 0x83 },
+        raw: 0xffff,
+        l16: { payloadKind: 'ulinear16', nominalVout: 1 },
+      }),
+    )
+    expect(vm.valueText).toBe('524280')
+    expect(vm.formulaText).toBe('R=65535 × 2^3=524280（52428000%）; X=1×R=524280 V')
+    expect(vm.steps.find((s) => s.id === 'result')?.value).toBe('524280')
+    expect(vm.warnings.filter((w) => w.id.startsWith('l16-'))).toEqual([])
     expect(vm.physicalValueCopy).toBeUndefined()
   })
 

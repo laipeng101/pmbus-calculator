@@ -86,9 +86,11 @@ export interface L16Semantics {
  */
 export function deriveL16Semantics(state: AppState): L16Semantics {
   const eff = effectiveL16VoutMode(state)
+  // One byte truth for every fact: the selector echoes state.voutMode.byte,
+  // so both consumers below resolve the same byte by construction.
   const analysis = analyzeVoutMode(eff.byte)
   const payloadKind = state.l16.payloadKind
-  const payloadContext = resolveL16PayloadContext(state.voutMode.byte, payloadKind)
+  const payloadContext = resolveL16PayloadContext(eff.byte, payloadKind)
 
   let interpretation: L16RawInterpretation
   if (eff.source === 'non-linear') {
