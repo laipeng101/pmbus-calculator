@@ -52,12 +52,13 @@ export interface L16PayloadContextVM {
 }
 
 /**
- * DIRECT precision-fidelity contract (v2.5.11). Present ONLY when the
- * current raw's exact §7.4 decode needs more precision than binary64
- * carries, so the displayed physical value is an approximation whose direct
- * re-entry would encode a different payload. Derived from the live raw word
- * and coefficients on every render — never stored, never stale. Safe states
- * leave it undefined (no noise for ordinary DIRECT vectors).
+ * DIRECT text-re-entry fidelity contract (v2.5.11, unified v3.1.1). Present
+ * ONLY when the DISPLAYED physical-value text cannot be re-entered safely —
+ * i.e. submitting the exact display text through the real typed path
+ * (classify → exact parse → exact encode, the reducer's contract) encodes a
+ * different Y. Derived from the live raw word and coefficients on every
+ * render — never stored, never stale. Safe states leave it undefined (no
+ * noise for ordinary DIRECT vectors).
  */
 export interface DirectFidelityVM {
   /** Exact decoded value: "n/d" fraction, or a plain integer for d=1. */
@@ -66,8 +67,20 @@ export interface DirectFidelityVM {
   exactDecimalText: string | null
   /** The binary64 approximation the result card displays. */
   approxValueText: string
-  /** Y the repository's Math.round contract assigns to the approximation. */
-  reencodedY: number
+  /**
+   * Y the real typed path assigns to the DISPLAYED text — the actual
+   * re-entry consequence (null only in the defensive fail-closed case where
+   * the display text has no exact verdict).
+   */
+  displayReencodedY: number | null
+  /**
+   * Where re-entry breaks: `binary64-representation` means even the binary64
+   * decode value re-encodes to a different Y (v2.5.11's precision fold);
+   * `display-formatting` means the binary64 value itself re-encodes
+   * faithfully and only the displayed text (canonical significant-digit
+   * formatting) does not.
+   */
+  lossKind: 'binary64-representation' | 'display-formatting'
   /**
    * Decimal string whose re-entry provably returns to the original Y
    * (verified through the independent exact encoder), or null when no
@@ -75,6 +88,13 @@ export interface DirectFidelityVM {
    * then degrade instead of handing out an unverified string.
    */
   safeReentryText: string | null
+  /**
+   * What the safe re-entry text is: `exact` — the terminating decimal
+   * expansion of the exact value; `approximate` — a verified finite
+   * approximation of a repeating rational (never presentable as exact).
+   * Absent when `safeReentryText` is null.
+   */
+  safeReentryKind?: 'exact' | 'approximate'
 }
 
 export interface WarningVM {
@@ -183,12 +203,15 @@ export interface CalculatorViewModel {
    */
   physicalValueCopy?: { available: false; reason: string }
   /**
-   * DIRECT only, present ONLY when the displayed physical value is a
-   * precision-folded approximation (v2.5.11): the 物理值 copy must hand out
-   * the verified safe re-entry text instead of the approximation, with an
-   * explanatory note. The Raw Word / wire-byte / C-macro copies are unaffected.
+   * DIRECT only, present ONLY when the displayed physical value cannot be
+   * re-entered safely (v2.5.11, text-contract unified v3.1.1): the 物理值
+   * copy must hand out the verified safe re-entry text instead of the
+   * approximation, with an explanatory note. `kind` labels the override
+   * text honestly (`exact` = the exact expansion, `approximate` = a
+   * verified approximation of a repeating rational). The Raw Word /
+   * wire-byte / C-macro copies are unaffected.
    */
-  physicalValueCopyOverride?: { text: string; note: string }
+  physicalValueCopyOverride?: { text: string; note: string; kind: 'exact' | 'approximate' }
   /**
    * DIRECT fidelity contract (v2.5.11): present only when the displayed
    * value cannot be safely re-entered because the exact decode exceeds

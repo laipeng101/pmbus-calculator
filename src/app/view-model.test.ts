@@ -1401,10 +1401,14 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     expect(vm.directFidelity!.exactFractionText).toBe('-100000000000000001/100000000000000000')
     expect(vm.directFidelity!.exactDecimalText).toBe('-1.00000000000000001')
     expect(vm.directFidelity!.approxValueText).toBe('-1')
-    expect(vm.directFidelity!.reencodedY).toBe(0)
+    // The re-entry verdict is the DISPLAY text's typed encode: "-1" → Y=0.
+    expect(vm.directFidelity!.displayReencodedY).toBe(0)
+    expect(vm.directFidelity!.lossKind).toBe('binary64-representation')
     expect(vm.directFidelity!.safeReentryText).toBe('-1.00000000000000001')
+    expect(vm.directFidelity!.safeReentryKind).toBe('exact')
     // Copy override hands out the verified exact text with the note.
     expect(vm.physicalValueCopyOverride?.text).toBe('-1.00000000000000001')
+    expect(vm.physicalValueCopyOverride?.kind).toBe('exact')
     expect(vm.physicalValueCopyOverride?.note).toContain('-1.00000000000000001')
     // The InfoPanel warning names the approximation and the re-entry verdict.
     const warning = vm.warnings.find((w) => w.id === 'direct-precision-fold')
@@ -1419,6 +1423,54 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
       '-100000000000000001/100000000000000000',
     )
     expect(steps.find((s) => s.id === 'direct-exact-decimal')?.value).toBe('-1.00000000000000001')
+  })
+
+  test('v3.1.1 display-formatting fold: (1,1,12) raw FFFF fires every fidelity surface', () => {
+    // The binary64 value round-trips (v2.5.11's guard is blind here), but the
+    // displayed text "-1" encodes to Y=0 through the real typed path.
+    const vm = toCalculatorViewModel(directWith(0xffff, 1, 1, 12))
+    expect(vm.valueText).toBe('-1')
+    expect(vm.directFidelity).toBeDefined()
+    expect(vm.directFidelity!.lossKind).toBe('display-formatting')
+    expect(vm.directFidelity!.displayReencodedY).toBe(0)
+    expect(vm.directFidelity!.safeReentryText).toBe('-1.000000000001')
+    expect(vm.directFidelity!.safeReentryKind).toBe('exact')
+    expect(vm.physicalValueCopyOverride?.text).toBe('-1.000000000001')
+    const warning = vm.warnings.find((w) => w.id === 'direct-precision-fold')
+    expect(warning).toBeDefined()
+    expect(warning!.text).toContain('Y=0')
+    expect(warning!.text).toContain('不同的请求')
+    // The exact value rows appear in the steps for the newly-covered family.
+    expect(vm.steps.find((s) => s.id === 'direct-exact-value')?.value).toBe(
+      '-1000000000001/1000000000000',
+    )
+    expect(vm.steps.find((s) => s.id === 'direct-exact-decimal')?.value).toBe('-1.000000000001')
+  })
+
+  test('v3.1.1 repeating rational: (3,1,16) raw 0000 copy is a verified approximation, labelled honestly', () => {
+    const vm = toCalculatorViewModel(directWith(0x0000, 3, 1, 16))
+    expect(vm.valueText).toBe('-0.333333333333')
+    expect(vm.directFidelity).toBeDefined()
+    expect(vm.directFidelity!.lossKind).toBe('display-formatting')
+    expect(vm.directFidelity!.displayReencodedY).toBe(10000)
+    expect(vm.directFidelity!.exactDecimalText).toBeNull()
+    expect(vm.directFidelity!.safeReentryText).toBe('-0.33333333333333333')
+    expect(vm.directFidelity!.safeReentryKind).toBe('approximate')
+    // Copy note must not present the verified approximation as the exact value.
+    expect(vm.physicalValueCopyOverride?.kind).toBe('approximate')
+    expect(vm.physicalValueCopyOverride?.note).toContain('循环小数')
+    expect(vm.physicalValueCopyOverride?.note).toContain('-1/3')
+    const warning = vm.warnings.find((w) => w.id === 'direct-precision-fold')
+    expect(warning).toBeDefined()
+    expect(warning!.text).toContain('循环小数')
+  })
+
+  test('quiet (1,1,12) states stay noise-free: Y=1 display "-0.999999999999" re-enters safely', () => {
+    const vm = toCalculatorViewModel(directWith(0x0001, 1, 1, 12))
+    expect(vm.valueText).toBe('-0.999999999999')
+    expect(vm.directFidelity).toBeUndefined()
+    expect(vm.physicalValueCopyOverride).toBeUndefined()
+    expect(vm.warnings.some((w) => w.id === 'direct-precision-fold')).toBe(false)
   })
 
   test('raw 0000 under the same coefficients is exact and silent (no noise)', () => {
@@ -1467,7 +1519,7 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     expect(safe.directFidelity).toBeUndefined()
   })
 
-  test('m=0 keeps the inline-only error and exposes no fidelity surface', () => {
+  test('m=0 keeps the inline-only error, exposes no fidelity surface and disables the physical copy', () => {
     const vm = toCalculatorViewModel(
       make({
         mode: 'DIRECT',
@@ -1477,6 +1529,11 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     )
     expect(vm.directFidelity).toBeUndefined()
     expect(vm.physicalValueCopyOverride).toBeUndefined()
+    // v3.1.1: the placeholder '—' is not a re-enterrable physical value —
+    // the copy is disabled with an accessible reason instead of copying '—'.
+    expect(vm.physicalValueCopy).toBeDefined()
+    expect(vm.physicalValueCopy?.available).toBe(false)
+    expect(vm.physicalValueCopy?.reason).toContain('m=0')
   })
 
   test('copy override is absent for non-DIRECT modes (no cross-mode leak)', () => {

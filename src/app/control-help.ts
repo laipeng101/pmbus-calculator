@@ -70,7 +70,13 @@ export interface ControlHelpParams {
   'copy-raw-word': { prefixed: boolean }
   'copy-wire-bytes': undefined
   'copy-msb-first-bytes': undefined
-  'copy-physical': { available: boolean; usesOverride: boolean; unavailableReason?: string }
+  'copy-physical': {
+    available: boolean
+    usesOverride: boolean
+    /** Honesty label of the override text (v3.1.1): exact expansion vs verified approximation. */
+    overrideKind?: 'exact' | 'approximate'
+    unavailableReason?: string
+  }
   'copy-c-macro': undefined
   'copy-pref-prefix': { pressed: boolean }
   'copy-pref-space': { pressed: boolean }
@@ -255,12 +261,13 @@ export const CONTROL_HELP: ControlHelpRegistry = {
   },
   'copy-physical': {
     name: '物理值复制',
-    render: ({ available, usesOverride, unavailableReason }) => {
+    render: ({ available, usesOverride, overrideKind, unavailableReason }) => {
       if (!available)
         return `物理值复制不可用：${unavailableReason ?? '当前状态没有可回录的物理值'}`
-      return usesOverride
-        ? '复制经验证的精确回录文本：当前显示值为近似，直接复制会编码为不同的请求；此文本经独立编码器验证可安全回录。'
-        : '复制当前物理值文本；粘贴回物理值输入可安全重编码。'
+      if (!usesOverride) return '复制当前物理值文本；粘贴回物理值输入可安全重编码。'
+      return overrideKind === 'approximate'
+        ? '复制经验证可回录的近似文本：当前 raw 的精确值是循环小数，显示值为近似；此文本经独立编码器验证回输后回到当前 raw，但不是精确值本身。'
+        : '复制经验证的精确回录文本：当前显示值为近似，直接复制会编码为不同的请求；此文本经独立编码器验证可安全回录。'
     },
   },
   'copy-c-macro': {

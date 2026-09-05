@@ -10,7 +10,7 @@ import type { AppState } from '../state'
 import type { DirectFidelityVM } from './types'
 import { formatSignedError } from './format'
 import { formatPlainNumber, formatSpecial } from '../numeric-presentation'
-import { DIRECT_PRECISION_FOLD_DELTA_NOTE } from './direct'
+import { directFoldQuantizationNote } from './direct'
 
 /**
  * Present one quantization outcome for the shared readout panel.
@@ -111,10 +111,10 @@ export function resolveQuantizationPresentation(
     notes.push(`用户请求 ${e.requestedText}；raw 精确表示 ${representedText}`)
   }
   if (directFidelity) {
-    // The binary64 delta may honestly be zero, but a folded display must
-    // never read as a clean exact result: flag it as a warning and name
-    // the re-entry consequence.
-    notes.push(DIRECT_PRECISION_FOLD_DELTA_NOTE)
+    // The binary64 delta may honestly be zero, but a display text that
+    // cannot re-enter must never read as a clean exact result: flag it as a
+    // warning and name the re-entry consequence.
+    notes.push(directFoldQuantizationNote(directFidelity))
     return { deltaKind: 'warn', deltaText: presented.text, deltaNote: notes.join('；') }
   }
   return {

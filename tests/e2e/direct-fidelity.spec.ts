@@ -248,6 +248,98 @@ test.describe('DIRECT 精度保真响应式与资源（390/360px）', () => {
   })
 })
 
+test.describe('DIRECT 显示文本回录合同（v3.1.1 正式站反例，1280×900）', () => {
+  // v2.5.11 的 binary64 回程守卫对显示格式化折叠全盲：(1,1,12) 全族 0 告警，
+  // 但 65536 个 Y 中 29491 个的显示文本经真实 typed 路径回编会改变 raw。
+  // v3.1.1 把保真谓词统一到「显示文本 → 真实 typed 编码」上，两个失败族
+  // 在提交前可见，「物理值」复制返回经验证的回录文本。
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto(appUrl())
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+  })
+
+  test('反例 (1,1,12)：显示 -1 的回编后果可见，复制精确文本回录保持 FFFF', async ({ page }) => {
+    await setDirectCoefficients(page, 1, 1, 12)
+    await setRaw(page, 'FFFF')
+    await expect(resultValue(page)).toHaveText('-1')
+
+    // 提交前的事实：显示值 -1 直接回输会编码为 Y=0（不同的请求）。
+    const warning = page.getByText(/不同的请求/).first()
+    await expect(warning).toBeVisible()
+    await expect(warning).toContainText('Y=0')
+    // 精确值 -1.000000000001 与回录文本出现在对应表面。
+    await expect(copyNote(page)).toContainText('-1.000000000001')
+    await expandSteps(page)
+    await expect(page.getByTestId('calculation-steps')).toContainText('-1.000000000001')
+
+    // 真实剪贴板：复制 → 粘贴 → Enter，raw 保持 FFFF。
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.getByRole('button', { name: '物理值' }).click()
+    const copied = await page.evaluate(() => navigator.clipboard.readText())
+    expect(copied).toBe('-1.000000000001')
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.press('ControlOrMeta+v')
+    await valueInput(page).press('Enter')
+    await expect(hexInput(page)).toHaveValue('FFFF')
+  })
+
+  test('反例 (3,1,16)：复制经验证近似文本（循环小数如实标注）回录保持 0000', async ({ page }) => {
+    await setDirectCoefficients(page, 3, 1, 16)
+    await setRaw(page, '0000')
+    await expect(resultValue(page)).toHaveText('-0.333333333333')
+
+    // 显示文本 -0.333333333333 回编为 Y=10000：告警在提交前可见。
+    const warning = page.getByText(/不同的请求/).first()
+    await expect(warning).toBeVisible()
+    await expect(warning).toContainText('循环小数')
+    // 复制说明如实标注近似性质（不冒充精确值）。
+    await expect(copyNote(page)).toContainText('循环小数')
+    await expect(copyNote(page)).toContainText('-1/3')
+
+    // 真实剪贴板：复制 → 粘贴 → Enter，raw 保持 0000。
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.getByRole('button', { name: '物理值' }).click()
+    const copied = await page.evaluate(() => navigator.clipboard.readText())
+    expect(copied).toBe('-0.33333333333333333')
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.press('ControlOrMeta+v')
+    await valueInput(page).press('Enter')
+    await expect(hexInput(page)).toHaveValue('0000')
+  })
+
+  test('安静状态无噪音：(1,1,12) 下 Y=1 的显示文本可安全回录', async ({ page }) => {
+    await setDirectCoefficients(page, 1, 1, 12)
+    await setRaw(page, '0001')
+    await expect(resultValue(page)).toHaveText('-0.999999999999')
+    await expect(page.getByText(/不同的请求/)).toHaveCount(0)
+    await expect(copyNote(page)).toHaveCount(0)
+    // 复制显示文本 → 真实回录 → raw 不变。
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.getByRole('button', { name: '物理值' }).click()
+    const copied = await page.evaluate(() => navigator.clipboard.readText())
+    expect(copied).toBe('-0.999999999999')
+    await valueInput(page).click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.press('ControlOrMeta+v')
+    await valueInput(page).press('Enter')
+    await expect(hexInput(page)).toHaveValue('0001')
+  })
+
+  test('m=0：物理值复制禁用并给出可访问原因（不再复制占位符 —）', async ({ page }) => {
+    await setDirectCoefficients(page, 0, 0, 0)
+    await expect(resultValue(page)).toHaveText('—')
+    const copyButton = page.getByRole('button', { name: '物理值' })
+    await expect(copyButton).toBeDisabled()
+    await expect(page.locator('#physical-value-copy-reason')).toBeVisible()
+    await expect(page.locator('#physical-value-copy-reason')).toContainText('m=0')
+    // aria-describedby 指向禁用原因。
+    await expect(copyButton).toHaveAttribute('aria-describedby', 'physical-value-copy-reason')
+  })
+})
+
 test.describe('DIRECT 精确请求 provenance（v2.5.12 正式站反例，1280×900）', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })

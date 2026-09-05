@@ -104,6 +104,7 @@ export default function CopyToolbar({ vm, copyPrefs, onTogglePrefix, onToggleSpa
           params={{
             available: !physicalCopyUnavailable,
             usesOverride: physicalCopyOverride != null,
+            overrideKind: physicalCopyOverride?.kind,
             unavailableReason: vm.physicalValueCopy?.reason,
           }}
         >

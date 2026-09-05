@@ -18,7 +18,7 @@ import {
 import { computeValueText } from './value-text'
 import { buildWarnings } from './warnings'
 import { resolveQuantizationPresentation } from './quantization'
-import { resolveDirectFidelity } from './direct'
+import { resolveDirectFidelity, resolveDirectPhysicalValueCopy } from './direct'
 import { resolveHalfSpecial } from './half'
 import { resolveL11NRangeText } from './l11'
 import {
@@ -103,22 +103,34 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   // v2.5.9: a relative-derivation range error disables the 物理值 copy with
   // an accessible reason; every other state keeps the copy enabled.
-  let physicalValueCopyUnavailability = resolveL16PhysicalValueCopy(state)
+  // v3.1.1: DIRECT m=0 has no decode contract, so the copy is disabled with
+  // its own accessible reason instead of copying the '—' placeholder.
+  let physicalValueCopyUnavailability =
+    resolveL16PhysicalValueCopy(state) ?? resolveDirectPhysicalValueCopy(state)
 
-  // v2.5.11: a precision-folded DIRECT decode swaps the 物理值 copy payload
-  // for the verified safe re-entry text; when no verified text exists the
-  // copy degrades to disabled instead of handing out the approximation.
-  let physicalValueCopyOverride: { text: string; note: string } | undefined
+  // v2.5.11, unified v3.1.1: a DIRECT display text that cannot re-enter
+  // safely swaps the 物理值 copy payload for the verified safe re-entry
+  // text (kind-labelled); when no verified text exists the copy degrades to
+  // disabled instead of handing out the approximation.
+  let physicalValueCopyOverride:
+    | { text: string; note: string; kind: 'exact' | 'approximate' }
+    | undefined
   if (directFidelity) {
-    if (directFidelity.safeReentryText !== null) {
+    if (directFidelity.safeReentryText !== null && directFidelity.safeReentryKind) {
+      const kind = directFidelity.safeReentryKind
+      const textClause =
+        kind === 'exact'
+          ? `经验证可安全回录的精确文本 ${directFidelity.safeReentryText}（与当前 raw 的精确值一致，回输后回到当前 raw）`
+          : `经验证可回录的近似文本 ${directFidelity.safeReentryText}（当前 raw 的精确值 ${directFidelity.exactFractionText} 是循环小数，该文本经精确编码验证回输后回到当前 raw）`
       physicalValueCopyOverride = {
         text: directFidelity.safeReentryText,
-        note: `物理值复制返回经验证可安全回录的精确文本 ${directFidelity.safeReentryText}（回输后回到当前 raw）；显示值 ${directFidelity.approxValueText} 是精度折叠的近似。`,
+        kind,
+        note: `物理值复制返回${textClause}；显示值 ${directFidelity.approxValueText} 是近似值。`,
       }
     } else {
       physicalValueCopyUnavailability = {
         available: false,
-        reason: `物理值复制不可用：显示值 ${directFidelity.approxValueText} 是精度折叠的近似，且当前无法生成经验证的精确回录文本。请使用 Raw Word / Wire 字节复制，或直接编辑 raw / Y 保留位级真值。`,
+        reason: `物理值复制不可用：显示值 ${directFidelity.approxValueText} 是近似值，且当前无法生成经验证可回录的文本。请使用 Raw Word / Wire 字节复制，或直接编辑 raw / Y 保留位级真值。`,
       }
     }
   }

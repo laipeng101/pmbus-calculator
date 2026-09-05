@@ -3,13 +3,15 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-05（v3.1.0——MINOR：Hex `+1`/`−1` 步进器新能力（Raw Word
-16 位 / VOUT_MODE 8 位，范围由 `maxDigits` 推导、边界禁用不回绕、单次提交、
-blur/click 竞态以焦点保持解决）+ 可编辑字段静止态可供性（`--color-input-bg`
-/`--color-input-border` token + `.input-field` 家族取代 `.input-surface`，
-editable 与 muted 展示面在亮/暗静止态可区分，`aria-invalid` danger 边框）+
-Raw Word 编辑 shell 与 bit 网格 ≥8px scoped 间距。受保护算法、canonical
-raw、复制、持久化零变更。前一版 v3.0.0 为 canonical Raw Word MAJOR 重构）
+最后更新：2026-09-06（v3.1.1——PATCH：DIRECT 显示文本回录合同统一（ADR
+0007）。修复 v2.5.11 保真谓词（binary64 管线回程）对显示格式化折叠全盲的
+P1 缺陷——(1,1,12) 全族 0 告警但 29491/65536 的「物理值」复制回录静默改变
+raw。保真谓词统一为「显示文本 → 真实 typed 编码回程」（
+`analyzeDirectTextReentry` 单一事实源），警告/量化注记/步骤/复制全部消费
+同一解析；回录文本按 exact/approximate kind 如实标注；损失分层
+binary64-representation vs display-formatting；m=0 物理值复制禁用并给出
+原因。受保护算法、canonical raw、typed 提交合同、4096 门禁、持久化零变更。
+前一版 v3.1.0 为输入可发现性与 Hex 步进器 MINOR）
 
 ## 当前产品基线
 
@@ -35,7 +37,7 @@ raw、复制、持久化零变更。前一版 v3.0.0 为 canonical Raw Word MAJO
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v3.1.0；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v3.1.1；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -276,7 +278,20 @@ M0–M42 complete；stable release v3.1.0；production distribution: GitHub Page
   blur/click 竞态、键盘/触屏/WCAG 2.5.8 目标尺寸合同）；Raw Word 编辑
   shell 与 bit 网格 ≥8px scoped 间距；`.input-surface` 删除、
   ResultDetails 只读行迁回展示面。受保护算法零变更；视觉基线成对审查更新。
-- 当前：无进行中的功能里程碑；v3.1.0 已发布，M40–M42 complete。
+- v3.1.1（PATCH）：DIRECT 显示文本回录合同统一（ADR 0007）——修复
+  v2.5.11 保真谓词（binary64 管线回程）对显示格式化折叠全盲的 P1 缺陷：
+  (1,1,12) 全族 0 告警但 29491/65536 的「物理值」复制经真实 typed 提交
+  （classify → 精确 parse → 精确 encode）回录静默改变 raw；(7,3,12) 族
+  56172/65536 不安全 0 告警；(1,1,17) 族 4427 个安静但不安全状态。保真
+  谓词统一为「显示文本 → 真实 typed 编码回程」（
+  `analyzeDirectTextReentry` 单一事实源，警告/量化注记/步骤精确值行/
+  复制 override/disable/值文本全部消费同一解析）；回录文本生成器以
+  exact/approximate kind 如实标注（循环有理数近似不再冒充精确值）；
+  `lossKind` 区分 binary64-representation 与 display-formatting 两类损失；
+  m=0 物理值复制禁用并给出可访问原因。全 65536-Y 最终复制性质测试 +
+  真实键盘/剪贴板回录 E2E；受保护算法、canonical raw、typed 提交合同、
+  4096 门禁、持久化零变更。
+- 当前：无进行中的功能里程碑；v3.1.1 已发布，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标

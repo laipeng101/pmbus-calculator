@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { PMBusMath } from '../legacy/pmbus-math'
 import {
   analyzeDirectRoundTrip,
+  analyzeDirectTextReentry,
   checkExactLexemeBoundary,
   decodeDirectExact,
   DIRECT_EXACT_MAX_LEXEME_LENGTH,
@@ -17,6 +18,7 @@ import {
   type ExactRational,
 } from './direct-exact'
 import { classifyFloatText } from './float-parse'
+import { formatPlainNumber } from './numeric-presentation'
 
 /**
  * v2.5.11 — DIRECT exact-coefficient reference model (BigInt oracle).
@@ -89,6 +91,7 @@ const SEED = 0xd15c7
 const FULL_SWEEP_COEFFICIENTS: Array<{ m: number; b: number; r: number }> = [
   { m: 1, b: 1, r: 17 }, // the production-site counterexample family
   { m: 1, b: 0, r: 0 }, // identity coefficients (X = Y, always exact in binary64)
+  { m: 1, b: 1, r: 12 }, // v3.1.1: display-formatting fold family (29491/65536 unsafe copies)
 ]
 
 const SAMPLED_GRID: Array<{ m: number; b: number; r: number }> = [
@@ -340,28 +343,33 @@ describe('decimal lexeme exact parsing', () => {
 describe('safe re-entry text generation (verified exact encoder)', () => {
   it('returns the exact terminating decimal for the production-site counterexample', () => {
     const exact = decodeDirectExact(-1, 1, 1, 17)!
-    const text = generateSafeDirectReentryText(exact, -1, 1, 1, 17)
-    expect(text).toBe('-1.00000000000000001')
+    const safe = generateSafeDirectReentryText(exact, -1, 1, 1, 17)
+    expect(safe).toEqual({ text: '-1.00000000000000001', kind: 'exact' })
     // Independent re-entry proof through the real input classification.
-    const classified = classifyFloatText(text!)
+    const classified = classifyFloatText(safe!.text)
     expect(classified).toEqual({ kind: 'value', value: -1 })
-    expect(encodeDirectExactFromRational(parseDecimalExactRational(text!)!, 1, 1, 17)).toBe(-1)
+    expect(encodeDirectExactFromRational(parseDecimalExactRational(safe!.text)!, 1, 1, 17)).toBe(-1)
   })
 
   it('prefers the exact expansion over shorter approximations for terminating values', () => {
     // Y=3, m=2, b=0, R=0 → 1.5 exactly; the copy text must be exactly 1.5.
     const exact = decodeDirectExact(3, 2, 0, 0)!
-    expect(generateSafeDirectReentryText(exact, 3, 2, 0, 0)).toBe('1.5')
+    expect(generateSafeDirectReentryText(exact, 3, 2, 0, 0)).toEqual({
+      text: '1.5',
+      kind: 'exact',
+    })
   })
 
-  it('finds a verified approximation for repeating rationals', () => {
+  it('finds a verified approximation for repeating rationals and labels it honestly', () => {
     // m=3, b=0, R=0, Y=1 → X = 1/3 (repeating). No exact decimal exists, so
-    // the first verified nearest-decimal approximation is returned.
+    // the first verified nearest-decimal approximation is returned with kind
+    // 'approximate' — it must never be presented as the exact value.
     const exact = decodeDirectExact(1, 3, 0, 0)!
-    const text = generateSafeDirectReentryText(exact, 1, 3, 0, 0)
-    expect(text).not.toBeNull()
-    expect(parseDecimalExactRational(text!)).not.toBeNull()
-    expect(encodeDirectExactFromRational(parseDecimalExactRational(text!)!, 3, 0, 0)).toBe(1)
+    const safe = generateSafeDirectReentryText(exact, 1, 3, 0, 0)
+    expect(safe).not.toBeNull()
+    expect(safe!.kind).toBe('approximate')
+    expect(parseDecimalExactRational(safe!.text)).not.toBeNull()
+    expect(encodeDirectExactFromRational(parseDecimalExactRational(safe!.text)!, 3, 0, 0)).toBe(1)
   })
 
   it('degrades safely (null) when the digit bound cannot be met', () => {
@@ -374,13 +382,13 @@ describe('safe re-entry text generation (verified exact encoder)', () => {
     for (const { m, b, r } of FULL_SWEEP_COEFFICIENTS) {
       for (let y = -32768; y <= 32767; y++) {
         const exact = decodeDirectExact(y, m, b, r)!
-        const text = generateSafeDirectReentryText(exact, y, m, b, r)
-        if (text === null) {
+        const safe = generateSafeDirectReentryText(exact, y, m, b, r)
+        if (safe === null) {
           throw new Error(`no verified re-entry text: y=${y} m=${m} b=${b} r=${r}`)
         }
-        const reparsed = parseDecimalExactRational(text)
+        const reparsed = parseDecimalExactRational(safe.text)
         if (!reparsed || encodeDirectExactFromRational(reparsed, m, b, r) !== y) {
-          throw new Error(`unverified re-entry text ${text}: y=${y} m=${m} b=${b} r=${r}`)
+          throw new Error(`unverified re-entry text ${safe.text}: y=${y} m=${m} b=${b} r=${r}`)
         }
       }
     }
@@ -445,6 +453,127 @@ describe('round-trip analysis pinned to the real binary64 pipeline', () => {
       }
     }
     console.log(`sampled grid + 5000-sample fuzz (seed ${SEED}): ${Date.now() - startedAt}ms`)
+  })
+})
+
+describe('display-text re-entry analysis (v3.1.1 unified typed contract)', () => {
+  // The audit's regression families, pinned with exact golden verdicts.
+  // displayRoundTripSafe answers the REAL user question — does the text the
+  // user sees and copies encode back to the current Y through the same
+  // classification + exact encode the reducer uses — while b64RoundTripSafe
+  // is retained only as the v2.5.11 diagnostic naming WHERE the loss sits.
+  it('F1 display truncation: (1,1,12) Y=-1 display "-1" encodes Y=0 while binary64 round-trips', () => {
+    const a = analyzeDirectTextReentry(-1, 1, 1, 12)!
+    expect(a.displayText).toBe('-1')
+    expect(a.exact).toEqual({ numerator: -1000000000001n, denominator: 1000000000000n })
+    expect(a.displayReencodedY).toBe(0)
+    expect(a.displayRoundTripSafe).toBe(false)
+    expect(a.b64ReencodedY).toBe(-1)
+    expect(a.b64RoundTripSafe).toBe(true)
+  })
+
+  it('F2 repeating decimal: (3,1,16) Y=0 display "-0.333333333333" encodes Y=10000', () => {
+    const a = analyzeDirectTextReentry(0, 3, 1, 16)!
+    expect(a.displayText).toBe('-0.333333333333')
+    expect(a.exact).toEqual({ numerator: -1n, denominator: 3n })
+    expect(a.displayReencodedY).toBe(10000)
+    expect(a.displayRoundTripSafe).toBe(false)
+    expect(a.b64RoundTripSafe).toBe(true)
+  })
+
+  it('F3/F4 risk matrix: neighbor precision and offset cancellation fold through the display', () => {
+    // m=1, b=1, R=14, Y=-1: display "-1" → Y=0 (binary64 value round-trips).
+    const neighbor = analyzeDirectTextReentry(-1, 1, 1, 14)!
+    expect(neighbor.displayText).toBe('-1')
+    expect(neighbor.displayReencodedY).toBe(0)
+    expect(neighbor.displayRoundTripSafe).toBe(false)
+    expect(neighbor.b64RoundTripSafe).toBe(true)
+    // m=1, b=32767, R=8, Y=1: display "-32767" → Y=0 (offset cancellation).
+    const offset = analyzeDirectTextReentry(1, 1, 32767, 8)!
+    expect(offset.displayText).toBe('-32767')
+    expect(offset.displayReencodedY).toBe(0)
+    expect(offset.displayRoundTripSafe).toBe(false)
+    expect(offset.b64RoundTripSafe).toBe(true)
+  })
+
+  it('negative m can be display-safe (no noise) — the predicate is per-state, not per-sign', () => {
+    // m=-3, b=0, R=0, Y=-1: display "0.333333333333" re-encodes to Y=-1.
+    const a = analyzeDirectTextReentry(-1, -3, 0, 0)!
+    expect(a.displayText).toBe('0.333333333333')
+    expect(a.displayReencodedY).toBe(-1)
+    expect(a.displayRoundTripSafe).toBe(true)
+  })
+
+  it('the existing (1,1,17) protection family keeps its verdict with lossKind binary64', () => {
+    const a = analyzeDirectTextReentry(-1, 1, 1, 17)!
+    expect(a.displayText).toBe('-1')
+    expect(a.displayReencodedY).toBe(0)
+    expect(a.displayRoundTripSafe).toBe(false)
+    expect(a.b64RoundTripSafe).toBe(false)
+  })
+
+  it('ordinary safe vector stays quiet: (1,0,0) Y=12 round-trips at both layers', () => {
+    const a = analyzeDirectTextReentry(12, 1, 0, 0)!
+    expect(a.displayText).toBe('12')
+    expect(a.displayReencodedY).toBe(12)
+    expect(a.displayRoundTripSafe).toBe(true)
+    expect(a.b64RoundTripSafe).toBe(true)
+  })
+
+  it('displayRoundTripSafe matches an independent typed-path verdict over the (1,1,12) full sweep', () => {
+    // The predicate is recomputed in the test from the real pipeline pieces
+    // (formatPlainNumber → classify → exact parse → exact encode) so the
+    // analysis cannot drift from the contract it claims to answer.
+    const startedAt = Date.now()
+    let unsafeCount = 0
+    for (let y = -32768; y <= 32767; y++) {
+      const a = analyzeDirectTextReentry(y, 1, 1, 12)
+      expect(a, `y=${y}`).not.toBeNull()
+      const text = formatPlainNumber(PMBusMath.decodeDirect(y, 1, 1, 12).value)
+      const parsed = parseDecimalExactRational(text)
+      const verdict = parsed !== null && encodeDirectExactFromRational(parsed, 1, 1, 12) === y
+      if (a!.displayRoundTripSafe !== verdict) {
+        throw new Error(
+          `display-verdict drift: y=${y} analysis=${a!.displayRoundTripSafe} real=${verdict}`,
+        )
+      }
+      if (!a!.displayRoundTripSafe) unsafeCount++
+    }
+    // The audit's measured incidence for (1,1,12): 29491 of 65536 copies.
+    expect(unsafeCount).toBe(29491)
+    console.log(
+      `display-reentry sweep (1,1,12): ${unsafeCount} unsafe, ${Date.now() - startedAt}ms`,
+    )
+  })
+
+  it('FINAL COPY property over (1,1,12) full Y: copied text re-enters to the same raw word', () => {
+    // The acceptance contract of the fix: whatever the 物理值 copy hands out
+    // (the display text when safe, the verified override otherwise) must
+    // survive the REAL typed path with the raw word unchanged. The test
+    // re-runs the reducer's pipeline instead of trusting the generator.
+    const startedAt = Date.now()
+    let overrides = 0
+    for (let y = -32768; y <= 32767; y++) {
+      const a = analyzeDirectTextReentry(y, 1, 1, 12)!
+      const copied = a.displayRoundTripSafe
+        ? a.displayText
+        : (generateSafeDirectReentryText(a.exact, y, 1, 1, 12)?.text ?? null)
+      if (copied === null) throw new Error(`copy degraded to null: y=${y}`)
+      if (!a.displayRoundTripSafe) overrides++
+      const parsed = classifyFloatText(copied)
+      if (parsed.kind !== 'value' || !Number.isFinite(parsed.value)) {
+        throw new Error(`copied text not committable: ${copied} (y=${y})`)
+      }
+      const exact = parseDecimalExactRational(copied)
+      const reencodedY = exact === null ? null : encodeDirectExactFromRational(exact, 1, 1, 12)
+      const rawBefore = PMBusMath.fromSigned(y, 16)
+      const rawAfter = reencodedY === null ? null : PMBusMath.fromSigned(reencodedY, 16)
+      if (rawAfter !== rawBefore) {
+        throw new Error(`re-entry changes raw: y=${y} copied=${copied} reencodedY=${reencodedY}`)
+      }
+    }
+    expect(overrides).toBe(29491)
+    console.log(`final-copy property (1,1,12): ${overrides} overrides, ${Date.now() - startedAt}ms`)
   })
 })
 
@@ -568,14 +697,14 @@ describe('exact lexeme boundary (v2.5.12)', () => {
       for (const y of [-32768, -32767, -1, 0, 1, 32766, 32767]) {
         const exact = decodeDirectExact(y, m, b, r)
         if (!exact) continue
-        const text = generateSafeDirectReentryText(exact, y, m, b, r)
-        if (text === null) continue
+        const safe = generateSafeDirectReentryText(exact, y, m, b, r)
+        if (safe === null) continue
         generated++
-        expect(text.length, `y=${y} m=${m} b=${b} r=${r}`).toBeLessThanOrEqual(
+        expect(safe.text.length, `y=${y} m=${m} b=${b} r=${r}`).toBeLessThanOrEqual(
           DIRECT_EXACT_MAX_LEXEME_LENGTH,
         )
         // The parser must accept its own generator's output.
-        expect(parseDecimalExactRational(text)).not.toBeNull()
+        expect(parseDecimalExactRational(safe.text)).not.toBeNull()
       }
     }
     expect(generated).toBeGreaterThan(30)
