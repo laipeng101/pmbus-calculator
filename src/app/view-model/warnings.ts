@@ -26,15 +26,13 @@ export function buildWarnings(state: AppState): WarningVM[] {
   if (directFold) warnings.push(directFold)
 
   if (state.mode === 'L16' || state.mode === 'VOUT_MODE') {
-    const eff =
-      state.mode === 'L16'
-        ? effectiveL16VoutMode(state)
-        : { byte: state.voutMode.byte, source: undefined }
+    // Only `byte` is consumed here; `source` belongs to the L16 projector.
+    const byte = state.mode === 'L16' ? effectiveL16VoutMode(state).byte : state.voutMode.byte
     // §8.4 fail-closed notice applies to EVERY non-LINEAR shared byte; the
     // format-specific warnings below (invalid-parameter / invalid-combination
     // stay at error level, VID code notes stay warnings) coexist with it.
     warnings.push(...resolveL16NonlinearWarnings(state))
-    warnings.push(...resolveVoutModeByteWarnings(state, eff.byte))
+    warnings.push(...resolveVoutModeByteWarnings(state, byte))
     // v2.5.9: derivation-range diagnostics come from the shared relative
     // classifier — same source as the result card, formula and steps.
     // v2.6.4: the §8.5.2 compliance answer also comes from that one

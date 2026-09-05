@@ -182,3 +182,87 @@ describe('command reference characterization', () => {
     expect(ids).toEqual(['cmd-note:info', 'cmd-device-defined:info'])
   })
 })
+
+describe('VOUT_MODE byte warning copy characterization', () => {
+  test('vid-not-used code 00h warns without a VID profile', () => {
+    const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x20 } }))
+    expect(vm.warnings.map((w) => `${w.id}:${w.level}`)).toEqual(['vout-mode-vid-not-used:warning'])
+    expect(vm.warnings[0].text).toContain('VID code 00h 为未使用')
+  })
+
+  test('Table-3-listed reserved code states the listing and the family reason', () => {
+    // 0x21: VID format, code 01h — listed reserved (future Intel generation).
+    const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x21 } }))
+    expect(vm.warnings.map((w) => `${w.id}:${w.level}`)).toEqual(['vout-mode-vid-reserved:warning'])
+    expect(vm.warnings[0].text).toContain('VID code 01h 为保留值')
+    expect(vm.warnings[0].text).toContain('Table 3 明列')
+    expect(vm.warnings[0].text).not.toContain('未列出')
+  })
+
+  test('unlisted reserved code states that it is not in Table 3', () => {
+    // 0x25: VID format, code 05h — reserved but not listed in Table 3.
+    const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x25 } }))
+    expect(vm.warnings.map((w) => `${w.id}:${w.level}`)).toEqual(['vout-mode-vid-reserved:warning'])
+    expect(vm.warnings[0].text).toContain('Table 3 未列出')
+  })
+
+  test('command notes are appended after the byte-level warnings, in order', () => {
+    const vm = toCalculatorViewModel(
+      make({ mode: 'VOUT_MODE', voutMode: { byte: 0x20 }, commandKey: 'VOUT_COMMAND' }),
+    )
+    expect(vm.warnings.map((w) => w.id)).toEqual([
+      'vout-mode-vid-not-used',
+      'cmd-note',
+      'cmd-follows-vout-mode',
+    ])
+  })
+})
+
+describe('projection order characterization', () => {
+  test('relative ULINEAR16 diagnostics follow the byte-level relative note', () => {
+    // Nominal 1e308 × ratio 2 overflows: relative info first, then the
+    // derivation-range warning — the historical push order.
+    const vm = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        raw: 0x0200,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
+      }),
+    )
+    expect(vm.warnings.map((w) => `${w.id}:${w.level}`)).toEqual([
+      'vout-mode-relative:info',
+      'l16-relative-overflow:warning',
+    ])
+  })
+
+  test('non-linear L16 announces the shared byte before the VID offset prohibition', () => {
+    const vm = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        voutMode: { byte: 0x20 },
+        l16: { payloadKind: 'slinear16-offset', nominalVout: null },
+      }),
+    )
+    // L16-specific notices first (§8.4 fail-closed, then the §13.3/§13.4
+    // prohibition at error level), then the byte-level code-00h warning.
+    expect(vm.warnings.map((w) => `${w.id}:${w.level}`)).toEqual([
+      'l16-vout-mode-nonlinear:warning',
+      'vout-mode-vid-offset-prohibited:error',
+      'vout-mode-vid-not-used:warning',
+    ])
+  })
+
+  test('payload note precedes the fail-closed note in the explanation list', () => {
+    // Both unshifts apply: slinear16-bit7-na lands before l16-nonlinear.
+    const vm = toCalculatorViewModel(
+      make({
+        mode: 'L16',
+        voutMode: { byte: 0x20 },
+        l16: { payloadKind: 'slinear16-offset', nominalVout: null },
+      }),
+    )
+    const ids = vm.voutModeInfo?.explanations.map((e) => e.id) ?? []
+    expect(ids.slice(0, 2)).toEqual(['slinear16-bit7-na', 'l16-nonlinear'])
+  })
+})
