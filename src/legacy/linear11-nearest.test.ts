@@ -40,7 +40,13 @@ function nextDown(x: number): number {
 const DECODE_TABLE = (() => {
   const table = new Float64Array(65536)
   for (let raw = 0; raw < 65536; raw++) {
-    table[raw] = PMBusMath.decodeLinear11(raw).value
+    // Independent bit decoding: the oracle must not share the production
+    // decoder, candidate search or clamping implementation.
+    const exponent = raw >>> 11
+    const mantissa = raw & 0x7ff
+    const n = exponent < 16 ? exponent : exponent - 32
+    const y = mantissa < 1024 ? mantissa : mantissa - 2048
+    table[raw] = y * 2 ** n
   }
   return table
 })()
@@ -53,6 +59,32 @@ function oracleMinError(val: number): number {
     if (err < min) min = err
   }
   return min
+}
+
+/** Exhaust all codes, including boundary Y values, then apply the tie contract. */
+function oraclePreferredRaw(val: number): number {
+  let bestRaw = 0
+  let bestError = Infinity
+  let bestN = Infinity
+  let bestY = -Infinity
+  for (let raw = 0; raw < 65536; raw++) {
+    const exponent = raw >>> 11
+    const mantissa = raw & 0x7ff
+    const n = exponent < 16 ? exponent : exponent - 32
+    const y = mantissa < 1024 ? mantissa : mantissa - 2048
+    const error = Math.abs(val - DECODE_TABLE[raw])
+    const preferredTie =
+      Math.abs(n) < Math.abs(bestN) ||
+      (Math.abs(n) === Math.abs(bestN) && (n < bestN || (n === bestN && y > bestY)))
+    // Same-N midpoint ties retain the existing half-toward-positive rule.
+    if (error < bestError || (error === bestError && preferredTie)) {
+      bestRaw = raw
+      bestError = error
+      bestN = n
+      bestY = y
+    }
+  }
+  return bestRaw
 }
 
 function rawOf(best: { n: number; y: number }): number {
@@ -100,6 +132,20 @@ describe('findBestLinear11 — strictly nearest code (v2.5.10)', () => {
     const best = PMBusMath.findBestLinear11(-TWO_POW_MINUS_17)
     expect(rawOf(best)).toBe(0x0000)
     expect(Math.abs(best.delta)).toBe(oracleMinError(-TWO_POW_MINUS_17))
+  })
+
+  describe('mantissa boundary ties include every legal exponent candidate', () => {
+    for (let n = -16; n <= 15; n++) {
+      for (const midpoint of [1023.5 * 2 ** n, -1025 * 2 ** n]) {
+        it(`matches the full-code tie oracle at ${midpoint} and its binary64 neighbours`, () => {
+          for (const value of [nextDown(midpoint), midpoint, nextUp(midpoint)]) {
+            const best = PMBusMath.findBestLinear11(value)
+            expect(rawOf(best), `input ${value}`).toBe(oraclePreferredRaw(value))
+            expect(Math.abs(best.delta), `input ${value}`).toBe(oracleMinError(value))
+          }
+        })
+      }
+    }
   })
 
   it('resolves the first representable step above the midpoint strictly to 0x8001', () => {

@@ -124,6 +124,22 @@ test.describe('LINEAR11 严格最近值编码（v2.5.10）', () => {
     await expect(page.locator('#l11-y-input')).toHaveValue('0')
   })
 
+  test('正负尾数边界等距时保留较小 |N|，真实量化误差不伪报饱和', async ({ page }) => {
+    for (const v of [
+      { text: '1023.5', raw: '03FF', y: '1023', delta: '+0.500000 (0.0489%)' },
+      { text: '-1025', raw: '0400', y: '-1024', delta: '-1.000000 (-0.0976%)' },
+    ]) {
+      await valueInput(page).fill(v.text)
+      await valueInput(page).press('Tab')
+      await expect(hexInput(page)).toHaveValue(v.raw)
+      await expect(page.locator('#l11-n-input')).toHaveValue('0')
+      await expect(page.locator('#l11-y-input')).toHaveValue(v.y)
+      await expect(page.getByTestId('result-value')).toHaveText(v.y)
+      await expect(page.getByTestId('quantization-error')).toHaveAttribute('data-kind', 'warn')
+      await expect(page.getByTestId('quantization-error')).toContainText(v.delta)
+    }
+  })
+
   test('常规值 12 / 2 与正负饱和边界不回归', async ({ page }) => {
     await valueInput(page).fill('12')
     await valueInput(page).press('Tab')

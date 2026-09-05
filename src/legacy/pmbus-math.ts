@@ -134,8 +134,10 @@ export const PMBusMath = {
     let bestVal = val
     for (let n = -16; n <= 15; n++) {
       const p = this.pow2(n)
-      const y = Math.round(val / p)
-      if (y < -1024 || y > 1023) continue
+      // A rounded mantissa outside this grid still has a legal nearest
+      // boundary candidate. Keep it in the search so equal-error boundary
+      // codes participate in the same exponent tie policy as interior codes.
+      const y = this.clamp(Math.round(val / p), -1024, 1023)
       const represented = y * p
       const err = Math.abs(val - represented)
       // Strictly nearest code: every strictly smaller |X − Y×2^N| wins.

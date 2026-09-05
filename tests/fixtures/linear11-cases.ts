@@ -48,6 +48,18 @@ export const L11_ROUNDTRIP_CASES: L11RoundTripCase[] = [
   { name: 'negative -1', inputValue: -1, expectedRaw: 0x07ff, expectedDelta: 0 },
   { name: 'negative -10', inputValue: -10, expectedRaw: 0x07f6, expectedDelta: 0 },
   { name: 'zero', inputValue: 0, expectedRaw: 0x0000, expectedDelta: 0 },
+  {
+    name: 'positive boundary tie prefers N=0',
+    inputValue: 1023.5,
+    expectedRaw: 0x03ff,
+    expectedDelta: 0.5,
+  },
+  {
+    name: 'negative boundary tie prefers N=0',
+    inputValue: -1025,
+    expectedRaw: 0x0400,
+    expectedDelta: -1,
+  },
 ]
 
 /**
