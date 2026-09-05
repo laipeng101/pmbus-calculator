@@ -347,7 +347,7 @@
   relative 警示与阻断卡，阻断卡不得宣称 signed offset 页「需要 nominal」。
 - **relative ULINEAR16 的 R=0 非符合性告警（v2.6.4，Part II §8.5.2）**：提交的
   比值 `R = 0`（raw 0000）是规范意义上的非符合性数据——InfoPanel 输出 warning
-  `l16-relative-zero-ratio`（单一来源 `resolveL16Relative` 的同一 ratio 解码），
+  `l16-relative-zero-ratio`（单一来源 `deriveL16Semantics` 的同一 ratio 解码事实），
   文案区分两类真零：`nominal=0`（decode-only 真零，ratio≠0）与 signed offset
   （bit7 不参与数学）都不触发；标称参考缺失时告警仍然出现（非符合性是 committed
   raw 的属性）。数学结果保持精确 0，不伪造饱和/错误，物理值复制保持可用；

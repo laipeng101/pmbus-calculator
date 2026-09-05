@@ -1,5 +1,4 @@
 import { getCommandConfig } from '../../legacy/command-metadata'
-import { effectiveL16VoutMode } from '../vout-mode-selector'
 import type { AppState } from '../state'
 import type { WarningVM } from './types'
 import { resolveL11SaturationWarning } from './l11'
@@ -26,8 +25,9 @@ export function buildWarnings(state: AppState): WarningVM[] {
   if (directFold) warnings.push(directFold)
 
   if (state.mode === 'L16' || state.mode === 'VOUT_MODE') {
-    // Only `byte` is consumed here; `source` belongs to the L16 projector.
-    const byte = state.mode === 'L16' ? effectiveL16VoutMode(state).byte : state.voutMode.byte
+    // Both modes show the shared VOUT_MODE byte card warnings; the byte is
+    // the state truth itself (the L16 derivation layer consumes it unchanged).
+    const byte = state.voutMode.byte
     // §8.4 fail-closed notice applies to EVERY non-LINEAR shared byte; the
     // format-specific warnings below (invalid-parameter / invalid-combination
     // stay at error level, VID code notes stay warnings) coexist with it.

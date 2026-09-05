@@ -12,15 +12,11 @@ import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
 import { resolveVoutModeRequirement } from './vout-mode-requirements'
-import { effectiveL16VoutMode } from './vout-mode-selector'
+import { deriveL16Semantics } from './l16-derivation'
 import { computeQuantizationOutcome } from './quantization-error'
 import type { QuantizationOutcome } from './quantization-error'
 import { formatPlainNumber } from './numeric-presentation'
-import {
-  resolveRelativeVoltage,
-  RELATIVE_VOLTAGE_OVERFLOW_NOTE,
-  RELATIVE_VOLTAGE_UNDERFLOW_NOTE,
-} from './relative-voltage'
+import { RELATIVE_VOLTAGE_OVERFLOW_NOTE, RELATIVE_VOLTAGE_UNDERFLOW_NOTE } from './relative-voltage'
 import {
   analyzeDirectRoundTrip,
   formatExactDecimal,
@@ -134,16 +130,18 @@ function buildL11Steps(state: AppState): CalculationStepVM[] {
 }
 
 function buildL16Steps(state: AppState): CalculationStepVM[] {
-  const eff = effectiveL16VoutMode(state)
-  const a = analyzeVoutMode(eff.byte)
-  const n = a.linearExponent ?? 0
-  const hex = `0x${state.voutMode.byte.toString(16).toUpperCase().padStart(2, '0')}`
+  // Interpretation facts (payload × shared byte, relative ratio, nominal,
+  // overflow/underflow) come from the canonical derivation (ADR 0006); this
+  // builder only renders them into steps.
+  const facts = deriveL16Semantics(state)
+  const a = facts.analysis
+  const hex = `0x${a.byte.toString(16).toUpperCase().padStart(2, '0')}`
   const steps: CalculationStepVM[] = [field('l16-vout-mode', 'VOUT_MODE（共享字节）', hex)]
 
   // Fail closed on a non-LINEAR shared byte (v2.5.2, Part II §8.4): the page
   // shows the actual byte and refuses to derive N / results / quantization
   // from an implicit 0x18 substitution. No LINEAR math below this point.
-  if (eff.source === 'non-linear') {
+  if (facts.interpretation.kind === 'non-linear') {
     steps.push(
       warningStep(
         'l16-nonlinear',
@@ -161,8 +159,8 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
 
   // SLINEAR16 offset: bit7 belongs to another command group and must not
   // switch the signed offset formula or its unit.
-  if (state.l16.payloadKind === 'slinear16-offset') {
-    const y = PMBusMath.toSigned(state.raw, 16)
+  if (facts.interpretation.kind === 'signed-offset') {
+    const { n, y, value } = facts.interpretation
     const p = PMBusMath.pow2(n)
     steps.push(field('l16-vout-mode-bit7-na', 'bit7 对本 payload', '不适用（有符号偏移量）'))
     steps.push(field('l16-ys', 'Y_s（16 位有符号整数）', String(y)))
@@ -176,17 +174,17 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
         `X_offset = ${y} × 2^${n}`,
         `X_{offset} = ${y} \\times 2^{${n}}`,
       ),
-      resultStep(formatPlainNumber(PMBusMath.decodeSlinear16(state.raw, n).value)),
+      resultStep(formatPlainNumber(value)),
     )
     return steps
   }
 
-  if (a.isRelative) {
-    const ratio = PMBusMath.decodeUlinear16(state.raw, n).value
+  if (facts.interpretation.kind === 'relative-ratio') {
+    const { n, ratio, nominal, finalVoltage } = facts.interpretation
     steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(n)))
     steps.push(intermediate('l16-2n', '2^N（比值缩放）', formatPlainNumber(PMBusMath.pow2(n))))
     steps.push(intermediate('l16-ratio', 'R = Y_u × 2^N（比值）', formatPlainNumber(ratio)))
-    if (state.l16.nominalVout == null) {
+    if (nominal == null) {
       steps.push(
         warningStep(
           'l16-relative-nominal-missing',
@@ -194,42 +192,33 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
         ),
       )
     } else {
-      // v2.5.9: the derivation is classified by the shared relative-voltage
-      // source. Overflow / nonzero-factor underflow keep the nominal and
-      // ratio visible and end in '—' with the shared diagnostic — never a
+      // v2.5.9: the derivation is classified by the canonical facts.
+      // Overflow / nonzero-factor underflow keep the nominal and ratio
+      // visible and end in '—' with the shared diagnostic — never a
       // fabricated Infinity / zero voltage (same classification as the
       // result card, formula and copy contract).
-      const result = resolveRelativeVoltage(state.l16.nominalVout, ratio)
-      if (result.kind === 'overflow' || result.kind === 'underflow') {
+      if (finalVoltage.kind === 'overflow' || finalVoltage.kind === 'underflow') {
         const note =
-          result.kind === 'overflow'
+          finalVoltage.kind === 'overflow'
             ? RELATIVE_VOLTAGE_OVERFLOW_NOTE
             : RELATIVE_VOLTAGE_UNDERFLOW_NOTE
         steps.push(
-          intermediate(
-            'l16-nominal',
-            'V_NOM（VOUT_COMMAND 标称值）',
-            formatPlainNumber(state.l16.nominalVout),
-          ),
+          intermediate('l16-nominal', 'V_NOM（VOUT_COMMAND 标称值）', formatPlainNumber(nominal)),
           formula(
             'l16-final',
             '最终电压',
-            `X = ${formatPlainNumber(state.l16.nominalVout)} × ${formatPlainNumber(ratio)} = —（${note}）`,
+            `X = ${formatPlainNumber(nominal)} × ${formatPlainNumber(ratio)} = —（${note}）`,
           ),
           resultStep('—'),
         )
       } else {
-        const final = result.kind === 'finite' ? result.value : NaN
+        const final = finalVoltage.kind === 'finite' ? finalVoltage.value : NaN
         steps.push(
-          intermediate(
-            'l16-nominal',
-            'V_NOM（VOUT_COMMAND 标称值）',
-            formatPlainNumber(state.l16.nominalVout),
-          ),
+          intermediate('l16-nominal', 'V_NOM（VOUT_COMMAND 标称值）', formatPlainNumber(nominal)),
           formula(
             'l16-final',
             '最终电压',
-            `X = ${formatPlainNumber(state.l16.nominalVout)} × ${formatPlainNumber(ratio)} = ${formatPlainNumber(final)} V`,
+            `X = ${formatPlainNumber(nominal)} × ${formatPlainNumber(ratio)} = ${formatPlainNumber(final)} V`,
           ),
           resultStep(formatPlainNumber(final)),
         )
@@ -239,6 +228,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
   }
 
   // absolute LINEAR: full V → X = V × 2^N chain.
+  const { n, value } = facts.interpretation
   steps.push(field('l16-v', 'V（16 位无符号整数）', String(state.raw)))
   steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(n)))
   const p = PMBusMath.pow2(n)
@@ -251,7 +241,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
       `X = ${state.raw} × 2^${n}`,
       `X = ${state.raw} \\times 2^{${n}}`,
     ),
-    resultStep(formatPlainNumber(PMBusMath.decodeLinear16(state.raw, n).value)),
+    resultStep(formatPlainNumber(value)),
   )
   return steps
 }
