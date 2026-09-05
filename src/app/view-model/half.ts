@@ -1,13 +1,12 @@
 import { PMBusMath } from '../../legacy/pmbus-math'
 import { resolveHalfSpecialSemantics } from '../half-special-semantics'
 import type { HalfSpecialSemantics } from '../half-special-semantics'
-import { formatNumber } from './format'
+import { formatPlainNumber } from '../numeric-presentation'
 
 export function resolveHalfValueText(raw: number): string {
-  const r = PMBusMath.decodeHalf(raw)
-  if (Number.isNaN(r.value)) return 'NaN'
-  if (!Number.isFinite(r.value)) return r.value > 0 ? '+Infinity' : '-Infinity'
-  return formatNumber(r.value)
+  // Specials (NaN / ±Infinity / ±0) share the canonical plain-number policy
+  // with the formula and step surfaces (ADR 0005).
+  return formatPlainNumber(PMBusMath.decodeHalf(raw).value)
 }
 
 /**

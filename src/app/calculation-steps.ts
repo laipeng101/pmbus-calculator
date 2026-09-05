@@ -15,6 +15,7 @@ import { resolveVoutModeRequirement } from './vout-mode-requirements'
 import { effectiveL16VoutMode } from './vout-mode-selector'
 import { computeQuantizationOutcome } from './quantization-error'
 import type { QuantizationOutcome } from './quantization-error'
+import { formatPlainNumber } from './numeric-presentation'
 import {
   resolveRelativeVoltage,
   RELATIVE_VOLTAGE_OVERFLOW_NOTE,
@@ -49,11 +50,13 @@ function quantizationStepValue(outcome: QuantizationOutcome): string {
     case 'exact':
       return '0（精确编码）'
     case 'quantized':
-      return formatNumber(outcome.absoluteError ?? 0)
+      return formatPlainNumber(outcome.absoluteError ?? 0)
     case 'saturated':
-      return `${formatNumber(outcome.absoluteError ?? 0)}（已饱和到边界值）`
+      return `${formatPlainNumber(outcome.absoluteError ?? 0)}（已饱和到边界值）`
     case 'overflow':
-      return `（有限值编码溢出为 ${outcome.represented > 0 ? '+Infinity' : '-Infinity'}）`
+      // overflow means the represented endpoint is ±Infinity (HALF); the
+      // canonical policy renders the same signed text the old ternary built.
+      return `（有限值编码溢出为 ${formatPlainNumber(outcome.represented)}）`
     case 'special':
       return '（特殊值，量化误差不适用）'
   }
@@ -66,14 +69,6 @@ export interface CalculationStepVM {
   latex?: string
   value?: string
   kind: 'field' | 'formula' | 'intermediate' | 'result' | 'warning'
-}
-
-function formatNumber(value: number): string {
-  if (Number.isNaN(value)) return 'NaN'
-  if (Number.isFinite(value) === false) return value > 0 ? '+Infinity' : '-Infinity'
-  if (Object.is(value, -0)) return '-0'
-  if (Number.isInteger(value)) return value.toString()
-  return parseFloat(value.toPrecision(12)).toString()
 }
 
 function field(id: string, label: string, value: string): CalculationStepVM {
@@ -109,14 +104,14 @@ function buildL11Steps(state: AppState): CalculationStepVM[] {
     field('l11-n', 'N（5 位二补码指数）', String(decoded.n)),
     field('l11-y', 'Y（11 位有符号整数）', String(decoded.y)),
     formula('l11-formula', '通用公式', 'X = Y × 2^N', 'X = Y \\times 2^N'),
-    intermediate('l11-2n', '2^N', formatNumber(p)),
+    intermediate('l11-2n', '2^N', formatPlainNumber(p)),
     formula(
       'l11-substitution',
       '数值代入',
       `X = ${decoded.y} × 2^${decoded.n}`,
       `X = ${decoded.y} \\times 2^{${decoded.n}}`,
     ),
-    resultStep(formatNumber(decoded.value)),
+    resultStep(formatPlainNumber(decoded.value)),
   ]
 
   if (state.l11.valueInput != null && Number.isFinite(state.l11.valueInput)) {
@@ -129,7 +124,7 @@ function buildL11Steps(state: AppState): CalculationStepVM[] {
       steps.push(
         warningStep(
           'l11-saturation',
-          `输入值超出 LINEAR11 可表示范围（${formatNumber(min)} ~ ${formatNumber(max)}），编码器已饱和到极值`,
+          `输入值超出 LINEAR11 可表示范围（${formatPlainNumber(min)} ~ ${formatPlainNumber(max)}），编码器已饱和到极值`,
         ),
       )
     }
@@ -174,14 +169,14 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
     steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(n)))
     steps.push(
       formula('l16-formula', '通用公式', 'X_offset = Y_s × 2^N', 'X_{offset} = Y_s \\times 2^N'),
-      intermediate('l16-2n', '2^N', formatNumber(p)),
+      intermediate('l16-2n', '2^N', formatPlainNumber(p)),
       formula(
         'l16-substitution',
         '数值代入',
         `X_offset = ${y} × 2^${n}`,
         `X_{offset} = ${y} \\times 2^{${n}}`,
       ),
-      resultStep(formatNumber(PMBusMath.decodeSlinear16(state.raw, n).value)),
+      resultStep(formatPlainNumber(PMBusMath.decodeSlinear16(state.raw, n).value)),
     )
     return steps
   }
@@ -189,8 +184,8 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
   if (a.isRelative) {
     const ratio = PMBusMath.decodeUlinear16(state.raw, n).value
     steps.push(field('l16-n', 'N（来自 VOUT_MODE 参数位）', String(n)))
-    steps.push(intermediate('l16-2n', '2^N（比值缩放）', formatNumber(PMBusMath.pow2(n))))
-    steps.push(intermediate('l16-ratio', 'R = Y_u × 2^N（比值）', formatNumber(ratio)))
+    steps.push(intermediate('l16-2n', '2^N（比值缩放）', formatPlainNumber(PMBusMath.pow2(n))))
+    steps.push(intermediate('l16-ratio', 'R = Y_u × 2^N（比值）', formatPlainNumber(ratio)))
     if (state.l16.nominalVout == null) {
       steps.push(
         warningStep(
@@ -214,12 +209,12 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
           intermediate(
             'l16-nominal',
             'V_NOM（VOUT_COMMAND 标称值）',
-            formatNumber(state.l16.nominalVout),
+            formatPlainNumber(state.l16.nominalVout),
           ),
           formula(
             'l16-final',
             '最终电压',
-            `X = ${formatNumber(state.l16.nominalVout)} × ${formatNumber(ratio)} = —（${note}）`,
+            `X = ${formatPlainNumber(state.l16.nominalVout)} × ${formatPlainNumber(ratio)} = —（${note}）`,
           ),
           resultStep('—'),
         )
@@ -229,14 +224,14 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
           intermediate(
             'l16-nominal',
             'V_NOM（VOUT_COMMAND 标称值）',
-            formatNumber(state.l16.nominalVout),
+            formatPlainNumber(state.l16.nominalVout),
           ),
           formula(
             'l16-final',
             '最终电压',
-            `X = ${formatNumber(state.l16.nominalVout)} × ${formatNumber(ratio)} = ${formatNumber(final)} V`,
+            `X = ${formatPlainNumber(state.l16.nominalVout)} × ${formatPlainNumber(ratio)} = ${formatPlainNumber(final)} V`,
           ),
-          resultStep(formatNumber(final)),
+          resultStep(formatPlainNumber(final)),
         )
       }
     }
@@ -249,14 +244,14 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
   const p = PMBusMath.pow2(n)
   steps.push(
     formula('l16-formula', '通用公式', 'X = V × 2^N', 'X = V \\times 2^N'),
-    intermediate('l16-2n', '2^N', formatNumber(p)),
+    intermediate('l16-2n', '2^N', formatPlainNumber(p)),
     formula(
       'l16-substitution',
       '数值代入',
       `X = ${state.raw} × 2^${n}`,
       `X = ${state.raw} \\times 2^{${n}}`,
     ),
-    resultStep(formatNumber(PMBusMath.decodeLinear16(state.raw, n).value)),
+    resultStep(formatPlainNumber(PMBusMath.decodeLinear16(state.raw, n).value)),
   )
   return steps
 }
@@ -290,10 +285,10 @@ function buildDirectSteps(
   const yMinusB = yTerm - b
   const invM = 1 / m
   const intermediates = [
-    intermediate('direct-pow10', `10^(-R) = 10^${-r}`, formatNumber(pow10)),
-    intermediate('direct-y-term', 'Y × 10^(-R)', formatNumber(yTerm)),
-    intermediate('direct-y-minus-b', 'Y × 10^(-R) − b', formatNumber(yMinusB)),
-    intermediate('direct-inv-m', '1/m', formatNumber(invM)),
+    intermediate('direct-pow10', `10^(-R) = 10^${-r}`, formatPlainNumber(pow10)),
+    intermediate('direct-y-term', 'Y × 10^(-R)', formatPlainNumber(yTerm)),
+    intermediate('direct-y-minus-b', 'Y × 10^(-R) − b', formatPlainNumber(yMinusB)),
+    intermediate('direct-inv-m', '1/m', formatPlainNumber(invM)),
   ]
   // v2.5.11: when the exact §7.4 decode needs more precision than binary64
   // carries, the steps must expose the exact value (fraction and, when it
@@ -346,9 +341,9 @@ function buildDirectSteps(
     formula(
       'direct-substitution',
       '数值代入',
-      `X = ${formatNumber(invM)} × (${formatNumber(yTerm)} − ${formatNumber(b)})`,
+      `X = ${formatPlainNumber(invM)} × (${formatPlainNumber(yTerm)} − ${formatPlainNumber(b)})`,
     ),
-    resultStep(formatNumber(invM * yMinusB)),
+    resultStep(formatPlainNumber(invM * yMinusB)),
   )
   return steps
 }
@@ -371,7 +366,7 @@ function buildHalfSteps(state: AppState): CalculationStepVM[] {
     steps.push(
       formula('half-class', '分类', '零（±0）'),
       formula('half-formula', '分段公式', `X = ${signPower} × 0`),
-      resultStep(formatNumber(value)),
+      resultStep(formatPlainNumber(value)),
     )
   } else if (exponent === 0) {
     const p = PMBusMath.pow2(-14)
@@ -379,20 +374,20 @@ function buildHalfSteps(state: AppState): CalculationStepVM[] {
     steps.push(
       formula('half-class', '分类', '次正规数'),
       formula('half-formula', '分段公式', `X = ${signPower} × 2^-14 × F/1024`),
-      intermediate('half-2e', '2^-14', formatNumber(p)),
-      intermediate('half-fraction', 'F/1024', formatNumber(fTerm)),
+      intermediate('half-2e', '2^-14', formatPlainNumber(p)),
+      intermediate('half-fraction', 'F/1024', formatPlainNumber(fTerm)),
       formula(
         'half-substitution',
         '数值代入',
-        `X = ${signPower} × ${formatNumber(p)} × ${formatNumber(fTerm)}`,
+        `X = ${signPower} × ${formatPlainNumber(p)} × ${formatPlainNumber(fTerm)}`,
       ),
-      resultStep(formatNumber(value)),
+      resultStep(formatPlainNumber(value)),
     )
   } else if (exponent === 0x1f && fraction === 0) {
     steps.push(
       formula('half-class', '分类', `${sign ? '−' : '+'}Infinity`),
       formula('half-formula', '分段公式', `X = ${signPower} × ∞`),
-      resultStep(formatNumber(value)),
+      resultStep(formatPlainNumber(value)),
     )
   } else if (exponent === 0x1f) {
     steps.push(
@@ -408,14 +403,14 @@ function buildHalfSteps(state: AppState): CalculationStepVM[] {
       formula('half-class', '分类', '正规数'),
       formula('half-formula', '分段公式', `X = ${signPower} × 2^(E−15) × (1 + F/1024)`),
       intermediate('half-e-minus', 'E − 15', String(exp)),
-      intermediate('half-2e', '2^(E−15)', formatNumber(p)),
-      intermediate('half-mantissa', '1 + F/1024', formatNumber(mant)),
+      intermediate('half-2e', '2^(E−15)', formatPlainNumber(p)),
+      intermediate('half-mantissa', '1 + F/1024', formatPlainNumber(mant)),
       formula(
         'half-substitution',
         '数值代入',
-        `X = ${signPower} × ${formatNumber(p)} × ${formatNumber(mant)}`,
+        `X = ${signPower} × ${formatPlainNumber(p)} × ${formatPlainNumber(mant)}`,
       ),
-      resultStep(formatNumber(value)),
+      resultStep(formatPlainNumber(value)),
     )
   }
 

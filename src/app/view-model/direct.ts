@@ -7,7 +7,7 @@ import {
 } from '../direct-exact'
 import type { AppState } from '../state'
 import type { DirectFidelityVM, WarningVM } from './types'
-import { formatNumber } from './format'
+import { formatPlainNumber } from '../numeric-presentation'
 
 /**
  * Shared note for the quantization readout in a precision-folded DIRECT
@@ -20,7 +20,7 @@ export const DIRECT_PRECISION_FOLD_DELTA_NOTE =
 export function resolveDirectValueText(state: AppState): string {
   const y = PMBusMath.toSigned(state.raw, 16)
   const r = PMBusMath.decodeDirect(y, state.direct.m, state.direct.b, state.direct.r)
-  return Number.isNaN(r.value) ? '—' : formatNumber(r.value)
+  return Number.isNaN(r.value) ? '—' : formatPlainNumber(r.value)
 }
 
 /**
@@ -46,7 +46,7 @@ export function resolveDirectFidelity(state: AppState): DirectFidelityVM | null 
   return {
     exactFractionText: formatExactRational(analysis.exact),
     exactDecimalText: formatExactDecimal(analysis.exact),
-    approxValueText: formatNumber(analysis.approxValue),
+    approxValueText: formatPlainNumber(analysis.approxValue),
     reencodedY: analysis.reencodedY,
     safeReentryText,
   }

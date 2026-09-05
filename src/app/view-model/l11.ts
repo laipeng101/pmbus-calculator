@@ -1,11 +1,11 @@
 import { PMBusMath } from '../../legacy/pmbus-math'
 import type { AppState } from '../state'
 import type { WarningVM } from './types'
-import { formatNumber } from './format'
+import { formatPlainNumber } from '../numeric-presentation'
 
 export function resolveL11ValueText(raw: number): string {
   const r = PMBusMath.decodeLinear11(raw)
-  return formatNumber(r.value)
+  return formatPlainNumber(r.value)
 }
 
 /**
@@ -24,7 +24,7 @@ export function resolveL11SaturationWarning(state: AppState): WarningVM | null {
     return {
       id: 'l11-saturation',
       level: 'warning',
-      text: `输入值超出 LINEAR11 可表示范围（${formatNumber(min)} ~ ${formatNumber(max)}），编码器已饱和到极值；量化误差见误差面板。`,
+      text: `输入值超出 LINEAR11 可表示范围（${formatPlainNumber(min)} ~ ${formatPlainNumber(max)}），编码器已饱和到极值；量化误差见误差面板。`,
     }
   }
   return null
@@ -34,5 +34,5 @@ export function resolveL11NRangeText(state: AppState): string | undefined {
   if (state.mode !== 'L11') return undefined
   const decoded = PMBusMath.decodeLinear11(state.raw & 0xffff)
   const p = PMBusMath.pow2(decoded.n)
-  return `${formatNumber(-1024 * p)} ~ ${formatNumber(1023 * p)}`
+  return `${formatPlainNumber(-1024 * p)} ~ ${formatPlainNumber(1023 * p)}`
 }
