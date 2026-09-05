@@ -155,13 +155,21 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await wireBtn.scrollIntoViewIfNeeded()
     await wireBtn.evaluate((el: HTMLButtonElement) => el.click())
     await expect(page.getByText('已复制: Wire 字节')).toBeVisible()
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('0x 01 00')
+    // 剪贴板回读只在 firefox 断言：Linux WebKit 即便已授予 clipboard-read，
+    // readText 仍被平台以 NotAllowedError 拒绝（CI run 33971115579 三次重试
+    // 取证）；写入本身由可见的「已复制」成功反馈证明（writeText promise
+    // resolve 后才渲染），这是不削弱产品的确定性用户反馈路径。
+    if (browserName === 'firefox') {
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('0x 01 00')
+    }
 
     const msbBtn = page.getByRole('button', { name: 'MSB-first 字节' })
     await msbBtn.scrollIntoViewIfNeeded()
     await msbBtn.evaluate((el: HTMLButtonElement) => el.click())
     await expect(page.getByText('已复制: MSB-first 字节')).toBeVisible()
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('0x 00 01')
+    if (browserName === 'firefox') {
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('0x 00 01')
+    }
   })
 
   test('Hex 步进器 pointer：每次点击精确单次提交且焦点保持在输入框', async ({ page }) => {
