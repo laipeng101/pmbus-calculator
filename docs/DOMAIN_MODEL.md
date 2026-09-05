@@ -319,7 +319,8 @@ PMBusMath.decodeDirect(y, …))`）与经验证的安全回录文本生成
 ## 6. 格式编码量化误差（format-encoding quantization）
 
 实现单一来源：`src/app/quantization-error.ts`（可判别联合 `QuantizationOutcome`），
-展示呈现在 `src/app/view-model.ts` 与共享组件 `src/components/result/ErrorDelta.tsx`。
+展示呈现在 `src/app/view-model/`（共享装配 + 模式级投影层，见 ADR 0004；
+读数呈现位于其中 `quantization.ts`）与共享组件 `src/components/result/ErrorDelta.tsx`。
 本节语义适用于 LINEAR11 / LINEAR16 / DIRECT / IEEE Half 四个数值格式页。
 
 ### 6.1 请求来源（provenance）

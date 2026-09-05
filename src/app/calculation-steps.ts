@@ -6,7 +6,7 @@
  *   -> result (物理值) -> warnings (真实错误/饱和提示)
  *
  * Components must never recompute these values in JSX; they only render the
- * steps produced here and by src/app/view-model.ts.
+ * steps produced here and by src/app/view-model/.
  */
 import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
