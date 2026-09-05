@@ -54,7 +54,9 @@ policy 语义：
 - `formula-presentation.ts` 与 `calculation-steps.ts` 的本地 formatter 删除，
   LaTeX 包装收敛为 `formatPlainNumberLatex` 薄适配。
 - `half.ts` 的内联 special 分支与 `calculation-steps.ts` 的 overflow 三元拼接
-  改为组合 canonical（输出逐字节不变）。
+  改为组合 canonical。所有可达状态下输出逐字节一致（overflow 的 represented
+  恒为 ±Infinity）；唯一不可达的 represented=NaN 状态从旧的 `'-Infinity'`
+  收敛为 canonical `'NaN'`，属潜在改进而非回归。
 - 层级单向：`numeric-presentation` 为无依赖纯模块，位于 formula-presentation、
   calculation-steps 与 view-model 之下；不复制 PMBus 数学、命令 metadata、
   raw 真值或舍入合同；领域计算不进入组件层。
@@ -65,7 +67,7 @@ policy 语义：
   special 文本的内联副本（half、overflow 步骤）一并消除。
 - 行为保持：`src/app/numeric-presentation.test.ts` 先行 characterization
   （27 个跨表面向量：NaN/±Infinity/±0、整数、12 位有效数字折叠、极大/极小
-  有限值、DIRECT 指数结果、L11/L16 exact/quantized 请求）在重构前后逐字通过；
-  视觉基线与 E2E 无变化。
+  有限值、DIRECT 指数结果、L11/L16 exact/quantized 请求、HALF 有限请求溢出）
+  在重构前后逐字通过；视觉基线与 E2E 无变化。
 - 新增呈现表面时必须组合本模块，而不是复制 `toPrecision(12)` 或 special 文本；
   LaTeX/单位/label 等上下文差异只允许以薄 adapter 表达。

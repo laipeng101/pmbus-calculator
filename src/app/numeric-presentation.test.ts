@@ -73,6 +73,11 @@ const VECTORS: PresentationVector[] = [
     expectedValueText: '0.99951171875',
     formulaEmbedsValue: 'suffix',
   },
+  {
+    name: 'HALF overflow request (0x7c00, request 65520)',
+    s: state({ mode: 'HALF', raw: 0x7c00, valueRequest: { mode: 'HALF', value: 65520 } }),
+    expectedValueText: '+Infinity',
+  },
   // LINEAR11 — exact, negative, precision-folded and extreme finite values.
   { name: 'L11 integer (0x000c)', s: state({ mode: 'L11', raw: 0x000c }), expectedValueText: '12' },
   {
@@ -256,6 +261,20 @@ describe('plain-number presentation — cross-surface characterization', () => {
     )
     const l11Quant = l11.steps.find((step) => step.id.endsWith('-quantization'))
     expect(l11Quant?.plainText).toBe('格式编码量化误差（请求值 − 表示值） = 0.00109375')
+  })
+
+  it('renders the HALF overflow endpoints through the canonical policy on every surface', () => {
+    // The one rewritten branch (the overflow step used to inline-build the
+    // signed Infinity text): request 65520 rounds to +Infinity in binary16.
+    const vm = toCalculatorViewModel(
+      state({ mode: 'HALF', raw: 0x7c00, valueRequest: { mode: 'HALF', value: 65520 } }),
+    )
+    const quant = vm.steps.find((step) => step.id.endsWith('-quantization'))
+    expect(vm.deltaText).toBe('65520 → +Infinity')
+    expect(vm.deltaKind).toBe('error')
+    expect(quant?.plainText).toBe(
+      '格式编码量化误差（请求值 − 表示值） = （有限值编码溢出为 +Infinity）',
+    )
   })
 
   it('keeps the DIRECT precision-fold surfaces numerically consistent', () => {
