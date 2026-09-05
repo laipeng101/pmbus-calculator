@@ -20,6 +20,44 @@ function make(overrides: Partial<AppState> = {}): AppState {
   return { ...BASE, ...overrides }
 }
 
+describe('L16 physical-value copy availability', () => {
+  for (const payloadKind of ['ulinear16', 'slinear16-offset'] as const) {
+    for (const nominalVout of [null, 0, 12]) {
+      test(`${payloadKind}, nominal=${nominalVout}: all 256 bytes agree with result availability`, () => {
+        for (let byte = 0; byte < 256; byte++) {
+          const vm = toCalculatorViewModel(
+            make({
+              mode: 'L16',
+              raw: 0x0100,
+              voutMode: { byte },
+              l16: { payloadKind, nominalVout },
+            }),
+          )
+          const nonLinear = (byte & 0x60) !== 0
+          const missingReference =
+            payloadKind === 'ulinear16' && (byte & 0x80) !== 0 && nominalVout === null
+          if (nonLinear || missingReference) {
+            expect(vm.valueText, `byte ${byte}`).toBe('—')
+            expect(vm.physicalValueCopy?.available, `byte ${byte}`).toBe(false)
+            expect(vm.physicalValueCopy?.reason).toContain(nonLinear ? 'VOUT_MODE' : '标称参考值')
+          } else {
+            expect(vm.valueText, `byte ${byte}`).not.toBe('—')
+            expect(vm.physicalValueCopy, `byte ${byte}`).toBeUndefined()
+          }
+        }
+      })
+    }
+  }
+
+  test('a zero ratio still needs a reference; a provided zero is copyable', () => {
+    const state = make({ mode: 'L16', raw: 0, voutMode: { byte: 0x98 } })
+    expect(toCalculatorViewModel(state).physicalValueCopy?.available).toBe(false)
+    const supplied = toCalculatorViewModel({ ...state, l16: { ...state.l16, nominalVout: 0 } })
+    expect(supplied.valueText).toBe('0')
+    expect(supplied.physicalValueCopy).toBeUndefined()
+  })
+})
+
 describe('toCalculatorViewModel', () => {
   describe('mode=L11', () => {
     test('raw=0 produces value 0', () => {

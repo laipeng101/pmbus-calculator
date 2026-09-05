@@ -350,7 +350,7 @@
   `l16-relative-zero-ratio`（单一来源 `deriveL16Semantics` 的同一 ratio 解码事实），
   文案区分两类真零：`nominal=0`（decode-only 真零，ratio≠0）与 signed offset
   （bit7 不参与数学）都不触发；标称参考缺失时告警仍然出现（非符合性是 committed
-  raw 的属性）。数学结果保持精确 0，不伪造饱和/错误，物理值复制保持可用；
+  raw 的属性）。数学结果保持精确 0，不伪造饱和/错误；已提供标称参考时物理值复制保持可用；
   `l16-relative-overflow` / `l16-relative-underflow` 与本告警互斥（零比值不可能
   溢出或下溢）。
 - 手动 `l16/set-slinear-y` 是 raw 变更：提交后面板隐藏（组件返回 null）、计算步骤
@@ -382,6 +382,10 @@
     真实器件一定接受 VOUT_MODE 写入）；禁止称其为规范/器件默认，禁止重新引入任何
     隐式 fallback 通道或「按 fallback 0x18 计算」读数标注。反词回归在
     `tests/e2e/l16-nonlinear-fail-closed.spec.ts` 与 `src/app/view-model.test.ts`。
+- L16 物理值复制与结果可用性同源：非 LINEAR、缺少标称参考及派生溢出/下溢导致
+  结果为 `—` 时，复制按钮必须禁用，并通过可见说明与 `aria-describedby` 给出原因。
+  已提供的标称值 `0` 与缺失参考值不同；有限零值可正常复制。修改配置、补填/清除
+  参考值或切换 payload 后实时重算，Raw Word / Wire 字节等复制不依赖物理值可用性。
 - 非 LINEAR 共享字节下，L16 的 16 位位域图例必须是中性 raw word 文案
   （`RAW_WORD_NEUTRAL_LABEL = "raw word [15:0]（未按 LINEAR16 解释）"`，v2.5.3）：
   `getBitRegions('L16', payloadKind, state.voutMode.byte)` 以实际共享字节为准，任何

@@ -232,15 +232,33 @@ export function resolveL16RelativeDiagnostics(state: AppState): WarningVM[] {
 }
 
 /**
- * v2.5.9: a relative-derivation range error disables the 物理值 copy with
- * an accessible reason; every other state keeps the copy enabled.
+ * Physical-value copy follows the same canonical interpretation as the
+ * result card: a missing result is not a copyable numeric value.
  */
 export function resolveL16PhysicalValueCopy(
   state: AppState,
 ): { available: false; reason: string } | undefined {
   if (state.mode !== 'L16') return undefined
-  const { interpretation } = deriveL16Semantics(state)
+  const { interpretation, payloadContext, analysis } = deriveL16Semantics(state)
+  if (interpretation.kind === 'non-linear') {
+    const blocked = buildL16BlockVM(
+      payloadContext.semantics,
+      formatByteHex(state.voutMode.byte),
+      analysis.formatName,
+    )
+    return {
+      available: false,
+      reason: `物理值复制不可用：${blocked.title}；当前页面没有物理值结果。Raw Word / Wire 字节复制仍可用。`,
+    }
+  }
   if (interpretation.kind !== 'relative-ratio') return undefined
+  if (interpretation.finalVoltage.kind === 'missing-reference') {
+    return {
+      available: false,
+      reason:
+        '物理值复制不可用：尚未提供 VOUT_COMMAND 标称参考值，无法计算最终电压。Raw Word / Wire 字节复制仍可用。',
+    }
+  }
   if (interpretation.finalVoltage.kind === 'overflow') {
     return {
       available: false,
