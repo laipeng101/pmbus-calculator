@@ -213,6 +213,15 @@ PMBusMath.decodeDirect(y, …))`）与经验证的安全回录文本生成
     说明与显式应用计算器 LINEAR 示例 0x18 的入口（`l16/apply-calculator-linear-example`
     真正改写共享字节）。
     invalid-parameter / invalid-combination 保持 error 级。
+- **L16 呈现语义事实单一事实源（ADR 0006）**：`src/app/l16-derivation.ts` 的
+  `deriveL16Semantics(state)` 一次性派生 L16 页的呈现面向语义 facts——共享字节
+  分析、`linked`/`non-linear` 分派、字节 × payload 判别合同与 raw 解释判别联合
+  （`non-linear` / `signed-offset`（含 Y_s 与 N）/ `relative-ratio`（含比值、
+  nominal 与 missing/finite/overflow/underflow 分类）/ `absolute-unsigned`）。
+  结果 value text、公式、计算步骤、warnings、物理值复制与量化 outcome 的 L16
+  分支全部消费它，不得重新推导同一判定；解释顺序即本节合同（非 LINEAR
+  fail-closed → signed offset payload → relative 比值 → absolute 无符号）。
+  文案、LaTeX 与组件排版差异只允许存在于消费方。
 - **0x18 是计算器示例值，不是规范默认值（v2.5.7）**：Part II §8.3 只定义 VOUT_MODE
   位布局与合法组合，不存在 PMBus 标准默认字节；器件可在制造时固定 Mode/Parameter
   并拒绝写入。`CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE = 0x18`（absolute、N=-8）仅是

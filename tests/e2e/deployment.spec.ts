@@ -208,7 +208,7 @@ test.describe('GitHub Pages production deployment', () => {
 
   // v2.6.4 正式站验收：relative ULINEAR16 R=0 是 §8.5.2 状态级非符合性告警，
   // 数学结果保持精确 0——不伪造饱和/下溢（与 tests/e2e/l16-relative-range.spec.ts
-  // 的 §8.5.2 用例同一向量与单一来源 resolveL16Relative）。
+  // 的 §8.5.2 用例同一向量与单一来源 deriveL16Semantics）。
   test.describe('v2.6.4 relative L16 acceptance (production)', () => {
     test('§8.5.2 非符合性向量：98/0000 nominal 12 → X=0、R=0 告警、复制可用', async ({ page }) => {
       await page.goto(deploymentUrl!)

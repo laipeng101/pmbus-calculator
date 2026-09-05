@@ -16,8 +16,7 @@
  */
 import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
-import { analyzeVoutMode } from '../legacy/vout-mode'
-import { effectiveL16VoutMode } from './vout-mode-selector'
+import { deriveL16Semantics } from './l16-derivation'
 import {
   compareExact,
   decodeDirectExact,
@@ -119,19 +118,23 @@ function encodableRange(state: AppState): { min: number; max: number } | null {
     case 'L16': {
       // Fail closed on a non-LINEAR shared byte (v2.5.2, §8.4): no implicit
       // 0x18 channel, no bounded physical range to saturate against.
-      const eff = effectiveL16VoutMode(state)
-      if (eff.source === 'non-linear') return null
       // Payload semantics come first (Part II §13.3/§13.4): the signed
       // offset range applies to ANY LINEAR byte — bit7 does not participate.
-      const a = analyzeVoutMode(eff.byte)
-      if (a.format !== 0) return null
-      const p = PMBusMath.pow2(a.linearExponent ?? 0)
-      if (state.l16.payloadKind === 'slinear16-offset') {
-        return { min: -32768 * p, max: 32767 * p }
-      }
       // Relative ULINEAR16 is a ratio: no bounded physical-value channel.
-      if (a.isRelative) return null
-      return { min: 0, max: 65535 * p }
+      // All of it is read from the canonical interpretation facts (ADR 0006).
+      const { interpretation } = deriveL16Semantics(state)
+      switch (interpretation.kind) {
+        case 'signed-offset': {
+          const p = PMBusMath.pow2(interpretation.n)
+          return { min: -32768 * p, max: 32767 * p }
+        }
+        case 'absolute-unsigned': {
+          const p = PMBusMath.pow2(interpretation.n)
+          return { min: 0, max: 65535 * p }
+        }
+        default:
+          return null
+      }
     }
     case 'DIRECT': {
       if (state.direct.m === 0) return null
@@ -160,22 +163,20 @@ function computeRepresented(state: AppState): number | null {
       case 'L11':
         return PMBusMath.decodeLinear11(state.raw).value
       case 'L16': {
-        const eff = effectiveL16VoutMode(state)
-        if (eff.source === 'non-linear') return null
-        const a = analyzeVoutMode(eff.byte)
-        if (a.format !== 0) return null
-        const n = a.linearExponent ?? 0
-        // SLINEAR16 offset is a command-payload semantic (Part II §13.3/
-        // §13.4): bit7 does not participate in its math, so the payload kind
-        // takes precedence over a relative VOUT_MODE bit — mirroring the
-        // value-text and calculation-steps contracts.
-        if (state.l16.payloadKind === 'slinear16-offset') {
-          return PMBusMath.decodeSlinear16(state.raw, n).value
+        // The canonical interpretation facts decide everything (ADR 0006):
+        // non-LINEAR fails closed; the SLINEAR16 offset payload is a
+        // command-payload semantic (Part II §13.3/§13.4) whose bit7 does not
+        // participate, so it takes precedence over a relative VOUT_MODE bit;
+        // relative ULINEAR16 is a dimensionless ratio, not a decodable
+        // physical voltage — no quantization error applies.
+        const { interpretation } = deriveL16Semantics(state)
+        switch (interpretation.kind) {
+          case 'signed-offset':
+          case 'absolute-unsigned':
+            return interpretation.value
+          default:
+            return null
         }
-        // Relative ULINEAR16 is a dimensionless ratio, not a decodable
-        // physical voltage; no quantization error applies.
-        if (a.isRelative) return null
-        return PMBusMath.decodeUlinear16(state.raw, n).value
       }
       case 'DIRECT': {
         if (state.direct.m === 0) return null
