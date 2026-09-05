@@ -56,7 +56,14 @@ export default defineConfig({
     {
       name: 'webkit-core',
       use: {
-        ...devices['Desktop WebKit'],
+        // The desktop WebKit descriptor is registered as 'Desktop Safari' in
+        // Playwright's device registry — there is NO 'Desktop WebKit' key, and
+        // indexing a Record<string, DeviceDescriptor> with a wrong key returns
+        // undefined, which silently drops browserName and falls back to
+        // chromium (invisible where chromium is installed, fatal in CI where
+        // only firefox+webkit are installed; pinned by
+        // tests/cross-engine-config.test.ts).
+        ...devices['Desktop Safari'],
         viewport: { width: 1440, height: 900 },
       },
     },

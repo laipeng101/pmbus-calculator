@@ -137,10 +137,12 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     context,
     browserName,
   }) => {
-    // WebKit 走 grantPermissions；Firefox 不支持 clipboard 权限名，改由
-    // firefox-core 项目的 dom.events.testing.asyncClipboard 官方测试偏好启用。
-    if (browserName !== 'firefox') {
-      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    // WebKit 只支持授予 clipboard-read（grantPermissions 的 clipboard-write
+    // 权限名不存在）；其 writeText 无需 clipboard-write 权限即可成功。Firefox
+    // 不支持任何 clipboard 权限名，改由 firefox-core 项目的
+    // dom.events.testing.asyncClipboard 官方测试偏好启用。
+    if (browserName === 'webkit') {
+      await context.grantPermissions(['clipboard-read'])
     }
     await page.goto(appUrl())
     const hex = page.locator(RAW_HEX)
@@ -179,29 +181,36 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await expect(hex).toHaveValue('000A')
   })
 
-  test('Hex 步进器 keyboard：Tab 聚焦、Enter/Space 激活、边界禁用', async ({ page }) => {
+  test('Hex 步进器 keyboard：Enter/Space 激活、Shift+Tab 焦点往返、边界禁用', async ({ page }) => {
     await page.goto(appUrl())
     const hex = page.locator(RAW_HEX)
     await hex.fill('0000')
 
-    await page.keyboard.press('Tab')
+    // macOS WebKit 默认（未开 Full Keyboard Access）Tab 会跳过 button、直达
+    // 下一个文本框（探针：Tab 从 Raw Word 输入落到 #l11-y-input）；Firefox/
+    // Chromium 则聚焦按钮。Tab 目标属于平台键盘导航约定，不属于引擎敏感
+    // 合同，故本套件以程序化 focus 断言键盘激活；Tab 进按钮的完整合同仍由
+    // chromium 深度套件覆盖（hex-stepper.spec.ts）。
     const up = page.locator(STEP_UP)
+    await up.focus()
     await expect(up).toBeFocused()
-    const outline = await up.evaluate((el) => getComputedStyle(el).outlineStyle)
-    expect(outline).not.toBe('none')
 
     await page.keyboard.press('Enter')
     await expect(hex).toHaveValue('0001')
     await page.keyboard.press('Space')
     await expect(hex).toHaveValue('0002')
 
+    // 文本控件在所有引擎都参与 Tab 序列：Shift+Tab 应回输入框。
     await page.keyboard.press('Shift+Tab')
     await expect(hex).toBeFocused()
-    await page.keyboard.press('Tab')
-    await page.keyboard.press('Tab')
-    await expect(page.locator(STEP_DOWN)).toBeFocused()
+
+    await page.locator(STEP_DOWN).focus()
     await page.keyboard.press('Enter')
     await expect(hex).toHaveValue('0001')
+
+    // 边界真实 disabled：FFFF 上界按钮不可激活，永不回绕。
+    await hex.fill('FFFF')
+    await expect(page.locator(STEP_UP)).toBeDisabled()
   })
 
   test('术语气泡：点击打开、Escape 关闭并恢复焦点', async ({ page }) => {
