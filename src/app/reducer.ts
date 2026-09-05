@@ -295,7 +295,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const autoN = !state.l11.autoN
       if (state.mode !== 'L11') return { ...state, l11: { ...state.l11, autoN } }
       const value = state.l11.valueInput ?? PMBusMath.decodeLinear11(state.raw).value
-      return encodeL11FromValue({ ...state, l11: { ...state.l11, autoN } }, value)
+      const encoded = encodeL11FromValue({ ...state, l11: { ...state.l11, autoN } }, value)
+      // The decoded fallback lets the toggle retain its re-encoding behavior,
+      // but only a real value/set request may establish quantization provenance.
+      return { ...encoded, l11: { ...encoded.l11, valueInput: state.l11.valueInput } }
     }
 
     // ---- Shared VOUT_MODE byte ----

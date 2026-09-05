@@ -647,6 +647,48 @@ describe('appReducer — state transitions', () => {
       const s = appReducer(base, { type: 'l11/toggle-auto-n' })
       expect(s.l11.autoN).toBe(!base.l11.autoN)
     })
+
+    it('keeps raw-only provenance unknown through both toggle directions', () => {
+      const rawOnly = appReducer(base, { type: 'raw/set-from-hex', hex: 'F123' })
+      const manual = appReducer(rawOnly, { type: 'l11/toggle-auto-n' })
+      const automatic = appReducer(manual, { type: 'l11/toggle-auto-n' })
+      for (const state of [manual, automatic]) {
+        expect(state.raw).toBe(0xf123)
+        expect(state.l11.valueInput).toBeNull()
+        expect(toCalculatorViewModel(state).deltaText).toBeUndefined()
+      }
+    })
+
+    it('retains auto-N canonicalization without inventing a request', () => {
+      const rawOnly = appReducer(base, { type: 'raw/set-from-hex', hex: '0801' })
+      const manual = appReducer(rawOnly, { type: 'l11/toggle-auto-n' })
+      expect(manual.raw).toBe(0x0801)
+      const automatic = appReducer(manual, { type: 'l11/toggle-auto-n' })
+      expect(automatic.raw).toBe(0x0002)
+      expect(automatic.l11.valueInput).toBeNull()
+    })
+
+    it('re-encodes a real request instead of replacing it with the represented value', () => {
+      const rawOnly = appReducer(base, { type: 'raw/set-from-hex', hex: '0801' })
+      const manual = appReducer(rawOnly, { type: 'l11/toggle-auto-n' })
+      const requested = appReducer(manual, { type: 'value/set', value: '1.25' })
+      expect(requested.raw).toBe(0x0801)
+      expect(requested.l11.valueInput).toBe(1.25)
+      const automatic = appReducer(requested, { type: 'l11/toggle-auto-n' })
+      expect(automatic.raw).toBe(0xf005)
+      expect(automatic.l11.valueInput).toBe(1.25)
+      expect(toCalculatorViewModel(automatic).deltaKind).toBe('ok')
+      const locked = appReducer(automatic, { type: 'l11/toggle-auto-n' })
+      expect(locked.l11.valueInput).toBe(1.25)
+      expect(locked.raw).toBe(0xf005)
+    })
+
+    it('preserves an explicit zero request', () => {
+      const requested = appReducer(base, { type: 'value/set', value: '0' })
+      const toggled = appReducer(requested, { type: 'l11/toggle-auto-n' })
+      expect(toggled.l11.valueInput).toBe(0)
+      expect(toCalculatorViewModel(toggled).deltaText).toBe('+0.000000 (—)')
+    })
   })
 
   describe('vout-mode/set-byte', () => {
