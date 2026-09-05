@@ -8,7 +8,8 @@ import {
 } from '../direct-exact'
 import type { AppState } from '../state'
 import type { DirectFidelityVM } from './types'
-import { formatNumber, formatSignedError, formatSpecial } from './format'
+import { formatSignedError } from './format'
+import { formatPlainNumber, formatSpecial } from '../numeric-presentation'
 import { DIRECT_PRECISION_FOLD_DELTA_NOTE } from './direct'
 
 /**
@@ -72,7 +73,7 @@ function presentQuantizationOutcome(outcome: QuantizationOutcome): {
     case 'overflow':
       return {
         kind: 'error',
-        text: `${formatNumber(outcome.requested)} → ${formatSpecial(outcome.represented)}`,
+        text: `${formatPlainNumber(outcome.requested)} → ${formatSpecial(outcome.represented)}`,
         note: '有限值编码溢出（IEEE 754 binary16 范围 ±65504）',
       }
     case 'special':

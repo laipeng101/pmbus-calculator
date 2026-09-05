@@ -11,7 +11,8 @@ import {
 import type { RelativeVoltageResult } from '../relative-voltage'
 import type { AppState } from '../state'
 import type { L16BlockVM, L16PayloadContextVM, VoutModeInfoVM, WarningVM } from './types'
-import { formatByteHex, formatNumber } from './format'
+import { formatByteHex } from './format'
+import { formatPlainNumber } from '../numeric-presentation'
 import { buildVoutModeVM } from './vout-mode'
 
 /**
@@ -117,7 +118,7 @@ export function resolveL16ValueText(state: AppState): string {
   const a = analyzeVoutMode(eff.byte)
   const n = a.linearExponent ?? 0
   if (state.l16.payloadKind === 'slinear16-offset') {
-    return formatNumber(PMBusMath.decodeSlinear16(state.raw, n).value)
+    return formatPlainNumber(PMBusMath.decodeSlinear16(state.raw, n).value)
   }
   if (a.isRelative) {
     // v2.5.9: the derivation is classified — overflow / nonzero-factor
@@ -127,9 +128,9 @@ export function resolveL16ValueText(state: AppState): string {
       PMBusMath.decodeUlinear16(state.raw, n).value,
     )
     if (result.kind !== 'finite') return '—'
-    return formatNumber(result.value)
+    return formatPlainNumber(result.value)
   }
-  return formatNumber(PMBusMath.decodeUlinear16(state.raw, n).value)
+  return formatPlainNumber(PMBusMath.decodeUlinear16(state.raw, n).value)
 }
 
 /** Representable payload range line; absent for relative and non-LINEAR bytes. */
@@ -142,11 +143,11 @@ export function resolveL16NRangeText(state: AppState): string | undefined {
   const a = analyzeVoutMode(eff.byte)
   if (a.format === 0 && state.l16.payloadKind === 'slinear16-offset') {
     const p = PMBusMath.pow2(a.linearExponent ?? 0)
-    return `${formatNumber(-32768 * p)} ~ ${formatNumber(32767 * p)}`
+    return `${formatPlainNumber(-32768 * p)} ~ ${formatPlainNumber(32767 * p)}`
   }
   if (a.format === 0 && a.isRelative === false) {
     const p = PMBusMath.pow2(a.linearExponent ?? 0)
-    return '0 ~ ' + formatNumber(65535 * p)
+    return '0 ~ ' + formatPlainNumber(65535 * p)
   }
   return undefined
 }

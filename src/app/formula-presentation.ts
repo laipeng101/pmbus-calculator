@@ -2,6 +2,7 @@ import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { analyzeVoutMode } from '../legacy/vout-mode'
 import { effectiveL16VoutMode } from './vout-mode-selector'
+import { formatPlainNumber, formatPlainNumberLatex } from './numeric-presentation'
 import {
   resolveRelativeVoltage,
   RELATIVE_VOLTAGE_OVERFLOW_NOTE,
@@ -48,21 +49,6 @@ function formatDirectTerm(value: number): string {
   return value < 0 ? `(${value})` : String(value)
 }
 
-function formatNumber(value: number): string {
-  if (Number.isNaN(value)) return 'NaN'
-  if (Number.isFinite(value) === false) return value > 0 ? '+Infinity' : '-Infinity'
-  if (Object.is(value, -0)) return '-0'
-  if (Number.isInteger(value)) return value.toString()
-  return parseFloat(value.toPrecision(12)).toString()
-}
-
-function formatLatexNumber(value: number): string {
-  if (Number.isNaN(value)) return '\\text{NaN}'
-  if (Number.isFinite(value) === false) return value > 0 ? '+\\infty' : '-\\infty'
-  if (Object.is(value, -0)) return '-0'
-  return formatNumber(value)
-}
-
 interface HalfPresentation {
   plainText: string
   latex: string
@@ -102,10 +88,10 @@ function getHalfPresentation(raw: number): HalfPresentation {
 
   if (exponent === 0) {
     const value = PMBusMath.decodeHalf(raw).value
-    const valueText = formatNumber(value)
+    const valueText = formatPlainNumber(value)
     return {
       plainText: `HALF subnormal ${signPower}×2^-14×${fraction}/1024=${valueText}`,
-      latex: `X = ${signPower} \\times 2^{-14} \\times \\frac{${fraction}}{2^{10}} = ${formatLatexNumber(value)}`,
+      latex: `X = ${signPower} \\times 2^{-14} \\times \\frac{${fraction}}{2^{10}} = ${formatPlainNumberLatex(value)}`,
       detailLines: [
         halfSummaryLine(sign, exponent, fraction),
         {
@@ -151,10 +137,10 @@ function getHalfPresentation(raw: number): HalfPresentation {
   }
 
   const value = PMBusMath.decodeHalf(raw).value
-  const valueText = formatNumber(value)
+  const valueText = formatPlainNumber(value)
   return {
     plainText: `HALF normal ${signPower}×2^(${exponent}-15)×(1+${fraction}/1024)=${valueText}`,
-    latex: `X = ${signPower} \\times 2^{${exponent}-15} \\times \\left(1 + \\frac{${fraction}}{2^{10}}\\right) = ${formatLatexNumber(value)}`,
+    latex: `X = ${signPower} \\times 2^{${exponent}-15} \\times \\left(1 + \\frac{${fraction}}{2^{10}}\\right) = ${formatPlainNumberLatex(value)}`,
     detailLines: [
       halfSummaryLine(sign, exponent, fraction),
       {
@@ -214,8 +200,8 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       if (state.l16.payloadKind === 'slinear16-offset') {
         const y = PMBusMath.toSigned(state.raw, 16)
         const value = PMBusMath.decodeSlinear16(state.raw, n).value
-        const plainText = `Y_s=${y} × 2^${n} = ${formatNumber(value)} V`
-        const latex = `X_{offset} = Y_s \\times 2^N = ${y} \\times 2^{${n}} = ${formatLatexNumber(value)}`
+        const plainText = `Y_s=${y} × 2^${n} = ${formatPlainNumber(value)} V`
+        const latex = `X_{offset} = Y_s \\times 2^N = ${y} \\times 2^{${n}} = ${formatPlainNumberLatex(value)}`
         return {
           plainText,
           latex,
@@ -231,11 +217,11 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       // nominal reference is available, otherwise the ratio is still shown.
       if (a.isRelative) {
         const ratio = PMBusMath.decodeUlinear16(state.raw, n).value
-        const ratioText = formatNumber(ratio)
-        const percentText = formatNumber(ratio * 100)
+        const ratioText = formatPlainNumber(ratio)
+        const percentText = formatPlainNumber(ratio * 100)
         if (state.l16.nominalVout == null) {
           const plainText = `R=${state.raw} × 2^${n}=${ratioText}（需要 VOUT_COMMAND nominal）`
-          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatLatexNumber(ratio)}\\ \\left(\\text{需要 } V_{NOM}\\right)`
+          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatPlainNumberLatex(ratio)}\\ \\left(\\text{需要 } V_{NOM}\\right)`
           return {
             plainText,
             latex,
@@ -253,8 +239,8 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
             result.kind === 'overflow'
               ? RELATIVE_VOLTAGE_OVERFLOW_NOTE
               : RELATIVE_VOLTAGE_UNDERFLOW_NOTE
-          const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatNumber(state.l16.nominalVout)}×R=—（${note}）`
-          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatLatexNumber(ratio)}\\ (${formatLatexNumber(ratio * 100)}\\%) \\quad X = V_{NOM} \\times R = ${formatLatexNumber(state.l16.nominalVout)} \\times ${formatLatexNumber(ratio)} = \\text{—}`
+          const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatPlainNumber(state.l16.nominalVout)}×R=—（${note}）`
+          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatPlainNumberLatex(ratio)}\\ (${formatPlainNumberLatex(ratio * 100)}\\%) \\quad X = V_{NOM} \\times R = ${formatPlainNumberLatex(state.l16.nominalVout)} \\times ${formatPlainNumberLatex(ratio)} = \\text{—}`
           return {
             plainText,
             latex,
@@ -263,8 +249,8 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
           }
         }
         const final = result.kind === 'finite' ? result.value : NaN
-        const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatNumber(state.l16.nominalVout)}×R=${formatNumber(final)} V`
-        const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatLatexNumber(ratio)}\\ (${formatLatexNumber(ratio * 100)}\\%) \\quad X = V_{NOM} \\times R = ${formatLatexNumber(state.l16.nominalVout)} \\times ${formatLatexNumber(ratio)} = ${formatLatexNumber(final)}`
+        const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatPlainNumber(state.l16.nominalVout)}×R=${formatPlainNumber(final)} V`
+        const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatPlainNumberLatex(ratio)}\\ (${formatPlainNumberLatex(ratio * 100)}\\%) \\quad X = V_{NOM} \\times R = ${formatPlainNumberLatex(state.l16.nominalVout)} \\times ${formatPlainNumberLatex(ratio)} = ${formatPlainNumberLatex(final)}`
         return {
           plainText,
           latex,

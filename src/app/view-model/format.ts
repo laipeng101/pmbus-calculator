@@ -1,4 +1,5 @@
 import type { BitGroupVM } from './types'
+import { formatPlainNumber } from '../numeric-presentation'
 
 /** Canonical raw word hex ('0x' + 4 uppercase digits). */
 export function formatRawHex(raw: number): string {
@@ -14,13 +15,15 @@ export function byteDigits(byte: number): string {
 }
 
 /**
- * Number formatting mirroring legacy formatNumber (12 significant digits).
- * Finite-only: callers own the NaN / ±Infinity presentation (formatSpecial).
+ * Signed error rendering. Readable fixed 6-decimals for |x| >= 1e-6 (legacy
+ * look), adaptive significant digits below it — any non-zero error must
+ * never render as textual zero. The adaptive branch composes the canonical
+ * plain-number policy (ADR 0005); specials are not an error outcome here.
  */
-export function formatNumber(v: number): string {
-  if (Object.is(v, -0)) return '-0'
-  if (Number.isInteger(v)) return v.toString()
-  return parseFloat(v.toPrecision(12)).toString()
+export function formatSignedError(value: number): string {
+  if (value === 0) return '+0.000000'
+  const body = Math.abs(value) >= 1e-6 ? value.toFixed(6) : formatPlainNumber(value)
+  return `${value > 0 ? '+' : ''}${body}`
 }
 
 export function toBytesLE(raw: number): [number, number] {
@@ -58,22 +61,4 @@ export function buildBitGroups(raw: number): BitGroupVM[] {
     })
   }
   return groups
-}
-
-/**
- * Signed error rendering. Readable fixed 6-decimals for |x| >= 1e-6 (legacy
- * look), adaptive significant digits below it — any non-zero error must
- * never render as textual zero.
- */
-export function formatSignedError(value: number): string {
-  if (value === 0) return '+0.000000'
-  const body = Math.abs(value) >= 1e-6 ? value.toFixed(6) : formatNumber(value)
-  return `${value > 0 ? '+' : ''}${body}`
-}
-
-export function formatSpecial(value: number): string {
-  if (Number.isNaN(value)) return 'NaN'
-  if (value > 0) return '+Infinity'
-  if (value < 0) return '-Infinity'
-  return Object.is(value, -0) ? '-0' : '+0'
 }
