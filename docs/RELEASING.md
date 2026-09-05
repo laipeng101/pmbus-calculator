@@ -69,7 +69,7 @@ tree 审计成功后才允许进入本阶段。在精确 merge SHA 上创建干�
 git worktree add --detach <path> <exact-merge-sha>
 cd <path>
 npm ci
-npx playwright install chromium        # 或核对既有安装
+npm run test:e2e:install               # chromium + firefox + webkit，或核对既有安装
 npm run verify
 npm run test:e2e:visual
 ```

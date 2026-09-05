@@ -48,7 +48,9 @@ npm ci
 npm run test:e2e:install
 ```
 
-CI 可继续使用 `npx playwright install --with-deps chromium`。
+`test:e2e:install` 安装全部验收套件需要的浏览器（chromium、firefox、webkit）。
+CI 的 e2e job 继续显式安装 `chromium`，browser-compat job 显式安装
+`npx playwright install --with-deps firefox webkit`（官方安装流程，无镜像、无强制 flag）。
 
 ## 4. 本地验证
 
@@ -105,7 +107,7 @@ whitespace 检查口径：
 
 - 每条质量命令与 exit code；
 - 单元测试实际数量与 coverage；
-- E2E 实际数量（default / release / visual / deployment 分开统计）；
+- E2E 实际数量（default / mobile / cross-engine / release / visual / deployment 分开统计）；
 - CI URL、head SHA 与 conclusion。
 
 失败与 flaky 的留存纪律（v2.5.9 起）：

@@ -34,11 +34,14 @@ export const GENERATED_TARGETS = [
   'tests/e2e/report-deployment',
   'tests/e2e/output-visual',
   'tests/e2e/report-visual',
+  'tests/e2e/output-cross-engine',
+  'tests/e2e/report-cross-engine',
   'tests/e2e/e2e-results.json',
   'tests/e2e/e2e-results-mobile.json',
   'tests/e2e/e2e-results-release.json',
   'tests/e2e/e2e-results-deployment.json',
   'tests/e2e/e2e-results-visual.json',
+  'tests/e2e/e2e-results-cross-engine.json',
   '.cache/specifications',
   'release-output',
   '.release-staging',
@@ -56,6 +59,7 @@ export const GENERATED_FILE_TARGETS = new Set([
   'tests/e2e/e2e-results-release.json',
   'tests/e2e/e2e-results-deployment.json',
   'tests/e2e/e2e-results-visual.json',
+  'tests/e2e/e2e-results-cross-engine.json',
 ])
 const GENERATED_DIRECTORY_TARGETS = new Set(
   GENERATED_TARGETS.filter((target) => !GENERATED_FILE_TARGETS.has(target)),

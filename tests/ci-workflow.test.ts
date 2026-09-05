@@ -2,15 +2,16 @@
 //
 // These assertions pin the CI contract that GitHub expressions cannot check
 // for themselves: the parallel job layout (quality / e2e / compatibility /
-// check), the shared full-tier condition, the light-only classifier, stable
-// step ids for the Playwright steps, per-step report upload gating, the
-// protected-main trigger model (PR + workflow_dispatch only, minimal token
-// permissions, credential-free checkout of the PR merge ref), the recorded
-// revision/tree evidence in the aggregator, the fail-closed aggregator gate
-// (always() + strict success on every needs result), and the compatibility
-// Node 22.20.0 typecheck+unit job. Parsing is deliberately dependency-free
-// text-structure matching over step blocks — good enough to pin these
-// invariants without adding a YAML dependency.
+// browser-compat / check), the shared full-tier condition, the light-only
+// classifier, stable step ids for the Playwright steps, per-step report
+// upload gating, the protected-main trigger model (PR + workflow_dispatch
+// only, minimal token permissions, credential-free checkout of the PR merge
+// ref), the recorded revision/tree evidence in the aggregator, the
+// fail-closed aggregator gate (always() + strict success on every needs
+// result), the compatibility Node 22.20.0 typecheck+unit job, and the
+// browser-compat Firefox+WebKit cross-engine core smoke job. Parsing is
+// deliberately dependency-free text-structure matching over step blocks —
+// good enough to pin these invariants without adding a YAML dependency.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -73,8 +74,10 @@ const FULL_TIER_RUN_COMMANDS = [
   'npm run lint',
   'npm run test:coverage',
   'npx playwright install --with-deps chromium',
+  'npx playwright install --with-deps firefox webkit',
   'npm run test:e2e',
   'npm run test:e2e:mobile',
+  'npm run test:e2e:cross-engine',
   'npm run build',
   'npm run check:tailwind-scope',
   'npm run test:e2e:release',
@@ -83,15 +86,15 @@ const FULL_TIER_RUN_COMMANDS = [
 ]
 
 describe('ci.yml structure', () => {
-  it('keeps the four parallel jobs with the aggregator named check', () => {
+  it('keeps the five parallel jobs with the aggregator named check', () => {
     const jobsSection = workflow.split(/^jobs:\s*$/m)[1] ?? ''
     const jobIds = [...jobsSection.matchAll(/^ {2}([\w-]+):/gm)].map((match) => match[1])
-    expect(jobIds).toEqual(['quality', 'e2e', 'compatibility', 'check'])
+    expect(jobIds).toEqual(['quality', 'e2e', 'compatibility', 'browser-compat', 'check'])
   })
 
-  it('the check aggregator depends on all three parallel jobs', () => {
+  it('the check aggregator depends on all four parallel verification jobs', () => {
     const checkSection = workflow.split(/^ {2}check:/m)[1] ?? ''
-    expect(checkSection).toMatch(/^ {4}needs: \[quality, e2e, compatibility\]\s*$/m)
+    expect(checkSection).toMatch(/^ {4}needs: \[quality, e2e, compatibility, browser-compat\]\s*$/m)
   })
 
   it('never uses workflow-level paths or paths-ignore filters', () => {
@@ -108,7 +111,7 @@ describe('ci.yml structure', () => {
 
   it('keeps the Classify CI scope step as the single run_full source in every gated job', () => {
     const scopeSteps = stepBlocks(workflow).filter((block) => stepId(block) === 'scope')
-    expect(scopeSteps.length).toBe(3) // quality, e2e, compatibility
+    expect(scopeSteps.length).toBe(4) // quality, e2e, compatibility, browser-compat
     for (const block of scopeSteps) {
       expect(block).toMatch(/^ {8}run: node scripts\/classify-ci-scope\.mjs /m)
     }
@@ -135,8 +138,10 @@ describe('ci.yml fail-closed aggregator gate', () => {
     expect(checkSection()).toMatch(/^ {4}if: \$\{\{ always\(\) \}\}\s*$/m)
   })
 
-  it('keeps the aggregator dependent on all three verification jobs', () => {
-    expect(checkSection()).toMatch(/^ {4}needs: \[quality, e2e, compatibility\]\s*$/m)
+  it('keeps the aggregator dependent on all four verification jobs', () => {
+    expect(checkSection()).toMatch(
+      /^ {4}needs: \[quality, e2e, compatibility, browser-compat\]\s*$/m,
+    )
   })
 
   it('reads the result of every dependency into the gate environment', () => {
@@ -144,6 +149,7 @@ describe('ci.yml fail-closed aggregator gate', () => {
     expect(normalized).toContain('QUALITY_RESULT: ${{ needs.quality.result }}')
     expect(normalized).toContain('E2E_RESULT: ${{ needs.e2e.result }}')
     expect(normalized).toContain('COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}')
+    expect(normalized).toContain('BROWSER_COMPAT_RESULT: ${{ needs.browser-compat.result }}')
   })
 
   it('requires every result to equal success exactly', () => {
@@ -152,6 +158,7 @@ describe('ci.yml fail-closed aggregator gate', () => {
     expect(normalized).toContain('"$QUALITY_RESULT"')
     expect(normalized).toContain('"$E2E_RESULT"')
     expect(normalized).toContain('"$COMPATIBILITY_RESULT"')
+    expect(normalized).toContain('"$BROWSER_COMPAT_RESULT"')
     expect(normalized).toContain('if [[ "$result" != "success" ]]; then')
   })
 
@@ -339,7 +346,7 @@ describe('ci.yml canonical/compatibility runtimes', () => {
     const shas = setupNodeSteps().map(
       (block) => block.match(/actions\/setup-node@([0-9a-f]{40})/)?.[1],
     )
-    expect(shas).toHaveLength(3) // quality, e2e, compatibility
+    expect(shas).toHaveLength(4) // quality, e2e, compatibility, browser-compat
     expect(new Set(shas).size).toBe(1)
   })
 
@@ -415,5 +422,64 @@ describe('ci.yml Playwright report upload gating', () => {
     expect(normalized).not.toContain('steps.release_smoke.outcome')
     expect(normalized).toContain('name: playwright-report-mobile ')
     expect(normalized).toContain('path: tests/e2e/report-mobile ')
+  })
+})
+
+describe('ci.yml browser-compat job gating', () => {
+  // Bounded job-section extraction: from the job's own 2-space marker to the
+  // next 2-space job marker (a plain split-to-EOF would leak later jobs into
+  // the section and make negative containment assertions meaningless).
+  function jobSection(jobId: string): string {
+    const start = workflow.split(new RegExp(`^ {2}${jobId}:\\n`, 'm'))[1] ?? ''
+    const end = start.search(/^ {2}(quality|e2e|compatibility|browser-compat|check):\n/m)
+    return end === -1 ? start : start.slice(0, end)
+  }
+
+  function findBrowserCompatStepByRun(runCommand: string): string {
+    const pattern = new RegExp(
+      `^ {8}run: ${runCommand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`,
+      'm',
+    )
+    const match = stepBlocks(jobSection('browser-compat')).find((block) => pattern.test(block))
+    if (!match) throw new Error(`browser-compat step with run "${runCommand}" not found`)
+    return match
+  }
+
+  it('keeps every heavy browser-compat step behind the shared full-tier condition', () => {
+    for (const runCommand of [
+      'npm ci',
+      'npx playwright install --with-deps firefox webkit',
+      'npm run build',
+      'npm run test:e2e:cross-engine',
+    ]) {
+      const block = findBrowserCompatStepByRun(runCommand)
+      expect(normalize(block)).toContain(`if: ${FULL_TIER_CONDITION}`)
+    }
+  })
+
+  it('gives the cross-engine smoke step the stable id e2e_cross_engine', () => {
+    const block = findBrowserCompatStepByRun('npm run test:e2e:cross-engine')
+    expect(stepId(block)).toBe('e2e_cross_engine')
+  })
+
+  it('uploads the cross-engine report only when that step itself ran and failed', () => {
+    const normalized = normalize(findUploadStep('playwright-report-cross-engine'))
+    expect(normalized).toContain('failure() &&')
+    expect(normalized).toContain(`${FULL_TIER_CONDITION} &&`)
+    expect(normalized).toContain("steps.e2e_cross_engine.outcome == 'failure'")
+    expect(normalized).not.toContain('steps.e2e.outcome')
+    expect(normalized).not.toContain('steps.e2e_mobile.outcome')
+    expect(normalized).not.toContain('steps.release_smoke.outcome')
+    expect(normalized).toContain('name: playwright-report-cross-engine ')
+    expect(normalized).toContain('path: tests/e2e/report-cross-engine ')
+  })
+
+  it('keeps the Firefox/WebKit browser install exclusive to the browser-compat job', () => {
+    // The Firefox/WebKit download stays out of the critical-path e2e job,
+    // which keeps installing chromium only.
+    expect(jobSection('e2e')).not.toContain('firefox webkit')
+    expect(jobSection('browser-compat')).toContain(
+      'npx playwright install --with-deps firefox webkit',
+    )
   })
 })

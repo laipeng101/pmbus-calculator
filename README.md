@@ -154,7 +154,12 @@ The built-in reference records what PMBus specifies for 13 standard commands (co
 
 ## Browser Compatibility
 
-Automated verification: desktop Chromium + mobile Chromium. Firefox/Safari/other browsers are best effort, with no automated verification evidence yet.
+Automated verification evidence, by scope:
+
+- **Desktop Chromium** — full coverage: the complete desktop semantic E2E suite runs on the production build in CI (`e2e` job).
+- **Mobile Chromium** — automated device-emulation contract suite (Pixel 7 emulation, same CI `e2e` job).
+- **Firefox & WebKit** — automated cross-engine core smoke (CI `browser-compat` job, production build): a deliberately small suite covering the core user contracts — app boot & mode switching, encode/decode journeys in all four numeric modes, L16 non-LINEAR fail-closed behavior, canonical raw ↔ bit grid ↔ wire-byte synchronization, hex stepper pointer & keyboard activation, terminology popover, and the copy path. It does not rerun the full semantic suite, so deeper automated coverage remains Chromium-only by design.
+- Playwright's WebKit build is **not** Safari: no macOS Safari conformance or support claim is made. Other browsers remain best effort.
 
 ---
 
