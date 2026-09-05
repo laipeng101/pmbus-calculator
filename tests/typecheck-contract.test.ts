@@ -89,6 +89,7 @@ describe('typecheck contract (M23)', () => {
       'playwright.release.config.ts',
       'playwright.visual.config.ts',
       'playwright.deployment.config.ts',
+      'playwright.cross-engine.config.ts',
     ]) {
       expect(include).toContain(config)
       expect(fs.existsSync(path.join(repoRoot, config))).toBe(true)

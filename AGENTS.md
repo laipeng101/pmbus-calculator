@@ -100,6 +100,9 @@ tests/e2e/        Playwright 真实用户流程
 
 - 算法测试至少覆盖 L11 / L16 / DIRECT / HALF / PEC。
 - UI E2E 至少覆盖：模式切换、Hex 输入、Value 输入、bit toggle、只读命令参考、复制、主题、移动端布局。
+- 跨引擎核心验收底线：Firefox + WebKit 各运行小型核心 smoke（`playwright.cross-engine.config.ts`，
+  生产 dist + 官方 Pages 前缀，`reuseExistingServer: false`）；不把完整语义套件复制到每个引擎；
+  核心用户流程变更必须保持该套件通过。Playwright WebKit 不等于 Safari 一致性证据。
 - 修改算法必须同时补 golden case。
 - `npm run test:coverage` 必须达到 `vite.config.ts` 中声明的阈值。
 - 分层覆盖策略：`src/app` 与 `src/legacy` 由 Vitest + v8 coverage 覆盖；
@@ -119,8 +122,8 @@ tests/e2e/        Playwright 真实用户流程
 
    `npm run verify` 的步骤组合以 package.json 的 `verify` / `verify:light` 脚本为唯一
    真值（涵盖 format、typecheck、lint、inline style、markdown 数学、规范 manifest、
-   发布合同、发布操作文档命令、工具链、coverage、桌面/移动 E2E、build、Tailwind
-   scope、release smoke、repo hygiene、两个 whitespace 检查与 audit）；本文件不逐条
+   发布合同、发布操作文档命令、工具链、coverage、桌面/移动/跨引擎 E2E、build、
+   Tailwind scope、release smoke、repo hygiene、两个 whitespace 检查与 audit）；本文件不逐条
    复制该命令链，避免与脚本漂移。
    CI 的 whitespace gate 检查完整 PR base→head 范围（main 不再有 push CI）。
    CI 仅由目标为 main 的 PR 与手动 `workflow_dispatch` 触发，manual run 始终 full；

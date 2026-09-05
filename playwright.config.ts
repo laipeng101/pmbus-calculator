@@ -24,6 +24,7 @@ export default defineConfig({
     '**/visual.spec.ts',
     '**/deployment.spec.ts',
     '**/mobile-contract.spec.ts',
+    '**/cross-engine-core.spec.ts',
   ],
   outputDir: './tests/e2e/output',
   fullyParallel: true,

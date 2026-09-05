@@ -155,8 +155,16 @@ npm test         # 运行 Vitest 测试
 ## 浏览器兼容性
 
 ```text
-自动化验证：desktop Chromium + mobile Chromium。
-Firefox/Safari/其他浏览器为 best effort，尚无自动化验证依据。
+自动化验证证据（按范围）：
+- desktop Chromium：完整桌面语义 E2E 套件（CI e2e job）。
+- mobile Chromium：设备仿真合同套件（Pixel 7 仿真，同一 e2e job）。
+- Firefox / WebKit：跨引擎核心 smoke（CI browser-compat job，生产构建）——
+  小型合同套件覆盖应用启动与模式切换、四种数值模式 encode/decode 旅程、
+  L16 非 LINEAR fail closed、canonical raw ↔ 位网格 ↔ wire 字节同步、
+  Hex 步进器 pointer/keyboard 激活、术语气泡与复制路径；不重跑完整语义套件，
+  更深的自动化覆盖仍按设计仅限 Chromium。
+- Playwright WebKit 不等于 Safari：不声称 macOS Safari 一致性或支持；
+  其他浏览器仍为 best effort。
 ```
 
 ---

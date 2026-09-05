@@ -22,6 +22,7 @@
     "playwright.config.ts",
     "playwright.release.config.ts",
     "playwright.visual.config.ts",
-    "playwright.deployment.config.ts"
+    "playwright.deployment.config.ts",
+    "playwright.cross-engine.config.ts"
   ]
 }

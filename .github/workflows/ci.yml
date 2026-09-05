@@ -8,12 +8,15 @@ name: CI
 # stays as the emergency/manual full-verification entry.
 #
 # Parallel verification layout:
-#   quality       — format, typecheck, lint, coverage, build, base contracts
-#   e2e           — Playwright install, user flows, release smoke
-#   compatibility — Node 22 typecheck + unit tests
-#   check         — light aggregator (the branch-protection required check)
-#                   that records the checked revision and runs the full
-#                   PR base→head whitespace gate
+#   quality        — format, typecheck, lint, coverage, build, base contracts
+#   e2e            — Playwright install, user flows, release smoke
+#   compatibility  — Node 22 typecheck + unit tests (Node runtime floor)
+#   browser-compat — Firefox + WebKit core smoke (browser compatibility floor;
+#                    a deliberately small cross-engine suite, not the full
+#                    semantic suite)
+#   check          — light aggregator (the branch-protection required check)
+#                    that records the checked revision and runs the full
+#                    PR base→head whitespace gate
 on:
   pull_request:
     branches: [main]
@@ -215,6 +218,10 @@ jobs:
           retention-days: 7
 
   compatibility:
+    # Human-readable name distinguishes the Node runtime floor from the
+    # browser-compat job below; the job id stays `compatibility` so required
+    # check wiring and historical references are unaffected.
+    name: Node 22 compatibility (typecheck + unit)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -261,13 +268,72 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm ci && npm run typecheck && npm run test:run
 
+  browser-compat:
+    # Cross-engine core acceptance floor: a deliberately small Firefox +
+    # WebKit smoke over the same production dist and official Pages prefix
+    # (vite preview, fail-closed server rules). The deep semantic suites stay
+    # Chromium-only by design; this job proves the core user contracts on the
+    # other two engines without tripling the E2E matrix.
+    name: Browser compatibility (Firefox + WebKit core smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+
+      - name: Classify CI scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/classify-ci-scope.mjs --event "$EVENT_NAME" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm ci
+
+      # Official Playwright installation flow for the two cross-engine
+      # browsers; --with-deps installs the Ubuntu system libraries WebKit
+      # needs. No mirrors, no lockfile changes.
+      - name: Install Playwright Firefox and WebKit browsers
+        if: steps.scope.outputs.run_full != 'false'
+        run: npx playwright install --with-deps firefox webkit
+
+      - name: Build for production E2E
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run build
+
+      - name: Run cross-engine core smoke (Firefox + WebKit)
+        id: e2e_cross_engine
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run test:e2e:cross-engine
+
+      - name: Upload Playwright cross-engine report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure() &&
+          steps.scope.outputs.run_full != 'false' &&
+          steps.e2e_cross_engine.outcome == 'failure'
+        with:
+          name: playwright-report-cross-engine
+          path: tests/e2e/report-cross-engine
+          retention-days: 7
+
   check:
     # The aggregator is the branch-protection required check, so it must run
     # (and fail closed) even when an upstream verification job fails, is
     # cancelled, or is skipped. Without always(), GitHub would skip the whole
     # job on upstream failure and treat the skipped required check as green.
     if: ${{ always() }}
-    needs: [quality, e2e, compatibility]
+    needs: [quality, e2e, compatibility, browser-compat]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -307,17 +373,20 @@ jobs:
           QUALITY_RESULT: ${{ needs.quality.result }}
           E2E_RESULT: ${{ needs.e2e.result }}
           COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
+          BROWSER_COMPAT_RESULT: ${{ needs.browser-compat.result }}
         run: |
           set -euo pipefail
 
           echo "quality=${QUALITY_RESULT}"
           echo "e2e=${E2E_RESULT}"
           echo "compatibility=${COMPATIBILITY_RESULT}"
+          echo "browser-compat=${BROWSER_COMPAT_RESULT}"
 
           for result in \
             "$QUALITY_RESULT" \
             "$E2E_RESULT" \
-            "$COMPATIBILITY_RESULT"
+            "$COMPATIBILITY_RESULT" \
+            "$BROWSER_COMPAT_RESULT"
           do
             if [[ "$result" != "success" ]]; then
               echo "A required verification job did not succeed." >&2
