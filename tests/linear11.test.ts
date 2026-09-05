@@ -30,10 +30,16 @@ describe('L11 value -> raw roundtrip (auto-N)', () => {
       expect(state.l11.valueInput).toBe(c.inputValue)
 
       const decoded = PMBusMath.decodeLinear11(state.raw)
-      expect(decoded.value).toBeCloseTo(c.inputValue, 10)
+      expect(c.inputValue - decoded.value).toBe(c.expectedDelta)
 
       const vm = toCalculatorViewModel(state)
-      expect(vm.deltaKind).toBe('ok')
+      expect(vm.deltaKind).toBe(c.expectedDelta === 0 ? 'ok' : 'warn')
+      expect(vm.warnings.some((warning) => warning.id === 'l11-saturation')).toBe(false)
+      if (c.expectedDelta !== 0) {
+        const sign = c.expectedDelta > 0 ? '+' : ''
+        expect(vm.deltaText).toContain(`${sign}${c.expectedDelta.toFixed(6)}`)
+        return
+      }
       // Exact roundtrip: relative error is 0.0000%; the zero request is the
       // zero-denominator case and must read '—', never a fabricated 0%.
       const expectedText = c.inputValue === 0 ? '+0.000000 (—)' : '+0.000000 (0.0000%)'
