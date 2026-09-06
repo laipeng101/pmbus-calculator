@@ -53,6 +53,26 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await expect(page.locator(VALUE)).toBeVisible()
   })
 
+  test('位映射默认展开，键盘收起后刷新记忆，重新展开仍可编辑', async ({ page }) => {
+    await page.goto(appUrl())
+    const toggle = page.getByTestId('bit-mapping-raw-word-toggle')
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await toggle.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.locator('#bit-mapping-raw-word-content')).toBeHidden()
+    await page.reload()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await toggle.focus()
+    await page.keyboard.press('Space')
+    await page.getByRole('button', { name: '位 0: 0', exact: true }).click()
+    await expect(page.locator(RAW_HEX)).toHaveValue('0001')
+    await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+    await expect(page.getByTestId('bit-mapping-vout-mode-toggle')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+  })
+
   test('L11：12.5 编码 F819，再由 C100 解码为 1', async ({ page }) => {
     await page.goto(appUrl())
     const value = page.locator(VALUE)

@@ -17,6 +17,7 @@ const KEYS = {
   theme: 'pmbus-calculator:theme',
   mode: 'pmbus-calculator:mode',
   copy: 'pmbus-calculator:copy',
+  bitMappingOpen: 'pmbus-calculator:bitMappingOpen',
 } as const
 
 function read(key: string): string | null {
@@ -56,6 +57,7 @@ export function loadPersistedState(base: AppState): AppState {
   const theme = read(KEYS.theme)
   const mode = read(KEYS.mode)
   const copy = parseJson<Record<string, unknown>>(read(KEYS.copy))
+  const bitMappingOpen = parseJson<Record<string, unknown>>(read(KEYS.bitMappingOpen))
 
   // Explicit field picking (v3.0.0): unknown or stale properties in old
   // storage (e.g. a leftover `endian` from v2.x) are ignored, never spread
@@ -73,6 +75,16 @@ export function loadPersistedState(base: AppState): AppState {
     ui: {
       ...base.ui,
       theme: isTheme(theme) ? theme : base.ui.theme,
+      bitMappingOpen: {
+        rawWord:
+          typeof bitMappingOpen?.rawWord === 'boolean'
+            ? bitMappingOpen.rawWord
+            : base.ui.bitMappingOpen.rawWord,
+        voutMode:
+          typeof bitMappingOpen?.voutMode === 'boolean'
+            ? bitMappingOpen.voutMode
+            : base.ui.bitMappingOpen.voutMode,
+      },
     },
   }
 }
@@ -87,4 +99,8 @@ export function persistMode(mode: AppMode): void {
 
 export function persistCopy(copy: AppState['copy']): void {
   write(KEYS.copy, JSON.stringify(copy))
+}
+
+export function persistBitMappingOpen(open: AppState['ui']['bitMappingOpen']): void {
+  write(KEYS.bitMappingOpen, JSON.stringify(open))
 }

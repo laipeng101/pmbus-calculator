@@ -1347,6 +1347,42 @@ describe('appReducer — state transitions', () => {
     })
   })
 
+  describe('ui/set-bit-mapping-open', () => {
+    it.each(['rawWord', 'voutMode'] as const)(
+      '%s visibility changes preserve the complete calculation state and the other panel',
+      (panel) => {
+        const requested = appReducer(base, { type: 'value/set', value: '12.5' })
+        const closed = appReducer(requested, {
+          type: 'ui/set-bit-mapping-open',
+          panel,
+          open: false,
+        })
+        expect(closed).toEqual({
+          ...requested,
+          ui: {
+            ...requested.ui,
+            bitMappingOpen: { ...requested.ui.bitMappingOpen, [panel]: false },
+          },
+        })
+        expect(requested.ui.bitMappingOpen[panel]).toBe(true)
+        expect(
+          appReducer(closed, {
+            type: 'ui/set-bit-mapping-open',
+            panel,
+            open: false,
+          }),
+        ).toBe(closed)
+        expect(
+          appReducer(closed, {
+            type: 'ui/set-bit-mapping-open',
+            panel,
+            open: true,
+          }),
+        ).toEqual(requested)
+      },
+    )
+  })
+
   describe('M38 shared VOUT_MODE byte + L16 payload actions', () => {
     it('vout-mode/set-byte is lossless for any 0x00..0xFF including non-canonical bytes', () => {
       for (const byte of [0x00, 0x18, 0x20, 0x40, 0xa0, 0x41, 0xc1, 0xe1, 0xff]) {

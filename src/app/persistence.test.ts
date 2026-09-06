@@ -1,12 +1,19 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import type { AppState } from './state'
 import { INITIAL_STATE } from './state'
-import { loadPersistedState, persistCopy, persistMode, persistTheme } from './persistence'
+import {
+  loadPersistedState,
+  persistBitMappingOpen,
+  persistCopy,
+  persistMode,
+  persistTheme,
+} from './persistence'
 
 const KEYS = {
   theme: 'pmbus-calculator:theme',
   mode: 'pmbus-calculator:mode',
   copy: 'pmbus-calculator:copy',
+  bitMappingOpen: 'pmbus-calculator:bitMappingOpen',
 } as const
 
 function makeStore(initial: Record<string, string> = {}) {
@@ -78,6 +85,45 @@ describe('persistence', () => {
       const s = loadPersistedState(baseState())
       expect(s.mode).toBe('VOUT_MODE')
     })
+
+    it('opens both bit mappings by default for new and existing users', () => {
+      store.store.set(KEYS.mode, 'L16')
+      store.store.set(KEYS.theme, 'dark')
+      expect(loadPersistedState(baseState()).ui.bitMappingOpen).toEqual({
+        rawWord: true,
+        voutMode: true,
+      })
+    })
+
+    it('remembers each bit mapping independently, including an explicit false', () => {
+      persistBitMappingOpen({ rawWord: false, voutMode: true })
+      expect(loadPersistedState(baseState()).ui.bitMappingOpen).toEqual({
+        rawWord: false,
+        voutMode: true,
+      })
+      persistBitMappingOpen({ rawWord: true, voutMode: false })
+      expect(loadPersistedState(baseState()).ui.bitMappingOpen).toEqual({
+        rawWord: true,
+        voutMode: false,
+      })
+    })
+
+    it('loads valid bit mapping fields without spreading unknown state into preferences', () => {
+      store.store.set(KEYS.bitMappingOpen, JSON.stringify({ rawWord: false, raw: 65535 }))
+      const base = baseState()
+      expect(loadPersistedState(base)).toEqual({
+        ...base,
+        ui: { ...base.ui, bitMappingOpen: { rawWord: false, voutMode: true } },
+      })
+    })
+
+    it.each(['{broken', 'null', 'false', '[]', '"closed"', '{"rawWord":0,"voutMode":"false"}'])(
+      'ignores invalid bit mapping preferences: %s',
+      (stored) => {
+        store.store.set(KEYS.bitMappingOpen, stored)
+        expect(loadPersistedState(baseState())).toEqual(baseState())
+      },
+    )
 
     it('ignores invalid JSON for the copy preference', () => {
       store.store.set(KEYS.copy, '{not-json')
@@ -174,6 +220,14 @@ describe('persistence', () => {
       expect(store.setItem).toHaveBeenCalledWith(KEYS.copy, JSON.stringify(copy))
     })
 
+    it('persists only bit mapping display preferences', () => {
+      persistBitMappingOpen({ rawWord: false, voutMode: false })
+      expect(store.setItem).toHaveBeenCalledWith(
+        KEYS.bitMappingOpen,
+        JSON.stringify({ rawWord: false, voutMode: false }),
+      )
+    })
+
     it('persist helpers do not throw when setItem throws', () => {
       vi.stubGlobal('localStorage', {
         getItem: vi.fn(() => null),
@@ -186,6 +240,7 @@ describe('persistence', () => {
         persistTheme('dark')
         persistMode('L16')
         persistCopy({ prefix0x: true, spaceBetweenBytes: true })
+        persistBitMappingOpen({ rawWord: false, voutMode: true })
       }).not.toThrow()
     })
   })

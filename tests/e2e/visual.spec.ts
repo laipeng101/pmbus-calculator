@@ -97,6 +97,31 @@ async function switchToVoutMode(page: Page) {
 }
 
 test.describe('visual regression (stable scenes)', () => {
+  test('desktop light LINEAR11 bit mapping collapsed', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'light'))
+    await settle(page)
+    await page.getByTestId('bit-mapping-raw-word-toggle').click()
+    await expect(page.locator('#bit-mapping-raw-word-content')).toBeHidden()
+    await parkPointer(page)
+    await expect(page).toHaveScreenshot('desktop-light-l11-bits-collapsed.png', {
+      animations: 'disabled',
+    })
+  })
+
+  test('mobile 390 VOUT_MODE bit mapping collapsed', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
+    await settle(page)
+    await switchToVoutMode(page)
+    await page.getByTestId('bit-mapping-vout-mode-toggle').click()
+    await expect(page.locator('#bit-mapping-vout-mode-content')).toBeHidden()
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await parkPointer(page)
+    await expect(page).toHaveScreenshot('mobile-390-vout-mode-bits-collapsed.png', {
+      animations: 'disabled',
+    })
+  })
+
   test('desktop dark LINEAR11', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('pmbus-calculator:theme', 'dark'))
     await settle(page)

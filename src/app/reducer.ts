@@ -515,6 +515,16 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'ui/set-theme':
       return { ...state, ui: { ...state.ui, theme: action.theme } }
 
+    case 'ui/set-bit-mapping-open':
+      if (state.ui.bitMappingOpen[action.panel] === action.open) return state
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          bitMappingOpen: { ...state.ui.bitMappingOpen, [action.panel]: action.open },
+        },
+      }
+
     case 'ui/toggle-debug':
       return { ...state, ui: { ...state.ui, debugOpen: !state.ui.debugOpen } }
 

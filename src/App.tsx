@@ -3,7 +3,13 @@ import { appReducer, INITIAL_STATE } from './app/reducer'
 import type { AppState } from './app/state'
 import { useCalculatorViewModel } from './app/view-model'
 import { isEditableEventTarget } from './app/editable-target'
-import { loadPersistedState, persistCopy, persistMode, persistTheme } from './app/persistence'
+import {
+  loadPersistedState,
+  persistBitMappingOpen,
+  persistCopy,
+  persistMode,
+  persistTheme,
+} from './app/persistence'
 import AppHeader from './components/layout/AppHeader'
 import WorkspaceLayout from './components/layout/WorkspaceLayout'
 import ModeSwitcher from './components/mode/ModeSwitcher'
@@ -36,6 +42,7 @@ function App() {
   useEffect(() => persistTheme(state.ui.theme), [state.ui.theme])
   useEffect(() => persistMode(state.mode), [state.mode])
   useEffect(() => persistCopy(state.copy), [state.copy])
+  useEffect(() => persistBitMappingOpen(state.ui.bitMappingOpen), [state.ui.bitMappingOpen])
 
   // Keyboard shortcuts for mode switching: Ctrl+1..5 only outside editing
   // contexts (input/textarea/select/contenteditable/role=textbox/combobox)
