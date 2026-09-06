@@ -9,12 +9,13 @@
 ## 验收记录
 
 - Base SHA / Final head SHA:
-- Changed files（数量）/ additions / deletions（与 `git show --stat` 一致）:
+- Changed files（数量）/ additions / deletions（从最终 `git diff --numstat <base SHA>...<final head SHA>` 一次性统计，不累加各提交）:
 - Affected modes:
   <!-- 例如：L11/L16/DIRECT/HALF；本 PR 若为卫生/工具类改动可写 N/A -->
 - `npm run verify` exit code（light tier 任务用 `npm run verify:light` 并注明）:
 - 单测文件数与测试数（light tier 填 policy-skipped）:
-- `npm run check:repo-hygiene`: tracked file count / policy allowlisted / final HEAD tree size（bytes）:
+- Coverage S/B/F/L 与各 E2E 套件实际数量（default / mobile / cross-engine / release / visual / deployment；skip/flaky/retry 单列，未运行不得写成通过）:
+- `npm run check:repo-hygiene`: tracked file count / policy-classified（分类统计，非大小豁免）/ final HEAD tree size（bytes，与 `git ls-tree -r -l HEAD` 交叉核对）:
 - `git diff --check origin/main...HEAD` exit code:
 - 禁止制品扫描结果（dist/build/out/coverage/report/output/DSH JSONL 等）:
 - 残留检查（临时目录、release-output/staging、孤儿进程）:
@@ -59,7 +60,7 @@ npm run test:e2e:install
 - [ ] 没有修改版本号、tag、GitHub Release 或 Pages 配置
 - [ ] CI tier 已标注；policy-skipped 门禁如实说明，未虚构测试数
 - [ ] 里程碑 Done 已在实现 PR 最终提交中翻转，未创建第二个 bookkeeping PR
-- [ ] 统计数字来自最终 committed HEAD
+- [ ] 统计数字来自最终 committed HEAD；新增提交后已重新采集，未沿用 base 或中间提交统计
 
 ## 剩余缺口
 
