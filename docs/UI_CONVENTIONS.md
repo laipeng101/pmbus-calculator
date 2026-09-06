@@ -213,6 +213,13 @@
 
 ## 10. 视觉系统与验收
 
+- 首屏先呈现结果及其 raw / 格式 / 参数来源，再提供主要数值输入与配置；16 位
+  位编辑器置于主要输入之后，DOM 与键盘顺序一致。页头不重复一整排格式术语入口，
+  各模式标题、配置摘要及说明保留对应术语帮助。
+- 结果旁的上下文统一由 view-model 提供，组件只展示：L11 指数来自 canonical raw；
+  L16 字节与指数来自共享 VOUT_MODE，非 LINEAR 不显示伪 N，缺参考与显式零分开；
+  DIRECT 展示当前输入系数并要求核对器件数据手册，不宣称已选择器件 profile；
+  VOUT_MODE 参数是配置数据，不渲染为物理值公式。
 - 表面最多三层：canvas / panel / panel-elevated；控件使用 control / control-hover / control-active。
 - **可编辑可供性（v3.1.0 起）**：真实可编辑控件（text/number/hex input、
   select）使用 `.input-field` 家族（`--color-input-bg` + `--color-input-border`
