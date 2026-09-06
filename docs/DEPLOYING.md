@@ -13,6 +13,10 @@
   时不得通过移动 tag、替换资产或重新构建同名包来“修复”。
 - Pages 故障不修改任何已发布的 tag、Release 和资产；若部署需要改变产品字节，应停止部署，
   并改为规划独立的新 PATCH 修复发行。
+- **手动部署与回滚必须遵守 [RELEASING 的发布纪律](RELEASING.md#发布纪律)。**
+  目标必须是 API 报告 `immutable: true` 的稳定 Release，且目标 tag 自身的 tree
+  已包含 immutable 校验门禁（v2.6.2 起）。手动运行执行的是该 tag 内的 workflow
+  与脚本，main 上的新门禁不会追溯保护旧 tag；历史 mutable Release 不得作为候选。
 
 ## 生产 URL
 
@@ -31,7 +35,9 @@ https://laipeng101.github.io/pmbus-calculator/
 触发方式：
 
 - `release` 事件 `published`：自动部署刚发布的稳定 Release。
-- `workflow_dispatch` 手动触发：必须提供稳定 Release tag（例如 `v1.0.0`）。
+- `workflow_dispatch` 手动触发：从符合上述条件的稳定 Release tag ref 运行，
+  并将 `inputs.release_tag` 设为完全相同的 tag。不能从 main、其他分支或不同 tag ref
+  部署输入的 Release。
 
 工作流步骤：
 
@@ -39,8 +45,10 @@ https://laipeng101.github.io/pmbus-calculator/
    `inputs.release_tag`）。
 2. 验证 tag 符合稳定 SemVer：`^v[1-9][0-9]*\.[0-9]+\.[0-9]+$`。不得部署
    `alpha`、`beta`、`rc`、draft 或 prerelease。
-3. 通过 GitHub API 验证 Release 存在、`draft == false`、`prerelease == false`、
-   Release tag 与输入完全一致，且对应 Git tag 存在（annotated 或 lightweight）。
+3. 验证对应 Git tag 是 **annotated tag**，checkout HEAD 等于该 tag 的 peeled commit；
+   lightweight tag 不满足部署合同。通过 GitHub API 验证 Release 存在、
+   `draft == false`、`prerelease == false`、`immutable == true`，且 Release tag
+   与输入完全一致。
    资产就绪合同（存在、名称唯一、`state == uploaded`、`size > 0`、URL 为本仓库
    本 tag 的 canonical `browser_download_url`）由
    `scripts/release-assets-verify.mjs --mode published` 在同一读取步骤内校验
@@ -135,12 +143,14 @@ https://laipeng101.github.io/pmbus-calculator/
 
 ## 回滚方式
 
-- **重新部署上一个稳定 Release：** 手动触发 Pages workflow 并传入上一个稳定 tag。
-  Pages 会从该 Release 的不可变资产重新部署。
-- **发布新的 PATCH：** 按 `docs/RELEASING.md` 创建新的 PATCH 版本（例如 `v1.0.1`），
-  合入 main 后发布 Release，Pages 会自动或手动部署新版本。
+- **重新部署符合条件的稳定 Release：** 先按「部署原则」确认候选 Release 的
+  `immutable: true` 与其 tag tree 中的校验门禁，再从该 tag ref 手动触发 Pages，
+  `inputs.release_tag` 必须同名。仅“是上一个稳定版”不足以成为回滚候选。
+- **发布新的 PATCH：** 没有合格回滚候选或需要改变产品字节时，按
+  [RELEASING](RELEASING.md) 创建新的 PATCH 版本；合入 main 并完成发行验证后发布
+  Release，由 Pages 部署新版本。
 - **禁止移动旧 tag。** 旧 tag 必须保持在原 commit 上。
-- 生产站点故障时，先回滚站点；不得修改、移动或删除已发布的 Release 与资产。
+- 生产站点故障不允许绕过上述候选条件；不得修改、移动或删除已发布的 Release 与资产。
 
 ## Environment 部署策略
 
