@@ -1,4 +1,4 @@
-import type { AppMode, Linear16PayloadKind, Theme } from './state'
+import type { AppMode, BitMappingPanelKey, Linear16PayloadKind, Theme } from './state'
 import type { VoutModeFormat } from '../legacy/vout-mode'
 
 export type AppAction =
@@ -30,4 +30,5 @@ export type AppAction =
   | { type: 'copy/toggle-prefix' }
   | { type: 'copy/toggle-space' }
   | { type: 'ui/set-theme'; theme: Theme }
+  | { type: 'ui/set-bit-mapping-open'; panel: BitMappingPanelKey; open: boolean }
   | { type: 'ui/toggle-debug' }

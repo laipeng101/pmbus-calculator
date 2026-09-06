@@ -9,6 +9,7 @@ import { CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE } from '../legacy/vout-mode'
 export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF' | 'VOUT_MODE'
 export type Theme = 'light' | 'dark' | 'system'
 export type Linear16PayloadKind = 'ulinear16' | 'slinear16-offset'
+export type BitMappingPanelKey = 'rawWord' | 'voutMode'
 
 /**
  * Last committed physical-value encoding request (modes other than L11,
@@ -105,6 +106,8 @@ export interface AppState {
   ui: {
     theme: Theme
     debugOpen: boolean
+    /** Display preferences only; shared by panels that edit the same raw word/byte. */
+    bitMappingOpen: Record<BitMappingPanelKey, boolean>
   }
 }
 
@@ -146,5 +149,6 @@ export const INITIAL_STATE: AppState = {
   ui: {
     theme: 'system',
     debugOpen: false,
+    bitMappingOpen: { rawWord: true, voutMode: true },
   },
 }

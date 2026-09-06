@@ -271,14 +271,28 @@ test.describe('M37 公式/配置器布局与溢出', () => {
     })
   }
 
-  test('1280×900 L16 默认折叠下 scrollHeight ≤ 1400（M39：内嵌 VOUT_MODE 保留双 nibble 分组与图例）', async ({
+  test('1280×900 L16：默认两组位映射完整展开，收起后配置器仍可编辑且总高 ≤ 1400', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await settle(page)
     await switchToL16(page)
-    const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
-    expect(scrollHeight).toBeLessThanOrEqual(1400)
+    const rawBits = page.getByRole('group', { name: '16 位编辑器', exact: true })
+    const voutBits = page.getByRole('group', { name: 'VOUT_MODE 8 位编辑器', exact: true })
+    await expect(rawBits).toBeVisible()
+    await expect(voutBits).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(
+      1500,
+    )
+    await page.getByTestId('bit-mapping-raw-word-toggle').click()
+    await page.getByTestId('bit-mapping-vout-mode-toggle').click()
+    await expect(rawBits).toBeHidden()
+    await expect(voutBits).toBeHidden()
+    await expect(page.locator('#vout-mode-input')).toBeVisible()
+    await expect(page.locator('#l16-n-input')).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(
+      1400,
+    )
   })
 })
 

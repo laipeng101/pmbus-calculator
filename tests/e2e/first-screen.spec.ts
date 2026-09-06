@@ -21,7 +21,7 @@ test('首次键盘操作在 6 次 Tab 内到达 Raw，主输入保持 focus-visi
 })
 
 for (const width of [1280, 1440]) {
-  test(`${width}×900：Raw、物理值和必要数值参数完整位于首屏`, async ({ page }) => {
+  test(`${width}×900：Raw、默认展开的位映射和物理值完整位于首屏`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     await page.goto(appUrl())
     await page.evaluate(() => document.fonts.ready)
@@ -29,6 +29,10 @@ for (const width of [1280, 1440]) {
       await page.getByRole('tab', { name: new RegExp(mode) }).click()
       await page.evaluate(() => window.scrollTo(0, 0))
       await expectInsideViewport(page.locator('#raw-hex-input'), page)
+      await expectInsideViewport(
+        page.getByRole('group', { name: '16 位编辑器', exact: true }),
+        page,
+      )
       await expectInsideViewport(page.locator('#value-input'), page)
       if (mode === 'DIRECT') {
         for (const name of ['m', 'b', 'r']) {
@@ -36,14 +40,14 @@ for (const width of [1280, 1440]) {
         }
       } else if (mode === 'LINEAR16') {
         await expectInsideViewport(page.locator('#l16-payload-kind'), page)
-        await expectInsideViewport(page.locator('#l16-n-input'), page)
+        await expect(page.locator('#l16-n-input')).toBeVisible()
       }
     }
   })
 }
 
 for (const width of [360, 390]) {
-  test(`${width}px：主要输入先于位网格，相对 L16 参考值可达且无横向溢出`, async ({ page }) => {
+  test(`${width}px：位映射紧邻 Raw，收起后相对 L16 参考值可达且无横向溢出`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 })
     await page.goto(appUrl())
     for (const mode of ['LINEAR11', 'LINEAR16', 'DIRECT', 'HALF']) {
@@ -51,12 +55,14 @@ for (const width of [360, 390]) {
       const value = page.locator('#value-input')
       const bitGrid = page.getByRole('group', { name: '16 位编辑器', exact: true })
       const boxes = await Promise.all([value.boundingBox(), bitGrid.boundingBox()])
-      expect(boxes[0]!.y + boxes[0]!.height).toBeLessThanOrEqual(boxes[1]!.y)
+      expect(boxes[1]!.y + boxes[1]!.height).toBeLessThanOrEqual(boxes[0]!.y)
       await page.evaluate(() => window.scrollTo(0, 0))
       await expectInsideViewport(page.locator('#raw-hex-input'), page)
+      await expectInsideViewport(page.getByTestId('bit-mapping-raw-word-toggle'), page)
       expect(await page.evaluate(() => document.body.scrollWidth <= innerWidth)).toBe(true)
     }
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
+    await page.getByTestId('bit-mapping-raw-word-toggle').click()
     await page.getByRole('radio', { name: '相对值', exact: true }).click()
     await page.evaluate(() => window.scrollTo(0, 0))
     await expectInsideViewport(page.locator('#l16-nominal-vout'), page)

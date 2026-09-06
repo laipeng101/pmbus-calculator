@@ -2,6 +2,7 @@ import type { AppMode, AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { CalculatorViewModel } from '../../app/view-model'
 import BitFieldGrid from '../bits/BitFieldGrid'
+import BitMappingPanel from '../bits/BitMappingPanel'
 import HexInput from '../inputs/HexInput'
 import IntegerInput from '../inputs/IntegerInput'
 import ValueInput from '../inputs/ValueInput'
@@ -52,6 +53,28 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               className="w-full text-base"
               onCommit={(text) => dispatch({ type: 'raw/set-from-hex', hex: text })}
             />
+          </div>
+          <div className="mt-3">
+            <BitMappingPanel
+              id="raw-word"
+              label="16 位"
+              open={state.ui.bitMappingOpen.rawWord}
+              onToggle={() =>
+                dispatch({
+                  type: 'ui/set-bit-mapping-open',
+                  panel: 'rawWord',
+                  open: !state.ui.bitMappingOpen.rawWord,
+                })
+              }
+            >
+              <BitFieldGrid
+                bitCount={16}
+                groups={vm.bitGroups}
+                regions={getBitRegions(mode, state.l16.payloadKind, state.voutMode.byte)}
+                onToggle={(index) => dispatch({ type: 'bit/toggle', bit: 15 - index })}
+                groupLabel="16 位编辑器"
+              />
+            </BitMappingPanel>
           </div>
         </section>
       )}
@@ -340,20 +363,6 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               <TechnicalTerm termId="fp-special">NaN、+Infinity、-Infinity</TechnicalTerm>。
             </p>
             {vm.halfSpecial && <HalfSpecialCard semantics={vm.halfSpecial} />}
-          </div>
-        )}
-
-        {/* Keep bit editing available after the primary value and parameter
-            controls, including in the keyboard order. It edits the same raw. */}
-        {mode !== 'VOUT_MODE' && (
-          <div className="mt-4">
-            <BitFieldGrid
-              bitCount={16}
-              groups={vm.bitGroups}
-              regions={getBitRegions(mode, state.l16.payloadKind, state.voutMode.byte)}
-              onToggle={(index) => dispatch({ type: 'bit/toggle', bit: 15 - index })}
-              groupLabel="16 位编辑器"
-            />
           </div>
         )}
       </section>

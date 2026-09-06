@@ -8,9 +8,9 @@
 
 > **范围声明：** 本工具只做数值格式换算；它**不是** PMBus/SMBus 控制器、总线传输实现、命令执行器、设备 Profile 引擎或一致性测试套件。它覆盖 PMBus 多个修订版本中通用的数值格式语义，且**不声明**完整 PMBus 1.5 协议一致性（含 1.5 安全扩展）。
 >
-> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （当前部署版本 `v3.1.1`）
+> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （当前部署版本 `v3.2.0`）
 >
-> **Stable version：** [`v3.1.1`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.1.1) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.1.1/SHA256SUMS.txt)
+> **Stable version：** [`v3.2.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.2.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.2.0/SHA256SUMS.txt)
 
 ---
 
@@ -33,7 +33,8 @@
 - 🔁 **双向转换** — L11、L16、DIRECT、HALF 四种模式均已完整双向闭环（编码/解码均已实现）。
 - 📐 **四种编码模式 + 统一计算过程** — 每个模式都展示“字段解析 → 通用公式 → 数值代入 → 中间值 → 结果”；
   L16 页面拆解 VOUT_MODE 位域，并在 relative / 非 LINEAR 模式下拒绝伪造 LINEAR16 电压结果。
-- 🔲 **可交互寄存器位视图** — 16 位可点击的位字段视图，按半字节（Nibble）分组，每个半字节实时显示对应 Hex 值。
+- 🔲 **可交互位映射面板** — 16 位面板紧邻 Raw Word，保留可点击位值、半字节 Hex 和字段图例；它与 VOUT_MODE 8 位面板均默认展开，分别记忆收起状态，切换模式或刷新后仍有效。收起时仍可编辑 Hex 和参数。
+- 🧭 **结果上下文** — 结果旁展示 raw、格式和参数来源，包括 L16 标称参考是否可用及当前 DIRECT 系数。
 - 📋 **一键复制** — 可分别复制原始 Hex 值、解码后的物理值，或直接可用的 C 语言宏定义代码。
 - 📖 **只读 PMBus 命令参考** — 默认折叠的参考面板，列出 13 条 PMBus 1.3 命令的命令码、事务、数据类型、单位、格式来源与规范章节；
   参考面板不切换模式、不注入参数、不重写 raw，也不提供任何演示预设。
@@ -86,13 +87,13 @@ npm test         # 运行 Vitest 测试
 
 **静态构建包：** `dist/` 是静态构建产物，必须通过 HTTP 静态服务器使用（例如 `npm run preview` 或任意静态托管服务），不承诺直接双击 `dist/index.html` 以 `file://` 方式打开。
 
-**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 部署的是不可变的 `v3.1.1` Release 资产。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
+**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 部署不可变 Release 资产。本源码版本为 `v3.2.0`；实际发行和部署状态以 GitHub Release 与 Pages 为准。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
 
 **操作流程：**
 
 1. 选择编码模式标签页（LINEAR11 / LINEAR16 / DIRECT / IEEE 半精度）。
 2. 输入原始 Hex 值**或**物理值——另一侧字段将自动更新。
-3. 点击寄存器视图中的各个位进行翻转，观察对编码结果的影响。
+3. 在默认展开的位映射中点击各个位，观察对编码结果的影响；点击面板标题可收起或展开，当前浏览器会记忆该偏好。
 4. 可选：展开 **PMBus 命令参考** 查看某条命令的命令码、事务、数据类型、单位、格式来源与规范章节；参考面板完全只读，不影响任何计算。
 5. 点击 **📋 Hex**、**📋 值** 或 **C 代码** 按钮，以所需格式复制结果。
 

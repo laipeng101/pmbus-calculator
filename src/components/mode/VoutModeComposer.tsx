@@ -19,6 +19,7 @@ import {
 } from '../../app/vout-mode-formats'
 import { getBitRegions } from '../../app/bit-regions'
 import BitFieldGrid from '../bits/BitFieldGrid'
+import BitMappingPanel from '../bits/BitMappingPanel'
 import VoutModeExplanations from './VoutModeExplanations'
 
 interface Props {
@@ -96,30 +97,41 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
 
   return (
     <div className="vout-composer min-w-0 space-y-1">
-      {/* 8-bit interactive editor */}
-      <BitFieldGrid
-        bitCount={8}
-        groups={info.nibbles}
-        regions={getBitRegions('VOUT_MODE')}
-        disabledBits={disabledBits}
-        disabledHint={bits65Hint}
-        disabledDescribedBy={embedded ? 'vout-bits65-disabled-reason' : undefined}
-        density={embedded ? 'compact' : 'regular'}
-        onToggle={(bit) => dispatch({ type: 'vout-mode/toggle-bit', bit })}
-        groupLabel="VOUT_MODE 8 位编辑器"
-      />
+      <BitMappingPanel
+        id="vout-mode"
+        label="VOUT_MODE 8 位"
+        open={state.ui.bitMappingOpen.voutMode}
+        onToggle={() =>
+          dispatch({
+            type: 'ui/set-bit-mapping-open',
+            panel: 'voutMode',
+            open: !state.ui.bitMappingOpen.voutMode,
+          })
+        }
+      >
+        <BitFieldGrid
+          bitCount={8}
+          groups={info.nibbles}
+          regions={getBitRegions('VOUT_MODE')}
+          disabledBits={disabledBits}
+          disabledHint={bits65Hint}
+          disabledDescribedBy={embedded ? 'vout-bits65-disabled-reason' : undefined}
+          density={embedded ? 'compact' : 'regular'}
+          onToggle={(bit) => dispatch({ type: 'vout-mode/toggle-bit', bit })}
+          groupLabel="VOUT_MODE 8 位编辑器"
+        />
 
-      {/* 原生 disabled 的位按钮不产生指针/焦点事件，bits[6:5] 的禁用原因
-          必须有 tooltip 之外的可见路径，并经 aria-describedby 关联到位按钮。 */}
-      {embedded && bits65Hint && (
-        <p
-          className="text-xs color-text-muted"
-          data-testid="vout-bits65-disabled-reason"
-          id="vout-bits65-disabled-reason"
-        >
-          {bits65Hint}（bits[6:5]，Part II §8.3）。
-        </p>
-      )}
+        {/* Keep the disabled reason visible and associated whenever the bits are shown. */}
+        {embedded && bits65Hint && (
+          <p
+            className="mt-1 text-xs color-text-muted"
+            data-testid="vout-bits65-disabled-reason"
+            id="vout-bits65-disabled-reason"
+          >
+            {bits65Hint}（bits[6:5]，Part II §8.3）。
+          </p>
+        )}
+      </BitMappingPanel>
 
       {/* bit7 + bits[6:5] semantic controls */}
       <div className="vout-composer-controls">

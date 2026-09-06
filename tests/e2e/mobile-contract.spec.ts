@@ -132,6 +132,19 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
     await expect(page.locator(VALUE_INPUT)).toHaveValue('1')
   })
 
+  test('位映射支持触摸收起、刷新记忆与展开后继续配置', async ({ page }) => {
+    const toggle = page.getByTestId('bit-mapping-raw-word-toggle')
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await toggle.tap()
+    await expect(page.locator('#bit-mapping-raw-word-content')).toBeHidden()
+    await page.reload()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await toggle.tap()
+    await page.getByRole('button', { name: '位 0: 0', exact: true }).tap()
+    await expect(page.locator(RAW_HEX_INPUT)).toHaveValue('0001')
+    await expectNoBodyOverflow(page)
+  })
+
   test('Hex 步进器：真实触摸 tap 步进一次，coarse 目标合同（v3.1.0）', async ({ page }) => {
     // coarse-pointer 几何合同：步进区宽 >=44px、单按钮高 >=28px、shell 高 >=66px
     //（文档 ~66px 的下界，代码 min-height 4.125rem）。

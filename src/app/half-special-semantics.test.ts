@@ -15,7 +15,7 @@ const BASE: AppState = {
   l16: { payloadKind: 'ulinear16', nominalVout: null },
   direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
   copy: { prefix0x: true, spaceBetweenBytes: true },
-  ui: { theme: 'system', debugOpen: false },
+  ui: { theme: 'system', debugOpen: false, bitMappingOpen: { rawWord: true, voutMode: true } },
 }
 
 function make(overrides: Partial<AppState> = {}): AppState {

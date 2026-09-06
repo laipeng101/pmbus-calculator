@@ -112,14 +112,28 @@ test.describe('M36 result-first geometry', () => {
     expect(order.resultBeforeWorkspace).toBe(true)
   })
 
-  test('1280×900 默认折叠状态下五模式 scrollHeight ≤ 1400（M39：L16 内嵌双 nibble 分组）', async ({
-    page,
-  }) => {
+  test('1280×900：五模式位映射默认展开总高 ≤ 1500，收起后 ≤ 1400', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await settle(page)
 
     for (const mode of MODES) {
       await switchMode(page, mode.tab)
+      const toggles = page.locator('.bit-mapping-toggle')
+      await expect(toggles).toHaveCount(mode.label === 'LINEAR16' ? 2 : 1)
+      for (const toggle of await toggles.all()) {
+        await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      }
+      // Default expansion includes both disclosure headings in L16. Keep a
+      // bounded full-page height while preserving the first-screen checks.
+      const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
+      expect(scrollHeight, mode.label).toBeLessThanOrEqual(1500)
+    }
+
+    for (const mode of MODES) {
+      await switchMode(page, mode.tab)
+      for (const toggle of await page.locator('.bit-mapping-toggle[aria-expanded="true"]').all()) {
+        await toggle.click()
+      }
       const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
       expect(scrollHeight, mode.label).toBeLessThanOrEqual(1400)
     }
