@@ -8,9 +8,9 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 > **Scope:** this tool converts numeric formats; it is **not** a PMBus/SMBus controller, bus-transport implementation, command executor, device-profile engine, or conformance test suite. It covers the common numeric-format semantics across multiple PMBus revisions and does **not** claim full PMBus 1.5 protocol compliance (including the 1.5 security extensions).
 >
-> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v3.1.1`)
+> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v3.2.0`)
 >
-> **Stable version:** [`v3.1.1`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.1.1) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.1.1/SHA256SUMS.txt)
+> **Stable version:** [`v3.2.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.2.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.2.0/SHA256SUMS.txt)
 
 ---
 
@@ -32,7 +32,8 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 - 🔁 **Bidirectional conversion** — L11, L16, DIRECT, and HALF are fully bidirectional (encode/decode loops are implemented).
 - 📐 **Four encoding modes with a unified calculation walkthrough** — each mode shows fields → generic formula → numeric substitution → intermediate values → result; L16 exposes the VOUT_MODE bit layout and refuses to fabricate a LINEAR16 voltage for relative/non-LINEAR modes.
-- 🔲 **Interactive bit-field viewer** — a 16-bit clickable register view with nibble-level grouping and live hex preview per nibble.
+- 🔲 **Interactive bit mappings** — the 16-bit panel sits directly below Raw Word, with clickable bits, nibble hex values and field legends. Both it and the VOUT_MODE 8-bit panel open by default; each remembers its collapsed state across mode changes and reloads. Hex and parameter editing remain available when collapsed.
+- 🧭 **Result context** — the result shows its raw word, format and parameter source, including L16 reference availability and the current DIRECT coefficients.
 - 📋 **One-click copy** — copy the raw hex value, the decoded physical value, or a ready-to-paste C macro.
 - 📖 **Read-only PMBus command reference** — a collapsed reference panel listing command code, transactions, data type, units, format source and spec section for 13 PMBus 1.3 commands. It never switches mode, injects parameters, or rewrites raw; no demo presets are shipped.
 - ♾️ **Optimal N auto-selection** — for LINEAR11 mode, the tool automatically finds the N exponent that minimises representation error.
@@ -86,13 +87,13 @@ npm test         # runs Vitest
 
 **Static build package:** the production build in `dist/` is a static bundle and must be used through an HTTP static server (for example `npm run preview` or any static hosting service). Directly double-clicking `dist/index.html` via `file://` is not supported.
 
-**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys the immutable `v3.1.1` Release asset. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
+**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys immutable Release assets. This source version is `v3.2.0`; GitHub Release and Pages are the authoritative publication and deployment records. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
 
 **Workflow:**
 
 1. Select an encoding mode tab (LINEAR11 / LINEAR16 / DIRECT / IEEE Half).
 2. Enter a raw hex value **or** a physical value — the other fields update automatically.
-3. Click individual bits in the register view to toggle them and observe the effect.
+3. Click individual bits in the expanded bit mapping to toggle them and observe the effect. Use its heading to collapse or expand it; your preference is remembered in this browser.
 4. Optionally expand the **PMBus command reference** to look up a command's code, transactions, data type, units, format source and spec section. The reference is read-only and never affects the calculation.
 5. Click **📋 Hex**, **📋 值**, or **C 代码** to copy the result in your preferred format.
 

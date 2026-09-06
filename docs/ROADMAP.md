@@ -3,15 +3,10 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-06（v3.1.1——PATCH：DIRECT 显示文本回录合同统一（ADR
-0007）。修复 v2.5.11 保真谓词（binary64 管线回程）对显示格式化折叠全盲的
-P1 缺陷——(1,1,12) 全族 0 告警但 29491/65536 的「物理值」复制回录静默改变
-raw。保真谓词统一为「显示文本 → 真实 typed 编码回程」（
-`analyzeDirectTextReentry` 单一事实源），警告/量化注记/步骤/复制全部消费
-同一解析；回录文本按 exact/approximate kind 如实标注；损失分层
-binary64-representation vs display-formatting；m=0 物理值复制禁用并给出
-原因。受保护算法、canonical raw、typed 提交合同、4096 门禁、持久化零变更。
-前一版 v3.1.0 为输入可发现性与 Hex 步进器 MINOR）
+最后更新：2026-09-06（v3.2.0——MINOR：恢复紧邻 Raw Word 的默认展开位映射，
+新增 16 位与 VOUT_MODE 8 位面板的独立收起记忆；结果上下文、普通文本对比度、
+DIRECT 系数布局及可访问标签完善；合入 L11 边界等误差选择、Auto-N 请求来源、
+L16 不可用物理值复制修复。前一版 v3.1.1 的 DIRECT 显示文本回录合同保留。）
 
 ## 当前产品基线
 
@@ -37,7 +32,7 @@ binary64-representation vs display-formatting；m=0 物理值复制禁用并给�
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v3.1.1；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v3.2.0；production distribution: GitHub Pages；当前无活动功能里程碑。
 ```
 
 ## 简短已完成索引
@@ -291,7 +286,12 @@ M0–M42 complete；stable release v3.1.1；production distribution: GitHub Page
   m=0 物理值复制禁用并给出可访问原因。全 65536-Y 最终复制性质测试 +
   真实键盘/剪贴板回录 E2E；受保护算法、canonical raw、typed 提交合同、
   4096 门禁、持久化零变更。
-- 当前：无进行中的功能里程碑；v3.1.1 已发布，M40–M42 complete。
+- v3.2.0（MINOR）：16 位与 VOUT_MODE 8 位位映射默认展开、独立记忆收起，
+  16 位网格紧邻 Raw Word，保留显示与配置能力；结果上下文、对比度与 DIRECT
+  系数对齐/标签完善；L11 等误差边界候选与 Auto-N 请求来源修复；L16 不可用
+  结果禁用物理值复制。新增键盘、触屏、存储回退和跨引擎回归，视觉基线逐图
+  审查；发布细节见 `docs/releases/v3.2.0.md`。
+- 当前：无进行中的功能里程碑；版本 v3.2.0，M40–M42 complete。
   下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
 
 ## 下一产品目标
