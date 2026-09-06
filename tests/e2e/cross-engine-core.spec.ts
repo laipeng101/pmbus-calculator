@@ -53,7 +53,7 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await expect(page.locator(VALUE)).toBeVisible()
   })
 
-  test('L11：value 编码 + hex 解码双向闭环（F819 ↔ 12.5）', async ({ page }) => {
+  test('L11：12.5 编码 F819，再由 C100 解码为 1', async ({ page }) => {
     await page.goto(appUrl())
     const value = page.locator(VALUE)
     const hex = page.locator(RAW_HEX)
@@ -61,9 +61,12 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await value.fill('12.5')
     await expect(hex).toHaveValue('F819')
 
-    await hex.fill('F819')
+    // Use a different word: refilling F819 would leave the input untouched
+    // and could pass even if the raw-to-value transaction never ran.
+    await hex.fill('C100')
     await hex.press('Tab')
-    await expect(value).toHaveValue('12.5')
+    await expect(value).toHaveValue('1')
+    await expect(page.getByTestId('result-value')).toHaveText('1')
     await expect(page.locator('.katex').first()).toBeVisible()
     await expect(page.locator('.katex-error')).toHaveCount(0)
   })
@@ -88,7 +91,7 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await expect(y).toHaveValue('5')
   })
 
-  test('HALF：3C00 ↔ 1 双向闭环 + 位 15 切换到 −1', async ({ page }) => {
+  test('HALF：3C00 解码 1，再编码 2 → 4000、位 15 切换到 −2', async ({ page }) => {
     await page.goto(appUrl())
     await page.getByRole('tab', { name: /HALF/ }).click()
     const hex = page.locator(RAW_HEX)
@@ -97,15 +100,16 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await hex.fill('3C00')
     await expect(value).toHaveValue('1')
 
-    await value.fill('1')
-    await expect(hex).toHaveValue('3C00')
+    await value.fill('2')
+    await expect(hex).toHaveValue('4000')
+    await expect(page.getByTestId('result-value')).toHaveText('2')
 
     await page.getByRole('button', { name: '位 15: 0' }).click()
-    await expect(hex).toHaveValue('BC00')
-    await expect(value).toHaveValue('-1')
+    await expect(hex).toHaveValue('C000')
+    await expect(value).toHaveValue('-2')
   })
 
-  test('L16：LINEAR 0x18 下 V=12 编码为 canonical raw 000C', async ({ page }) => {
+  test('L16：整数 payload 提交 + 1.5 编码 0180，再由 0300 解码为 3', async ({ page }) => {
     await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const v = page.getByLabel('V（16 位无符号，0～65535）')
@@ -115,6 +119,16 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await expect(v).toHaveValue('12')
     await expect(page.locator(RAW_HEX)).toHaveValue('000C')
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
+
+    await page.locator(VALUE).fill('1.5')
+    await expect(page.locator(RAW_HEX)).toHaveValue('0180')
+    await expect(v).toHaveValue('384')
+
+    await page.locator(RAW_HEX).fill('0300')
+    await page.locator(RAW_HEX).press('Tab')
+    await expect(page.locator(VALUE)).toHaveValue('3')
+    await expect(page.getByTestId('result-value')).toHaveText('3')
+    await expect(v).toHaveValue('768')
   })
 
   test('L16：非 LINEAR 共享字节 0x20 fail closed（无物理输入、无伪结果）', async ({ page }) => {
