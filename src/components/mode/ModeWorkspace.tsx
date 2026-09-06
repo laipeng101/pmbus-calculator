@@ -261,7 +261,8 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         {mode === 'DIRECT' && (
           <div className="space-y-4">
             {/* Coefficients: m/b signed 16-bit integer, R signed 8-bit integer */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* Shared rows align inputs even when labels wrap or one field has an error. */}
+            <div className="grid grid-cols-3 gap-x-3 gap-y-1">
               {(
                 [
                   ['m', state.direct.m, -32768, 32767],
@@ -269,25 +270,30 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                   ['r', state.direct.r, -128, 127],
                 ] as const
               ).map(([name, val, min, max]) => (
-                <div key={name} className="min-w-0">
-                  <label className="mb-1 block text-xs color-text-muted">
+                <div key={name} className="contents">
+                  <label
+                    htmlFor={`direct-coeff-${name}-input`}
+                    className="row-start-1 min-w-0 text-xs color-text-muted"
+                  >
                     {name.toUpperCase()}（{formatSignedRange(min)}～{formatSignedRange(max)}）
                   </label>
-                  <IntegerInput
-                    id={`direct-coeff-${name}-input`}
-                    value={val}
-                    ariaLabel={`DIRECT 系数 ${name}`}
-                    rangeBehavior="reject"
-                    stateError={state.direct.errors[name]}
-                    onCommit={(text) =>
-                      dispatch({
-                        type: 'direct/set-coeff',
-                        name,
-                        value: text,
-                      })
-                    }
-                    className="input-field w-full rounded-lg px-3 py-2 text-sm outline-none"
-                  />
+                  <div className="row-start-2 min-w-0">
+                    <IntegerInput
+                      id={`direct-coeff-${name}-input`}
+                      value={val}
+                      ariaLabel={`DIRECT 系数 ${name}`}
+                      rangeBehavior="reject"
+                      stateError={state.direct.errors[name]}
+                      onCommit={(text) =>
+                        dispatch({
+                          type: 'direct/set-coeff',
+                          name,
+                          value: text,
+                        })
+                      }
+                      className="input-field w-full rounded-lg px-3 py-2 text-sm outline-none"
+                    />
+                  </div>
                 </div>
               ))}
             </div>

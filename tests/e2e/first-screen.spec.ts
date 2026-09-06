@@ -86,3 +86,29 @@ test('结果旁的 raw、参数来源与状态跟随配置变化，不借用 LIN
   await page.locator('#vout-mode-input').press('Tab')
   await expect(context).toContainText('N = -8')
 })
+
+for (const width of [360, 390, 960]) {
+  test(`${width}px：DIRECT 系数标签换行和报错时三列输入保持对齐`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(appUrl())
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    await page.evaluate(() => document.fonts.ready)
+    const fields = ['m', 'b', 'r'].map((name) => page.locator(`#direct-coeff-${name}-input`))
+    const expectAligned = async () => {
+      const boxes = await Promise.all(fields.map((field) => field.boundingBox()))
+      const tops = boxes.map((box) => box!.y)
+      expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1)
+    }
+    await expectAligned()
+
+    await fields[0].fill('32768')
+    await fields[0].press('Tab')
+    await expect(fields[0]).toHaveAttribute('aria-invalid', 'true')
+    await expectAligned()
+    await expect(page.locator('#raw-hex-input')).toHaveValue('0000')
+
+    await page.locator('label[for="direct-coeff-r-input"]').click()
+    await expect(fields[2]).toBeFocused()
+    await expect(fields[0]).toHaveAttribute('aria-invalid', 'true')
+  })
+}
