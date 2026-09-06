@@ -73,6 +73,19 @@ export default function ResultSummary({ vm }: Props) {
           )}
         </div>
       </div>
+      <dl
+        data-testid="result-context"
+        className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs color-text-secondary"
+      >
+        {vm.resultContext.map((item) => (
+          <div key={item.label} className="flex min-w-0 gap-1">
+            <dt className="shrink-0 color-text-muted">{item.label}</dt>
+            <dd className={'min-w-0 break-words' + (item.code ? ' font-mono' : '')}>
+              {item.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
   )
 }

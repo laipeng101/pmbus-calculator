@@ -156,10 +156,18 @@ export interface VoutModeInfoVM {
   nibbles: VoutModeNibbleVM[]
 }
 
+export interface ResultContextItemVM {
+  label: string
+  value: string
+  code?: boolean
+}
+
 export interface CalculatorViewModel {
   mode: AppMode
   valueText: string
   valueLabel: string
+  /** Raw identity, active interpretation and parameter sources beside the result. */
+  resultContext: ResultContextItemVM[]
   /**
    * The main Raw Word hex ('0x' + 4 digits) — always the canonical numeric
    * raw word in every mode (v3.0.0). Identical to rawWordHex.
@@ -196,9 +204,9 @@ export interface CalculatorViewModel {
   commandNote?: string
   nRangeText?: string
   /**
-   * Present ONLY when the 物理值 copy must be disabled (v2.5.9): a relative
-   * ULINEAR16 derivation range error (overflow / nonzero-factor underflow)
-   * has no copyable physical value. Undefined means the copy stays enabled;
+   * Present ONLY when the result has no copyable physical value, including
+   * unsupported L16, missing reference, relative range errors and DIRECT
+   * unavailability. Undefined means the copy stays enabled;
    * Raw Word / wire-byte copies are never affected.
    */
   physicalValueCopy?: { available: false; reason: string }

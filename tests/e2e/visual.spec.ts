@@ -70,6 +70,10 @@ async function setL16Stress(page: Page) {
   // v3.0.0: the Hex field takes the canonical word itself — the stress word
   // stays 0xC38F exactly as under the v2.6.5 LE byte-stream contract.
   await fillRaw(page, 'C38F')
+  // Editing the lower VOUT_MODE field can scroll the page. Keep this scene
+  // anchored at the top, as for DIRECT, rather than snapshotting focus scroll.
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.waitForTimeout(60)
 }
 
 async function setDirectStress(page: Page) {

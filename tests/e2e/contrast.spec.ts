@@ -80,7 +80,9 @@ test.describe('contrast', () => {
         await page.goto(appUrl())
         for (const mode of ['LINEAR11', 'LINEAR16', 'DIRECT', 'HALF', 'VOUT_MODE']) {
           await page.getByRole('tab', { name: new RegExp(mode) }).click()
-          const labels = page.locator('h3, [data-testid="result-tile"] > :first-child')
+          const labels = page.locator(
+            'h3, [data-testid="result-tile"] > :first-child, [data-testid="result-context"] dt, [data-testid="result-context"] dd',
+          )
           expect(await labels.count()).toBeGreaterThan(1)
           for (const label of await labels.all()) {
             await expect(label).toBeVisible()

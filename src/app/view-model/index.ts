@@ -28,6 +28,7 @@ import {
   resolveL16PhysicalValueCopy,
 } from './l16'
 import { buildVoutModeVM } from './vout-mode'
+import { buildResultContext } from './result-context'
 
 export type {
   BitGroupVM,
@@ -140,6 +141,12 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     steps: buildCalculationSteps(state),
     valueText,
     valueLabel: getValueLabel(state.mode),
+    resultContext: buildResultContext(state, {
+      rawHex,
+      voutModeInfo,
+      l16Payload,
+      physicalValueCopy: physicalValueCopyUnavailability,
+    }),
     rawHex,
     rawHexDigits,
     rawWordHex: state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(raw),

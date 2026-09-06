@@ -19,12 +19,6 @@ export default function AppHeader({ theme, onThemeChange }: Props) {
             v{__APP_VERSION__}
           </span>
         </div>
-        <p className="mt-0.5 break-words text-sm color-text-secondary">
-          <TechnicalTerm termId="linear11" /> / <TechnicalTerm termId="linear16" /> /{' '}
-          <TechnicalTerm termId="direct" /> /{' '}
-          <TechnicalTerm termId="binary16">binary16</TechnicalTerm> /{' '}
-          <TechnicalTerm termId="vout-mode" />
-        </p>
         <p className="mt-0.5 text-xs color-text-muted">
           数值格式换算，不实现完整 PMBus/
           <TechnicalTerm termId="smbus" /> 协议栈

@@ -31,7 +31,7 @@ interface Props {
 export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
   return (
     <div role="tabpanel" id={MODE_PANEL_ID} aria-labelledby={modeTabId(mode)} className="space-y-4">
-      {/* Raw Word Hex Input + 16-bit Bit Grid (not for the 1-byte VOUT_MODE calculator) */}
+      {/* Primary Raw Word entry (not for the 1-byte VOUT_MODE calculator). */}
       {mode !== 'VOUT_MODE' && (
         <section className="rounded-xl p-4 panel-surface-muted">
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider color-text-secondary">
@@ -51,19 +51,6 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               stepper
               className="w-full text-base"
               onCommit={(text) => dispatch({ type: 'raw/set-from-hex', hex: text })}
-            />
-          </div>
-
-          {/* Scoped vertical gap: the editable Raw Word field and the bit
-              grid are separate interaction layers and need >=8px of air;
-              keep the spacing at this call site, not on BitFieldGrid. */}
-          <div className="mt-3">
-            <BitFieldGrid
-              bitCount={16}
-              groups={vm.bitGroups}
-              regions={getBitRegions(mode, state.l16.payloadKind, state.voutMode.byte)}
-              onToggle={(index) => dispatch({ type: 'bit/toggle', bit: 15 - index })}
-              groupLabel="16 位编辑器"
             />
           </div>
         </section>
@@ -96,6 +83,8 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
         {mode === 'L11' && (
           <div className="space-y-4">
+            <ValueInput vm={vm} dispatch={dispatch} />
+
             {/* Continuous formula: Y × 2^N with N anchored to the exponent slot */}
             <LinearFormulaEditor
               ariaLabel="LINEAR11 公式编辑器"
@@ -148,26 +137,12 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                 'Y 范围: -1024 ~ 1023 · N 范围: -16 ~ 15'
               )}
             </div>
-
-            {/* Physical value input — encodes via findBestLinear11 / manual N */}
-            <ValueInput vm={vm} dispatch={dispatch} />
           </div>
         )}
 
         {mode === 'L16' && (
           <div className="space-y-3">
-            {/* Shared VOUT_MODE composer: bits[6:5] locked to LINEAR */}
-            {vm.voutModeInfo && (
-              <VoutModeComposer
-                state={state}
-                info={vm.voutModeInfo}
-                byte={state.voutMode.byte}
-                dispatch={dispatch}
-                embedded
-              />
-            )}
-
-            {/* Payload semantics + byte order in one compact row */}
+            {/* Choose payload semantics before entering a physical value. */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <label
                 className="flex items-center gap-2 text-sm color-text-muted"
@@ -190,16 +165,6 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                   <option value="slinear16-offset">SLINEAR16（二补码偏移）</option>
                 </select>
               </label>
-
-              <span className="text-xs color-text-muted">
-                Raw Word 是未交换的 16 位数值；SMBus/PMBus word 事务在线上按低字节在前传输 （SMBus
-                3.0 §6.5.4），线上字节顺序只在 Wire Bytes 显示/复制层出现 （
-                <TechnicalTerm termId="le" /> / <TechnicalTerm termId="be" />）
-              </span>
-              <span className="text-xs color-text-muted">
-                解释语义：
-                <TechnicalTerm termId="ulinear16" /> · <TechnicalTerm termId="slinear16" />
-              </span>
             </div>
 
             {/* Relative ULINEAR16: nominal VOUT_COMMAND reference */}
@@ -221,7 +186,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
              * Blocked states render the view-model's discriminated reason —
              * the component makes no spec judgements of its own.
              */}
-            {vm.l16Payload?.physicalInputAvailable ? (
+            {vm.l16Payload?.physicalInputAvailable && (
               <>
                 {/* Physical value input — encodes via value / 2^N */}
                 <ValueInput vm={vm} dispatch={dispatch} />
@@ -230,31 +195,57 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                   {vm.nRangeText ? `可表示范围: ${vm.nRangeText}` : '范围由数据解释类型决定'}
                 </div>
               </>
-            ) : vm.l16Payload?.blocked ? (
-              <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm" role="note">
-                <p className="mb-2">{vm.l16Payload.blocked.title}</p>
-                {vm.l16Payload.blocked.detailLines.map((line) => (
-                  <p key={line} className="mb-2">
-                    {line}
-                  </p>
-                ))}
-                <p>
-                  显式应用计算器 LINEAR 示例 0x18（absolute、N=-8）后才恢复 LINEAR16 编码。0x18
-                  是本计算器的示例值，不是 PMBus 规范默认值，也不代表真实器件一定接受 VOUT_MODE
-                  写入。
-                </p>
-              </div>
-            ) : (
-              <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
-                <p className="mb-2">
-                  VOUT_MODE {vm.voutModeInfo?.hex} 为 {vm.voutModeInfo?.statusText}
-                  ；当前数据解释为相对比值 R = Y_u × 2^N（仅适用于 §8.5 列出的相对阈值 命令），需
-                  VOUT_COMMAND 标称参考值才能得到最终电压；本页不提供其物理值
-                  反向编码，也不给出伪造的 LINEAR16 电压结果。SLINEAR16（二补码偏移） 解释不受 bit7
-                  影响并保留物理值输入。
-                </p>
-              </div>
             )}
+
+            {/* Shared VOUT_MODE composer: bits[6:5] locked to LINEAR. */}
+            {vm.voutModeInfo && (
+              <VoutModeComposer
+                state={state}
+                info={vm.voutModeInfo}
+                byte={state.voutMode.byte}
+                dispatch={dispatch}
+                embedded
+              />
+            )}
+
+            <div className="space-y-2 text-xs color-text-muted">
+              <p>
+                Raw Word 是未交换的 16 位数值；SMBus/PMBus word 事务在线上按低字节在前传输 （SMBus
+                3.0 §6.5.4），线上字节顺序只在 Wire Bytes 显示/复制层出现 （
+                <TechnicalTerm termId="le" /> / <TechnicalTerm termId="be" />）
+              </p>
+              <p>
+                解释语义：
+                <TechnicalTerm termId="ulinear16" /> · <TechnicalTerm termId="slinear16" />
+              </p>
+            </div>
+
+            {!vm.l16Payload?.physicalInputAvailable &&
+              (vm.l16Payload?.blocked ? (
+                <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm" role="note">
+                  <p className="mb-2">{vm.l16Payload.blocked.title}</p>
+                  {vm.l16Payload.blocked.detailLines.map((line) => (
+                    <p key={line} className="mb-2">
+                      {line}
+                    </p>
+                  ))}
+                  <p>
+                    显式应用计算器 LINEAR 示例 0x18（absolute、N=-8）后才恢复 LINEAR16 编码。0x18
+                    是本计算器的示例值，不是 PMBus 规范默认值，也不代表真实器件一定接受 VOUT_MODE
+                    写入。
+                  </p>
+                </div>
+              ) : (
+                <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
+                  <p className="mb-2">
+                    VOUT_MODE {vm.voutModeInfo?.hex} 为 {vm.voutModeInfo?.statusText}
+                    ；当前数据解释为相对比值 R = Y_u × 2^N（仅适用于 §8.5 列出的相对阈值 命令），需
+                    VOUT_COMMAND 标称参考值才能得到最终电压；本页不提供其物理值
+                    反向编码，也不给出伪造的 LINEAR16 电压结果。SLINEAR16（二补码偏移） 解释不受
+                    bit7 影响并保留物理值输入。
+                  </p>
+                </div>
+              ))}
           </div>
         )}
 
@@ -269,15 +260,47 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
         {mode === 'DIRECT' && (
           <div className="space-y-4">
-            <div className="math-scroll rounded-lg px-3 py-2 text-center text-sm surface-muted color-text-primary">
-              <MathFormula
-                latex={vm.formulaGenericLatex}
-                plainText="X = (1/m) × (Y × 10^(-R) - b)"
-                displayMode
-              />
+            {/* Coefficients: m/b signed 16-bit integer, R signed 8-bit integer */}
+            {/* Shared rows align inputs even when labels wrap or one field has an error. */}
+            <div className="grid grid-cols-3 gap-x-3 gap-y-1">
+              {(
+                [
+                  ['m', state.direct.m, -32768, 32767],
+                  ['b', state.direct.b, -32768, 32767],
+                  ['r', state.direct.r, -128, 127],
+                ] as const
+              ).map(([name, val, min, max]) => (
+                <div key={name} className="contents">
+                  <label
+                    htmlFor={`direct-coeff-${name}-input`}
+                    className="row-start-1 min-w-0 text-xs color-text-muted"
+                  >
+                    {name.toUpperCase()}（{formatSignedRange(min)}～{formatSignedRange(max)}）
+                  </label>
+                  <div className="row-start-2 min-w-0">
+                    <IntegerInput
+                      id={`direct-coeff-${name}-input`}
+                      value={val}
+                      ariaLabel={`DIRECT 系数 ${name}`}
+                      rangeBehavior="reject"
+                      stateError={state.direct.errors[name]}
+                      onCommit={(text) =>
+                        dispatch({
+                          type: 'direct/set-coeff',
+                          name,
+                          value: text,
+                        })
+                      }
+                      className="input-field w-full rounded-lg px-3 py-2 text-sm outline-none"
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
 
-            {/* Signed Y input — raw is the only source of truth */}
+            <ValueInput vm={vm} dispatch={dispatch} />
+
+            {/* Signed Y input — raw is the only source of truth. */}
             <div>
               <label className="mb-1 block text-xs font-medium color-text-muted">
                 Y（16 位有符号，−32768～32767）
@@ -291,39 +314,12 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               />
             </div>
 
-            {/* Physical value input — encodes via legacy DIRECT rounding */}
-            <ValueInput vm={vm} dispatch={dispatch} />
-
-            {/* Coefficients: m/b signed 16-bit integer, R signed 8-bit integer */}
-            <div className="grid grid-cols-3 gap-3">
-              {(
-                [
-                  ['m', state.direct.m, -32768, 32767],
-                  ['b', state.direct.b, -32768, 32767],
-                  ['r', state.direct.r, -128, 127],
-                ] as const
-              ).map(([name, val, min, max]) => (
-                <div key={name} className="min-w-0">
-                  <label className="mb-1 block text-xs color-text-muted">
-                    {name.toUpperCase()}（{formatSignedRange(min)}～{formatSignedRange(max)}）
-                  </label>
-                  <IntegerInput
-                    id={`direct-coeff-${name}-input`}
-                    value={val}
-                    ariaLabel={`DIRECT 系数 ${name}`}
-                    rangeBehavior="reject"
-                    stateError={state.direct.errors[name]}
-                    onCommit={(text) =>
-                      dispatch({
-                        type: 'direct/set-coeff',
-                        name,
-                        value: text,
-                      })
-                    }
-                    className="input-field w-full rounded-lg px-3 py-2 text-sm outline-none"
-                  />
-                </div>
-              ))}
+            <div className="math-scroll rounded-lg px-3 py-2 text-center text-sm surface-muted color-text-primary">
+              <MathFormula
+                latex={vm.formulaGenericLatex}
+                plainText="X = (1/m) × (Y × 10^(-R) - b)"
+                displayMode
+              />
             </div>
 
             <div className="text-center text-xs color-text-muted">
@@ -337,13 +333,27 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
         {mode === 'HALF' && (
           <div className="space-y-4">
+            <ValueInput vm={vm} dispatch={dispatch} />
             <p className="text-sm color-text-secondary">
               <TechnicalTerm termId="binary16" />
               （半精度）：符号 1 位、指数 5 位、尾数 10 位。物理值输入支持 +0、-0、
               <TechnicalTerm termId="fp-special">NaN、+Infinity、-Infinity</TechnicalTerm>。
             </p>
-            <ValueInput vm={vm} dispatch={dispatch} />
             {vm.halfSpecial && <HalfSpecialCard semantics={vm.halfSpecial} />}
+          </div>
+        )}
+
+        {/* Keep bit editing available after the primary value and parameter
+            controls, including in the keyboard order. It edits the same raw. */}
+        {mode !== 'VOUT_MODE' && (
+          <div className="mt-4">
+            <BitFieldGrid
+              bitCount={16}
+              groups={vm.bitGroups}
+              regions={getBitRegions(mode, state.l16.payloadKind, state.voutMode.byte)}
+              onToggle={(index) => dispatch({ type: 'bit/toggle', bit: 15 - index })}
+              groupLabel="16 位编辑器"
+            />
           </div>
         )}
       </section>

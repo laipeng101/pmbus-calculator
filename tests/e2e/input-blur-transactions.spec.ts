@@ -825,6 +825,10 @@ test.describe('invalid draft blur 事务（v2.5.9）', () => {
     await expect(page.getByTestId('result-value')).toHaveText('12')
 
     // 未编辑再次 blur：保持
+    // Tab 进入下方 VOUT_MODE bit7 后会打开键盘提示。先按 Escape 关闭，
+    // 再真实点击输入框；不让可驻留浮层遮挡本用例的重新聚焦动作。
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('tooltip')).toBeHidden()
     await untouchedFocusBlur(nominal)
     await expectKeptInvalidDraft(
       page,
@@ -834,6 +838,8 @@ test.describe('invalid draft blur 事务（v2.5.9）', () => {
     )
 
     // 真实修复：错误清除，新值提交
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('tooltip')).toBeHidden()
     await realKeyboardRetype(nominal, '13')
     await expect(nominal).not.toHaveAttribute('aria-invalid', 'true')
     await expect(page.getByTestId('result-value')).toHaveText('13')
