@@ -8,38 +8,95 @@ async function setTheme(page: Page, theme: 'light' | 'dark') {
 async function readContrast(locator: Locator) {
   return locator.evaluate((el) => {
     const cs = getComputedStyle(el)
-    return { background: cs.backgroundColor, color: cs.color }
+    const ancestorBackgrounds: string[] = []
+    for (let node: Element | null = el; node; node = node.parentElement) {
+      const style = getComputedStyle(node)
+      // This color calculation covers solid/transparent surfaces. Fail if a
+      // visual effect needs a different measurement instead of reporting green.
+      if (
+        style.backgroundImage !== 'none' ||
+        style.opacity !== '1' ||
+        style.mixBlendMode !== 'normal'
+      ) {
+        throw new Error(`Unsupported contrast surface: ${node.tagName}`)
+      }
+      if (node !== el) ancestorBackgrounds.unshift(style.backgroundColor)
+    }
+    return { background: cs.backgroundColor, color: cs.color, ancestorBackgrounds }
   })
 }
 
-async function contrastOf(rgb: { background: string; color: string }): Promise<number> {
-  return parseContrast(rgb.background, rgb.color)
+async function contrastOf(rgb: {
+  background: string
+  color: string
+  ancestorBackgrounds?: string[]
+}): Promise<number> {
+  // Composite from the browser canvas towards the label, including the
+  // alpha of transparent ancestors and of the foreground itself.
+  let background: [number, number, number] = [255, 255, 255]
+  for (const layer of [...(rgb.ancestorBackgrounds ?? []), rgb.background]) {
+    background = composite(parseRgba(layer), background)
+  }
+  const foreground = composite(parseRgba(rgb.color), background)
+  const l1 = luminance(background)
+  const l2 = luminance(foreground)
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
 }
 
-function parseRgb(value: string): [number, number, number] {
+function parseRgba(value: string): [number, number, number, number] {
   const match = value.match(/rgba?\(([^)]+)\)/)
-  if (match == null) return [0, 0, 0]
+  if (match == null) throw new Error(`Unsupported computed color: ${value}`)
   const parts = match[1].split(',').map((n) => parseFloat(n.trim()))
-  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0]
+  return [parts[0], parts[1], parts[2], parts[3] ?? 1]
+}
+
+function composite(
+  [r, g, b, alpha]: [number, number, number, number],
+  background: [number, number, number],
+): [number, number, number] {
+  return [
+    r * alpha + background[0] * (1 - alpha),
+    g * alpha + background[1] * (1 - alpha),
+    b * alpha + background[2] * (1 - alpha),
+  ]
 }
 
 function luminance(rgb: [number, number, number]): number {
   const linear = rgb.map((v) => {
     const s = v / 255
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
   })
   return 0.2126 * (linear[0] ?? 0) + 0.7152 * (linear[1] ?? 0) + 0.0722 * (linear[2] ?? 0)
 }
 
-function parseContrast(a: string, b: string): number {
-  const l1 = luminance(parseRgb(a))
-  const l2 = luminance(parseRgb(b))
-  const lighter = Math.max(l1, l2)
-  const darker = Math.min(l1, l2)
-  return (lighter + 0.05) / (darker + 0.05)
-}
-
 test.describe('contrast', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    for (const width of [1440, 360]) {
+      test(`${theme} ${width}: group headings and result labels have >= 4.5 contrast`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width, height: 900 })
+        await setTheme(page, theme)
+        await page.goto(appUrl())
+        for (const mode of ['LINEAR11', 'LINEAR16', 'DIRECT', 'HALF', 'VOUT_MODE']) {
+          await page.getByRole('tab', { name: new RegExp(mode) }).click()
+          const labels = page.locator('h3, [data-testid="result-tile"] > :first-child')
+          expect(await labels.count()).toBeGreaterThan(1)
+          for (const label of await labels.all()) {
+            await expect(label).toBeVisible()
+            const colors = await readContrast(label)
+            expect
+              .soft(
+                await contrastOf(colors),
+                `${mode} / ${await label.textContent()} / ${JSON.stringify(colors)}`,
+              )
+              .toBeGreaterThanOrEqual(4.5)
+          }
+        }
+      })
+    }
+  }
+
   test('light/dark selected mode tab has >= 4.5 contrast', async ({ page }) => {
     for (const theme of ['light', 'dark'] as const) {
       await setTheme(page, theme)
