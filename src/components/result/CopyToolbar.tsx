@@ -58,8 +58,8 @@ export default function CopyToolbar({ vm, copyPrefs, onTogglePrefix, onToggleSpa
   // v3.0.0: explicit representation actions replace the ambiguous endian
   // switch — each button copies exactly the representation its name states.
   const rawWordText = formatRawWordCopyText(vm.rawWordHex, copyPrefs.prefix0x)
-  // v2.5.9: a relative-derivation range error disables the 物理值 copy with
-  // an accessible, visible reason; Raw Word / wire-byte copies stay available.
+  // The view-model supplies all unavailable-result reasons; Raw Word and
+  // wire-byte copies remain independent of physical-value availability.
   const physicalCopyUnavailable = vm.physicalValueCopy?.available === false
   // v2.5.11: a precision-folded DIRECT decode swaps the copied payload for
   // the verified safe re-entry text — the display approximation must never

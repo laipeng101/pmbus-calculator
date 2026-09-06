@@ -168,8 +168,9 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
         .locator('section[aria-label="提示信息"]')
         .getByText(/需要 VOUT_COMMAND 标称参考值才能计算最终电压/),
     ).toHaveCount(1)
-    // 既有行为保持：缺参考值不禁用物理值复制（复制的是 —，不是过期电压）
-    await expect(physicalCopyButton(page)).toBeEnabled()
+    // 缺参考值时没有可复制的最终电压，不能把占位符当作物理值复制。
+    await expect(physicalCopyButton(page)).toBeDisabled()
+    await expect(page.locator('#physical-value-copy-reason')).toContainText('标称参考值')
   })
 
   test('转换链：正常→溢出→正常→下溢→清除→重填 全程自然恢复，无需刷新', async ({ page }) => {
@@ -204,7 +205,8 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     await nominal(page).press('Tab')
     await expect(nominal(page)).toHaveValue('')
     await expect(resultValue(page)).toHaveText('—')
-    await expect(physicalCopyButton(page)).toBeEnabled()
+    await expect(physicalCopyButton(page)).toBeDisabled()
+    await expect(page.locator('#physical-value-copy-reason')).toContainText('标称参考值')
 
     // 重填恢复有限结果：12 × 2^-16
     await nominal(page).fill('12')

@@ -93,7 +93,8 @@ describe('L16 semantic matrix — relative ULINEAR16 (byte 0x83, N=3)', () => {
     expect(vm.formulaText).toBe('R=2 × 2^3=16（需要 VOUT_COMMAND nominal）')
     expect(vm.steps.find((s) => s.id === 'l16-relative-nominal-missing')?.kind).toBe('warning')
     expect(vm.steps.find((s) => s.id === 'result')).toBeUndefined()
-    expect(vm.physicalValueCopy).toBeUndefined()
+    expect(vm.physicalValueCopy?.available).toBe(false)
+    expect(vm.physicalValueCopy?.reason).toContain('标称参考值')
   })
 
   test('case 4: nominal = 0 → exact zero result, no false diagnostics', () => {

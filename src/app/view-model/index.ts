@@ -101,8 +101,8 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   const halfSpecial = state.mode === 'HALF' ? resolveHalfSpecial(raw) : undefined
 
-  // v2.5.9: a relative-derivation range error disables the 物理值 copy with
-  // an accessible reason; every other state keeps the copy enabled.
+  // L16 missing/unsupported results and relative range errors disable the
+  // physical-value copy with an accessible reason from the interpretation.
   // v3.1.1: DIRECT m=0 has no decode contract, so the copy is disabled with
   // its own accessible reason instead of copying the '—' placeholder.
   let physicalValueCopyUnavailability =

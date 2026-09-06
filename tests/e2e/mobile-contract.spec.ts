@@ -71,6 +71,24 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
     await expectNoBodyOverflow(page)
   })
 
+  test('L16：触摸切换相对值后禁用无结果复制，标称零可触摸复制', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.getByRole('tab', { name: /LINEAR16/ }).tap()
+    await page.locator(RAW_HEX_INPUT).fill('0100')
+    await page.getByRole('radio', { name: '相对值', exact: true }).tap()
+    const copy = page.getByRole('button', { name: '物理值', exact: true })
+    await expect(copy).toBeDisabled()
+    await expect(page.locator('#physical-value-copy-reason')).toContainText('标称参考值')
+    await expectWrappedInContainer(page.locator('#physical-value-copy-reason'))
+    await page.locator('#l16-nominal-vout').fill('0')
+    await page.locator('#l16-nominal-vout').press('Tab')
+    await expect(copy).toBeEnabled()
+    await copy.tap()
+    await expect(page.getByText('已复制: 物理值', { exact: true })).toBeVisible()
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('0')
+    await expectNoBodyOverflow(page)
+  })
+
   test('LINEAR16：整数 V 提交与饱和，页面无横向溢出', async ({ page }) => {
     await page.getByRole('tab', { name: /LINEAR16/ }).tap()
     const vInput = page.getByLabel('V（16 位无符号，0～65535）')
