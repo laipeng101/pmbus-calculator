@@ -12,6 +12,7 @@
   - UI/公式/交互动效任务才读 `docs/UI_CONVENTIONS.md`，且视觉验收必须包含关键 viewport 截图与逐图检查
   - Git/PR/CI 流程任务才读 `CONTRIBUTING.md`
   - 发布任务才读 `docs/RELEASING.md`
+  - Pages / Analytics / 部署 / CI-CD 任务还须读 `docs/DEPLOYING.md`
   - legacy/parity 任务才读 `MIGRATION_MATRIX.md`
   - 决策相关任务只读相关 ADR
   - 规范核查任务先读 `document/specifications.json`，只按需 `npm run specs:fetch -- --id <id>` 对应文档，下载进 ignored `.cache/specifications/`，并只打开所需章节；不提交 PDF
@@ -209,3 +210,22 @@ tests/e2e/        Playwright 真实用户流程
 - [ ] CI tier（light/full）已标注；policy-skipped 门禁如实说明，未虚构测试数
 - [ ] 里程碑 Done 已在实现 PR 最终提交中翻转，未创建第二个 bookkeeping PR
 - [ ] 文档已更新，进度表与代码一致
+
+## 12. Pages / Analytics CI-CD contract
+
+- 本地网络可能且允许主动屏蔽 Cloudflare Analytics；不得要求关闭 Surge、AdBlock、
+  DNS filter 或隐私规则，也不得修改 DNS、代理、hosts 来绕过它们。
+- 本地、PR CI、fresh release 与 deterministic remote smoke 必须使用精确 Cloudflare
+  stub；真实第三方网络验收不得加入 `npm run verify` 或 PR CI。
+- 真实 Analytics 验收只以 GitHub-hosted Pages job 的 tracked post-deploy step 为权威。
+  本机 real check 被隐私/网络策略阻止时标为 `ENVIRONMENT_BLOCKED`，既不是应用失败，
+  也不是 Analytics PASS；不继续排查项目 TLS/DNS/CSP 来绕过明确的本机 blocker。
+- stable Release / Pages 只有 hosted real acceptance 也成功后才可声明 fully accepted。
+  部署后验收失败须如实区分 deployment completed 与 rollout acceptance failed；
+  不自动回滚、不移动 tag、不替换 immutable Release assets。
+- source / 普通 build / Release ZIP 默认无 Analytics 与 Pages-only UI；overlay 只在
+  全部 Release provenance 门禁之后修改 FINAL `_site`，永不修改两个 Release ZIP。
+  性能优化不得削弱 byte comparison、CSP、精确 endpoints 或既有验证覆盖。
+- 发行审计必须绑定当前 Git tree、精确 remote ref / tag / SHA 与 API evidence，
+  不从缓存的 main 网页推断 workflow。详细流程与失败处理见
+  [`DEPLOYING`](docs/DEPLOYING.md) 和 [`RELEASING`](docs/RELEASING.md)。

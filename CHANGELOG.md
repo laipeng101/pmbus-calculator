@@ -4,6 +4,31 @@
 
 ## [Unreleased]
 
+## [3.3.1] - 2026-09-09
+
+> 本源码的发行目标为 v3.3.1；稳定 GitHub Release 公开前按待发布处理。
+> 发行与部署状态以 GitHub Release / Pages 验收记录为准。
+
+### Fixed
+
+- **真实 Analytics 验收不再依赖人工记忆或本机网络**：同一 GitHub-hosted Pages
+  job 在 deploy、FINAL `_site` entity verification 与 deterministic remote smoke
+  之后运行 tracked 验收入口，观察正式页面产生的真实 beacon GET 与 RUM POST，
+  要求 2xx 且完成、beacon initiator、正确版本/CSP/link、无 CORS 或未知外部请求。
+  最多 3 次独立尝试、累计硬预算 ≤45s；不需要 secret，不记录 token 或 RUM body。
+- **持久化隐私与发行合同**：本机可以始终启用 Analytics blocker，本地/PR/fresh
+  验证继续 exact stub；本机阻断标为 `ENVIRONMENT_BLOCKED`，不算应用失败或 PASS。
+  workflow structure 与入口隔离测试防止把真实第三方检查加入 verify/PR CI，或
+  提前、跳过 hosted post-deploy gate。部署后失败明确报告 rollout acceptance failed，
+  不移动 tag、修改 immutable assets 或自动回滚。
+
+### Unchanged
+
+- source、普通 build、Release ZIP 与自托管默认无 Analytics / Pages-only UI；
+  Release checksum、ZIP safety、fresh rebuild 字节比较、clean Release smoke、
+  exact overlay/CSP/network policy、全清单实体校验及既有跨引擎覆盖完整保留。
+- 计算器算法、canonical raw、复制、持久化与公开用户流程不变；本次为 PATCH。
+
 ## [3.3.0] - 2026-09-08
 
 > 本源码的发行目标为 v3.3.0；稳定 GitHub Release 公开前按待发布处理。
