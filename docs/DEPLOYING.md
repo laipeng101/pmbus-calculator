@@ -4,15 +4,19 @@
 
 ## 部署原则
 
-- **正式站点只部署稳定 GitHub Release 资产。** 每次部署都从指定的 Release 下载
-  `pmbus-calculator-<tag>-web.zip` 与 `SHA256SUMS.txt`，校验通过后解压为静态站点。
+- **正式站点以稳定、不可变 GitHub Release 资产为产品基线。** 每次部署都从指定的
+  Release 下载 `pmbus-calculator-<tag>-web.zip` 与 `SHA256SUMS.txt`，完成全部
+  完整性、provenance 和本地 Release smoke 门禁后，才解压到 `_site` 并执行
+  确定性的 Pages-only overlay。
 - **不部署 main 的未发布构建。** Pages 工作流只从**被部署 tag 本身** fresh
-  rebuild，且该 rebuild 必须与 Release ZIP 逐字节一致；上传给 Pages 的字节永远是
-  **已下载并验证的 Release ZIP**（解压的 `_site`），不是 rebuild 产物本身。
+  rebuild，且该 rebuild 必须与下载的 Release ZIP 逐字节一致。最终 `_site` 是
+  **已下载并验证的 Release 基线 + 确定性且已验证的 Pages-only overlay**；
+  overlay 有意改变 `index.html` 并新增 `pages-overlay.css`，因此最终 Pages
+  字节不再等于未修改的 Release ZIP。下载与重建的两个 ZIP 本身均不得改写。
 - **不改动已发布 tag 与 Release。** 已发布的 tag 和 Release 是不可变资产；部署失败
   时不得通过移动 tag、替换资产或重新构建同名包来“修复”。
 - Pages 故障不修改任何已发布的 tag、Release 和资产；若部署需要改变产品字节，应停止部署，
-  并改为规划独立的新 PATCH 修复发行。
+  并按 SemVer 规划新的修复或功能发行，不得临时绕过 overlay 合同。
 - **手动部署与回滚必须遵守 [RELEASING 的发布纪律](RELEASING.md#发布纪律)。**
   目标必须是 API 报告 `immutable: true` 的稳定 Release，且目标 tag 自身的 tree
   已包含 immutable 校验门禁（v2.6.2 起）。手动运行执行的是该 tag 内的 workflow
@@ -104,16 +108,62 @@ https://laipeng101.github.io/pmbus-calculator/
    Playwright Chromium 安装与**本地 release smoke**（`npm run test:e2e:release`）
    在 deploy 前执行；本地 smoke 作用于与 Release zip 字节绑定的 rebuild 产物。
    任一前置失败时 deploy 尚未开始，线上旧版不受影响。
-9. 解压到临时 `_site` 目录。
-10. 上传 GitHub Pages artifact 并执行 `actions/deploy-pages`。
-11. **部署后全清单实体验证**：从本次已验证的 `_site`（字节绑定
-    于 Release zip）**动态枚举完整清单**，对每个相对 URL 执行带总 deadline 与
+9. 将已下载并验证的 Release ZIP 解压到临时 `_site` 目录。
+10. **Apply Pages-only overlay**：`scripts/apply-pages-overlay.mjs --site _site`
+    从 step `env` 读取 `CLOUDFLARE_WEB_ANALYTICS_TOKEN`，只修改 `_site`。
+    受控仓库必须为 `laipeng101/pmbus-calculator`；缺失/非法 token、未知 CSP、
+    非普通文件或已有 overlay 都失败，不自动跳过或重复注入。
+11. **Verify Pages-only overlay**：`scripts/verify-pages-overlay.mjs --site _site`
+    独立验证 FINAL `_site` 的 beacon、环境 token 一致性、精确 CSP、repository
+    link、同源 CSS 及外部资源 allowlist；stdout 为不含 token 的 JSON，诊断走
+    stderr。然后运行 `npm run test:e2e:pages-overlay`，在本地生产静态树上验证
+    桌面/390px、亮暗主题、键盘焦点、无遮挡与无 page error；Cloudflare 由 route
+    stub 隔离。任一 overlay 或本地 smoke 失败时尚未调用 deploy-pages，线上旧站不变。
+12. Configure Pages、上传 FINAL `_site` artifact，然后执行 `actions/deploy-pages`。
+13. **部署后全清单实体验证**：从本次 overlay 后的 FINAL `_site`
+    **动态枚举完整清单**（包含变更后的 `index.html` 与新增 `pages-overlay.css`），
+    对每个相对 URL 执行带总 deadline 与
     并发上限的 identity GET；每项要求最终 URL 同源、HTTP 200、非意外
     Content-Encoding、实体长度与 SHA-256 与清单一致，并显式拒绝 200 HTML
     fallback。清单文件数与 asset 名全部来自运行时枚举，不硬编码。失败按类
     分级退出（status 21 / origin 23 / content-encoding 24 / fallback 25 /
     length 26 / hash 27 / timeout 28 / deadline 29 / network 20 / 配置 3）。
-12. 在同一工作流中对真实部署 URL 执行远程 Playwright smoke（`npm run test:e2e:deployment`）。
+14. 在同一工作流中对真实部署 URL 执行远程 Playwright smoke（`npm run test:e2e:deployment`）。
+
+## Pages-only overlay 与隐私边界
+
+普通 `npm run build`、clone / Download source ZIP / fork 的默认构建、Release
+Web ZIP 与自托管构建均无 Analytics、无外部 tracking，也无 Pages-only repository
+link。overlay 不进入 React source、Vite build 或 Release ZIP generation。
+
+正式 Pages payload 恰好增加一份 Cloudflare Web Analytics 页面级 beacon、一枚
+页头主题按钮旁的源码仓库图标链接，以及同源 `./pages-overlay.css`。链接随页头
+滚动，计算器保持完整宽度，不为部署控件预留整页侧栏。Analytics 使用面向隐私的
+聚合统计；不增加用户行为参数，不把 PMBus raw word、物理值、DIRECT 系数、
+VOUT_MODE、复制内容或其他计算器输入/结果作为自定义 analytics event 收集。
+beacon 保持第三方 runtime script，不下载/vendor，不添加不受支持的 version-pinned SRI。
+
+`vite.config.ts` 的 Release CSP 完全不变。overlay 先严格校验已生成 CSP 的
+directive shape，然后只做以下差异；其余 directive 保持原语义：
+
+| Directive     | Release / self-host               | Official Pages                                               |
+| ------------- | --------------------------------- | ------------------------------------------------------------ |
+| `script-src`  | `'self'`                          | `'self' https://static.cloudflareinsights.com/beacon.min.js` |
+| `connect-src` | 未声明，继承 `default-src 'self'` | `'self' https://cloudflareinsights.com`                      |
+
+不允许 wildcard、宽泛 `https:` 或其他第三方 script/connect。KaTeX 字体、应用 JS、
+应用 CSS 与 `pages-overlay.css` 继续同源；repository link 只在用户激活时导航。
+
+overlay 只接受预期 `_site` staging directory 与普通 `index.html` 文件；production
+CSP 必须恰好一份，执行前不得已有 Cloudflare、Pages marker 或 overlay CSS。
+相同 Release tree 与相同部署输入产生相同 `_site` bytes；第二次执行必须明确失败。
+verifier 在 upload 前拒绝重复 beacon/marker、错误 href/ARIA、token 不一致、
+宽泛 CSP 或额外外部 script/stylesheet/font/image。
+
+本地可在普通 build 后使用 `npm run test:pages-overlay` 完成测试 fixture 准备、
+overlay 校验与 browser smoke。该入口使用合成测试 token，无需官方 Environment
+Secret，也不发布任何资源；正式 workflow 直接消费已验证 ZIP 解压出的 `_site`，
+不得把这个 fixture 准备入口替代生产 provenance 链。
 
 ## 远程 smoke
 
@@ -121,15 +171,60 @@ https://laipeng101.github.io/pmbus-calculator/
 - Playwright 配置：`playwright.deployment.config.ts`
 - URL 由环境变量 `DEPLOYMENT_URL` 提供；测试不启动本地 dev/preview server。
 - 覆盖：HTTPS URL、页面可加载、标题包含 PMBus、模式切换/只读命令参考/结果面板可见、
-  production CSP meta 存在、无 page error、document/script/stylesheet/font/image/fetch
-  无 4xx/5xx、资源位于 Pages origin、390px viewport 无横向滚动、L11 输入/结果闭环。
+  精确 production CSP、恰好一个 beacon、exact repository href、无 page error、
+  相关 document/script/stylesheet/font/image/fetch/XHR 无 4xx/5xx、390px viewport
+  无横向滚动、L11 输入/结果闭环及既有计算器回归。
+- 外部请求只允许当前 Pages deployment origin，以及以下两个精确目的地：
+  `GET https://static.cloudflareinsights.com/beacon.min.js`（script）与
+  `POST https://cloudflareinsights.com/cdn-cgi/rum`（fetch/xhr/ping/other）。
+  两者均不接受额外 query、path、userinfo、protocol 或 port；其他外部请求一律失败。
+  CSP 的 `connect-src` 仍使用上方经过审计的 origin 例外；运行时测试 allowlist
+  进一步限定 RUM endpoint，不用未经验证的 CSP path-source 替代它。
+  应用 JS、应用 CSS、KaTeX 字体与 `pages-overlay.css` 明确保持同源，unexpected
+  external origins 必须为空。广告/隐私拦截或 Cloudflare 网络故障不扩大 allowlist；
+  smoke 对预期 Cloudflare endpoints 同样使用受控 route stub，不依赖真实
+  Cloudflare 服务成功；Pages 文档和同源资源仍通过真实网络加载。该测试验证
+  HTML/CSP wiring 与 allowlist，不宣称 Cloudflare 服务健康。
+
+## 发布后真实 Cloudflare Analytics 验收
+
+v3.3.0 起，在声明一次 Release 与 Pages 上线验收全部完成前，必须在 Pages
+workflow、FINAL `_site` 实体校验和 deterministic remote smoke 成功之后，独立
+完成一次真实 Cloudflare network acceptance。普通 PR CI、本地 overlay smoke 和
+deterministic remote smoke 继续 stub Cloudflare，不依赖第三方 uptime。
+
+使用一次性 Playwright 检查和现有 Chromium：新建干净 context，无广告拦截、
+隐私扩展、request blocking 或 `stubCloudflare()`，访问正式 HTTPS Pages URL。
+导航前注册 request/response、console 与 pageerror observers，并要求：
+
+1. 主页面 HTTP 200、版本正确、production CSP 与 repository link 符合上述合同。
+2. 真实 `GET https://static.cloudflareinsights.com/beacon.min.js`（script）收到
+   成功 2xx response；只加载这一份外部 module。
+3. 真实 `POST https://cloudflareinsights.com/cdn-cgi/rum` 收到成功 2xx response，
+   URL 不含 query 或其他变体。页面稳定后可导航到 `about:blank`，以真实
+   visibility-hidden/sendBeacon 行为触发上报，并等待已开始请求的 response。
+4. 没有 hostname mismatch、Access-Control-Allow-Origin/CORS 错误、未知外部
+   请求或计算器 page error。应用 JS/CSS、字体与 overlay CSS 仍全部同源。
+
+只记录 URL、方法、资源类型、状态码和脱敏后的通过/失败结论；不得记录完整
+`data-cf-beacon`、token、RUM request body 或含 token 的 headers/payload。
+该检查不修改 Release ZIP，不进入普通 build，不添加框架或长期依赖。
+
+beacon 成功但未出现 RUM 时不得按通过处理：检查当前官方 beacon 行为、
+Origin/Referer、Cloudflare site hostname 与 token/site 配对。CORS hostname
+mismatch 是 Analytics 部署失败，不能用 deterministic smoke 的绿色结果替代。
+第三方临时故障须与本站配置缺陷区分；保持 CSP 和 endpoint allowlist 不变，
+报告真实 Analytics 验收未完成。已公开 immutable Release 出现真实代码缺陷时，
+只能通过后续 SemVer 发行修复，不得移动 tag、替换资产或临时部署 main。
 
 ## 部署后全清单实体验证
 
 - 脚本：`scripts/verify-pages-entities.mjs`（`.github/workflows/pages.yml` 的
   "Verify deployed Pages entities" 步骤，位于 deploy-pages 之后、远程 smoke 之前）。
-- 清单**动态**来自已解压、已字节验证的 `_site`：每个文件产生一个相对 URL，文件数
-  与 asset 名不硬编码。
+- 清单**动态**来自 overlay 已通过独立 verifier 的 FINAL `_site`：每个文件产生一个
+  相对 URL，文件数与 asset 名不硬编码；变更后的 `index.html` 和新增
+  `pages-overlay.css` 自动纳入。Cloudflare 远程 beacon JS 不在本地树中，不下载或
+  加入该 manifest。
 - 每项检查：安全解析相对路径（拒绝 `..`/绝对/反斜杠/URL 特殊字符/带 scheme 引用）；
   最终（含 redirect 后）URL 必须同源且位于 base pathname 前缀内；请求显式
   `Accept-Encoding: identity` + `Cache-Control: no-cache`；GitHub run id 作为
@@ -171,6 +266,26 @@ gh api repos/OWNER/REPO/environments/github-pages/deployment-branch-policies
 如果环境策略只允许 `main`，release event 会被拒绝并记录为
 `Tag "vX.Y.Z" is not allowed to deploy to github-pages due to environment protection rules`。
 此时应添加 tag policy；不得关闭全部 environment protection。
+
+### Cloudflare Environment Secret（一次性配置）
+
+在 `laipeng101/pmbus-calculator` 的 Settings → Environments → `github-pages` →
+Environment secrets 添加 **`CLOUDFLARE_WEB_ANALYTICS_TOKEN`**，值为官方站点的
+Cloudflare Web Analytics site token。它是客户端 site token，不是 Cloudflare API
+credential；仍必须仅以 Environment Secret 保存，避免官方部署配置进入 tracked
+source、clone、普通 build 或 Release ZIP。
+
+Environment Secret 的访问权限属于引用 `github-pages` environment 的 job；
+本 workflow 仅在 overlay/verifier 两个 step 的 `env` 引用并传入 secret，
+不设置 job/workflow 级 token 环境变量。脚本从
+`process.env.CLOUDFLARE_WEB_ANALYTICS_TOKEN` 读取并校验，禁止 CLI token argument、
+`VITE_*` 注入、提交 `.env`、写入 `vite.config.ts` 或在 stdout/stderr 打印完整值。
+token 缺失或格式错误时在 deploy-pages 之前 fail closed。无配置权限时，完成仓库
+实现与本地合成 token 验证，保留这一项管理员配置步骤；不得改为提交 token。
+
+部署 overlay 随 v3.3.0 的 tag tree 引入；它不追溯更改旧 tag 的 workflow 或已发布
+Release。相同 token 是确定性输入的一部分，变更 Environment Secret 会有意改变
+下一次 Pages `index.html` 的部署字节，但仍不改变 Release ZIP。
 
 ## 安全与权限
 

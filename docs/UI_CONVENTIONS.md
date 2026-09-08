@@ -42,7 +42,13 @@
 
 - KaTeX 作为本地 npm 依赖安装，不使用 CDN、远程字体或运行时网络依赖。
 - 在应用入口导入 `katex/dist/katex.min.css`，由 Vite 将字体打入 Release 资产。
-- 生产 CSP 不增加外部域；字体、CSS、JS 必须来自 Pages 同源。
+- Release / 自托管 production bundle 的 CSP 不增加外部运行时依赖；
+  `vite.config.ts` 继续只定义严格 Release CSP。字体、CSS、应用 JS 必须来自同源。
+- 官方 GitHub Pages 可在 Release 完整性、tag fresh rebuild 逐字节比较与本地
+  Release smoke 全部通过后，仅对 `_site` 执行经审计的 Pages-only overlay：
+  `script-src` 只额外允许 `https://static.cloudflareinsights.com/beacon.min.js`，
+  `connect-src` 为 `'self' https://cloudflareinsights.com`；其他 directive 语义不变，
+  不允许 wildcard 或宽泛 `https:`。Pages-only CSS 仍为同源资源。
 - KaTeX 输出同时包含 HTML 与 MathML；E2E 必须确认 DOM 中存在 `math` 元素且无 `.katex-error`。
 - 移动端长公式只允许公式容器局部横向滚动（`.math-scroll`），不得造成 body 横向溢出。
 - 结果主数值使用等宽 + `font-variant-numeric: tabular-nums`；按内容长度使用可预测字号档位，不省略、不换行、不 `transform: scale()`。
@@ -80,6 +86,10 @@
   cursor / hover / active / focus-visible / disabled 状态；reduced-motion；360/390 无 body 横向滚动；
   light/dark 下公式与 focus ring 可读。
 - Release/Pages smoke：KaTeX CSS 与全部字体加载，资源为 Pages 同源。
+- Release smoke 必须证明没有 Cloudflare beacon、Cloudflare CSP 域、Pages-only
+  repository link 或 `pages-overlay.css`；Pages overlay smoke 则验证精确 CSP、
+  外部资源 allowlist 与新增控件。Cloudflare 网络可用性使用受控 route stub 隔离，
+  不以第三方网络成功代替本地 wiring、可访问性、几何与视觉证明。
 
 ## 7. 帮助浮层：术语气泡与控件说明（v2.6.0 起）
 
@@ -483,3 +493,29 @@
 - E2E：`tests/e2e/half-special-semantics.spec.ts`（desktop 默认套件单项目，
   390/360 几何经 setViewportSize 断言；触摸差异风险由 mobile-contract 套件
   承担）覆盖 NaN/±Inf/有限、双路径、ARIA role、1280/390/360 无横向溢出。
+
+## 18. 官方 Pages 的源码仓库链接（v3.3.0）
+
+- 只由 Pages deployment overlay 在 `#root` 外注入语义化 `<a>`；普通 build、
+  React source 与 Release ZIP 不包含该控件。样式只在同源 `./pages-overlay.css`。
+- href 精确为 `https://github.com/laipeng101/pmbus-calculator`，marker 为
+  `data-pages-only="repository-link"`，可访问名称为“在 GitHub 查看项目源码”；
+  新窗口使用 `target="_blank" rel="noopener noreferrer"`。
+- 图标使用原创通用 repository/source-code SVG、`currentColor` 与
+  `aria-hidden="true"`；不得为此引入 CDN、外部字体/图片、GitHub trademark
+  asset 或第三方 icon package。
+- 控件位于页头主题按钮旁，点击目标 40–44px、圆角，使用现有 CSS custom
+  properties 保证 light/dark 可读；考虑 right safe-area inset。外部链接由
+  Pages-only CSS 绝对定位，与主题按钮顶部和高度对齐、间隔 8px，并随页头
+  滚动。只在页头预留一个按钮位置，不压缩计算器宽度或增加整页避让侧栏。
+  必须有清楚的 `focus-visible`，真实 Tab 可达；hover 仅在
+  `(hover: hover) and (pointer: fine)` 内，coarse pointer 保留 active/focus
+  反馈，遵守 reduced-motion 合同。
+- 页面顶部的 390px 与桌面 viewport 下 bounding box 完全位于 viewport、无
+  body 横向 overflow；滚动查看关键 calculator 控件和结果交互时不得被链接
+  遮挡。浏览器几何门禁覆盖 360/390/639/640/767/768/1280/1440px，验证页头
+  对齐、控件间距、主面板宽度与居中，并覆盖 12/16/20px 根字号；定位随既有
+  rem 间距缩放，防止 Release 页头变化导致 overlay 漂移。
+- Pages overlay smoke 要生成并实际检查桌面/390px、light/dark 关键截图；
+  几何、焦点、对比度断言与逐图检查共同构成验收。截图和报告按仓库卫生政策
+  存在临时输出，不为部署控件改写普通应用视觉基线。

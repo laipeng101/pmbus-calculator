@@ -3,10 +3,10 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-06（v3.2.0——MINOR：恢复紧邻 Raw Word 的默认展开位映射，
-新增 16 位与 VOUT_MODE 8 位面板的独立收起记忆；结果上下文、普通文本对比度、
-DIRECT 系数布局及可访问标签完善；合入 L11 边界等误差选择、Auto-N 请求来源、
-L16 不可用物理值复制修复。前一版 v3.1.1 的 DIRECT 显示文本回录合同保留。）
+最后更新：2026-09-08（v3.3.0 发行目标——MINOR：官方 Pages 在已验证 Release
+基线之后执行确定性 overlay，增加页面级 Cloudflare Web Analytics 与可访问源码
+仓库图标。普通 build / Release ZIP / 自托管仍无 Analytics、无 Pages-only UI；
+已有数值、输入、复制与位映射合同保留。发行与部署状态由 GitHub 记录确认。）
 
 ## 当前产品基线
 
@@ -28,12 +28,22 @@ L16 不可用物理值复制修复。前一版 v3.1.1 的 DIRECT 显示文本回
 - 发布资产生成（`scripts/prepare-release-assets.mjs`）是小型静态 Web 项目的可重新执行打包步骤：
   从 `dist/` 确定性生成 ZIP + SHA256SUMS，临时生成物可丢弃，失败后清理临时输出并重新执行即可；
   不使用长期锁、journal、恢复协议或进程监督。
+- Release Web ZIP 是无 Analytics、无 Pages-only 仓库链接的不可变产品基线；
+  source / clone / source ZIP / fork / 普通 build / 自托管默认无外部 tracking。
+  官方 Pages 只在全部 Release provenance 与本地 smoke 门禁通过后，对 `_site`
+  增加经独立 verifier 验证的确定性 overlay。线上实体 manifest 采用 FINAL `_site`，
+  不把 overlay 后字节误称为原 Release ZIP；部署与隐私边界见 `docs/DEPLOYING.md`。
 
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v3.2.0；production distribution: GitHub Pages；当前无活动功能里程碑。
+M0–M42 complete；stable release v3.3.0（本源码发行目标）；production distribution: GitHub Pages。
 ```
+
+以上版本声明是本源码的发行目标；在对应稳定 GitHub Release 公开前按待发布处理。
+本次准备开始时已发布稳定版为 v3.2.0；实际发行与部署状态以 GitHub Release 和
+Pages 验收记录为准。正式发行须先完成精确 main merge SHA 的 fresh 验证；
+上线完成还要求 Pages 全部门禁与独立真实 Cloudflare Analytics 验收通过。
 
 ## 简短已完成索引
 
@@ -291,10 +301,17 @@ M0–M42 complete；stable release v3.2.0；production distribution: GitHub Page
   系数对齐/标签完善；L11 等误差边界候选与 Auto-N 请求来源修复；L16 不可用
   结果禁用物理值复制。新增键盘、触屏、存储回退和跨引擎回归，视觉基线逐图
   审查；发布细节见 `docs/releases/v3.2.0.md`。
-- 当前：无进行中的功能里程碑；版本 v3.2.0，M40–M42 complete。
-  下一次 PATCH/功能增量按本文件与 `docs/RELEASING.md` 定义。
+- v3.3.0（MINOR，发行目标）：Release / Pages 分发边界——保持严格、无 Analytics
+  的普通 build 与 immutable Web ZIP，在完整 provenance 链之后为 FINAL `_site`
+  增加 Cloudflare 页面级聚合统计、精确 CSP 例外与页头主题按钮旁的可访问仓库链接；
+  Environment Secret 不进入 tracked source，Release 负向合同、overlay
+  fail-closed / 确定性合同和桌面/移动浏览器验收覆盖新边界。发布细节见
+  `docs/releases/v3.3.0.md`；没有改动算法、canonical raw 或持久化合同。
+- 当前：v3.3.0 源码发行目标，M40–M42 complete；正式 tag / Release / Pages
+  按 `docs/RELEASING.md` 完成经授权的发布及真实 Analytics 验收流程。
 
 ## 下一产品目标
 
-- 暂无活动功能里程碑。下一次产品增量（新功能、UI、算法或数据变更）由新的功能任务定义；
-  发布流程遵循 `docs/RELEASING.md`，里程碑状态在本文件更新。
+- 当前切片为 v3.3.0 官方 Pages-only overlay 的实现、验证与发行；源码版本声明不等于发布。
+  下一次产品增量（新功能、UI、算法或数据变更）由新的任务定义；发布流程遵循
+  `docs/RELEASING.md`，里程碑状态在本文件更新。

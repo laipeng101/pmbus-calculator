@@ -8,9 +8,11 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 > **Scope:** this tool converts numeric formats; it is **not** a PMBus/SMBus controller, bus-transport implementation, command executor, device-profile engine, or conformance test suite. It covers the common numeric-format semantics across multiple PMBus revisions and does **not** claim full PMBus 1.5 protocol compliance (including the 1.5 security extensions).
 >
-> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys `v3.2.0`)
+> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (release target `v3.3.0`)
 >
-> **Stable version:** [`v3.2.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.2.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.2.0/SHA256SUMS.txt)
+> **Stable release target:** [`v3.3.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.3.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.3.0/SHA256SUMS.txt)
+>
+> This source targets v3.3.0; treat it as unpublished until its stable GitHub Release is public. GitHub Release and Pages acceptance records determine publication and deployment status.
 
 ---
 
@@ -19,6 +21,7 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 - [Features](#features)
 - [Supported Formats](#supported-formats)
 - [Usage](#usage)
+- [Privacy and official Pages](#privacy-and-official-pages)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [PMBus Command Reference](#pmbus-command-reference)
 - [Tech Stack](#tech-stack)
@@ -43,7 +46,7 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 - ⚙️ **VOUT_MODE support** — configure the `VOUT_MODE (0x20)` byte; bit7 (absolute/relative), bits[6:5] (mode) and bits[4:0] (parameter) are decoded per PMBus Part II §8.3.
 - 🔢 **Canonical Raw Word & wire bytes** — the main Raw Word hex always means the numeric 16-bit word (`3412` is `0x3412`, never reinterpreted); SMBus/PMBus wire bytes (low byte first, SMBus 3.0 §6.5.4) and an MSB-first representation are shown and copied separately.
 - ✨ **Hex +1/−1 steppers** — the Raw Word (16-bit) and VOUT_MODE (8-bit) hex fields carry in-field stepper buttons that step by exactly 1, disable at `0000`/`FFFF` and `00`/`FF` respectively (never wrap), and drive the same canonical raw state as typed edits; every editable field is visually distinct from read-only displays at rest in both themes.
-- 🔐 **Content Security Policy** — production build injects a CSP meta tag that restricts runtime resource origins; no external requests, no tracking. Inline styles are still allowed by `style-src` (Tailwind/runtime styles require `unsafe-inline`).
+- 🔐 **Content Security Policy** — source, Release and self-host builds retain a strict same-origin runtime policy with no Analytics or external tracking. Only the official Pages deployment adds the exact Cloudflare Web Analytics script/connect exceptions; application JavaScript, CSS and fonts stay same-origin. Inline styles remain allowed by the existing `style-src` policy.
 
 ---
 
@@ -87,7 +90,7 @@ npm test         # runs Vitest
 
 **Static build package:** the production build in `dist/` is a static bundle and must be used through an HTTP static server (for example `npm run preview` or any static hosting service). Directly double-clicking `dist/index.html` via `file://` is not supported.
 
-**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ deploys immutable Release assets. This source version is `v3.2.0`; GitHub Release and Pages are the authoritative publication and deployment records. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
+**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ starts from a verified immutable Release ZIP, then applies a deterministic Pages-only overlay after all Release integrity, tag rebuild and local Release smoke gates pass. This source targets `v3.3.0`; deployment completion requires the Pages workflow and independent real Analytics acceptance. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
 
 **Workflow:**
 
@@ -96,6 +99,16 @@ npm test         # runs Vitest
 3. Click individual bits in the expanded bit mapping to toggle them and observe the effect. Use its heading to collapse or expand it; your preference is remembered in this browser.
 4. Optionally expand the **PMBus command reference** to look up a command's code, transactions, data type, units, format source and spec section. The reference is read-only and never affects the calculation.
 5. Click **📋 Hex**, **📋 值**, or **C 代码** to copy the result in your preferred format.
+
+---
+
+## Privacy and official Pages
+
+Clones, Download source ZIPs, forks, ordinary `npm run build` output, Release Web ZIPs and self-hosted builds default to **no Analytics and no external tracking**. Their default application output contains neither the Cloudflare beacon nor the Pages-only repository link or stylesheet.
+
+The official GitHub Pages deployment uses privacy-oriented, aggregate **Cloudflare Web Analytics** for page-level statistics. It makes the narrowly allowed Cloudflare requests and adds a small source-repository icon link beside the header's theme button, with the accessible name “在 GitHub 查看项目源码”. The calculator keeps its full width on mobile. These additions are applied only to the Pages staging tree; the immutable Release ZIP remains unchanged.
+
+Calculator inputs and results—including PMBus raw words, physical values, DIRECT coefficients, VOUT_MODE values and copied content—are not collected as custom analytics events. No calculator event parameters are added to the standard page-level beacon.
 
 ---
 

@@ -8,7 +8,7 @@
 //   current version as the first dated section, real Gregorian date,
 // - docs/releases/vX.Y.Z.md whose first non-empty line is the exact title,
 // - README.md and README_zh-CN.md Live Demo line, stable tag link, SHA256SUMS
-//   download link, and deployed-version declaration,
+//   download link, and deployed-or-target-version declaration,
 // - docs/ROADMAP.md exactly one stable release declaration,
 // - RELEASING.md artifact naming consistency with shared contract,
 // - Generator imports from shared artifact contract (M25).
@@ -37,10 +37,15 @@ const UNRELEASED_HEADING = /^## \[Unreleased\]$/
 const ROADMAP_STABLE_PATTERN = /stable release v(\d+\.\d+\.\d+)/
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+$/
 
-// Live Demo line patterns (both English and Chinese README variants).
+// Either declaration is valid offline: a prepared release need not be live.
+// Restrict declarations to the actual Live Demo line, so a version mentioned
+// elsewhere cannot hide a stale or missing deployment/release target.
+const LIVE_DEMO_LINE_PATTERN = /^[ \t]*(?:>[ \t]*)?\*\*Live Demo[:：]\*\*[ \t]+/
 const LIVE_DEMO_PATTERNS = [
-  /currently deploys `v(\d+\.\d+\.\d+)`/,
-  /当前部署版本 `v(\d+\.\d+\.\d+)`/,
+  /currently deploys `v(\d+\.\d+\.\d+)`/g,
+  /当前部署版本 `v(\d+\.\d+\.\d+)`/g,
+  /release target `v(\d+\.\d+\.\d+)`/g,
+  /发布目标 `v(\d+\.\d+\.\d+)`/g,
 ]
 
 /**
@@ -554,7 +559,7 @@ export function validateReleaseContract(contract) {
 
 /**
  * README rules:
- * 1. Live Demo line must declare the current version.
+ * 1. Exactly one Live Demo line declares the current deployed or target version.
  * 2. Every GitHub releases URL (tag or download) must point at the current version.
  * 3. Stable tag link, SHA256SUMS download link, and backticked `vX.Y.Z` must each exist.
  * @param {string} name
@@ -563,16 +568,16 @@ export function validateReleaseContract(contract) {
  * @param {string[]} errors
  */
 function validateReadme(name, content, version, errors) {
-  let liveDemoOk = false
-  for (const pattern of LIVE_DEMO_PATTERNS) {
-    const match = content.match(pattern)
-    if (match && match[1] === version) {
-      liveDemoOk = true
-      break
-    }
-  }
+  const liveDemoLines = content.split(/\r?\n/).filter((line) => LIVE_DEMO_LINE_PATTERN.test(line))
+  const liveDemoVersions = liveDemoLines.flatMap((line) =>
+    LIVE_DEMO_PATTERNS.flatMap((pattern) => [...line.matchAll(pattern)].map((match) => match[1])),
+  )
+  const liveDemoOk =
+    liveDemoLines.length === 1 && liveDemoVersions.length === 1 && liveDemoVersions[0] === version
   if (!liveDemoOk) {
-    errors.push(`${name} Live Demo line does not declare the current version v${version}`)
+    errors.push(
+      `${name} Live Demo line does not declare the current deployed or target version v${version}`,
+    )
   }
 
   const urlVersions = new Set()
@@ -591,7 +596,7 @@ function validateReadme(name, content, version, errors) {
     errors.push(`${name} is missing the SHA256SUMS.txt download link for v${version}`)
   }
   if (!content.includes(`\`v${version}\``)) {
-    errors.push(`${name} does not declare the deployed version \`v${version}\``)
+    errors.push(`${name} does not declare the deployed or target version \`v${version}\``)
   }
 }
 

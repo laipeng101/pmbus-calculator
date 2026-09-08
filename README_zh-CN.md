@@ -8,9 +8,11 @@
 
 > **范围声明：** 本工具只做数值格式换算；它**不是** PMBus/SMBus 控制器、总线传输实现、命令执行器、设备 Profile 引擎或一致性测试套件。它覆盖 PMBus 多个修订版本中通用的数值格式语义，且**不声明**完整 PMBus 1.5 协议一致性（含 1.5 安全扩展）。
 >
-> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （当前部署版本 `v3.2.0`）
+> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （发布目标 `v3.3.0`）
 >
-> **Stable version：** [`v3.2.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.2.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.2.0/SHA256SUMS.txt)
+> **稳定发行目标：** [`v3.3.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.3.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.3.0/SHA256SUMS.txt)
+>
+> 本源码的发行目标为 v3.3.0；在对应稳定 GitHub Release 公开前按待发布处理。实际发行和部署状态以 GitHub Release / Pages 验收记录为准。
 
 ---
 
@@ -19,6 +21,7 @@
 - [功能特性](#功能特性)
 - [支持的格式](#支持的格式)
 - [使用方法](#使用方法)
+- [隐私与官方 Pages](#隐私与官方-pages)
 - [键盘快捷键](#键盘快捷键)
 - [PMBus 命令参考](#pmbus-命令参考)
 - [技术栈](#技术栈)
@@ -45,7 +48,7 @@
 - ⚙️ **VOUT_MODE 支持** — 可配置 `VOUT_MODE (0x20)` 字节；按 PMBus Part II §8.3 拆解 bit7（absolute/relative）、bits[6:5]（模式）与 bits[4:0]（参数）。
 - 🔢 **Canonical Raw Word 与线上字节** — 主 Raw Word Hex 永远表示数值原字（`3412` 就是 `0x3412`，不会被重新解释）；SMBus/PMBus 线上字节（低字节在前，SMBus 3.0 §6.5.4）与 MSB-first 表示分别显示与复制。
 - ✨ **Hex +1/−1 步进器** — Raw Word（16 位）与 VOUT_MODE（8 位）Hex 字段内嵌步进按钮：每次精确步进 1，分别在 `0000`/`FFFF` 与 `00`/`FF` 边界真实禁用（永不回绕），并与手输共用同一 canonical raw 状态；全部可编辑字段在静止态（亮/暗主题）都与只读展示框视觉可区分。
-- 🔐 **内容安全策略 (CSP)** — 生产构建注入 CSP meta，限制运行时资源来源；无外部请求，无任何追踪。`style-src` 暂时允许 `unsafe-inline`（Tailwind 与运行时样式需要内联样式）。
+- 🔐 **内容安全策略 (CSP)** — 源码、Release 与自托管构建保持严格的同源运行时资源策略，无 Analytics、无外部 tracking。只有官方 Pages 部署增加精确的 Cloudflare Web Analytics script/connect 例外；应用 JavaScript、CSS 与字体仍保持同源。既有 `style-src` 对内联样式的允许保持不变。
 
 ---
 
@@ -87,7 +90,7 @@ npm test         # 运行 Vitest 测试
 
 **静态构建包：** `dist/` 是静态构建产物，必须通过 HTTP 静态服务器使用（例如 `npm run preview` 或任意静态托管服务），不承诺直接双击 `dist/index.html` 以 `file://` 方式打开。
 
-**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 部署不可变 Release 资产。本源码版本为 `v3.2.0`；实际发行和部署状态以 GitHub Release 与 Pages 为准。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
+**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 从已验证的不可变 Release ZIP 开始，全部 Release 完整性、tag 重建与本地 Release smoke 门禁通过后，再执行确定性的 Pages-only overlay。本源码的发行目标为 `v3.3.0`；部署完成需通过 Pages workflow 与独立真实 Analytics 验收。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
 
 **操作流程：**
 
@@ -96,6 +99,16 @@ npm test         # 运行 Vitest 测试
 3. 在默认展开的位映射中点击各个位，观察对编码结果的影响；点击面板标题可收起或展开，当前浏览器会记忆该偏好。
 4. 可选：展开 **PMBus 命令参考** 查看某条命令的命令码、事务、数据类型、单位、格式来源与规范章节；参考面板完全只读，不影响任何计算。
 5. 点击 **📋 Hex**、**📋 值** 或 **C 代码** 按钮，以所需格式复制结果。
+
+---
+
+## 隐私与官方 Pages
+
+clone、Download source ZIP、fork、普通 `npm run build`、Release Web ZIP 与自托管构建默认**无 Analytics、无外部 tracking**；默认应用产物不包含 Cloudflare beacon、Pages-only 仓库链接或其 stylesheet。
+
+官方 GitHub Pages 部署使用面向隐私的聚合 **Cloudflare Web Analytics** 页面级统计，仅发出精确允许的 Cloudflare 请求，并在页头主题按钮旁提供源码仓库图标链接，可访问名称为“在 GitHub 查看项目源码”。移动端计算器保持完整宽度。这些内容只注入 Pages staging tree；不可变 Release ZIP 保持原样。
+
+计算器输入与结果，包括 PMBus raw word、物理值、DIRECT 系数、VOUT_MODE 值及复制内容，均不会作为自定义 analytics event 收集。标准页面级 beacon 不附加计算器行为参数。
 
 ---
 
