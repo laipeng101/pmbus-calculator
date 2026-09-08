@@ -81,6 +81,7 @@ const FULL_TIER_RUN_COMMANDS = [
   'npm run build',
   'npm run check:tailwind-scope',
   'npm run test:e2e:release',
+  'npm run test:pages-overlay',
   'npm audit --audit-level=high',
   'npm ci && npm run typecheck && npm run test:run',
 ]
@@ -301,6 +302,7 @@ describe('ci.yml e2e job light-tier install gating', () => {
       'npm run test:e2e',
       'npm run test:e2e:mobile',
       'npm run test:e2e:release',
+      'npm run test:pages-overlay',
     ]) {
       expect(normalize(findE2EStepByRun(runCommand))).toContain(`if: ${FULL_TIER_CONDITION}`)
     }
@@ -379,6 +381,18 @@ describe('ci.yml Playwright report upload gating', () => {
     expect(stepId(findStepByRun('npm run test:e2e:release'))).toBe('release_smoke')
   })
 
+  it('runs local Pages overlay contracts after the clean release smoke without deployment secrets', () => {
+    const step = findStepByRun('npm run test:pages-overlay')
+    expect(stepId(step)).toBe('pages_overlay_smoke')
+    expect(normalize(step)).toContain(`if: ${FULL_TIER_CONDITION}`)
+    expect(step).not.toContain('secrets.')
+    expect(step).not.toContain('CLOUDFLARE_WEB_ANALYTICS_TOKEN')
+    const blocks = stepBlocks(workflow)
+    expect(blocks.indexOf(step)).toBeGreaterThan(
+      blocks.indexOf(findStepByName('Run production release smoke')),
+    )
+  })
+
   it('gives the v2.5.13 mobile-contract step the stable id e2e_mobile behind the full tier', () => {
     expect(stepId(findStepByName('Run Playwright mobile contract E2E'))).toBe('e2e_mobile')
     const block = findStepByRun('npm run test:e2e:mobile')
@@ -391,6 +405,7 @@ describe('ci.yml Playwright report upload gating', () => {
     expect(e2eSection).toContain('Run Playwright E2E')
     expect(e2eSection).toContain('Run Playwright mobile contract E2E')
     expect(e2eSection).toContain('Run production release smoke')
+    expect(e2eSection).toContain('Run local Pages-overlay contracts and smoke')
   })
 
   it('uploads the main report only when the E2E step itself ran and failed', () => {
@@ -422,6 +437,18 @@ describe('ci.yml Playwright report upload gating', () => {
     expect(normalized).not.toContain('steps.release_smoke.outcome')
     expect(normalized).toContain('name: playwright-report-mobile ')
     expect(normalized).toContain('path: tests/e2e/report-mobile ')
+  })
+
+  it('uploads the Pages overlay report only when its full-tier step ran and failed', () => {
+    const normalized = normalize(findUploadStep('playwright-report-pages-overlay'))
+    expect(normalized).toContain('failure() &&')
+    expect(normalized).toContain(`${FULL_TIER_CONDITION} &&`)
+    expect(normalized).toContain("steps.pages_overlay_smoke.outcome == 'failure'")
+    expect(normalized).not.toContain('steps.e2e.outcome')
+    expect(normalized).not.toContain('steps.release_smoke.outcome')
+    expect(normalized).toContain('name: playwright-report-pages-overlay ')
+    expect(normalized).toContain('path: tests/e2e/report-pages-overlay ')
+    expect(normalized).toContain('retention-days: 7')
   })
 })
 
