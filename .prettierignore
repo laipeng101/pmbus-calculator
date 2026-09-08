@@ -2,6 +2,7 @@ node_modules/
 dist/
 build/
 out/
+_site/
 coverage/
 tests/e2e/output/
 tests/e2e/output-*/

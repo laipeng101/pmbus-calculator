@@ -125,6 +125,20 @@ describe('cleanGenerated', () => {
     await expect(fs.stat(path.join(root, '.cache/specifications'))).rejects.toThrow()
   })
 
+  it('removes the disposable Pages staging tree without touching the release baseline', async () => {
+    const root = await makeTempRoot()
+    await fs.mkdir(path.join(root, '_site'))
+    await fs.writeFile(path.join(root, '_site/index.html'), 'pages-only payload')
+    await fs.mkdir(path.join(root, 'dist'))
+    await fs.writeFile(path.join(root, 'dist/index.html'), 'clean release baseline')
+    const cleaned = await cleanGenerated({ repoRoot: root, targets: ['_site'], log: () => {} })
+    expect(cleaned).toEqual(['_site'])
+    await expect(fs.stat(path.join(root, '_site'))).rejects.toThrow()
+    await expect(fs.readFile(path.join(root, 'dist/index.html'), 'utf8')).resolves.toBe(
+      'clean release baseline',
+    )
+  })
+
   it('removes release-output and the disposable staging root as build outputs', async () => {
     const root = await makeTempRoot()
     await fs.mkdir(path.join(root, 'release-output'), { recursive: true })

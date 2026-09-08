@@ -23,6 +23,7 @@ export default defineConfig({
     '**/release.spec.ts',
     '**/visual.spec.ts',
     '**/deployment.spec.ts',
+    '**/pages-overlay.spec.ts',
     '**/mobile-contract.spec.ts',
     '**/cross-engine-core.spec.ts',
   ],

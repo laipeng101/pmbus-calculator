@@ -67,6 +67,12 @@ export function classifyPolicyAllowlist(files) {
 /** @type {{ id: string, description: string, match: (p: string) => boolean, fix: string }[]} */
 const REJECT_RULES = [
   {
+    id: 'generated-pages-site',
+    description: 'tracked Pages staging output _site/',
+    match: (p) => matchesDirOrUnder(p, '_site'),
+    fix: 'Remove from tracking; Pages-only deployment inputs belong in the ignored staging tree, never in source or Release assets.',
+  },
+  {
     id: 'generated-dist',
     description: 'tracked build output dist/',
     match: (p) => matchesDirOrUnder(p, 'dist'),
