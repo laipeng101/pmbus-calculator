@@ -67,6 +67,13 @@ Tailwind scope、release smoke、repo hygiene、两个 whitespace 检查与 audi
 本文件不再逐条复制该命令链，避免与脚本漂移；各门禁的职责与失败处理见下文
 与 `docs/REPOSITORY_HYGIENE.md`。
 
+本地、PR CI 与 fresh release 验证的 Cloudflare 请求使用精确 stub，包括
+`test:pages-overlay`；维护者可以始终保留主动拦截 Analytics 的隐私规则。
+真实外部服务验收只在 GitHub-hosted Pages job 部署后的 tracked step 执行，
+不得接入 `verify` 或 PR CI。被本机规则阻止的 real check 标为
+`ENVIRONMENT_BLOCKED`，不算应用失败或 Analytics PASS；详见
+[`DEPLOYING`](docs/DEPLOYING.md#发布后真实-cloudflare-analytics-验收)。
+
 提交前建议先执行：
 
 ```bash
@@ -107,8 +114,14 @@ whitespace 检查口径：
 
 - 每条质量命令与 exit code；
 - 单元测试实际数量与 coverage；
-- E2E 实际数量（default / mobile / cross-engine / release / visual / deployment 分开统计）；
+- E2E 实际数量（default / mobile / cross-engine / release / pages-overlay / visual / deployment 分开统计）；
 - CI URL、head SHA 与 conclusion。
+
+CI/CD 时间是 review target，不是 job timeout：full PR CI 稳态目标 ≤5m30s，
+超过 6m30s 须说明 critical path；Pages 完整 rollout 目标 ≤2m30s，超过 3m 须审查
+新增工作。hosted real Analytics 通常应小于 15s，累计硬预算 ≤45s。使用 GitHub
+run/job/step timing 与相同配置的 benchmark 评估优化；保留现有下载重试安全上限，
+不靠减少测试或 provenance 门禁达标。
 
 失败与 flaky 的留存纪律（v2.5.9 起）：
 

@@ -129,6 +129,10 @@ https://laipeng101.github.io/pmbus-calculator/
     分级退出（status 21 / origin 23 / content-encoding 24 / fallback 25 /
     length 26 / hash 27 / timeout 28 / deadline 29 / network 20 / 配置 3）。
 14. 在同一工作流中对真实部署 URL 执行远程 Playwright smoke（`npm run test:e2e:deployment`）。
+15. **Real Cloudflare Analytics acceptance**：同一 GitHub-hosted deploy job 复用精确
+    tag checkout、依赖和 Chromium，运行 `scripts/verify-live-analytics.mjs`，观察正式
+    页面实际产生的 beacon GET 与 RUM POST。此步骤成功后才完成 rollout acceptance；
+    不新建第二个 workflow，不再次 checkout、安装依赖或浏览器。
 
 ## Pages-only overlay 与隐私边界
 
@@ -188,34 +192,62 @@ Secret，也不发布任何资源；正式 workflow 直接消费已验证 ZIP �
 
 ## 发布后真实 Cloudflare Analytics 验收
 
-v3.3.0 起，在声明一次 Release 与 Pages 上线验收全部完成前，必须在 Pages
-workflow、FINAL `_site` 实体校验和 deterministic remote smoke 成功之后，独立
-完成一次真实 Cloudflare network acceptance。普通 PR CI、本地 overlay smoke 和
-deterministic remote smoke 继续 stub Cloudflare，不依赖第三方 uptime。
+v3.3.1 起，真实验收由 tag tree 内 tracked 的 `scripts/verify-live-analytics.mjs`
+强制执行，入口不在普通 E2E 自动发现范围，也不进入 `npm run verify`、PR CI 或
+fresh release verification。Pages job 中的顺序固定为 deploy → FINAL `_site`
+实体验证 → deterministic remote smoke → **Real Cloudflare Analytics acceptance**。
+必须等待整个 job，不能把 deploy action 成功写成全部上线验收成功。
 
-使用一次性 Playwright 检查和现有 Chromium：新建干净 context，无广告拦截、
-隐私扩展、request blocking 或 `stubCloudflare()`，访问正式 HTTPS Pages URL。
-导航前注册 request/response、console 与 pageerror observers，并要求：
+deterministic smoke 验证本站 HTML/CSP、同源资产、UI 与精确 allowlist，继续 stub
+Cloudflare；real acceptance 验证真实第三方服务路径。这是两个独立 failure domain。
+后者只接受正式 `steps.deployment.outputs.page_url` 作为 `DEPLOYMENT_URL`，并将
+`EXPECTED_RELEASE_TAG` 与 checkout 的 package version、live version 绑定。
+它不需要、也不读取 Environment Secret；正式 HTML 已含客户端 site token。
 
-1. 主页面 HTTP 200、版本正确、production CSP 与 repository link 符合上述合同。
-2. 真实 `GET https://static.cloudflareinsights.com/beacon.min.js`（script）收到
-   成功 2xx response；只加载这一份外部 module。
-3. 真实 `POST https://cloudflareinsights.com/cdn-cgi/rum` 收到成功 2xx response，
-   URL 不含 query 或其他变体。页面稳定后可导航到 `about:blank`，以真实
-   visibility-hidden/sendBeacon 行为触发上报，并等待已开始请求的 response。
-4. 没有 hostname mismatch、Access-Control-Allow-Origin/CORS 错误、未知外部
-   请求或计算器 page error。应用 JS/CSS、字体与 overlay CSS 仍全部同源。
+脚本在 GitHub-hosted runner 的正常网络中使用真实 Chromium，新建 context/page，
+在导航前注册浏览器网络、console 与 pageerror observers，并要求：
 
-只记录 URL、方法、资源类型、状态码和脱敏后的通过/失败结论；不得记录完整
-`data-cf-beacon`、token、RUM request body 或含 token 的 headers/payload。
-该检查不修改 Release ZIP，不进入普通 build，不添加框架或长期依赖。
+1. URL 精确等于上方正式 HTTPS Pages URL，主页面 HTTP 200；版本、production
+   CSP、可见 repository link 的 href/可访问名/target/rel 符合既有合同。
+2. 页面真实加载唯一的 `GET https://static.cloudflareinsights.com/beacon.min.js`
+   module，response 为 2xx 且请求完成。
+3. 该 beacon 实际引发 `POST https://cloudflareinsights.com/cdn-cgi/rum`，response
+   为 2xx 且请求完成；Chromium initiator stack 必须指向精确 beacon URL。
+   不通过手工 fetch、模拟 POST、custom event 或额外 visibility/navigation 请求
+   制造证据；等待页面自然加载产生的 RUM 完成，缺少 POST 则验收失败。
+4. 无 hostname mismatch、CORS 错误、pageerror 或未知 external origin；复用与
+   deterministic smoke 相同的 exact request policy，不放宽 endpoint/resource type。
+   应用 JS/CSS、字体与 overlay CSS 继续同源。
 
-beacon 成功但未出现 RUM 时不得按通过处理：检查当前官方 beacon 行为、
-Origin/Referer、Cloudflare site hostname 与 token/site 配对。CORS hostname
-mismatch 是 Analytics 部署失败，不能用 deterministic smoke 的绿色结果替代。
-第三方临时故障须与本站配置缺陷区分；保持 CSP 和 endpoint allowlist 不变，
-报告真实 Analytics 验收未完成。已公开 immutable Release 出现真实代码缺陷时，
-只能通过后续 SemVer 发行修复，不得移动 tag、替换资产或临时部署 main。
+最多 **3 次**独立尝试，每次使用新 context/page，短 backoff 计入累计预算。
+正常目标小于 **15s**，包含 Chromium 启动、所有尝试与清理的进程硬预算 **≤45s**；
+脚本另有 watchdog，卡住的 launch/close 也不能无限延长 step。仅瞬时网络错误或
+Cloudflare HTTP 408/429/5xx 可有限重试；明确 CSP/CORS/hostname/configuration
+错误不重试。blocked、DNS/proxy rejection、timeout、缺失 GET/POST、non-2xx、
+未知 origin 均不能算 PASS。全部尝试失败则 step 与 Pages job FAIL。
+
+输出仅含 endpoint category、HTTP status、耗时、尝试次数与固定 pass/fail/error
+classification；不记录 token、`data-cf-beacon` 内容、RUM body、Cloudflare payload、
+敏感 header 或原始浏览器错误/HTML。该入口不生成 trace、HAR 或页面截图。
+
+**本地隐私规则可以始终启用。** 维护者网络可能故意屏蔽 Cloudflare；不得要求关闭
+Surge、AdBlock、DNS filter，或修改 DNS/代理/hosts 来绕过。若主动执行本机 real
+check 并被明确策略阻止，分类为 `ENVIRONMENT_BLOCKED`，既不是应用失败，也不是
+Analytics PASS；不再排查项目 TLS/DNS/CSP 来规避 blocker。本机状态不参与权威的
+hosted acceptance，本地/PR/fresh release 验证始终使用 exact stub。
+
+最后一步失败时准确记录：**Pages deployed; real Analytics rollout acceptance failed.**
+部署已经发生，不能声称旧站未修改。Release 仍 immutable；不自动回滚、不移动 tag、
+不修改 assets，也不从 main 临时部署。代码或配置缺陷按后续 PATCH 修复；明确瞬时
+第三方故障保留失败证据后，可按本文件已有 `workflow_dispatch` 规则，从同一
+immutable tag ref、同名 `release_tag` 重跑完整受控 Pages workflow，所有门禁保留。
+
+证据位于对应稳定 Release/tag SHA 的 GitHub Actions **Pages** run：核对事件、
+`head_sha`、tag checkout 与整个 job conclusion，再查看最后的 **Real Cloudflare
+Analytics acceptance** step 的脱敏 JSON。记录 run URL、attempt count、beacon/RUM
+status、CORS/origin 结论与耗时；不要依赖缓存的 main 页面或维护者本机探针。
+完整 Pages rollout review target 为 ≤2m30s，超过 3m 审查 critical path；这不改变
+现有 `timeout-minutes: 20` 的下载/平台安全上限。
 
 ## 部署后全清单实体验证
 

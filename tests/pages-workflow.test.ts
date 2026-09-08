@@ -267,6 +267,7 @@ describe('pages.yml pre-deploy preconditions', () => {
       stepIndexByName('Deploy to GitHub Pages'),
       stepIndexByName('Verify deployed Pages entities'),
       stepIndexByName('Run remote deployment smoke'),
+      stepIndexByName('Real Cloudflare Analytics acceptance'),
     ]
     expect(order.every((index) => index >= 0)).toBe(true)
     expect([...order].sort((a, b) => a - b)).toEqual(order)
@@ -367,8 +368,41 @@ describe('pages.yml post-deploy full-manifest entity verification', () => {
       stepIndexByName('Deploy to GitHub Pages'),
       stepIndexByName('Verify deployed Pages entities'),
       stepIndexByName('Run remote deployment smoke'),
+      stepIndexByName('Real Cloudflare Analytics acceptance'),
     ]
     expect(order.every((index) => index >= 0)).toBe(true)
     expect([...order].sort((a, b) => a - b)).toEqual(order)
+  })
+})
+
+describe('pages.yml hosted real Analytics rollout acceptance', () => {
+  it('runs exactly once in the existing GitHub-hosted deploy job after every deployment gate', () => {
+    const jobs = [...workflow.matchAll(/^ {2}([\w-]+):\n/gm)].map((match) => match[1])
+    expect(jobs.slice(jobs.indexOf('deploy'))).toEqual(['deploy'])
+    expect(workflow).toMatch(/^ {4}runs-on: ubuntu-latest$/m)
+    expect(workflow).toMatch(/^ {4}timeout-minutes: 20$/m)
+    const step = findStepByName('Real Cloudflare Analytics acceptance')
+    expect(step).toMatch(/^ {8}run: node scripts\/verify-live-analytics\.mjs$/m)
+    expect(workflow.match(/node scripts\/verify-live-analytics\.mjs/g)).toHaveLength(1)
+    const blocks = stepBlocks(workflow)
+    const index = blocks.indexOf(step)
+    expect(index).toBe(stepIndexByName('Run remote deployment smoke') + 1)
+    expect(index).toBeGreaterThan(stepIndexByName('Verify deployed Pages entities'))
+    expect(index).toBeGreaterThan(stepIndexByName('Deploy to GitHub Pages'))
+    // Only failure-report uploads may follow this last successful-path gate.
+    for (const block of blocks.slice(index + 1)) {
+      expect(block).toContain('actions/upload-artifact@')
+      expect(block).toMatch(/^ {8}if: failure\(\)/m)
+    }
+  })
+
+  it('uses the exact deployment output and resolved tag without any deployment secret', () => {
+    const step = findStepByName('Real Cloudflare Analytics acceptance')
+    expect(step).toMatch(/^ {8}id: live-analytics$/m)
+    expect(step).toContain('DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}')
+    expect(step).toContain('EXPECTED_RELEASE_TAG: ${{ steps.resolve.outputs.tag }}')
+    expect(step).not.toMatch(/secrets\.|CLOUDFLARE_WEB_ANALYTICS_TOKEN|GH_TOKEN|GITHUB_TOKEN/)
+    expect(step).not.toMatch(/^ {8}(?:if|continue-on-error):/m)
+    expect(step).not.toMatch(/\|\||stubCloudflare|page\.route|npm ci|playwright install/)
   })
 })

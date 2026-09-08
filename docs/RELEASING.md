@@ -58,9 +58,10 @@
    也不得在版本准备 PR 中声称已经发布或部署。
 4. `npm run check:release-contract` 必须在提交前通过。
 
-v3.3.0 包含向后兼容的新官方 Pages repository link 与 Analytics 部署行为，按
-MINOR 准备。普通 `npm run build`、source/Release/self-host 默认无 Analytics、
-无外部 tracking；计算器数值、复制和持久化合同不变。
+v3.3.1 将既有真实 Analytics 验收固化为 GitHub-hosted post-deploy 门禁，并完善
+CI/CD 与 Agent 合同，按向后兼容的构建/部署/文档/测试可靠性修复使用 PATCH。
+它不新增产品能力；普通 build、source/Release/self-host 的默认无 Analytics 合同，
+以及计算器数值、复制、持久化和公开用户流程均不变。
 
 ### 2. 合入 main
 
@@ -96,6 +97,11 @@ npm run test:e2e:visual
 > 发生任何源码/配置/依赖变化，受影响的证明作废并须重验，不得引用失效日志。
 > PR head 的完整验证与 merge 后的 fresh 独立重建仍是两次不同的可信边界，
 > 都不可省略。
+
+本机 Surge/anti-ad/privacy rule 可以全程启用；本阶段的 Cloudflare 请求必须使用
+exact stub，不要求任何隐私规则例外。真实第三方验收只在 GitHub-hosted Pages job
+部署后执行，不得加入 `npm run verify`。本机 real check 若被明确 blocker 阻止，
+记为 `ENVIRONMENT_BLOCKED`，不算应用失败或 Analytics PASS。
 
 然后生成并校验发行资产：
 
@@ -216,7 +222,8 @@ npm run test:e2e:visual
 1. `release published` 事件自动触发 Pages workflow（或手动 dispatch 传入 tag）；
    等待其成功。部署顺序与校验细节见 `docs/DEPLOYING.md`（Release → tag-rebuild
    字节绑定 → 本地 Release smoke → 解压 → Pages overlay / verifier / 本地 smoke
-   → Pages → FINAL `_site` 全清单实体验证 → deployment smoke）。
+   → Pages → FINAL `_site` 全清单实体验证 → deterministic deployment smoke
+   → GitHub-hosted real Analytics acceptance）。
    workflow 会用被部署 tag 的 checkout fresh rebuild，要求 rebuild zip 与 Release
    zip 逐字节一致，之后才在已下载 ZIP 解压出的 `_site` 上增加页面级 Cloudflare
    Web Analytics、可访问源码仓库图标和最小 CSP 例外。两个 ZIP 不改写；最终
@@ -227,19 +234,26 @@ npm run test:e2e:visual
    step `env` 使用，缺失或非法时在 deploy-pages 前失败，不能临时塞入 source、
    Vite、CLI argument 或普通 build。所有可准备的 overlay / browser 门禁都在
    deploy-pages 之前，失败保持线上旧站不变。
-2. 对正式 Pages URL 执行 `DEPLOYMENT_URL=<url> npm run test:e2e:deployment`；
-   全部 deployment tests 必须真实运行并通过，不得记为 skip。
+2. 核对同一 job 的 remote deployment smoke 使用正式 deployment URL；
+   全部 deployment tests 必须实际运行并通过，不得记为 skip。
    该 deterministic smoke 对精确 Cloudflare beacon 与 RUM endpoints 使用 stub，
    验证公开 HTML/CSP、同源资产、allowlist 和交互，不声明第三方服务健康。
 3. 确认线上页面来自对应 Release 基线及该 tag 的受控 overlay，而非 main 临时构建。
    本地 `npm run test:pages-overlay` 可证明 overlay wiring 与本地模拟的 deployment
    交互合同，但不能替代真实 Pages HTTPS、实体校验与发布后 remote smoke。
-4. 按 [DEPLOYING 的真实 Analytics 验收](DEPLOYING.md#发布后真实-cloudflare-analytics-验收)
-   在干净 Chromium 中独立观察真实 beacon GET 和精确 `/cdn-cgi/rum` POST 的
-   成功 2xx response、无 CORS/hostname mismatch、未知外部请求或 page error。
-   不使用 stub，不记录 token、RUM body 或敏感 payload。缺少这项证明时不得
-   声明 v3.3.0 Release 与 Pages 上线验收全部完成；普通 PR CI 不依赖此服务检查。
+4. 核对同一 GitHub-hosted job 的 **Real Cloudflare Analytics acceptance** step，
+   按 [DEPLOYING](DEPLOYING.md#发布后真实-cloudflare-analytics-验收) 观察正式页面
+   实际产生的 beacon GET 与精确 `/cdn-cgi/rum` POST：2xx 且请求完成、无 CORS /
+   hostname mismatch、未知外部请求或 pageerror。入口无需 secret，最多 3 次独立
+   尝试、累计 ≤45s；不记录 token、RUM body 或敏感 payload。保存精确 tag/SHA 的
+   run URL 与脱敏结果；不再要求维护者手工探针或临时关闭本机 blocker。
 5. 所有线上验收成功后，清理任务分支、detached worktree 与临时产物。
+
+**Fully accepted** 必须同时满足：Release immutable、Release ZIP clean、全部
+Pages provenance 门禁、deploy、FINAL `_site` entity verification、deterministic
+remote smoke、GitHub-hosted real Analytics acceptance 成功。deploy 完成但最后一步
+失败时，准确记录 **Pages deployed; real Analytics rollout acceptance failed.**
+此时不能声明完整 rollout 成功，也不能声称旧站未修改。
 
 ## 失败处理
 
@@ -249,6 +263,11 @@ npm run test:e2e:visual
 - 不维护长期 release 锁、事务 journal 或恢复命令；生成流程不支持并发运行，
   不要在多个进程同时执行 `release:prepare-assets`。
 - 中断（Ctrl+C、进程崩溃）后的处理与上述失败处理相同：清理临时输出并重新执行。
+- post-deploy real acceptance 失败不改变 Release 的 immutable 状态；不能移动 tag、
+  替换 assets 或自动回滚。真实代码/部署配置缺陷按后续 PATCH 修复。明确瞬时
+  Cloudflare 故障保留失败证据后，可按 [DEPLOYING](DEPLOYING.md) 的既有受控
+  dispatch 规则，从同一 immutable tag ref、同名 release input 重跑 Pages workflow；
+  不从 main 部署、不放宽 CSP/allowlist，全部 provenance 门禁仍须重新通过。
 
 ## 稳定公共契约
 

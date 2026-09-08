@@ -302,6 +302,17 @@ jobs:
           DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
         run: npm run test:e2e:deployment
 
+      # Third-party service acceptance is a separate post-deploy failure domain.
+      # Reuse this GitHub-hosted runner and the exact tag checkout. A failure
+      # means Pages deployed but rollout acceptance failed; never roll back or
+      # mutate an immutable Release to conceal it. The CLI owns a <=45s budget.
+      - name: Real Cloudflare Analytics acceptance
+        id: live-analytics
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
+          EXPECTED_RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
+        run: node scripts/verify-live-analytics.mjs
+
       - name: Upload local release smoke report on failure
         if: failure() && steps.release-smoke.outcome == 'failure'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

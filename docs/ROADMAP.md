@@ -3,10 +3,10 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-08（v3.3.0 发行目标——MINOR：官方 Pages 在已验证 Release
-基线之后执行确定性 overlay，增加页面级 Cloudflare Web Analytics 与可访问源码
-仓库图标。普通 build / Release ZIP / 自托管仍无 Analytics、无 Pages-only UI；
-已有数值、输入、复制与位映射合同保留。发行与部署状态由 GitHub 记录确认。）
+最后更新：2026-09-09（v3.3.1 发行目标——PATCH：将既有真实 Analytics 验收
+固化为 GitHub-hosted Pages post-deploy 门禁，持久化本机隐私规则与发行合同。
+source / Release / Pages 分发边界、全部 provenance 门禁和产品行为保留；
+发行与部署状态由 GitHub 记录确认。）
 
 ## 当前产品基线
 
@@ -37,13 +37,14 @@
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v3.3.0（本源码发行目标）；production distribution: GitHub Pages。
+M0–M42 complete；stable release v3.3.1（本源码发行目标）；production distribution: GitHub Pages。
 ```
 
 以上版本声明是本源码的发行目标；在对应稳定 GitHub Release 公开前按待发布处理。
-本次准备开始时已发布稳定版为 v3.2.0；实际发行与部署状态以 GitHub Release 和
+本次准备开始时已发布稳定版为 v3.3.0；实际发行与部署状态以 GitHub Release 和
 Pages 验收记录为准。正式发行须先完成精确 main merge SHA 的 fresh 验证；
-上线完成还要求 Pages 全部门禁与独立真实 Cloudflare Analytics 验收通过。
+上线完成还要求 Pages 全部门禁与同一 GitHub-hosted job 的真实 Cloudflare
+Analytics acceptance 通过；本地/PR/fresh 验证保持 exact stub 与隐私规则启用。
 
 ## 简短已完成索引
 
@@ -301,17 +302,23 @@ Pages 验收记录为准。正式发行须先完成精确 main merge SHA 的 fre
   系数对齐/标签完善；L11 等误差边界候选与 Auto-N 请求来源修复；L16 不可用
   结果禁用物理值复制。新增键盘、触屏、存储回退和跨引擎回归，视觉基线逐图
   审查；发布细节见 `docs/releases/v3.2.0.md`。
-- v3.3.0（MINOR，发行目标）：Release / Pages 分发边界——保持严格、无 Analytics
+- v3.3.0（MINOR）：Release / Pages 分发边界——保持严格、无 Analytics
   的普通 build 与 immutable Web ZIP，在完整 provenance 链之后为 FINAL `_site`
   增加 Cloudflare 页面级聚合统计、精确 CSP 例外与页头主题按钮旁的可访问仓库链接；
   Environment Secret 不进入 tracked source，Release 负向合同、overlay
   fail-closed / 确定性合同和桌面/移动浏览器验收覆盖新边界。发布细节见
   `docs/releases/v3.3.0.md`；没有改动算法、canonical raw 或持久化合同。
-- 当前：v3.3.0 源码发行目标，M40–M42 complete；正式 tag / Release / Pages
-  按 `docs/RELEASING.md` 完成经授权的发布及真实 Analytics 验收流程。
+- v3.3.1（PATCH，发行目标；实现 Done 2026-09-09）：CI/CD 可靠性——真实
+  Analytics acceptance 位于同一 Pages job 的 deploy/entity/deterministic smoke
+  之后，精确页面/版本/CSP/endpoints、请求完成与 beacon initiator 均受机器门禁
+  约束；最多 3 次独立尝试、总预算 ≤45s。AGENTS 与发布流程明确本机 blocker
+  可始终启用、`ENVIRONMENT_BLOCKED` 不算应用失败或 Analytics PASS、hosted acceptance 才是权威。
+  普通 verify / PR CI 继续 deterministic；完整 provenance 与产品合同不变。
+- 当前：v3.3.1 源码发行目标，M40–M42 complete；正式 tag / Release / Pages
+  按 `docs/RELEASING.md` 完成经授权的发布与 hosted real Analytics 验收。
 
 ## 下一产品目标
 
-- 当前切片为 v3.3.0 官方 Pages-only overlay 的实现、验证与发行；源码版本声明不等于发布。
+- 当前切片为 v3.3.1 delivery hardening 的实现、验证与发行；源码版本声明不等于发布。
   下一次产品增量（新功能、UI、算法或数据变更）由新的任务定义；发布流程遵循
   `docs/RELEASING.md`，里程碑状态在本文件更新。
