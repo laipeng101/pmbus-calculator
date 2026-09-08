@@ -6,6 +6,7 @@ import releaseConfig from '../playwright.release.config'
 import deploymentConfig from '../playwright.deployment.config'
 import visualConfig from '../playwright.visual.config'
 import crossEngineConfig from '../playwright.cross-engine.config'
+import pagesOverlayConfig from '../playwright.pages-overlay.config'
 
 // v2.5.15: docs used to hardcode a partial copy of the cleaner's target list
 // and drift (the mobile suite dirs and the five reporter JSONs were missing).
@@ -44,6 +45,7 @@ const suites: Array<[string, ConfigLike]> = [
   ['deployment', deploymentConfig as ConfigLike],
   ['visual', visualConfig as ConfigLike],
   ['cross-engine', crossEngineConfig as ConfigLike],
+  ['pages-overlay', pagesOverlayConfig as ConfigLike],
 ]
 
 describe('Playwright artifacts vs cleaner targets (v2.5.15 consistency)', () => {

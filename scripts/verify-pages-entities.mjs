@@ -4,8 +4,8 @@
  *
  * After actions/deploy-pages publishes a release, this gate dynamically
  * enumerates the FULL manifest from the already-verified, already-extracted
- * `_site` directory (whose bytes were byte-bound to the tagged build and the
- * release zip by the pre-deploy release-assets / rebuild gates) and GETs every
+ * FINAL `_site` directory (the byte-identical tagged Release baseline plus
+ * its deterministic, verified Pages-only overlay) and GETs every
  * real relative URL from the live Pages origin, then requires the response
  * entity's origin, status, content-encoding, length and SHA-256 to match the
  * local manifest. It closes the gap where a browser-scoped smoke only touches

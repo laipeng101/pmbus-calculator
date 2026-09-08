@@ -4,6 +4,40 @@
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-09-08
+
+> 本源码的发行目标为 v3.3.0；稳定 GitHub Release 公开前按待发布处理。
+> 发行与部署状态以 GitHub Release / Pages 验收记录为准。
+
+### Added
+
+- **官方 Pages-only overlay**：Release metadata、checksum、ZIP 安全、annotated
+  tag fresh rebuild 逐字节比较和本地 Release smoke 全部通过后，才对解压后的
+  `_site` 确定性注入页面级 Cloudflare Web Analytics、页头主题按钮旁可访问的源码仓库
+  图标链接，以及同源 `pages-overlay.css`。不添加计算器输入、raw、物理值、
+  DIRECT 系数、VOUT_MODE 或复制内容的自定义 analytics event。
+- **独立 overlay verifier 与浏览器门禁**：校验普通文件、唯一 CSP/beacon/marker、
+  环境 token 一致性、exact repository link、SVG/ARIA 和严格外部资源 allowlist；
+  缺失 token、未知 CSP、重复 overlay 或多余外部资源均在 deploy-pages 前失败。
+  本地 smoke 使用受控 Cloudflare route stub，并覆盖桌面/390px、亮暗主题、
+  键盘焦点、无横向 overflow 与关键交互无遮挡。
+
+### Changed
+
+- **Release 产品基线保持纯净**：普通 source/clone/source ZIP/fork/self-host build
+  与 immutable Release Web ZIP 默认无 Analytics、无外部 tracking、无 Pages-only
+  UI；负向 Release 回归拒绝 Cloudflare 与 overlay 资源，打包与字节比较不接触
+  overlay。官方 token 只来自 `github-pages` Environment Secret
+  `CLOUDFLARE_WEB_ANALYTICS_TOKEN`，不进入 tracked source 或 Vite build。
+- **最小 Pages CSP 例外**：Release CSP 不变；仅 overlay 的 `script-src` 增加
+  精确 beacon URL，`connect-src` 增加 Cloudflare Analytics origin，其他 directive
+  语义不变。字体、应用 JS、应用 CSS 与 overlay CSS 继续同源。
+- **部署 provenance 与文档**：线上实体校验以 overlay 后 FINAL `_site` 为完整
+  byte manifest；remote smoke 仅允许 Pages 同源及指定 Cloudflare endpoints，
+  RUM 精确限定为 `/cdn-cgi/rum` POST，继续拒绝其余外部请求。deterministic
+  smoke 保留 Cloudflare stub；发布后另行要求真实 beacon/RUM 成功及无 CORS
+  错误。中英文 README 明确区分 Release 与官方 Pages 的隐私行为。
+
 ## [3.2.0] - 2026-09-06
 
 ### Added

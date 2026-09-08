@@ -7,16 +7,19 @@
 // - determinism: the same dist/ produces byte-identical assets twice
 // - --force overwrites an existing valid output
 // - verifier failure never publishes unverified assets (old output stays)
+// - every ZIP entry rejects Pages-only analytics/UI content without echoing it
 // - symlink / special file / invalid entry rejection
 // - runCli exit codes (unknown option, success)
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import process from 'node:process'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  createDeterministicZip,
   generateAssets,
   runCli,
   validateAndCollectEntries,
@@ -50,6 +53,95 @@ function makeValidDist(dir: string): void {
 function sha256(file: string): string {
   return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 }
+
+const fixtureBeaconToken = '7'.repeat(32)
+const fixtureContentSentinel = 'private-fixture-content-do-not-log'
+
+function appendDistFile(dist: string, entry: string, content: string): void {
+  const file = path.join(dist, entry)
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.appendFileSync(file, `\n${content}\n${fixtureContentSentinel}`)
+}
+
+function appendReleaseCsp(dist: string, sources: string): void {
+  const file = path.join(dist, 'index.html')
+  fs.writeFileSync(
+    file,
+    fs.readFileSync(file, 'utf8').replace("script-src 'self'", `script-src 'self'${sources}`),
+  )
+}
+
+const pagesPollutionCases = [
+  {
+    name: 'index beacon attribute without a Cloudflare URL',
+    pollute: (dist: string) =>
+      appendDistFile(
+        dist,
+        'index.html',
+        `<script src="assets/app.js" data-cf-beacon='${JSON.stringify({ token: fixtureBeaconToken })}'></script>`,
+      ),
+  },
+  {
+    name: 'index CSP beacon exception',
+    pollute: (dist: string) =>
+      appendReleaseCsp(dist, ' https://static.cloudflareinsights.com/beacon.min.js'),
+  },
+  {
+    name: 'index CSP RUM exception',
+    pollute: (dist: string) =>
+      appendReleaseCsp(dist, "; connect-src 'self' https://cloudflareinsights.com"),
+  },
+  {
+    name: 'index repository marker',
+    pollute: (dist: string) =>
+      appendDistFile(
+        dist,
+        'index.html',
+        '<a data-pages-only="repository-link" href="https://github.com/laipeng101/pmbus-calculator">Source</a>',
+      ),
+  },
+  {
+    name: 'standalone Pages overlay stylesheet filename',
+    pollute: (dist: string) => fs.writeFileSync(path.join(dist, 'pages-overlay.css'), 'body{}'),
+  },
+  {
+    name: 'uppercase Pages overlay stylesheet filename',
+    pollute: (dist: string) => fs.writeFileSync(path.join(dist, 'PAGES-OVERLAY.CSS'), 'body{}'),
+  },
+  {
+    name: 'non-index application JS mixed-case Cloudflare host',
+    pollute: (dist: string) =>
+      appendDistFile(
+        dist,
+        'assets/app.js',
+        'const beacon = "https://STATIC.CloudflareInsights.COM/beacon.min.js";',
+      ),
+  },
+  {
+    name: 'non-index application CSS mixed-case Cloudflare host',
+    pollute: (dist: string) =>
+      appendDistFile(
+        dist,
+        'assets/app.css',
+        'body{background:url(https://CloudflareInsights.COM)}',
+      ),
+  },
+  {
+    name: 'non-index application JS uppercase beacon marker',
+    pollute: (dist: string) =>
+      appendDistFile(dist, 'assets/app.js', 'const marker = "DATA-CF-BEACON";'),
+  },
+  {
+    name: 'non-index application CSS uppercase repository marker',
+    pollute: (dist: string) =>
+      appendDistFile(dist, 'assets/app.css', '[DATA-PAGES-ONLY="repository-link"]{color:red}'),
+  },
+  {
+    name: 'non-index JS filename containing a beacon marker',
+    pollute: (dist: string) =>
+      fs.writeFileSync(path.join(dist, 'assets', 'DATA-CF-BEACON.js'), 'export const value = 1;'),
+  },
+]
 
 afterEach(() => {
   for (const dir of tempRoots.splice(0)) {
@@ -131,8 +223,80 @@ describe('release asset generator determinism', () => {
     expect(second.zipSize).toBe(first.zipSize)
     const secondZip = path.join(repo, 'release-output-2', plan.zipName)
     const secondSums = path.join(repo, 'release-output-2', plan.sumsName)
+    expect(fs.readFileSync(secondZip)).toEqual(fs.readFileSync(firstZip))
     expect(sha256(secondZip)).toBe(sha256(firstZip))
     expect(fs.readFileSync(secondSums, 'utf8')).toBe(fs.readFileSync(firstSums, 'utf8'))
+  })
+})
+
+describe('Release ZIP excludes every Pages-only deployment resource', () => {
+  it.each(pagesPollutionCases)(
+    'rejects $name without logging content or modifying the ZIP',
+    async ({ pollute }) => {
+      const repo = makeTempRepo()
+      const dist = path.join(repo, 'dist')
+      makeValidDist(dist)
+      pollute(dist)
+      const zip = path.join(repo, 'polluted.zip')
+      // Build the candidate directly so the shared download-time verifier is
+      // tested independently of the generator's pre-promotion rejection.
+      await createDeterministicZip(dist, walkDist(dist), zip)
+      const before = sha256(zip)
+      const result = spawnSync(
+        process.env.PYTHON3 || 'python3',
+        [path.resolve('.github/workflows/scripts/verify_release_zip.py'), zip],
+        { encoding: 'utf8', timeout: 30_000 },
+      )
+      expect(result.error).toBeUndefined()
+      expect(result.status).toBe(1)
+      const diagnostics = result.stdout + result.stderr
+      expect(diagnostics).toContain('release zip contains forbidden Pages-only content')
+      expect(diagnostics).not.toContain(fixtureBeaconToken)
+      expect(diagnostics).not.toContain(fixtureContentSentinel)
+      expect(sha256(zip)).toBe(before)
+    },
+  )
+
+  it('rejects contaminated first generation without publishing an asset pair', async () => {
+    const repo = makeTempRepo()
+    const dist = path.join(repo, 'dist')
+    makeValidDist(dist)
+    appendDistFile(dist, 'assets/app.css', '[data-pages-only="repository-link"]{color:red}')
+    const output = path.join(repo, 'release-output')
+    await expect(generateAssets(dist, output, false)).rejects.toThrow(/failed/)
+    expect(fs.existsSync(output)).toBe(false)
+    expect(fs.existsSync(path.join(repo, '.release-staging'))).toBe(false)
+  })
+
+  it('rejects contaminated --force generation and preserves both old assets byte-for-byte', async () => {
+    const repo = makeTempRepo()
+    const dist = path.join(repo, 'dist')
+    makeValidDist(dist)
+    const output = path.join(repo, 'release-output')
+    const plan = buildReleasePlan('1.1.5')
+    await generateAssets(dist, output, false)
+    const oldZip = fs.readFileSync(path.join(output, plan.zipName))
+    const oldSums = fs.readFileSync(path.join(output, plan.sumsName))
+    appendDistFile(
+      dist,
+      'assets/app.js',
+      `const beacon = ${JSON.stringify({ 'data-cf-beacon': { token: fixtureBeaconToken } })};`,
+    )
+    const out: string[] = []
+    const err: string[] = []
+    const rc = await runCli(['node', 'prepare-release-assets.mjs', '--force'], {
+      repoRoot: repo,
+      stdout: { write: (chunk: string) => !!out.push(chunk) },
+      stderr: { write: (chunk: string) => !!err.push(chunk) },
+    })
+    expect(rc).toBe(1)
+    expect(err.join('')).toContain('release:prepare-assets failed:')
+    expect(out.join('') + err.join('')).not.toContain(fixtureBeaconToken)
+    expect(out.join('') + err.join('')).not.toContain(fixtureContentSentinel)
+    expect(fs.readFileSync(path.join(output, plan.zipName))).toEqual(oldZip)
+    expect(fs.readFileSync(path.join(output, plan.sumsName))).toEqual(oldSums)
+    expect(fs.readdirSync(output).sort()).toEqual([plan.sumsName, plan.zipName])
+    expect(fs.existsSync(path.join(repo, '.release-staging'))).toBe(false)
   })
 })
 

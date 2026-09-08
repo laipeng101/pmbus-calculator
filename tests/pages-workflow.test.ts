@@ -1,6 +1,7 @@
 // Regression tests for .github/workflows/pages.yml structure.
 //
-// The Pages workflow deploys immutable GitHub Release assets. These
+// The Pages workflow deploys an immutable GitHub Release baseline followed
+// by a deterministic Pages-only staging overlay. These
 // assertions pin the source-binding contract that GitHub expressions cannot
 // check for themselves: a manual workflow_dispatch run must originate from
 // the exact tag ref it claims to deploy, tag resolution and SemVer
@@ -63,6 +64,16 @@ describe('pages.yml trigger model', () => {
     expect(workflow).toMatch(/^ {4}environment:\n {6}name: github-pages\n/m)
     expect(normalize(findStepByName('Run remote deployment smoke'))).toContain(
       'run: npm run test:e2e:deployment',
+    )
+  })
+
+  it('rejects any repository other than the official deployment before checkout', () => {
+    const step = normalize(findStepByName('Verify official Pages repository'))
+    expect(step).toContain('set -euo pipefail')
+    expect(step).toContain('if [ "$GITHUB_REPOSITORY" != "laipeng101/pmbus-calculator" ]; then')
+    expect(step).toContain('exit 1')
+    expect(stepIndexByName('Verify official Pages repository')).toBeLessThan(
+      stepIndexByName('Resolve release tag'),
     )
   })
 })
@@ -248,7 +259,13 @@ describe('pages.yml pre-deploy preconditions', () => {
       stepIndexByName('Install Playwright browsers'),
       stepIndexByName('Run local release smoke'),
       stepIndexByName('Extract release assets to _site'),
+      stepIndexByName('Apply Pages-only overlay'),
+      stepIndexByName('Verify Pages-only overlay'),
+      stepIndexByName('Run local Pages-overlay smoke'),
+      stepIndexByName('Configure Pages'),
+      stepIndexByName('Upload Pages artifact'),
       stepIndexByName('Deploy to GitHub Pages'),
+      stepIndexByName('Verify deployed Pages entities'),
       stepIndexByName('Run remote deployment smoke'),
     ]
     expect(order.every((index) => index >= 0)).toBe(true)
@@ -262,8 +279,74 @@ describe('pages.yml pre-deploy preconditions', () => {
   })
 })
 
+describe('pages.yml deterministic Pages-only overlay boundary', () => {
+  const overlayCommands = [
+    ['Apply Pages-only overlay', 'node scripts/apply-pages-overlay.mjs --site _site'],
+    ['Verify Pages-only overlay', 'node scripts/verify-pages-overlay.mjs --site _site'],
+  ] as const
+
+  it.each(overlayCommands)('runs %s exactly once against only _site', (name, command) => {
+    const matches = stepBlocks(workflow).filter((block) =>
+      normalize(block).startsWith(`name: ${name} `),
+    )
+    expect(matches).toHaveLength(1)
+    const run = matches[0].match(/^ {8}run: (.+)$/m)?.[1]
+    expect(run).toBe(command)
+    expect(run).not.toContain('TOKEN')
+  })
+
+  it('provides the Environment Secret only to apply and verify step environments', () => {
+    const tokenName = 'CLOUDFLARE_WEB_ANALYTICS_TOKEN'
+    const secretExpression =
+      'CLOUDFLARE_WEB_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_WEB_ANALYTICS_TOKEN }}'
+    const secretSteps = stepBlocks(workflow).filter((block) => block.includes(tokenName))
+    expect(secretSteps).toHaveLength(2)
+    for (const [name] of overlayCommands) {
+      const step = findStepByName(name)
+      expect(step).toContain(`        env:\n          ${secretExpression}\n`)
+      expect(secretSteps).toContain(step)
+    }
+    expect(workflow).not.toContain('VITE_CLOUDFLARE')
+    expect(workflow).not.toMatch(/^ {0,6}CLOUDFLARE_WEB_ANALYTICS_TOKEN:/m)
+  })
+
+  it('cannot bypass overlay or smoke failure to configure, upload or deploy Pages', () => {
+    for (const name of [
+      'Apply Pages-only overlay',
+      'Verify Pages-only overlay',
+      'Run local Pages-overlay smoke',
+      'Configure Pages',
+      'Upload Pages artifact',
+      'Deploy to GitHub Pages',
+    ]) {
+      const step = findStepByName(name)
+      // Default Actions success() is required: no always(), skip condition,
+      // continue-on-error or shell fallback may turn a failed gate green.
+      expect(step).not.toMatch(/^ {8}(?:if|continue-on-error):/m)
+      expect(step).not.toMatch(/\|\|\s*(?:true|:)/)
+    }
+  })
+
+  it('smokes the final overlayed tree without rebuilding or needing the secret', () => {
+    const step = findStepByName('Run local Pages-overlay smoke')
+    expect(step).toMatch(/^ {8}id: pages-overlay-smoke$/m)
+    expect(step).toMatch(/^ {8}run: npm run test:e2e:pages-overlay$/m)
+    expect(step).not.toContain('CLOUDFLARE_WEB_ANALYTICS_TOKEN')
+    expect(step).not.toContain('npm run build')
+    expect(step).not.toContain('release:prepare-assets')
+    expect(normalize(findStepByName('Upload Pages artifact'))).toContain('path: _site')
+  })
+
+  it('uploads the overlay report only when its pre-deploy smoke failed', () => {
+    const step = normalize(findStepByName('Upload local Pages-overlay smoke report on failure'))
+    expect(step).toContain("if: failure() && steps.pages-overlay-smoke.outcome == 'failure'")
+    expect(step).toContain('path: tests/e2e/report-pages-overlay')
+    expect(step).toContain('retention-days: 7')
+  })
+})
+
 describe('pages.yml post-deploy full-manifest entity verification', () => {
-  it('verifies the deployed Pages entities from the extracted _site tree after deploy', () => {
+  it('verifies the deployed Pages entities from the final overlayed _site tree after deploy', () => {
     const step = normalize(findStepByName('Verify deployed Pages entities'))
     expect(step).toContain('node scripts/verify-pages-entities.mjs')
     expect(step).toContain('--site _site')
@@ -278,6 +361,9 @@ describe('pages.yml post-deploy full-manifest entity verification', () => {
   it('runs the full-manifest verification after deploy and before the remote smoke', () => {
     const order = [
       stepIndexByName('Extract release assets to _site'),
+      stepIndexByName('Apply Pages-only overlay'),
+      stepIndexByName('Verify Pages-only overlay'),
+      stepIndexByName('Run local Pages-overlay smoke'),
       stepIndexByName('Deploy to GitHub Pages'),
       stepIndexByName('Verify deployed Pages entities'),
       stepIndexByName('Run remote deployment smoke'),

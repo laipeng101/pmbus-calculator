@@ -9,7 +9,7 @@ name: CI
 #
 # Parallel verification layout:
 #   quality        — format, typecheck, lint, coverage, build, base contracts
-#   e2e            — Playwright install, user flows, release smoke
+#   e2e            — Playwright install, user flows, release + Pages-overlay smoke
 #   compatibility  — Node 22 typecheck + unit tests (Node runtime floor)
 #   browser-compat — Firefox + WebKit core smoke (browser compatibility floor;
 #                    a deliberately small cross-engine suite, not the full
@@ -187,6 +187,14 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npm run test:e2e:release
 
+      # Local preparation uses a synthetic token and an isolated staging
+      # tree; PR/fork CI never needs the official github-pages secret.
+      # The clean production dist and Release baseline remain unchanged.
+      - name: Run local Pages-overlay contracts and smoke
+        id: pages_overlay_smoke
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run test:pages-overlay
+
       - name: Upload Playwright report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure() &&
@@ -215,6 +223,16 @@ jobs:
         with:
           name: playwright-report-release
           path: tests/e2e/report-release
+          retention-days: 7
+
+      - name: Upload Playwright Pages-overlay smoke report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure() &&
+          steps.scope.outputs.run_full != 'false' &&
+          steps.pages_overlay_smoke.outcome == 'failure'
+        with:
+          name: playwright-report-pages-overlay
+          path: tests/e2e/report-pages-overlay
           retention-days: 7
 
   compatibility:

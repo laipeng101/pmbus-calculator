@@ -28,9 +28,13 @@ function SUMS_LINK(v: string): string {
   return `https://github.com/laipeng101/pmbus-calculator/releases/download/${v}/SHA256SUMS.txt`
 }
 
-function readmeContent(version: string): string {
+function readmeContent(
+  version: string,
+  declaration = 'currently deploys',
+  heading = 'Live Demo:',
+): string {
   return [
-    `> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (currently deploys \`${version}\`)`,
+    `> **${heading}** https://laipeng101.github.io/pmbus-calculator/ (${declaration} \`${version}\`)`,
     `> **Stable version:** [\`${version}\`](${TAG_LINK(version)}) · [SHA256SUMS.txt](${SUMS_LINK(version)})`,
     `Deploys the immutable \`${version}\` Release asset.`,
   ].join('\n')
@@ -164,12 +168,97 @@ describe('release contract validation (M23/M24)', () => {
     expect(result.errors.join('\n')).toMatch(/missing the SHA256SUMS/)
   })
 
-  it('rejects a README that never declares the deployed version', () => {
+  it('rejects a README that never declares the deployed or target version', () => {
     const content = readmeContent('v1.1.4').replaceAll('`v1.1.4`', 'the latest release')
     const result = validateReleaseContract(
       makeContract({ readmes: [{ name: 'README.md', content }, makeContract().readmes[1]] }),
     )
-    expect(result.errors.join('\n')).toMatch(/does not declare the deployed version/)
+    expect(result.errors.join('\n')).toMatch(/does not declare the deployed or target version/)
+  })
+
+  it.each([
+    ['README.md', 'currently deploys', 'Live Demo:'],
+    ['README_zh-CN.md', '当前部署版本', 'Live Demo：'],
+    ['README.md', 'release target', 'Live Demo:'],
+    ['README_zh-CN.md', '发布目标', 'Live Demo：'],
+  ])('accepts the %s Live Demo declaration "%s"', (name, declaration, heading) => {
+    const content = readmeContent('v1.1.4', declaration, heading)
+    const result = validateReleaseContract(makeContract({ readmes: [{ name, content }] }))
+    expect(result).toEqual({ ok: true, errors: [] })
+  })
+
+  it.each([
+    ['README.md', 'release target', 'Live Demo:'],
+    ['README_zh-CN.md', '发布目标', 'Live Demo：'],
+  ])(
+    'rejects a stale release target in %s despite current release links',
+    (name, declaration, heading) => {
+      const content = readmeContent('v1.1.4', declaration, heading).replace(
+        `${declaration} \`v1.1.4\``,
+        `${declaration} \`v1.1.3\``,
+      )
+      const result = validateReleaseContract(makeContract({ readmes: [{ name, content }] }))
+      expect(result.ok).toBe(false)
+      expect(result.errors).toEqual([
+        `${name} Live Demo line does not declare the current deployed or target version v1.1.4`,
+      ])
+    },
+  )
+
+  it.each([
+    ['README.md', 'release target', 'Live Demo:'],
+    ['README_zh-CN.md', '发布目标', 'Live Demo：'],
+  ])('rejects a release target outside the %s Live Demo line', (name, declaration, heading) => {
+    const content = `${readmeContent('v1.1.4', declaration, heading).replace(
+      ` (${declaration} \`v1.1.4\`)`,
+      '',
+    )}\n\n${declaration} \`v1.1.4\`\n`
+    const result = validateReleaseContract(makeContract({ readmes: [{ name, content }] }))
+    expect(result.ok).toBe(false)
+    expect(result.errors).toEqual([
+      `${name} Live Demo line does not declare the current deployed or target version v1.1.4`,
+    ])
+  })
+
+  it.each(['v1.1.4', 'v1.1.3'])(
+    'rejects an additional target %s beside an existing deployed-version declaration',
+    (target) => {
+      const content = readmeContent('v1.1.4').replace(
+        'currently deploys `v1.1.4`',
+        `currently deploys \`v1.1.4\`; release target \`${target}\``,
+      )
+      const result = validateReleaseContract(
+        makeContract({ readmes: [{ name: 'README.md', content }] }),
+      )
+      expect(result.ok).toBe(false)
+      expect(result.errors.join('\n')).toMatch(/Live Demo line/)
+    },
+  )
+
+  it('rejects duplicate Live Demo lines even when both target the current version', () => {
+    const content = readmeContent('v1.1.4', 'release target')
+    const duplicated = `${content}\n${content.split('\n')[0]}`
+    const result = validateReleaseContract(
+      makeContract({ readmes: [{ name: 'README.md', content: duplicated }] }),
+    )
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/Live Demo line/)
+  })
+
+  it.each([
+    ['stable tag', TAG_LINK],
+    ['checksum', SUMS_LINK],
+  ] as const)('still rejects a stale %s link beside a valid release target', (_label, link) => {
+    const content = readmeContent('v1.1.4', 'release target').replace(
+      link('v1.1.4'),
+      link('v1.1.3'),
+    )
+    const result = validateReleaseContract(
+      makeContract({ readmes: [{ name: 'README.md', content }] }),
+    )
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/still links GitHub release v1\.1\.3/)
+    expect(result.errors.join('\n')).not.toMatch(/Live Demo line/)
   })
 
   it('rejects README Live Demo line declaring a stale version (M24)', () => {
@@ -341,6 +430,17 @@ describe('release contract integration (M24)', () => {
     const result = validateReleaseContract(contract)
     expect(result.ok).toBe(true)
     expect(result.errors).toEqual([])
+  })
+
+  it('accepts bilingual release targets before the release or deployment exists', async () => {
+    const tmp = createFixtureRepo()
+    fs.writeFileSync(path.join(tmp, 'README.md'), readmeContent('v1.1.5', 'release target'))
+    fs.writeFileSync(
+      path.join(tmp, 'README_zh-CN.md'),
+      readmeContent('v1.1.5', '发布目标', 'Live Demo：'),
+    )
+    const contract = await readContract(tmp)
+    expect(validateReleaseContract(contract)).toEqual({ ok: true, errors: [] })
   })
 
   it('fails when lockfile top-level version drifts', async () => {

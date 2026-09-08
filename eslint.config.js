@@ -10,6 +10,7 @@ export default tseslint.config(
       'dist',
       'build',
       'out',
+      '_site',
       'coverage',
       'tests/e2e/output*/**',
       'tests/e2e/report*/**',

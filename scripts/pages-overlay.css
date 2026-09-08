@@ -1,0 +1,116 @@
+/* Official Pages only. Reserve one button slot inside the header; the
+   calculator keeps its full width. The external anchor scrolls with the
+   header and sits beside the theme button. Mirror the Release's rem-based
+   shell/header breakpoints and px-based panel padding separately, including
+   browser font preferences. Browser gates bind this to the real header. */
+#root .app-panel > header,
+[data-pages-only='repository-link'] {
+  --pages-outer-inline: 0px;
+  --pages-outer-block: 0px;
+  --pages-panel-padding: 0px;
+  --pages-header-inline: 1rem;
+  --pages-header-block: 0.75rem;
+}
+
+@media (min-width: 40rem) {
+  #root .app-panel > header,
+  [data-pages-only='repository-link'] {
+    --pages-outer-inline: 1rem;
+    --pages-outer-block: 1.5rem;
+    --pages-panel-padding: 1.5rem;
+    --pages-header-inline: 0px;
+  }
+}
+
+@media (min-width: 48rem) {
+  #root .app-panel > header,
+  [data-pages-only='repository-link'] {
+    --pages-panel-padding: 2rem;
+    --pages-header-block: 1rem;
+  }
+}
+
+/* tokens.css panel padding takes precedence over the Tailwind layer. */
+@media (min-width: 640px) {
+  #root .app-panel > header,
+  [data-pages-only='repository-link'] {
+    --pages-panel-padding: 1.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  #root .app-panel > header,
+  [data-pages-only='repository-link'] {
+    --pages-panel-padding: 2rem;
+  }
+}
+
+#root .app-panel > header {
+  align-items: flex-start;
+  gap: 8px;
+  padding-right: calc(var(--pages-header-inline) + 52px + env(safe-area-inset-right, 0px));
+}
+
+#root .app-panel > header > div {
+  min-width: 0;
+}
+
+#root .app-panel > header > button {
+  flex-shrink: 0;
+  min-width: 44px;
+  height: 44px;
+}
+
+[data-pages-only='repository-link'] {
+  position: absolute;
+  top: calc(
+    var(--pages-outer-block) + var(--pages-panel-padding) + 1px + var(--pages-header-block)
+  );
+  right: calc(
+    max(var(--pages-outer-inline), (100% - 1120px) / 2) + var(--pages-panel-padding) + 1px +
+      var(--pages-header-inline) + env(safe-area-inset-right, 0px)
+  );
+  z-index: 10;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 12px;
+  background: var(--color-panel-elevated);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-panel);
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-pages-only='repository-link'] svg {
+  width: 24px;
+  height: 24px;
+}
+
+[data-pages-only='repository-link']:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-pages-only='repository-link']:hover {
+    background: var(--color-control-hover);
+    border-color: var(--color-focus-ring);
+  }
+}
+
+[data-pages-only='repository-link']:active {
+  background: var(--color-control-active);
+  border-color: var(--color-focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-pages-only='repository-link'] {
+    animation: none;
+    transition: none;
+  }
+}

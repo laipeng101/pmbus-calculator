@@ -26,13 +26,18 @@
   **不得**作为手动 Pages 部署/回滚目标；不得删除、重建或移动旧 tag/Release；
   新代码不追溯改变旧 tag 内的 workflow/script。手动部署只允许针对其 tree 已
   包含 immutable 门禁（v2.6.2 起）的 Release。
-- `package.json` 版本必须和最新稳定 tag 一致。
+- 正式发行时 `package.json` 版本必须和该稳定 tag 一致。实现 PR 的版本准备阶段
+  可以先同步下一个目标版本，但 README / ROADMAP / release note 必须明确标为
+  待发布；离线 release contract 通过不代表 tag、Release 或 Pages 已存在。
 - 禁止在验证完成前创建或推送 tag；tag 永远建立在已通过完整验证的精确 main merge SHA 上。
 - Release 和 Pages 是实时发布状态的权威来源；README 不重复维护“最新 Pages 已成功”类状态。
 - 发布后除非发现真实运行缺陷，不得创建补测试/补文档 PR；若发布后发现真实缺陷，按 SemVer
   规则准备下一个 PATCH（例如 `v1.1.5`），不得移动已发布 tag。
 - GitHub Release 是当前正式发行渠道，不发布 npm 包（`private: true`，不得执行 `npm publish`）。
-- Pages 只部署不可变 GitHub Release 资产，不部署 main 的临时构建。
+- Pages 只使用不可变 GitHub Release 资产作为产品基线，不部署 main 的临时构建。
+  v3.3.0 起，全部 Release 完整性、tag fresh rebuild 逐字节比较与本地 Release
+  smoke 门禁通过后，才允许对解压后的 `_site` 执行确定性 Pages-only overlay；
+  overlay 不修改下载或重建的 Release ZIP，细节见 [DEPLOYING](DEPLOYING.md)。
 - 版本跨文件一致性由 `npm run check:release-contract` 离线门禁保证（已接入 `npm run verify` 与 CI）。
 
 ## 发布流程
@@ -42,10 +47,20 @@
 1. 在目标 `origin/main` 之上创建实现分支，完成代码、测试与文档变更。
 2. 用无 tag 的版本更新方式（例如 `npm version 1.1.4 --no-git-tag-version`）同步
    `package.json` 与 `package-lock.json`。
-3. 更新 `CHANGELOG.md`（保留新的空 `[Unreleased]`，新增 `[X.Y.Z] - 实际发布日期`）、
+3. 更新 `CHANGELOG.md`（保留新的空 `[Unreleased]`，新增 `[X.Y.Z] - YYYY-MM-DD`）、
    `docs/releases/vX.Y.Z.md`、两份 README 的 stable/live/Release/SHA256SUMS 链接、
    `docs/ROADMAP.md` 的 stable release 声明。
+   尚未获准正式发布时，日期使用准备日期并紧接明确的待发布说明；README Live
+   Demo 标注 release target / 发布目标，ROADMAP 的 stable release 声明同样标注
+   发布准备。最终验证前复核实际日期，将临时“尚未创建/发布”措辞改为条件声明：
+   本源码为对应版本的发行目标，稳定 Release 公开前按待发布处理，发行/部署
+   状态以 GitHub Release / Pages 验收为准。这样无需发布后修改不可变 tag 文档，
+   也不得在版本准备 PR 中声称已经发布或部署。
 4. `npm run check:release-contract` 必须在提交前通过。
+
+v3.3.0 包含向后兼容的新官方 Pages repository link 与 Analytics 部署行为，按
+MINOR 准备。普通 `npm run build`、source/Release/self-host 默认无 Analytics、
+无外部 tracking；计算器数值、复制和持久化合同不变。
 
 ### 2. 合入 main
 
@@ -90,7 +105,9 @@ npm run test:e2e:visual
 2. 资产生成是确定性的：相同 `dist/` 两次生成，zip 与 SHA256SUMS 逐字节一致。
    生成过程自动调用 `verify_release_zip.py` 与 checksum 反向验证。
 3. zip 可解压；内容只来自最终 `dist/`；`index.html` 资源路径与 CSP 正确；
-   不包含源码、`node_modules`、source map 或临时文件。
+   不包含源码、`node_modules`、source map 或临时文件。普通 build 与 Release ZIP
+   必须没有 Cloudflare beacon/域名、部署 token、Pages-only repository marker
+   或 `pages-overlay.css`；Release smoke 和 ZIP 合同对此提供负向回归门禁。
 4. 再次运行 `npm run release:prepare-assets -- --force` 以验证可复现性（两次
    zip hash 必须完全相同）。
 
@@ -198,14 +215,31 @@ npm run test:e2e:visual
 
 1. `release published` 事件自动触发 Pages workflow（或手动 dispatch 传入 tag）；
    等待其成功。部署顺序与校验细节见 `docs/DEPLOYING.md`（Release → tag-rebuild
-   字节绑定 → deploy 前前置 → Pages → 全清单实体验证 → deployment smoke）。
+   字节绑定 → 本地 Release smoke → 解压 → Pages overlay / verifier / 本地 smoke
+   → Pages → FINAL `_site` 全清单实体验证 → deployment smoke）。
    workflow 会用被部署 tag 的 checkout fresh rebuild，要求 rebuild zip 与 Release
-   zip 逐字节一致后才允许 deploy；部署后从已验证 `_site` 动态枚举全清单逐实体
-   校验线上字节。
+   zip 逐字节一致，之后才在已下载 ZIP 解压出的 `_site` 上增加页面级 Cloudflare
+   Web Analytics、可访问源码仓库图标和最小 CSP 例外。两个 ZIP 不改写；最终
+   Pages payload 有意不同于 Release ZIP，部署后以 overlay 后的 FINAL `_site`
+   动态枚举全清单逐实体校验线上字节。
+   正式发布前须已在 `github-pages` Environment 配置
+   `CLOUDFLARE_WEB_ANALYTICS_TOKEN`（见 DEPLOYING 一次性配置）；workflow 仅通过
+   step `env` 使用，缺失或非法时在 deploy-pages 前失败，不能临时塞入 source、
+   Vite、CLI argument 或普通 build。所有可准备的 overlay / browser 门禁都在
+   deploy-pages 之前，失败保持线上旧站不变。
 2. 对正式 Pages URL 执行 `DEPLOYMENT_URL=<url> npm run test:e2e:deployment`；
    全部 deployment tests 必须真实运行并通过，不得记为 skip。
-3. 确认线上页面来自对应 Release 资产，而非 main 临时构建。
-4. 清理任务分支、detached worktree 与临时产物。
+   该 deterministic smoke 对精确 Cloudflare beacon 与 RUM endpoints 使用 stub，
+   验证公开 HTML/CSP、同源资产、allowlist 和交互，不声明第三方服务健康。
+3. 确认线上页面来自对应 Release 基线及该 tag 的受控 overlay，而非 main 临时构建。
+   本地 `npm run test:pages-overlay` 可证明 overlay wiring 与本地模拟的 deployment
+   交互合同，但不能替代真实 Pages HTTPS、实体校验与发布后 remote smoke。
+4. 按 [DEPLOYING 的真实 Analytics 验收](DEPLOYING.md#发布后真实-cloudflare-analytics-验收)
+   在干净 Chromium 中独立观察真实 beacon GET 和精确 `/cdn-cgi/rum` POST 的
+   成功 2xx response、无 CORS/hostname mismatch、未知外部请求或 page error。
+   不使用 stub，不记录 token、RUM body 或敏感 payload。缺少这项证明时不得
+   声明 v3.3.0 Release 与 Pages 上线验收全部完成；普通 PR CI 不依赖此服务检查。
+5. 所有线上验收成功后，清理任务分支、detached worktree 与临时产物。
 
 ## 失败处理
 

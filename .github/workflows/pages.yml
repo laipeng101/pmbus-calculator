@@ -26,6 +26,16 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Official deployment inputs must never turn a fork build into an
+      # official Pages payload. The overlay also checks this controlled env.
+      - name: Verify official Pages repository
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REPOSITORY" != "laipeng101/pmbus-calculator" ]; then
+            echo "::error::Pages deployment requires the official repository" >&2
+            exit 1
+          fi
+
       # Tag resolution and SemVer validation are pure shell: they need no
       # repository source and must run BEFORE checkout so the checkout ref
       # itself is bound to the exact release tag.
@@ -217,11 +227,10 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      # Local release smoke on the SAME bytes that will be deployed: the
-      # rebuilt dist is byte-bound to the downloaded release zip by the
-      # comparison step above, so this smoke exercises the deploy payload
-      # before anything is published. Only smokes that need the live
-      # deployment URL run after deploy-pages.
+      # Local release smoke proves the clean Release baseline: the rebuilt
+      # dist is byte-bound to the downloaded release zip above and contains
+      # neither analytics nor Pages-only UI. The separate overlay smoke below
+      # checks the final Pages payload before anything is published.
       - name: Run local release smoke
         id: release-smoke
         run: npm run test:e2e:release
@@ -234,6 +243,27 @@ jobs:
           rm -rf _site
           mkdir -p _site
           unzip -q "pmbus-calculator-${VERSION}-web.zip" -d _site
+
+      # Final _site = verified byte-identical Release baseline + deterministic
+      # verified Pages-only overlay. Only this staging tree may be modified;
+      # both downloaded and rebuilt Release ZIPs remain immutable inputs.
+      # The workflow references and passes the github-pages Environment Secret
+      # only in these two step environments, never to Vite/build/release
+      # packaging or command-line arguments. Environment access is job-scoped.
+      # Missing/invalid inputs fail before configure, upload or deployment.
+      - name: Apply Pages-only overlay
+        env:
+          CLOUDFLARE_WEB_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_WEB_ANALYTICS_TOKEN }}
+        run: node scripts/apply-pages-overlay.mjs --site _site
+
+      - name: Verify Pages-only overlay
+        env:
+          CLOUDFLARE_WEB_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_WEB_ANALYTICS_TOKEN }}
+        run: node scripts/verify-pages-overlay.mjs --site _site
+
+      - name: Run local Pages-overlay smoke
+        id: pages-overlay-smoke
+        run: npm run test:e2e:pages-overlay
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
@@ -248,9 +278,9 @@ jobs:
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
 
       # Full-manifest entity gate on the LIVE site: after deploy, enumerate
-      # EVERY file from the already-verified extracted _site (bytes bound to
-      # the tagged build and the release zip above) and GET each real relative
-      # URL from the deployment origin. Each entity must land same-origin with
+      # EVERY file from FINAL overlayed _site, including the changed index.html
+      # and same-origin pages-overlay.css, and GET each real relative URL
+      # from the deployment origin. Each entity must land same-origin with
       # HTTP 200, identity encoding and byte-equal length+SHA-256; a missing
       # file, 200 HTML fallback, cross-origin redirect or stale edge inside
       # the manifest fails here even if the first screen renders. No file
@@ -278,6 +308,14 @@ jobs:
         with:
           name: playwright-report-release
           path: tests/e2e/report-release
+          retention-days: 7
+
+      - name: Upload local Pages-overlay smoke report on failure
+        if: failure() && steps.pages-overlay-smoke.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-pages-overlay
+          path: tests/e2e/report-pages-overlay
           retention-days: 7
 
       - name: Upload deployment smoke report on failure

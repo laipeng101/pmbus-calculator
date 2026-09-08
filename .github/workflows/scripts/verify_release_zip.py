@@ -23,6 +23,15 @@ FORBIDDEN_SEGMENTS = ("node_modules", "src")
 CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
 
+# Every Release/self-host artifact is analytics-free. This shared gate runs
+# during packaging AND when a published ZIP is downloaded, before extraction.
+PAGES_ONLY_MARKERS = (
+    b"data-cf-beacon",
+    b"cloudflareinsights.com",
+    b"data-pages-only",
+    b"pages-overlay.css",
+)
+
 
 def fail(message: str) -> None:
     print(f"::error::{message}")
@@ -82,6 +91,11 @@ def main(zip_path: str) -> None:
             validate_entry_name(name)
             if is_symlink(info):
                 fail(f"zip contains a symbolic link: {name!r}")
+            content = zf.read(info).lower()
+            if any(marker in content or marker in name.lower().encode("utf-8")
+                   for marker in PAGES_ONLY_MARKERS):
+                # Do not echo file content: it could contain deployment input.
+                fail("release zip contains forbidden Pages-only content")
 
         if INDEX_NAME not in names:
             fail(f"zip must contain {INDEX_NAME!r}")

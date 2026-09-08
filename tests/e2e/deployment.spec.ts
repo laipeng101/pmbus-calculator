@@ -1,5 +1,12 @@
 import { readFileSync } from 'node:fs'
-import { test, expect } from '@playwright/test'
+import { test as base, expect } from '@playwright/test'
+import {
+  expectPagesDomContract,
+  expectPagesResources,
+  observePagesResources,
+  stubCloudflare,
+} from './helpers/pages-contract'
+import { PAGES_REPOSITORY_NAME } from './helpers/pages-network-policy'
 
 const deploymentUrl = process.env.DEPLOYMENT_URL
 
@@ -7,23 +14,52 @@ const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.ur
   version: string
 }
 
-test.skip(!deploymentUrl, 'DEPLOYMENT_URL is required for remote deployment smoke')
-
-const requiredResourceTypes = new Set([
-  'document',
-  'script',
-  'stylesheet',
-  'font',
-  'image',
-  'fetch',
-])
+const test = base.extend<{
+  deploymentTarget: string
+  deploymentResources: ReturnType<typeof observePagesResources>
+}>({
+  deploymentTarget: async ({ baseURL }, runWithTarget, testInfo) => {
+    const local = testInfo.project.metadata.pagesOverlayLocal === true
+    const target = local ? baseURL : deploymentUrl
+    test.skip(!target, 'DEPLOYMENT_URL is required for remote deployment smoke')
+    if (!target) throw new Error('Deployment URL is unavailable')
+    const url = new URL(target)
+    if (local) {
+      expect(url.origin).toBe('http://localhost:4176')
+      expect(url.pathname).toBe('/pmbus-calculator/')
+    } else {
+      expect(url.protocol).toBe('https:')
+    }
+    await runWithTarget(target)
+  },
+  deploymentResources: [
+    async ({ page, deploymentTarget }, runWithResources) => {
+      // Check published HTML/CSP/UI wiring independently of Cloudflare uptime.
+      // Only the audited endpoints are stubbed. Observe every test, including
+      // calculator interactions, failed requests and each redirect hop.
+      await stubCloudflare(page)
+      const observed = observePagesResources(page, deploymentTarget)
+      await runWithResources(observed)
+      expect(observed.pageErrors).toEqual([])
+      expect(observed.failedAssets).toEqual([])
+      expect(observed.unexpectedExternalOrigins).toEqual([])
+    },
+    { auto: true },
+  ],
+})
 
 test.describe('GitHub Pages production deployment', () => {
-  test('HTTPS page loads with title and core controls', async ({ page }) => {
-    const response = await page.goto(deploymentUrl!)
-    if (response == null) throw new Error(`page.goto returned no response for ${deploymentUrl}`)
+  test('deployment page loads with title, core controls and exact Pages overlay', async ({
+    page,
+    deploymentTarget,
+  }, testInfo) => {
+    const response = await page.goto(deploymentTarget)
+    if (response == null) throw new Error('page.goto returned no deployment response')
     expect(response.status()).toBe(200)
-    expect(page.url().startsWith('https://')).toBeTruthy()
+    if (testInfo.project.metadata.pagesOverlayLocal !== true) {
+      expect(page.url().startsWith('https://')).toBeTruthy()
+    }
+    expect(new URL(page.url()).origin).toBe(new URL(deploymentTarget).origin)
 
     await expect(page).toHaveTitle(/PMBus/)
     // M39：页面标题包含全部五个模式（含 VOUT_MODE）。
@@ -35,84 +71,43 @@ test.describe('GitHub Pages production deployment', () => {
     await expect(page.getByLabel('命令参考')).toBeVisible()
     await expect(page.getByLabel('结果面板')).toBeVisible()
 
-    const csp = page.locator('meta[http-equiv="Content-Security-Policy"]')
-    await expect(csp).toHaveCount(1)
-    await expect(csp).toHaveAttribute('content', /default-src 'self'/)
+    await expectPagesDomContract(page)
   })
 
-  test('no page errors and every resource loads from the Pages origin', async ({ page }) => {
-    const pageErrors: string[] = []
-    const failedAssets: string[] = []
-    const offOriginResources: string[] = []
-    const observedResources: string[] = []
-    const observedFonts: string[] = []
-
-    page.on('pageerror', (error) => {
-      pageErrors.push(error.message)
-    })
-
-    page.on('response', (response) => {
-      const type = response.request().resourceType()
-      if (!requiredResourceTypes.has(type)) {
-        return
-      }
-      const url = response.url()
-      observedResources.push(url)
-      if (response.status() >= 400 && response.status() < 600) {
-        failedAssets.push(`${response.status()} ${response.request().method()} ${url}`)
-      }
-      if (new URL(url).origin !== new URL(deploymentUrl!).origin) {
-        offOriginResources.push(url)
-      }
-      if (type === 'font') {
-        observedFonts.push(url)
-      }
-    })
-
-    await page.goto(deploymentUrl!)
+  test('resources stay same-origin except the exact Cloudflare allowlist, with no errors', async ({
+    page,
+    deploymentTarget,
+    deploymentResources,
+  }) => {
+    await page.goto(deploymentTarget)
     await expect(page.getByLabel('结果面板')).toBeVisible()
-
-    await expect(page.locator('.katex').first()).toBeVisible()
-    await expect(page.locator('.katex-error')).toHaveCount(0)
-    await expect(page.locator('.katex math').first()).toBeAttached()
-
-    await page.evaluate(async () => {
-      await document.fonts.ready
-    })
-
-    const katexFontFamily = await page
-      .locator('.katex')
-      .first()
-      .evaluate((el) => getComputedStyle(el).fontFamily)
-    expect(katexFontFamily).toContain('KaTeX_Main')
-    expect(observedFonts.length).toBeGreaterThan(0)
-
-    expect(pageErrors).toEqual([])
-    expect(failedAssets).toEqual([])
-    expect(offOriginResources).toEqual([])
-    expect(observedResources.length).toBeGreaterThanOrEqual(3)
-
-    const pagesUrl = new URL(deploymentUrl!)
-    const basePath = pagesUrl.pathname.replace(/\/$/, '')
-    for (const url of observedResources) {
-      const parsed = new URL(url)
-      expect(parsed.origin).toBe(pagesUrl.origin)
-      expect(parsed.pathname).toMatch(new RegExp(`^${basePath}/`))
-    }
+    await expectPagesDomContract(page)
+    await expectPagesResources(page, deploymentTarget, deploymentResources)
   })
 
-  test('390px viewport has no horizontal overflow', async ({ page }) => {
+  test('390px viewport has no horizontal overflow', async ({ page, deploymentTarget }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto(deploymentUrl!)
+    await page.goto(deploymentTarget)
 
     const body = page.locator('body')
     const scrollWidth = await body.evaluate((el) => el.scrollWidth)
     const clientWidth = await body.evaluate((el) => el.clientWidth)
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
+    const repository = page.getByRole('link', { name: PAGES_REPOSITORY_NAME, exact: true })
+    await expect(repository).toBeVisible()
+    const box = await repository.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.x).toBeGreaterThanOrEqual(0)
+    expect(box!.y).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+    expect(box!.y + box!.height).toBeLessThanOrEqual(844)
   })
 
-  test('L11 closed loop: hex input decodes and value input encodes back', async ({ page }) => {
-    await page.goto(deploymentUrl!)
+  test('L11 closed loop: hex input decodes and value input encodes back', async ({
+    page,
+    deploymentTarget,
+  }) => {
+    await page.goto(deploymentTarget)
     const hexInput = page.locator('input[placeholder="0000"]')
     const valueInput = page.locator('#value-input')
 
@@ -127,8 +122,8 @@ test.describe('GitHub Pages production deployment', () => {
 
   // v2.6.2 正式站验收：审计修复的四个用户可见行为必须在线上构建中成立。
   test.describe('v2.6.2 audit acceptance (production)', () => {
-    test('DIRECT 尾零补偿科学计数法向量提交为 raw 0001', async ({ page }) => {
-      await page.goto(deploymentUrl!)
+    test('DIRECT 尾零补偿科学计数法向量提交为 raw 0001', async ({ page, deploymentTarget }) => {
+      await page.goto(deploymentTarget)
       await page.getByRole('tab', { name: /DIRECT/ }).click()
       // m=1, b=0, R=0：与 direct-fidelity v2.6.2 边界用例同一系数组，V=1 精确
       // 编码为 Y=1。v2.6.2 的发布 smoke 曾误用 fidelity 组的 (1,1,17)——该组
@@ -156,8 +151,11 @@ test.describe('GitHub Pages production deployment', () => {
       await expect(page.getByTestId('quantization-error')).toHaveAttribute('data-kind', 'ok')
     })
 
-    test('控件 tooltip 可悬停驻留（SC 1.4.13）：移入浮层不关闭', async ({ page }) => {
-      await page.goto(deploymentUrl!)
+    test('控件 tooltip 可悬停驻留（SC 1.4.13）：移入浮层不关闭', async ({
+      page,
+      deploymentTarget,
+    }) => {
+      await page.goto(deploymentTarget)
       const button = page.locator('header button[aria-label^="当前主题"]')
       const tooltip = page.locator('[data-testid="control-tooltip-theme-toggle"]')
 
@@ -171,8 +169,11 @@ test.describe('GitHub Pages production deployment', () => {
       await expect(tooltip).toHaveCount(0)
     })
 
-    test('VOUT_MODE radio 方向键行走并选择（roving tabindex）', async ({ page }) => {
-      await page.goto(deploymentUrl!)
+    test('VOUT_MODE radio 方向键行走并选择（roving tabindex）', async ({
+      page,
+      deploymentTarget,
+    }) => {
+      await page.goto(deploymentTarget)
       await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
 
       const abs = page.getByRole('radio', { name: '绝对值' })
@@ -189,8 +190,11 @@ test.describe('GitHub Pages production deployment', () => {
       await expect(abs).toHaveAttribute('tabindex', '-1')
     })
 
-    test('L16 bits[6:5] 禁用原因在 overlay 外可见并关联到位按钮', async ({ page }) => {
-      await page.goto(deploymentUrl!)
+    test('L16 bits[6:5] 禁用原因在 overlay 外可见并关联到位按钮', async ({
+      page,
+      deploymentTarget,
+    }) => {
+      await page.goto(deploymentTarget)
       await page.getByRole('tab', { name: /LINEAR16/ }).click()
 
       const reason = page.locator('#vout-bits65-disabled-reason')
@@ -210,8 +214,11 @@ test.describe('GitHub Pages production deployment', () => {
   // 数学结果保持精确 0——不伪造饱和/下溢（与 tests/e2e/l16-relative-range.spec.ts
   // 的 §8.5.2 用例同一向量与单一来源 deriveL16Semantics）。
   test.describe('v2.6.4 relative L16 acceptance (production)', () => {
-    test('§8.5.2 非符合性向量：98/0000 nominal 12 → X=0、R=0 告警、复制可用', async ({ page }) => {
-      await page.goto(deploymentUrl!)
+    test('§8.5.2 非符合性向量：98/0000 nominal 12 → X=0、R=0 告警、复制可用', async ({
+      page,
+      deploymentTarget,
+    }) => {
+      await page.goto(deploymentTarget)
       await page.getByRole('tab', { name: /LINEAR16/ }).click()
       await page.getByRole('radio', { name: '相对值' }).click()
       await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
