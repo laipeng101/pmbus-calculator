@@ -8,11 +8,11 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 > **Scope:** this tool converts numeric formats; it is **not** a PMBus/SMBus controller, bus-transport implementation, command executor, device-profile engine, or conformance test suite. It covers the common numeric-format semantics across multiple PMBus revisions and does **not** claim full PMBus 1.5 protocol compliance (including the 1.5 security extensions).
 >
-> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (release target `v3.4.0`)
+> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (release target `v3.4.1`)
 >
-> **Stable release target:** [`v3.4.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.4.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.4.0/SHA256SUMS.txt)
+> **Stable release target:** [`v3.4.1`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.4.1) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.4.1/SHA256SUMS.txt)
 >
-> This source targets v3.4.0; treat it as unpublished until its stable GitHub Release is public. GitHub Release and Pages acceptance records determine publication and deployment status.
+> This source targets v3.4.1; treat it as unpublished until its stable GitHub Release is public. GitHub Release and Pages acceptance records determine publication and deployment status.
 
 ---
 
@@ -91,7 +91,7 @@ npm test         # runs Vitest
 
 **Static build package:** the production build in `dist/` is a static bundle and must be used through an HTTP static server (for example `npm run preview` or any static hosting service). Directly double-clicking `dist/index.html` via `file://` is not supported.
 
-**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ starts from a verified immutable Release ZIP, then applies a deterministic Pages-only overlay after all Release integrity, tag rebuild and local Release smoke gates pass. This source targets `v3.4.0`; full rollout acceptance requires the entire Pages workflow, including its final GitHub-hosted real Analytics check. Local and PR verification stub Cloudflare, so maintainers can keep privacy blockers enabled. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
+**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ starts from a verified immutable Release ZIP, then applies a deterministic Pages-only overlay after all Release integrity, tag rebuild and local Release smoke gates pass. This source targets `v3.4.1`; full rollout acceptance requires the entire Pages workflow, including its final GitHub-hosted real Analytics check. Local and PR verification stub Cloudflare, so maintainers can keep privacy blockers enabled. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
 
 **Workflow:**
 

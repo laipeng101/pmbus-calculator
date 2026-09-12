@@ -3,10 +3,9 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-12（v3.4.0 发行目标——MINOR：结果工作区收敛为数值模式
-“字段/参数 + 一条完整等式”，VOUT_MODE 保持结构化位域配置，“计算过程”只保留
-首屏没有的补充诊断。L11/L16/DIRECT/HALF 计算语义、canonical raw、复制与持久化
-合同不变；发行与部署状态由 GitHub 记录确认。）
+最后更新：2026-09-12（v3.4.1 发行目标——PATCH：修复 hosted real Analytics 验收与
+M43 版本徽标 `App vX.Y.Z` 的合同不一致，verifier 现在严格解析唯一 canonical 版本
+token 并 fail-closed；产品行为与全部分发边界不变。发行与部署状态由 GitHub 记录确认。）
 
 ## 当前产品基线
 
@@ -37,11 +36,11 @@
 ## 当前里程碑
 
 ```text
-M0–M43 complete；stable release v3.4.0（本源码发行目标）；production distribution: GitHub Pages。
+M0–M43 complete；stable release v3.4.1（本源码发行目标）；production distribution: GitHub Pages。
 ```
 
 以上版本声明是本源码的发行目标；在对应稳定 GitHub Release 公开前按待发布处理。
-本次准备开始时已发布稳定版为 v3.3.1；实际发行与部署状态以 GitHub Release 和
+本次准备开始时已发布稳定版为 v3.4.0；实际发行与部署状态以 GitHub Release 和
 Pages 验收记录为准。正式发行须先完成精确 main merge SHA 的 fresh 验证；
 上线完成还要求 Pages 全部门禁与同一 GitHub-hosted job 的真实 Cloudflare
 Analytics acceptance 通过；本地/PR/fresh 验证保持 exact stub 与隐私规则启用。
@@ -333,7 +332,13 @@ Analytics acceptance 通过；本地/PR/fresh 验证保持 exact stub 与隐私�
   补充诊断，参数槽位结构化并补齐术语放置；HALF `(-1)^s` 可读性修复。计算与舍入
   语义、canonical raw、复制格式、持久化与公开用户流程不变。发布细节见
   `docs/releases/v3.4.0.md`。
-- 当前：v3.4.0 源码发行目标，M40–M43 complete；正式 tag / Release / Pages
+- v3.4.1（PATCH，发行目标；实现 Done 2026-09-12）：修复 hosted 真实 Analytics 验收与
+  M43 版本徽标 `App vX.Y.Z` 的合同不一致——Pages post-deploy verifier 现在要求页面中
+  恰好一个版本徽标、其完整 trim 文本严格匹配 `App vX.Y.Z`，再复用
+  `release-artifact-contract` 的 `isPlainSemver`/`stableTag` 与期望 Release/tag
+  精确比较；缺失、malformed、重复与歧义 token 一律 fail-closed。产品行为、算法、
+  分发边界与既有 real Analytics 门禁不变。发布细节见 `docs/releases/v3.4.1.md`。
+- 当前：v3.4.1 源码发行目标，M40–M43 complete；正式 tag / Release / Pages
   按 `docs/RELEASING.md` 完成经授权的发布与 hosted real Analytics 验收。
 
 ## 下一产品目标

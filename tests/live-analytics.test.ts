@@ -44,7 +44,7 @@ const csp = Object.entries(PAGES_CSP)
   .map(([key, values]) => `${key} ${values.join(' ')}`)
   .join('; ')
 const facts = {
-  version: inputs.expectedTag,
+  version: '3.3.1',
   csp,
   cspPlacement: true,
   beaconValid: true,
@@ -186,7 +186,7 @@ describe('production page facts without client token output', () => {
     document.head.innerHTML = `<meta http-equiv="Content-Security-Policy" content="${csp}">
       <script type="module" src="./assets/app.js"></script>
       <link rel="stylesheet" href="./assets/app.css"><link rel="stylesheet" href="./pages-overlay.css">`
-    document.body.innerHTML = `<div id="root"><span data-testid="version-badge">v3.3.1</span></div>
+    document.body.innerHTML = `<div id="root"><span data-testid="version-badge">App v3.3.1</span></div>
       <a data-pages-only="repository-link" href="${PAGES_REPOSITORY_URL}" aria-label="${PAGES_REPOSITORY_NAME}" target="_blank" rel="noopener noreferrer"></a>
       <script type="module" src="${CLOUDFLARE_BEACON_URL}" data-cf-beacon='{"token":"${'a'.repeat(32)}"}'></script>`
   }
@@ -200,7 +200,7 @@ describe('production page facts without client token output', () => {
   })
 
   it.each([
-    ['version', 'v3.3.0', 'VERSION_MISMATCH'],
+    ['version', '3.3.0', 'VERSION_MISMATCH'],
     ['csp', 'script-src https:', 'CSP_ERROR'],
     ['cspPlacement', false, 'CSP_ERROR'],
     ['beaconValid', false, 'PAGE_CONTRACT_ERROR'],
@@ -210,6 +210,48 @@ describe('production page facts without client token output', () => {
   ])('rejects bad %s before accepting Analytics', (key, value, classification) => {
     expect(() => validateLiveDom({ ...facts, [String(key)]: value }, inputs.expectedTag)).toThrow(
       String(classification),
+    )
+  })
+
+  it.each([
+    ['App v3.3.1', '3.3.1'],
+    ['  App v3.3.1  ', '3.3.1'],
+  ])('parses the supported version badge %j', (text, expected) => {
+    document.body.innerHTML = `<span data-testid="version-badge">${text}</span>`
+    expect(readLiveDom(browserArguments).version).toBe(expected)
+  })
+
+  it.each([
+    'v3.3.1',
+    'App 3.3.1',
+    'App v3.3.1 v3.3.0',
+    'App v3.3.1 (build v9.9.9)',
+    'App vX.Y.Z',
+    'App v3.3',
+    '',
+  ])('fails closed on a missing, malformed or ambiguous badge %j', (text) => {
+    document.body.innerHTML = text === '' ? '' : `<span data-testid="version-badge">${text}</span>`
+    const result = readLiveDom(browserArguments)
+    expect(result.version).toBe('')
+    expect(() => validateLiveDom(result, inputs.expectedTag)).toThrow('VERSION_MISMATCH')
+  })
+
+  it('fails closed when the badge is missing or duplicated', () => {
+    document.body.innerHTML = ''
+    expect(() => validateLiveDom(readLiveDom(browserArguments), inputs.expectedTag)).toThrow(
+      'VERSION_MISMATCH',
+    )
+    document.body.innerHTML = `<span data-testid="version-badge">App v3.3.1</span>
+      <span data-testid="version-badge">App v3.3.1</span>`
+    expect(() => validateLiveDom(readLiveDom(browserArguments), inputs.expectedTag)).toThrow(
+      'VERSION_MISMATCH',
+    )
+  })
+
+  it('rejects a different deployed version with the supported badge shape', () => {
+    document.body.innerHTML = `<span data-testid="version-badge">App v3.3.0</span>`
+    expect(() => validateLiveDom(readLiveDom(browserArguments), inputs.expectedTag)).toThrow(
+      'VERSION_MISMATCH',
     )
   })
 
