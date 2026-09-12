@@ -3,10 +3,10 @@
 > 本文件是里程碑状态的唯一事实来源。不要在其他文档中重复维护进度表。
 > M25–M34 详细历史与探针记录由 Git/PR 保存，不再维护在 ROADMAP 中。
 
-最后更新：2026-09-09（v3.3.1 发行目标——PATCH：将既有真实 Analytics 验收
-固化为 GitHub-hosted Pages post-deploy 门禁，持久化本机隐私规则与发行合同。
-source / Release / Pages 分发边界、全部 provenance 门禁和产品行为保留；
-发行与部署状态由 GitHub 记录确认。）
+最后更新：2026-09-12（v3.4.0 发行目标——MINOR：结果工作区收敛为数值模式
+“字段/参数 + 一条完整等式”，VOUT_MODE 保持结构化位域配置，“计算过程”只保留
+首屏没有的补充诊断。L11/L16/DIRECT/HALF 计算语义、canonical raw、复制与持久化
+合同不变；发行与部署状态由 GitHub 记录确认。）
 
 ## 当前产品基线
 
@@ -37,11 +37,11 @@ source / Release / Pages 分发边界、全部 provenance 门禁和产品行为�
 ## 当前里程碑
 
 ```text
-M0–M43 complete；stable release v3.3.1（本源码发行目标）；production distribution: GitHub Pages。
+M0–M43 complete；stable release v3.4.0（本源码发行目标）；production distribution: GitHub Pages。
 ```
 
 以上版本声明是本源码的发行目标；在对应稳定 GitHub Release 公开前按待发布处理。
-本次准备开始时已发布稳定版为 v3.3.0；实际发行与部署状态以 GitHub Release 和
+本次准备开始时已发布稳定版为 v3.3.1；实际发行与部署状态以 GitHub Release 和
 Pages 验收记录为准。正式发行须先完成精确 main merge SHA 的 fresh 验证；
 上线完成还要求 Pages 全部门禁与同一 GitHub-hosted job 的真实 Cloudflare
 Analytics acceptance 通过；本地/PR/fresh 验证保持 exact stub 与隐私规则启用。
@@ -198,18 +198,20 @@ Analytics acceptance 通过；本地/PR/fresh 验证保持 exact stub 与隐私�
     提交后释放焦点，8 张 stress 基线逐图审查更新、其余 20 张不变）；Phase 5
     删除零引用 `ResultInspector.tsx`；Phase 6 文档与发布。UI_CONVENTIONS §7
     重写为「帮助浮层：术语气泡与控件说明」双合同。
-- M43（v3.3.1 源码树）：统一五模式结果工作区与 typeset 公式——结果卡成为
-  「同一台工程仪表切换五个档位」的单一结构 `src/app/result-workspace.ts`：字段/参数 →
-  通用关系式 → 当前数值代入三行固定行；数值模式继续经唯一 LaTeX→KaTeX→HTML+MathML
-  管线排版（`genericLatex`/`genericPlainText` 与 `detailLines` 同源，新增
-  `src/app/half-class.ts` 输出 HALF 零/次正规/正规/±Infinity/NaN 分类通用式，signed
-  zero 文本可辨）；结果上下文固定 `raw`/`format`/`parameters`/`context` 四逻辑槽位，
-  编码/解码方向只从已提交 `valueRequest`/`l11.valueInput` 推导（不读 DOM/焦点）；
-  VOUT_MODE 保持字节/位域配置解析：`字段`/`位解析`/`结果`三行 + UI/数据字体角色，
-  非法非零 DIRECT/Half 参数警告集中自 requirement 单一来源，绝不送入 KaTeX；模式栏
-  区分数值档位与配置解析并弱化 `Ctrl+1..5` 提示；版本徽标显示 `App vX.Y.Z`；移动端
-  压缩后 L16 标称参考值仍在 360/390 首屏内可达。删除零引用 `VoutModeConfigSummary.tsx`。
-  数值算法与 canonical raw 零变更。
+- M43（v3.4.0 源码树）：统一五模式结果工作区与首屏完整等式——结果卡成为
+  「同一台工程仪表切换五个档位」的单一结构 `src/app/result-workspace.ts`：数值模式
+  固定两行 `字段/参数` + `数值代入`，等式经唯一 LaTeX→KaTeX→HTML+MathML 管线排版
+  并串联「符号关系 → 当前值代入 → 最终结果」，终值绑定同一 canonical headline 文本；
+  `plainText`/`latex`（复制/C 宏）保持字节不变。结果上下文固定
+  `raw`/`format`/`parameters`/`context` 四逻辑槽位，`parameters` 为结构化
+  label/value（`ResultContextParamVM`）并携带术语元数据；编码/解码方向只从已提交
+  `valueRequest`/`l11.valueInput` 推导（不读 DOM/焦点）。VOUT_MODE 保持字节/位域配置
+  解析：`字段`/`位解析`/`结果`三行 + UI/数据字体角色，绝不送入 KaTeX。“计算过程”
+  （`buildCalculationSteps`）只保留首屏没有的饱和、精确有理数、量化误差、标称参考与
+  溢出/下溢诊断，普通解码整体省略容器；HALF `(-1)^s` 经共享 helper 以
+  `(-1)^{\textstyle s}` 排版，纯文本保持 `(-1)^s`。模式栏区分数值档位与配置解析并弱化
+  `Ctrl+1..5` 提示；版本徽标显示 `App vX.Y.Z`；移动端压缩后 L16 标称参考值仍在
+  360/390 首屏内可达。数值算法与 canonical raw 零变更。
 - v2.6.1（PATCH）：发布完整性与帮助系统契约加固——Pages `workflow_dispatch`
   必须在被部署 tag 的 ref 上发起，checkout 绑定解析出的 annotated tag 并校验
   peeled commit/HEAD/Release 元数据一致（`tests/pages-workflow.test.ts` 合同
@@ -326,11 +328,16 @@ Analytics acceptance 通过；本地/PR/fresh 验证保持 exact stub 与隐私�
   约束；最多 3 次独立尝试、总预算 ≤45s。AGENTS 与发布流程明确本机 blocker
   可始终启用、`ENVIRONMENT_BLOCKED` 不算应用失败或 Analytics PASS、hosted acceptance 才是权威。
   普通 verify / PR CI 继续 deterministic；完整 provenance 与产品合同不变。
-- 当前：v3.3.1 源码发行目标，M40–M42 complete；正式 tag / Release / Pages
+- v3.4.0（MINOR，发行目标；实现 Done 2026-09-12）：结果工作区收敛——数值模式
+  “字段/参数 + 一条完整等式”，VOUT_MODE 保持结构化位域配置，“计算过程”只保留
+  补充诊断，参数槽位结构化并补齐术语放置；HALF `(-1)^s` 可读性修复。计算与舍入
+  语义、canonical raw、复制格式、持久化与公开用户流程不变。发布细节见
+  `docs/releases/v3.4.0.md`。
+- 当前：v3.4.0 源码发行目标，M40–M43 complete；正式 tag / Release / Pages
   按 `docs/RELEASING.md` 完成经授权的发布与 hosted real Analytics 验收。
 
 ## 下一产品目标
 
-- v3.3.1 源码树已完成 M43 五模式统一结果工作区；源码版本声明不等于发布。
+- v3.4.0 源码树已完成 M43 五模式统一结果工作区与首屏完整等式；源码版本声明不等于发布。
   下一次产品增量（新功能、UI、算法或数据变更）由新的任务定义；发布流程遵循
   `docs/RELEASING.md`，里程碑状态在本文件更新。

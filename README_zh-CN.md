@@ -8,11 +8,11 @@
 
 > **范围声明：** 本工具只做数值格式换算；它**不是** PMBus/SMBus 控制器、总线传输实现、命令执行器、设备 Profile 引擎或一致性测试套件。它覆盖 PMBus 多个修订版本中通用的数值格式语义，且**不声明**完整 PMBus 1.5 协议一致性（含 1.5 安全扩展）。
 >
-> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （发布目标 `v3.3.1`）
+> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （发布目标 `v3.4.0`）
 >
-> **稳定发行目标：** [`v3.3.1`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.3.1) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.3.1/SHA256SUMS.txt)
+> **稳定发行目标：** [`v3.4.0`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.4.0) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.4.0/SHA256SUMS.txt)
 >
-> 本源码的发行目标为 v3.3.1；在对应稳定 GitHub Release 公开前按待发布处理。实际发行和部署状态以 GitHub Release / Pages 验收记录为准。
+> 本源码的发行目标为 v3.4.0；在对应稳定 GitHub Release 公开前按待发布处理。实际发行和部署状态以 GitHub Release / Pages 验收记录为准。
 
 ---
 
@@ -91,7 +91,7 @@ npm test         # 运行 Vitest 测试
 
 **静态构建包：** `dist/` 是静态构建产物，必须通过 HTTP 静态服务器使用（例如 `npm run preview` 或任意静态托管服务），不承诺直接双击 `dist/index.html` 以 `file://` 方式打开。
 
-**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 从已验证的不可变 Release ZIP 开始，全部 Release 完整性、tag 重建与本地 Release smoke 门禁通过后，再执行确定性的 Pages-only overlay。本源码的发行目标为 `v3.3.1`；完整上线验收要求整个 Pages workflow 成功，包括最后的 GitHub-hosted 真实 Analytics 检查。本地与 PR 验证使用 Cloudflare stub，维护者可以始终启用隐私拦截规则。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
+**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 从已验证的不可变 Release ZIP 开始，全部 Release 完整性、tag 重建与本地 Release smoke 门禁通过后，再执行确定性的 Pages-only overlay。本源码的发行目标为 `v3.4.0`；完整上线验收要求整个 Pages workflow 成功，包括最后的 GitHub-hosted 真实 Analytics 检查。本地与 PR 验证使用 Cloudflare stub，维护者可以始终启用隐私拦截规则。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
 
 **操作流程：**
 
