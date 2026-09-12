@@ -4,6 +4,29 @@
 
 ## [Unreleased]
 
+## [3.4.1] - 2026-09-12
+
+> 本源码的发行目标为 v3.4.1；稳定 GitHub Release 公开前按待发布处理。
+> 发行与部署状态以 GitHub Release / Pages 验收记录为准。
+
+### Fixed
+
+- **hosted 真实 Analytics 验收与版本徽标合同对齐**：v3.4.0 起版本徽标按 M43 设计
+  渲染 `App vX.Y.Z`，但 Pages post-deploy 的 `scripts/verify-live-analytics.mjs`
+  仍把徽标完整展示文本与稳定 tag（`vX.Y.Z`）直接比较，使验收确定性失败为
+  `VERSION_MISMATCH`。verifier 现在要求页面中恰好一个版本徽标，其完整 trim 文本严格
+  匹配 `App vX.Y.Z`，再复用 `release-artifact-contract` 的 `isPlainSemver` /
+  `stableTag` 与期望 Release/tag 精确比较。
+- **fail-closed 回归测试**：缺失徽标、malformed 文本、重复徽标与多/歧义版本 token
+  一律 `VERSION_MISMATCH`；不使用“任意位置找到 semver 即接受”的宽松匹配。beacon、
+  RUM、CORS、unexpected origin 与 pageError 门禁保持不变。
+
+### Unchanged
+
+- 版本徽标展示（`App vX.Y.Z`）、产品行为、算法、canonical raw、复制、持久化与公开
+  用户流程不变；Release / Pages provenance、overlay、CSP 与网络 allowlist 不变。
+  本次为向后兼容 PATCH。
+
 ## [3.4.0] - 2026-09-12
 
 > 本源码的发行目标为 v3.4.0；稳定 GitHub Release 公开前按待发布处理。
