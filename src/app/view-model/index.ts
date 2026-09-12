@@ -29,6 +29,7 @@ import {
 } from './l16'
 import { buildVoutModeVM } from './vout-mode'
 import { buildResultContext } from './result-context'
+import { buildResultWorkspace } from '../result-workspace'
 
 export type {
   BitGroupVM,
@@ -163,6 +164,12 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     formulaLatex: formula.latex,
     formulaGenericLatex: formula.genericLatex,
     formulaDetailLines: formula.detailLines,
+    workspace: buildResultWorkspace(state, {
+      formula,
+      valueText,
+      voutModeInfo,
+      voutModePage,
+    }),
     deltaText,
     deltaKind,
     deltaNote,

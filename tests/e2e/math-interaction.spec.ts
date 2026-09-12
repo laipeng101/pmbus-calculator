@@ -50,7 +50,8 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     await expect(page.locator('.katex-error')).toHaveCount(0)
 
     const byteFont = await summary
-      .locator('.vout-config-byte')
+      .locator('[data-testid="result-row-generic"] .result-segment[data-role="data"]')
+      .first()
       .evaluate((el) => getComputedStyle(el).fontFamily)
     expect(byteFont).toContain('mono')
     const summaryFont = await summary.evaluate((el) => getComputedStyle(el).fontFamily)

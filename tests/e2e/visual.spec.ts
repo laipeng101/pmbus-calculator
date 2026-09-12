@@ -14,9 +14,9 @@ import { test, expect, type Page } from '@playwright/test'
 async function normalizeVersionBadge(page: Page) {
   const badge = page.getByTestId('version-badge')
   await expect(badge).toBeVisible()
-  await expect(badge).toHaveText(/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/)
+  await expect(badge).toHaveText(/^App v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/)
   await badge.evaluate((el) => {
-    el.textContent = 'v0.0.0-visual'
+    el.textContent = 'App v0.0.0-visual'
   })
 }
 

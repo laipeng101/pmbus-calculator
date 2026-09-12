@@ -80,7 +80,7 @@ test('结果旁的 raw、参数来源与状态跟随配置变化，不借用 LIN
   await page.locator('#direct-coeff-r-input').fill('12')
   await page.locator('#direct-coeff-r-input').press('Tab')
   await expect(context).toContainText('R = 12')
-  await expect(context).toContainText('器件数据手册')
+  await expect(context).toContainText('器件相关')
   await page.getByRole('tab', { name: /LINEAR16/ }).click()
   await page.locator('#vout-mode-input').fill('20')
   await page.locator('#vout-mode-input').press('Tab')

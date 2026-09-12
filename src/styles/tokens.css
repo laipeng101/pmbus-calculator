@@ -653,7 +653,7 @@ select:disabled,
 
 @media (max-width: 639px) {
   .result-value-xl {
-    font-size: 1.875rem;
+    font-size: 1.5rem;
   }
 
   .result-value-lg {
@@ -667,14 +667,6 @@ select:disabled,
   .result-value-sm {
     font-size: 1rem;
   }
-}
-
-.formula-summary {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
-  text-align: center;
 }
 
 /* =========================================================
@@ -705,10 +697,214 @@ select:disabled,
   }
 }
 
-.result-summary-formula {
+/* Three reserved semantic rows shared by all five modes. Opacity-only enter
+   motion (no layout shift); the global reduced-motion rule disables it. */
+.result-summary-rows {
+  display: grid;
+  grid-template-rows: repeat(3, minmax(1.5rem, auto));
+  align-content: center;
+  gap: 6px;
+  animation: result-workspace-enter 140ms ease-out;
+}
+
+@keyframes result-workspace-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.result-row {
+  display: grid;
+  grid-template-columns: minmax(4.25rem, max-content) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  min-height: 1.5rem;
+}
+
+.result-row-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.result-row-value {
+  min-width: 0;
+}
+
+.result-field-list {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result-field {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 0.8125rem;
+}
+
+.result-field-label {
+  color: var(--color-text-muted);
+}
+
+.result-field-value {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.result-field-code {
+  font-family: var(--font-mono);
+}
+
+.result-math {
+  display: flex;
   justify-content: center;
+}
+
+/* Keep the two math rows compact: KaTeX display math defaults to 1em block
+   margins, which would push the result card past the first-screen budget. */
+.result-math .katex-display {
+  margin: 0.25em 0;
+}
+
+@media (min-width: 768px) {
+  .result-math {
+    justify-content: flex-start;
+  }
+}
+
+/* VOUT_MODE configuration rows: mono/data role for byte and bit strings, UI
+   role for tokens and status. This surface must never contain KaTeX. */
+.result-segments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  font-size: 0.8125rem;
+}
+
+.result-segment[data-role='data'] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.result-segment[data-role='ui'] {
+  color: var(--color-text-secondary);
+}
+
+.result-summary-rows[data-alert='true']
+  .result-row[data-row='substitution']
+  .result-segment[data-role='ui'] {
+  color: var(--color-warning);
+}
+
+/* Four stable logical context slots plus the central direction indicator. */
+.result-context-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin-top: 8px;
+}
+
+.result-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 4px 16px;
+  margin: 0;
+}
+
+@media (min-width: 768px) {
+  .result-context-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.result-context-slot {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+
+.result-context-slot dt {
+  flex-shrink: 0;
+}
+
+.result-context-slot dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.result-direction {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.result-direction[data-kind='encode'] {
+  color: var(--color-text-secondary);
+}
+
+/* Mobile compaction: keep the headline, the three reserved rows and the four
+   context slots inside the first screen without horizontal overflow. */
+@media (max-width: 639px) {
+  .result-summary-rows {
+    grid-template-rows: repeat(3, minmax(1.25rem, auto));
+    gap: 2px;
+  }
+
+  .result-row {
+    min-height: 1.25rem;
+  }
+
+  .result-row-label {
+    font-size: 0.625rem;
+  }
+
+  .result-field-list {
+    gap: 2px 8px;
+  }
+
+  .result-field {
+    font-size: 0.75rem;
+  }
+
+  .result-math .katex-display {
+    margin: 0;
+  }
+
+  .result-math .katex {
+    font-size: 0.75rem;
+  }
+
+  .result-context-row {
+    margin-top: 4px;
+  }
+
+  .result-context-grid {
+    gap: 2px 8px;
+  }
+
+  .result-context-slot {
+    font-size: 0.6875rem;
+  }
 }
 
 /* =========================================================
@@ -1041,6 +1237,14 @@ select:disabled,
   box-shadow: 0 4px 6px -1px rgb(30 64 175 / 0.2);
 }
 
+/* Subtle divider grouping the four numeric tabs from VOUT_MODE (desktop). */
+.mode-tab-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 0 0.25rem;
+  background: var(--color-border);
+}
+
 .preference-button {
   background: var(--color-surface);
   color: var(--color-text-secondary);
@@ -1367,49 +1571,6 @@ select:disabled,
 .exponent-input {
   height: 1.5rem;
   min-height: 1.5rem;
-}
-
-/* =========================================================
-   VOUT_MODE structured composer
-   ========================================================= */
-
-.vout-config-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 0.9375rem;
-}
-
-@media (min-width: 768px) {
-  .vout-config-summary {
-    justify-content: flex-start;
-  }
-}
-
-.vout-config-seq {
-  color: var(--color-text-muted);
-}
-
-.vout-config-sep {
-  color: var(--color-text-muted);
-}
-
-.vout-config-byte {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--color-text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.vout-config-state {
-  color: var(--color-text-secondary);
-}
-
-.vout-config-summary[data-alert='true'] .vout-config-state {
-  color: var(--color-warning);
-  font-weight: 600;
 }
 
 .vout-composer-controls {

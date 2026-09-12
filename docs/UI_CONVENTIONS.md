@@ -28,8 +28,13 @@
   - `plainText`：纯文本公式，继续用于复制输出和 C 宏注释，保持兼容；
   - `latex`：KaTeX 源码，只用于屏幕排版；
   - `genericLatex`：工作区通用关系式；
-  - `detailLines`：结果面板的语义化行数组（`summary` / `expansion`）。HALF 在 headline 已显示最终物理值时，展开式不重复最终长小数。
+  - `detailLines`：结果面板的语义化行数组（`summary` / `expansion`）。HALF 在 headline 已显示最终物理值时，展开式不重复最终长小数；
+  - `genericPlainText`：通用关系式的纯文本镜像，供无 KaTeX 环境与复制路径使用。
 - L11 / L16 / DIRECT / HALF 四种模式都从该层取得纯文本与 LaTeX；JSX 不自行拼装动态计算公式。
+- 五模式共享同一“结果工作区”三行结构（`src/app/result-workspace.ts`）：字段/参数 → 通用关系式 → 当前数值代入。
+  数值模式经 `MathFormula` 排版；VOUT_MODE 保持同一空间节奏，渲染 `字段` / `位解析` / `结果` 配置行，绝不进入 KaTeX。
+- 结果上下文固定为四个逻辑槽位 `raw` / `format` / `parameters` / `context`，顺序不随模式变化；
+  编码/解码方向只从已提交的 `valueRequest` / `l11.valueInput` 推导，不读 DOM、焦点或局部标志。
 - 公式只来自内部受控模板，不接受用户输入任意 TeX。
 - 必须正确处理负指数、负系数、括号、`m = 0` 和 HALF 特殊值。
 - 渲染组件 `src/components/math/MathFormula.tsx` 使用 `katex.render(tex, element, options)` DOM API，
@@ -202,7 +207,7 @@
   模式切换/组件卸载维持既有边界，标记不跨模式泄漏。
 - 模式切换后不得留下与当前显示值矛盾的 stale error（错误随字段所在 workspace
   卸载清除；DIRECT 系数错误随状态保留、只在 DIRECT 模式渲染）。
-- 全局快捷键 `Ctrl+1..4` 仅在非编辑上下文生效：`src/app/editable-target.ts` 判定
+- 全局快捷键 `Ctrl+1..5` 仅在非编辑上下文生效：`src/app/editable-target.ts` 判定
   input/textarea/select/contenteditable/role=textbox/role=combobox（含祖先），
   且 Meta/Alt/Shift 变体一律不作为快捷键。编辑区按快捷键不得切换模式、丢 draft
   或抢焦点；不得通过删除快捷键或隐藏提示规避问题。
@@ -309,8 +314,9 @@
 | 数据 | `var(--font-mono)` | Hex、binary、raw 数字、bit/nibble 数字、字节摘要 |
 | 数学 | KaTeX              | 真实公式、指数与等式（如 `X = Y × 2^N`）         |
 
-- 配置摘要（`VOUT_MODE = 0x18 · LINEAR · 绝对值`）是结构化状态，不是公式：
-  byte 用数据字体、token/状态用 UI 字体，不得经 KaTeX 渲染。
+- VOUT_MODE 结果工作区是结构化状态，不是公式：`字段`（bit7 / bits[6:5] / bits[4:0]）、
+  `位解析`（`0x18 = 0 | 00 | 11000`）与 `结果`（绝对值/相对值 · 格式 · N 或参数非法警告）三行。
+  byte 与 bit 串用数据字体、token/状态用 UI 字体，不得经 KaTeX 渲染。
   合同测试在 `tests/e2e/math-interaction.spec.ts`（配置摘要无 `.katex`、无 serif 回退）。
 - 结果主数值保持等宽 + `font-variant-numeric: tabular-nums` 合同不变。
 

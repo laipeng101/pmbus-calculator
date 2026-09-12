@@ -3,6 +3,7 @@ import { PMBusMath } from '../legacy/pmbus-math'
 import { deriveL16Semantics } from './l16-derivation'
 import { formatPlainNumber, formatPlainNumberLatex } from './numeric-presentation'
 import { RELATIVE_VOLTAGE_OVERFLOW_NOTE, RELATIVE_VOLTAGE_UNDERFLOW_NOTE } from './relative-voltage'
+import { classifyHalf, halfClassGenericLatex, halfClassGenericPlainText } from './half-class'
 
 export interface FormulaPresentation {
   /** Plain-text formula used for copy output and C macro comments. */
@@ -11,6 +12,8 @@ export interface FormulaPresentation {
   latex: string
   /** KaTeX source for the generic symbol relation shown in the workspace. */
   genericLatex: string
+  /** Plain-text mirror of the generic relation (copy / KaTeX fallback). */
+  genericPlainText: string
   /**
    * Structured on-screen formula lines. The headline value is displayed
    * separately, so HALF expansion lines intentionally do not repeat the final
@@ -168,6 +171,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
         plainText,
         latex,
         genericLatex: 'X = Y \\times 2^N',
+        genericPlainText: 'X = Y × 2^N',
         detailLines: singleExpansionLine(plainText, latex),
       }
     }
@@ -186,6 +190,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
           plainText,
           latex: '\\text{共享 VOUT_MODE 非 LINEAR，未计算（§8.4）}',
           genericLatex: '\\text{需要 LINEAR VOUT_MODE}',
+          genericPlainText: plainText,
           detailLines: [],
         }
       }
@@ -197,6 +202,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
           plainText,
           latex,
           genericLatex: 'X_{offset} = Y_s \\times 2^N',
+          genericPlainText: 'X_offset = Y_s × 2^N',
           detailLines: singleExpansionLine(
             `Y_s=${y} × 2^${n}（bit7 N/A for signed offset payload）`,
             `Y_s = ${y} \\times 2^{${n}} \\quad (\\text{bit7 N/A for signed offset payload})`,
@@ -220,6 +226,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
             plainText,
             latex,
             genericLatex: 'R = Y_u \\times 2^N',
+            genericPlainText: 'R = Y_u × 2^N',
             detailLines: singleExpansionLine(plainText, latex),
           }
         }
@@ -234,6 +241,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
             plainText,
             latex,
             genericLatex: 'R = Y_u \\times 2^N;\\ X = V_{NOM} \\times R',
+            genericPlainText: 'R = Y_u × 2^N; X = V_NOM × R',
             detailLines: singleExpansionLine(plainText, latex),
           }
         }
@@ -244,6 +252,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
           plainText,
           latex,
           genericLatex: 'R = Y_u \\times 2^N;\\ X = V_{NOM} \\times R',
+          genericPlainText: 'R = Y_u × 2^N; X = V_NOM × R',
           detailLines: singleExpansionLine(plainText, latex),
         }
       }
@@ -255,6 +264,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
         plainText,
         latex,
         genericLatex: 'X = V \\times 2^N',
+        genericPlainText: 'X = V × 2^N',
         detailLines: singleExpansionLine(plainText, latex),
       }
     }
@@ -270,6 +280,7 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
           plainText,
           latex,
           genericLatex: 'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)',
+          genericPlainText: 'X = (1/m) × (Y × 10^(-R) − b)',
           detailLines: singleExpansionLine(plainText, latex),
         }
       }
@@ -285,32 +296,36 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
         plainText,
         latex,
         genericLatex: 'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)',
+        genericPlainText: 'X = (1/m) × (Y × 10^(-R) − b)',
         detailLines: singleExpansionLine(plainText, latex),
       }
     }
 
     case 'HALF': {
+      const facts = classifyHalf(state.raw)
       return {
         ...getHalfPresentation(state.raw),
-        genericLatex: 'X = \\text{IEEE 754 binary16 分段解码}',
+        genericLatex: halfClassGenericLatex(facts.klass),
+        genericPlainText: halfClassGenericPlainText(facts.klass),
       }
     }
 
     case 'VOUT_MODE': {
       // A VOUT_MODE byte is structured configuration state, not a math
       // equation: it must never be typeset with KaTeX/serif. The result panel
-      // renders it through VoutModeConfigSummary (UI/data font roles); the
+      // renders it through the workspace config rows (UI/data font roles); the
       // plainText contract below only serves copy tooling.
       const hex = state.voutMode.byte.toString(16).toUpperCase().padStart(2, '0')
       return {
         plainText: 'VOUT_MODE 0x' + hex,
         latex: '',
         genericLatex: '',
+        genericPlainText: '',
         detailLines: [],
       }
     }
 
     default:
-      return { plainText: '', latex: '', genericLatex: '', detailLines: [] }
+      return { plainText: '', latex: '', genericLatex: '', genericPlainText: '', detailLines: [] }
   }
 }

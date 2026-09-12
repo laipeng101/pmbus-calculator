@@ -5,6 +5,7 @@ import type { CalculationStepVM } from '../calculation-steps'
 import type { HalfSpecialSemantics } from '../half-special-semantics'
 import type { L16FormatSemantics } from '../l16-payload-contract'
 import type { VoutModeExplanation } from '../vout-mode-explanation'
+import type { TermId } from '../terminology'
 
 export interface BitGroupVM {
   nibbleIndex: number
@@ -156,10 +157,56 @@ export interface VoutModeInfoVM {
   nibbles: VoutModeNibbleVM[]
 }
 
+/** Stable four-slot result-context contract (UI_CONVENTIONS §2). */
+export type ResultContextSlotKey = 'raw' | 'format' | 'parameters' | 'context'
+
 export interface ResultContextItemVM {
+  /** Stable logical slot; the glyph order never changes across modes. */
+  key: ResultContextSlotKey
   label: string
   value: string
   code?: boolean
+  /** Existing glossary disclosure affordance (DIRECT source help); never a new copy source. */
+  termId?: TermId
+}
+
+/** One semantic row of the result workspace's three-row contract. */
+export type ResultRowKey = 'fields' | 'generic' | 'substitution'
+export type ResultRowPresentation = 'fields' | 'math' | 'config'
+
+export interface ResultFieldVM {
+  label: string
+  value: string
+  code?: boolean
+}
+
+/** One font-role-attributed span of a VOUT_MODE configuration row. */
+export interface ResultSegmentVM {
+  text: string
+  role: 'ui' | 'data'
+  /** Optional existing glossary disclosure (e.g. the VOUT_MODE format term). */
+  termId?: TermId
+}
+
+export interface ResultRowVM {
+  key: ResultRowKey
+  label: string
+  presentation: ResultRowPresentation
+  fields?: ResultFieldVM[]
+  latex?: string
+  plainText?: string
+  segments?: ResultSegmentVM[]
+}
+
+/** Real request provenance, derived centrally from committed state only. */
+export interface ResultDirectionVM {
+  kind: 'decode' | 'encode'
+  label: string
+}
+
+export interface ResultWorkspaceVM {
+  rows: ResultRowVM[]
+  direction?: ResultDirectionVM
 }
 
 export interface CalculatorViewModel {
@@ -168,6 +215,8 @@ export interface CalculatorViewModel {
   valueLabel: string
   /** Raw identity, active interpretation and parameter sources beside the result. */
   resultContext: ResultContextItemVM[]
+  /** Unified three-row result workspace shared by all five modes. */
+  workspace: ResultWorkspaceVM
   /**
    * The main Raw Word hex ('0x' + 4 digits) — always the canonical numeric
    * raw word in every mode (v3.0.0). Identical to rawWordHex.

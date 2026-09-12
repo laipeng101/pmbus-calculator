@@ -136,6 +136,7 @@ tests/e2e/e2e-results*.json
 # =========================================================
 
 .claude/
+.dsh/
 .zcode/plans/
 everything-claude-code/
 .playwright-mcp/

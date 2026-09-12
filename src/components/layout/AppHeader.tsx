@@ -16,7 +16,7 @@ export default function AppHeader({ theme, onThemeChange }: Props) {
             <TechnicalTerm termId="pmbus" /> 数值格式计算器
           </h1>
           <span data-testid="version-badge" className="version-badge">
-            v{__APP_VERSION__}
+            App v{__APP_VERSION__}
           </span>
         </div>
         <p className="mt-0.5 text-xs color-text-muted">
