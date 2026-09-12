@@ -3,29 +3,56 @@ import { PMBusMath } from '../legacy/pmbus-math'
 import { deriveL16Semantics } from './l16-derivation'
 import { formatPlainNumber, formatPlainNumberLatex } from './numeric-presentation'
 import { RELATIVE_VOLTAGE_OVERFLOW_NOTE, RELATIVE_VOLTAGE_UNDERFLOW_NOTE } from './relative-voltage'
-import { classifyHalf, halfClassGenericLatex, halfClassGenericPlainText } from './half-class'
+import {
+  classifyHalf,
+  halfClassGenericLatex,
+  halfClassGenericPlainText,
+  halfSignPowerLatex,
+} from './half-class'
 
+/**
+ * Canonical formula presentation.
+ *
+ * Two contracts live here and must never be confused:
+ *  - `plainText` / `latex` are the copy/C-macro contract. This PR keeps their
+ *    user-visible output byte-identical to the previous release.
+ *  - `equationLatex` / `equationPlainText` are the canonical FIRST-SCREEN
+ *    equation for the numeric workspace: symbolic relation → current
+ *    substituted values → final current result, or a truthful fail-closed
+ *    terminal when no numeric result exists. The workspace renders them
+ *    directly and never infers the first screen from auxiliary lines.
+ *  - `symbolicLatex` / `symbolicPlainText` are the symbolic-only relation for
+ *    auxiliary panels (the DIRECT input helper) — never the first screen.
+ */
 export interface FormulaPresentation {
-  /** Plain-text formula used for copy output and C macro comments. */
+  /** Plain-text formula used for copy output and C macro comments (unchanged contract). */
   plainText: string
-  /** KaTeX source used for on-screen dynamic formula. */
+  /** KaTeX source for the on-screen dynamic formula (unchanged contract). */
   latex: string
-  /** KaTeX source for the generic symbol relation shown in the workspace. */
-  genericLatex: string
-  /** Plain-text mirror of the generic relation (copy / KaTeX fallback). */
-  genericPlainText: string
-  /**
-   * Structured on-screen formula lines. The headline value is displayed
-   * separately, so HALF expansion lines intentionally do not repeat the final
-   * decimal value. `plainText`/`latex` above remain the copy/C-macro contract.
-   */
-  detailLines: FormulaDetailLine[]
+  /** Complete first-screen equation (symbolic → substitution → result). */
+  equationLatex: string
+  equationPlainText: string
+  /** Symbolic-only relation for auxiliary panels. */
+  symbolicLatex: string
+  symbolicPlainText: string
 }
 
-export interface FormulaDetailLine {
-  kind: 'summary' | 'expansion'
-  plainText: string
-  latex: string
+/**
+ * KaTeX-safe terminal derived from the canonical plain result string. This is a
+ * presentation transform of the SAME canonical text the headline displays —
+ * never an independent numeric format.
+ */
+function terminalLatex(text: string): string {
+  switch (text) {
+    case 'NaN':
+      return '\\text{NaN}'
+    case '+Infinity':
+      return '+\\infty'
+    case '-Infinity':
+      return '-\\infty'
+    default:
+      return text
+  }
 }
 
 function formatSignedInt(value: number): string {
@@ -47,121 +74,21 @@ function formatDirectTerm(value: number): string {
   return value < 0 ? `(${value})` : String(value)
 }
 
-interface HalfPresentation {
-  plainText: string
-  latex: string
-  detailLines: FormulaDetailLine[]
-}
-
-function halfSummaryLine(sign: number, exponent: number, fraction: number): FormulaDetailLine {
-  const plainText = `s = ${sign}, E = ${exponent}, F = ${fraction}`
-  return {
-    kind: 'summary',
-    plainText,
-    latex: `s = ${sign},\\ E = ${exponent},\\ F = ${fraction}`,
-  }
-}
-
-function getHalfPresentation(raw: number): HalfPresentation {
-  const sign = (raw >> 15) & 1
-  const exponent = (raw >> 10) & 0x1f
-  const fraction = raw & 0x3ff
-  const signText = sign ? '-' : '+'
-  const signPower = `(-1)^{${sign}}`
-
-  if (exponent === 0 && fraction === 0) {
-    return {
-      plainText: `HALF zero ${signPower}×0=${signText}0`,
-      latex: `X = ${signPower} \\times 0 = ${signText}0`,
-      detailLines: [
-        halfSummaryLine(sign, exponent, fraction),
-        {
-          kind: 'expansion',
-          plainText: `X = ${signPower} × 0 = ${signText}0`,
-          latex: `X = ${signPower} \\times 0 = ${signText}0`,
-        },
-      ],
-    }
-  }
-
-  if (exponent === 0) {
-    const value = PMBusMath.decodeHalf(raw).value
-    const valueText = formatPlainNumber(value)
-    return {
-      plainText: `HALF subnormal ${signPower}×2^-14×${fraction}/1024=${valueText}`,
-      latex: `X = ${signPower} \\times 2^{-14} \\times \\frac{${fraction}}{2^{10}} = ${formatPlainNumberLatex(value)}`,
-      detailLines: [
-        halfSummaryLine(sign, exponent, fraction),
-        {
-          kind: 'expansion',
-          plainText: `X = ${signPower} × 2^-14 × ${fraction}/1024`,
-          latex: `X = ${signPower} \\times 2^{-14} \\times \\frac{${fraction}}{2^{10}}`,
-        },
-      ],
-    }
-  }
-
-  if (exponent === 0x1f) {
-    if (fraction === 0) {
-      return {
-        plainText: `HALF ${signText}Infinity (E=31,F=0)`,
-        latex: `X = ${signPower} \\times \\infty = ${sign ? '-' : '+'}\\infty \\quad (E=31,\\ F=0)`,
-        detailLines: [
-          halfSummaryLine(sign, exponent, fraction),
-          {
-            kind: 'expansion',
-            plainText: `X = ${signPower} × ∞ = ${sign ? '-' : '+'}∞`,
-            latex: `X = ${signPower} \\times \\infty = ${sign ? '-' : '+'}\\infty`,
-          },
-        ],
-      }
-    }
-    return {
-      plainText: `HALF NaN (E=31,F=${fraction})`,
-      latex: `X = \\text{NaN} \\quad (E=31,\\ F=${fraction})`,
-      detailLines: [
-        {
-          kind: 'summary',
-          plainText: `E = 31, F = ${fraction}`,
-          latex: `E = 31,\\ F = ${fraction}`,
-        },
-        {
-          kind: 'expansion',
-          plainText: 'X = NaN',
-          latex: 'X = \\text{NaN}',
-        },
-      ],
-    }
-  }
-
-  const value = PMBusMath.decodeHalf(raw).value
-  const valueText = formatPlainNumber(value)
-  return {
-    plainText: `HALF normal ${signPower}×2^(${exponent}-15)×(1+${fraction}/1024)=${valueText}`,
-    latex: `X = ${signPower} \\times 2^{${exponent}-15} \\times \\left(1 + \\frac{${fraction}}{2^{10}}\\right) = ${formatPlainNumberLatex(value)}`,
-    detailLines: [
-      halfSummaryLine(sign, exponent, fraction),
-      {
-        kind: 'expansion',
-        plainText: `X = ${signPower} × 2^(${exponent}-15) × (1 + ${fraction}/1024)`,
-        latex: `X = ${signPower} \\times 2^{${exponent}-15} \\times \\left(1 + \\frac{${fraction}}{2^{10}}\\right)`,
-      },
-    ],
-  }
-}
-
-function singleExpansionLine(plainText: string, latex: string): FormulaDetailLine[] {
-  return [{ kind: 'expansion', plainText, latex }]
-}
+const DIRECT_SYMBOLIC_LATEX = 'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)'
+const DIRECT_SYMBOLIC_PLAIN = 'X = (1/m) × (Y × 10^(-R) − b)'
 
 /**
  * Single source of truth for on-screen formulas.
  *
- * `plainText` is the readable copy/C-macro comment.  `latex` is typeset only
- * in the UI by KaTeX.  PMBus calculations are never performed here; only
- * existing decoders are called for display classification.
+ * `canonicalResultText` is the canonical headline text (computeValueText). The
+ * equation terminal is derived from it, so the equation and the headline can
+ * never drift. PMBus calculations are never performed here; only existing
+ * decoders are called for display classification.
  */
-export function getFormulaPresentation(state: AppState): FormulaPresentation {
+export function getFormulaPresentation(
+  state: AppState,
+  canonicalResultText: string,
+): FormulaPresentation {
   switch (state.mode) {
     case 'L11': {
       const decoded = PMBusMath.decodeLinear11(state.raw)
@@ -170,9 +97,10 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       return {
         plainText,
         latex,
-        genericLatex: 'X = Y \\times 2^N',
-        genericPlainText: 'X = Y × 2^N',
-        detailLines: singleExpansionLine(plainText, latex),
+        symbolicLatex: 'X = Y \\times 2^N',
+        symbolicPlainText: 'X = Y × 2^N',
+        equationPlainText: `X = Y × 2^N = ${decoded.y} × 2^${decoded.n} = ${canonicalResultText}`,
+        equationLatex: `${latex} = ${terminalLatex(canonicalResultText)}`,
       }
     }
 
@@ -186,12 +114,14 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       if (facts.interpretation.kind === 'non-linear') {
         const sharedHex = '0x' + facts.analysis.byte.toString(16).toUpperCase().padStart(2, '0')
         const plainText = `共享 VOUT_MODE ${sharedHex} 非 LINEAR；输出电压命令的数据格式由 VOUT_MODE 决定（§8.4），未计算。`
+        const latex = '\\text{共享 VOUT_MODE 非 LINEAR，未计算（§8.4）}'
         return {
           plainText,
-          latex: '\\text{共享 VOUT_MODE 非 LINEAR，未计算（§8.4）}',
-          genericLatex: '\\text{需要 LINEAR VOUT_MODE}',
-          genericPlainText: plainText,
-          detailLines: [],
+          latex,
+          symbolicLatex: '\\text{需要 LINEAR VOUT_MODE}',
+          symbolicPlainText: plainText,
+          equationPlainText: plainText,
+          equationLatex: latex,
         }
       }
       if (facts.interpretation.kind === 'signed-offset') {
@@ -201,12 +131,10 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
         return {
           plainText,
           latex,
-          genericLatex: 'X_{offset} = Y_s \\times 2^N',
-          genericPlainText: 'X_offset = Y_s × 2^N',
-          detailLines: singleExpansionLine(
-            `Y_s=${y} × 2^${n}（bit7 N/A for signed offset payload）`,
-            `Y_s = ${y} \\times 2^{${n}} \\quad (\\text{bit7 N/A for signed offset payload})`,
-          ),
+          symbolicLatex: 'X_{offset} = Y_s \\times 2^N',
+          symbolicPlainText: 'X_offset = Y_s × 2^N',
+          equationPlainText: `X_offset = Y_s × 2^N = ${y} × 2^${n} = ${canonicalResultText}`,
+          equationLatex: `X_{offset} = Y_s \\times 2^N = ${y} \\times 2^{${n}} = ${terminalLatex(canonicalResultText)}`,
         }
       }
 
@@ -219,15 +147,20 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
         const { n, ratio, nominal, finalVoltage } = facts.interpretation
         const ratioText = formatPlainNumber(ratio)
         const percentText = formatPlainNumber(ratio * 100)
+        const ratioLatex = formatPlainNumberLatex(ratio)
+        const percentLatex = formatPlainNumberLatex(ratio * 100)
+        const relativeSymbolicLatex = 'R = Y_u \\times 2^N;\\ X = V_{NOM} \\times R'
+        const relativeSymbolicPlain = 'R = Y_u × 2^N; X = V_NOM × R'
         if (nominal == null) {
           const plainText = `R=${state.raw} × 2^${n}=${ratioText}（需要 VOUT_COMMAND nominal）`
-          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatPlainNumberLatex(ratio)}\\ \\left(\\text{需要 } V_{NOM}\\right)`
+          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${ratioLatex}\\ \\left(\\text{需要 } V_{NOM}\\right)`
           return {
             plainText,
             latex,
-            genericLatex: 'R = Y_u \\times 2^N',
-            genericPlainText: 'R = Y_u × 2^N',
-            detailLines: singleExpansionLine(plainText, latex),
+            symbolicLatex: 'R = Y_u \\times 2^N',
+            symbolicPlainText: 'R = Y_u × 2^N',
+            equationPlainText: plainText,
+            equationLatex: latex,
           }
         }
         if (finalVoltage.kind === 'overflow' || finalVoltage.kind === 'underflow') {
@@ -236,24 +169,26 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
               ? RELATIVE_VOLTAGE_OVERFLOW_NOTE
               : RELATIVE_VOLTAGE_UNDERFLOW_NOTE
           const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatPlainNumber(nominal)}×R=—（${note}）`
-          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatPlainNumberLatex(ratio)}\\ (${formatPlainNumberLatex(ratio * 100)}\\%) \\quad X = V_{NOM} \\times R = ${formatPlainNumberLatex(nominal)} \\times ${formatPlainNumberLatex(ratio)} = \\text{—}`
+          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${ratioLatex}\\ (${percentLatex}\\%) \\quad X = V_{NOM} \\times R = ${formatPlainNumberLatex(nominal)} \\times ${ratioLatex} = \\text{—}`
           return {
             plainText,
             latex,
-            genericLatex: 'R = Y_u \\times 2^N;\\ X = V_{NOM} \\times R',
-            genericPlainText: 'R = Y_u × 2^N; X = V_NOM × R',
-            detailLines: singleExpansionLine(plainText, latex),
+            symbolicLatex: relativeSymbolicLatex,
+            symbolicPlainText: relativeSymbolicPlain,
+            equationPlainText: plainText,
+            equationLatex: latex,
           }
         }
-        const final = finalVoltage.kind === 'finite' ? finalVoltage.value : NaN
-        const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatPlainNumber(nominal)}×R=${formatPlainNumber(final)} V`
-        const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${formatPlainNumberLatex(ratio)}\\ (${formatPlainNumberLatex(ratio * 100)}\\%) \\quad X = V_{NOM} \\times R = ${formatPlainNumberLatex(nominal)} \\times ${formatPlainNumberLatex(ratio)} = ${formatPlainNumberLatex(final)}`
+        const nominalLatex = formatPlainNumberLatex(nominal)
+        const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatPlainNumber(nominal)}×R=${canonicalResultText} V`
+        const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${ratioLatex}\\ (${percentLatex}\\%) \\quad X = V_{NOM} \\times R = ${nominalLatex} \\times ${ratioLatex} = ${terminalLatex(canonicalResultText)}`
         return {
           plainText,
           latex,
-          genericLatex: 'R = Y_u \\times 2^N;\\ X = V_{NOM} \\times R',
-          genericPlainText: 'R = Y_u × 2^N; X = V_NOM × R',
-          detailLines: singleExpansionLine(plainText, latex),
+          symbolicLatex: relativeSymbolicLatex,
+          symbolicPlainText: relativeSymbolicPlain,
+          equationPlainText: plainText,
+          equationLatex: latex,
         }
       }
 
@@ -263,9 +198,10 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       return {
         plainText,
         latex,
-        genericLatex: 'X = V \\times 2^N',
-        genericPlainText: 'X = V × 2^N',
-        detailLines: singleExpansionLine(plainText, latex),
+        symbolicLatex: 'X = V \\times 2^N',
+        symbolicPlainText: 'X = V × 2^N',
+        equationPlainText: `X = V × 2^N = ${state.raw} × 2^${n} = ${canonicalResultText}`,
+        equationLatex: `${latex} = ${terminalLatex(canonicalResultText)}`,
       }
     }
 
@@ -275,13 +211,14 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
 
       if (m === 0) {
         const plainText = 'X=(1/m)×(Y×10^(-R)-b)'
-        const latex = 'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)'
+        const latex = DIRECT_SYMBOLIC_LATEX
         return {
           plainText,
           latex,
-          genericLatex: 'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)',
-          genericPlainText: 'X = (1/m) × (Y × 10^(-R) − b)',
-          detailLines: singleExpansionLine(plainText, latex),
+          symbolicLatex: DIRECT_SYMBOLIC_LATEX,
+          symbolicPlainText: DIRECT_SYMBOLIC_PLAIN,
+          equationPlainText: `${DIRECT_SYMBOLIC_PLAIN}（m = 0 无法计算）`,
+          equationLatex: `${DIRECT_SYMBOLIC_LATEX} \\quad \\text{m = 0 无法计算}`,
         }
       }
 
@@ -295,20 +232,15 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       return {
         plainText,
         latex,
-        genericLatex: 'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)',
-        genericPlainText: 'X = (1/m) × (Y × 10^(-R) − b)',
-        detailLines: singleExpansionLine(plainText, latex),
+        symbolicLatex: DIRECT_SYMBOLIC_LATEX,
+        symbolicPlainText: DIRECT_SYMBOLIC_PLAIN,
+        equationPlainText: `${DIRECT_SYMBOLIC_PLAIN} = (1/${formatSignedInt(m)})×(${yTerm}×10^${exponentText}-${bTerm}) = ${canonicalResultText}`,
+        equationLatex: `${DIRECT_SYMBOLIC_LATEX} = \\frac{1}{${formatSignedInt(m)}}\\left(${yTerm} \\times 10^{${exponentLatex}} - ${bTerm}\\right) = ${terminalLatex(canonicalResultText)}`,
       }
     }
 
-    case 'HALF': {
-      const facts = classifyHalf(state.raw)
-      return {
-        ...getHalfPresentation(state.raw),
-        genericLatex: halfClassGenericLatex(facts.klass),
-        genericPlainText: halfClassGenericPlainText(facts.klass),
-      }
-    }
+    case 'HALF':
+      return getHalfPresentation(state.raw, canonicalResultText)
 
     case 'VOUT_MODE': {
       // A VOUT_MODE byte is structured configuration state, not a math
@@ -319,13 +251,98 @@ export function getFormulaPresentation(state: AppState): FormulaPresentation {
       return {
         plainText: 'VOUT_MODE 0x' + hex,
         latex: '',
-        genericLatex: '',
-        genericPlainText: '',
-        detailLines: [],
+        symbolicLatex: '',
+        symbolicPlainText: '',
+        equationLatex: '',
+        equationPlainText: '',
       }
     }
 
     default:
-      return { plainText: '', latex: '', genericLatex: '', genericPlainText: '', detailLines: [] }
+      return {
+        plainText: '',
+        latex: '',
+        symbolicLatex: '',
+        symbolicPlainText: '',
+        equationLatex: '',
+        equationPlainText: '',
+      }
+  }
+}
+
+/**
+ * HALF presentation: the copy/C-macro strings stay byte-identical to the
+ * previous release; the equation adds the class-appropriate symbolic relation
+ * in front of the numeric substitution and ends in the canonical result.
+ */
+function getHalfPresentation(raw: number, canonicalResultText: string): FormulaPresentation {
+  const facts = classifyHalf(raw)
+  const { sign, exponent, fraction, klass } = facts
+  const signText = sign ? '-' : '+'
+  const signPowerPlain = `(-1)^{${sign}}`
+  // First-screen plain text uses the compact sign form so the symbolic and
+  // substituted relations read consistently; the legacy copy strings above
+  // keep the braced form unchanged.
+  const signPowerPlainEquation = `(-1)^${sign}`
+  const signPowerLatex = halfSignPowerLatex(sign)
+  const symbolicLatex = halfClassGenericLatex(klass)
+  const symbolicPlainText = halfClassGenericPlainText(klass)
+
+  if (klass === 'zero') {
+    const terminal = facts.signedZero ?? canonicalResultText
+    return {
+      plainText: `HALF zero ${signPowerPlain}×0=${signText}0`,
+      latex: `X = ${signPowerPlain} \\times 0 = ${signText}0`,
+      symbolicLatex,
+      symbolicPlainText,
+      equationPlainText: `${symbolicPlainText} = ${signPowerPlainEquation} × 0 = ${terminal}`,
+      equationLatex: `${symbolicLatex} = ${signPowerLatex} \\times 0 = ${terminal}`,
+    }
+  }
+
+  if (klass === 'subnormal') {
+    const value = PMBusMath.decodeHalf(raw).value
+    const valueText = formatPlainNumber(value)
+    return {
+      plainText: `HALF subnormal ${signPowerPlain}×2^-14×${fraction}/1024=${valueText}`,
+      latex: `X = ${signPowerPlain} \\times 2^{-14} \\times \\frac{${fraction}}{2^{10}} = ${formatPlainNumberLatex(value)}`,
+      symbolicLatex,
+      symbolicPlainText,
+      equationPlainText: `${symbolicPlainText} = ${signPowerPlainEquation} × 2^-14 × ${fraction}/1024 = ${canonicalResultText}`,
+      equationLatex: `${symbolicLatex} = ${signPowerLatex} \\times 2^{-14} \\times \\frac{${fraction}}{2^{10}} = ${terminalLatex(canonicalResultText)}`,
+    }
+  }
+
+  if (klass === 'infinity') {
+    return {
+      plainText: `HALF ${signText}Infinity (E=31,F=0)`,
+      latex: `X = ${signPowerPlain} \\times \\infty = ${signText}\\infty \\quad (E=31,\\ F=0)`,
+      symbolicLatex,
+      symbolicPlainText,
+      equationPlainText: `${symbolicPlainText} = ${signPowerPlainEquation} × ∞ = ${signText}∞`,
+      equationLatex: `${symbolicLatex} = ${signPowerLatex} \\times \\infty = ${terminalLatex(canonicalResultText)}`,
+    }
+  }
+
+  if (klass === 'nan') {
+    return {
+      plainText: `HALF NaN (E=31,F=${fraction})`,
+      latex: `X = \\text{NaN} \\quad (E=31,\\ F=${fraction})`,
+      symbolicLatex,
+      symbolicPlainText,
+      equationPlainText: 'X = NaN',
+      equationLatex: 'X = \\text{NaN}',
+    }
+  }
+
+  const value = PMBusMath.decodeHalf(raw).value
+  const valueText = formatPlainNumber(value)
+  return {
+    plainText: `HALF normal ${signPowerPlain}×2^(${exponent}-15)×(1+${fraction}/1024)=${valueText}`,
+    latex: `X = ${signPowerPlain} \\times 2^{${exponent}-15} \\times \\left(1 + \\frac{${fraction}}{2^{10}}\\right) = ${formatPlainNumberLatex(value)}`,
+    symbolicLatex,
+    symbolicPlainText,
+    equationPlainText: `${symbolicPlainText} = ${signPowerPlainEquation} × 2^(${exponent}−15) × (1 + ${fraction}/1024) = ${canonicalResultText}`,
+    equationLatex: `${symbolicLatex} = ${signPowerLatex} \\times 2^{${exponent}-15} \\times \\left(1 + \\frac{${fraction}}{2^{10}}\\right) = ${terminalLatex(canonicalResultText)}`,
   }
 }

@@ -193,6 +193,13 @@ test.describe('M36 disclosure 与命令参考', () => {
     const steps = page.locator('[data-testid="calculation-steps"]')
     const value = page.locator('[data-testid="result-value"]')
 
+    // First screen already carries the complete equation: an ordinary decode
+    // has no supplemental diagnostics, so the container is omitted entirely.
+    await expect(details).toHaveCount(0)
+    const valueInput = page.locator('#value-input')
+    await valueInput.fill('0.999999')
+    await valueInput.press('Tab')
+
     await expect(summary).toBeVisible()
     await expect(summary).toContainText('计算过程')
     await expect(details).not.toHaveAttribute('open')
@@ -208,6 +215,9 @@ test.describe('M36 disclosure 与命令参考', () => {
 
   test('计算过程 disclosure 可键盘操作并有 focus-visible', async ({ page }) => {
     await settle(page)
+    const valueInput = page.locator('#value-input')
+    await valueInput.fill('0.999999')
+    await valueInput.press('Tab')
     const details = page.locator('[data-testid="calculation-steps-disclosure"]')
     const summary = page.locator('[data-testid="calculation-steps-summary"]')
 

@@ -20,7 +20,13 @@ function RowBody({ row }: { row: ResultRowVM }) {
       <ul className="result-field-list" data-testid={'result-row-' + row.key}>
         {row.fields?.map((field) => (
           <li key={field.label} className="result-field">
-            <span className="result-field-label">{field.label}</span>
+            <span className="result-field-label">
+              {field.termId ? (
+                <TechnicalTerm termId={field.termId}>{field.label}</TechnicalTerm>
+              ) : (
+                field.label
+              )}
+            </span>
             <span className={'result-field-value' + (field.code ? ' result-field-code' : '')}>
               {field.value}
             </span>
@@ -96,6 +102,7 @@ export default function ResultSummary({ vm }: Props) {
           key={vm.mode}
           className="result-summary-rows min-w-0"
           data-testid={isVout ? 'vout-mode-config-summary' : 'result-rows'}
+          data-row-layout={vm.workspace.layout}
           data-alert={configAlert ? 'true' : undefined}
         >
           {vm.workspace.rows.map((row) => (
@@ -126,12 +133,27 @@ export default function ResultSummary({ vm }: Props) {
         <dl data-testid="result-context" className="result-context-grid">
           {vm.resultContext.map((item) => (
             <div key={item.key} className="result-context-slot" data-slot={item.key}>
-              <dt className="color-text-muted">{item.label}</dt>
-              <dd className={(item.code ? 'font-mono' : '') + ' min-w-0 break-words'}>
-                {item.termId ? (
+              <dt className="result-context-label">{item.label}</dt>
+              <dd className="result-context-value min-w-0 break-words">
+                {item.kind === 'params' ? (
+                  <span className="result-context-params" data-testid="result-context-params">
+                    {item.params.map((pair, index) => (
+                      <span className="result-context-param" key={pair.label + '-' + index}>
+                        <span className="result-context-param-label">
+                          {pair.termId ? (
+                            <TechnicalTerm termId={pair.termId}>{pair.label}</TechnicalTerm>
+                          ) : (
+                            pair.label
+                          )}
+                        </span>
+                        <span className="result-context-param-value">{pair.value}</span>
+                      </span>
+                    ))}
+                  </span>
+                ) : item.termId ? (
                   <TechnicalTerm termId={item.termId}>{item.value}</TechnicalTerm>
                 ) : (
-                  item.value
+                  <span className={item.code ? 'font-mono' : undefined}>{item.value}</span>
                 )}
               </dd>
             </div>

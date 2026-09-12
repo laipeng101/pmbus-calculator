@@ -76,10 +76,10 @@ test.describe('DIRECT 精度保真（m=1,b=1,R=17 正式站反例，1280×900）
     await expect(resultValue(page)).toHaveText('-1')
     await expect(page.getByText(/不同的请求/)).toHaveCount(0)
     await expect(copyNote(page)).toHaveCount(0)
-    await expandSteps(page)
-    await expect(page.getByTestId('calculation-steps')).not.toContainText(
-      '100000000000000001/100000000000000000',
-    )
+    // Safe state: no supplemental exact-value step exists, so the whole
+    // calculation-steps container is omitted rather than showing a skeleton.
+    await expect(page.locator('[data-testid="calculation-steps-disclosure"]')).toHaveCount(0)
+    await expect(page.getByTestId('calculation-steps')).toHaveCount(0)
   })
 
   test('安全复制文本经真实剪贴板回录后 raw 仍为 FFFF', async ({ page }) => {

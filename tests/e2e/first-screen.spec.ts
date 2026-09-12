@@ -8,9 +8,11 @@ async function expectInsideViewport(locator: Locator, page: Page) {
   expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height)
 }
 
-test('首次键盘操作在 6 次 Tab 内到达 Raw，主输入保持 focus-visible', async ({ page }) => {
+test('首次键盘操作在 12 次 Tab 内到达 Raw，主输入保持 focus-visible', async ({ page }) => {
   await page.goto(appUrl())
-  for (let i = 0; i < 6; i++) {
+  // 结果工作区的字段/参数 glossary 触发器现在也参与 Tab 顺序（v3.3.x），
+  // 但主输入仍必须在少量 Tab 内到达。
+  for (let i = 0; i < 12; i++) {
     await page.keyboard.press('Tab')
     if (await page.locator('#raw-hex-input').evaluate((el) => el === document.activeElement)) break
   }
@@ -75,22 +77,27 @@ test('结果旁的 raw、参数来源与状态跟随配置变化，不借用 LIN
   const context = page.getByTestId('result-context')
   await page.locator('#value-input').fill('12.5')
   await expect(context).toContainText('0xF819')
-  await expect(context).toContainText('N = -1')
+  // 参数槽位现在是结构化 label/value 对（不拼成 “N = -1” 一类字符串）。
+  const params = page.getByTestId('result-context-params')
+  await expect(params).toContainText('N')
+  await expect(params).toContainText('-1')
   await page.getByRole('tab', { name: /DIRECT/ }).click()
   await page.locator('#direct-coeff-r-input').fill('12')
   await page.locator('#direct-coeff-r-input').press('Tab')
-  await expect(context).toContainText('R = 12')
+  await expect(params).toContainText('R')
+  await expect(params).toContainText('12')
   await expect(context).toContainText('器件相关')
   await page.getByRole('tab', { name: /LINEAR16/ }).click()
   await page.locator('#vout-mode-input').fill('20')
   await page.locator('#vout-mode-input').press('Tab')
   await expect(context).toContainText('0x20')
   await expect(context).toContainText('未按 LINEAR16 解释')
-  await expect(context).not.toContainText('N =')
+  await expect(params).not.toContainText('N')
   await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
   await page.locator('#vout-mode-input').fill('18')
   await page.locator('#vout-mode-input').press('Tab')
-  await expect(context).toContainText('N = -8')
+  await expect(params).toContainText('N')
+  await expect(params).toContainText('-8')
 })
 
 for (const width of [360, 390, 960]) {

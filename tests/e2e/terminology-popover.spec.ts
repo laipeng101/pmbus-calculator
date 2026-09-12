@@ -257,6 +257,18 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     // L16 / DIRECT / HALF 工作区。
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     await collect()
+
+    // L16 数据解释类型分支：SLINEAR16 offset 与 relative ULINEAR16 各自的
+    // 字段术语（Y_s / Y_u / V_NOM）只在对应分支出现。
+    await page.locator('#l16-payload-kind').selectOption('slinear16-offset')
+    await collect()
+    await page.locator('#l16-payload-kind').selectOption('ulinear16')
+    await page.locator('#vout-mode-input').fill('98')
+    await page.locator('#vout-mode-input').press('Tab')
+    await collect()
+    await page.locator('#vout-mode-input').fill('18')
+    await page.locator('#vout-mode-input').press('Tab')
+
     await page.getByRole('tab', { name: /^DIRECT/ }).click()
     await collect()
     await page.getByRole('tab', { name: /^HALF/ }).click()
@@ -287,7 +299,9 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
   }) => {
     await settle(page)
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    const uTrigger = page.getByTestId('term-trigger-ulinear16')
+    const uTrigger = page
+      .locator('p', { hasText: '解释语义' })
+      .getByTestId('term-trigger-ulinear16')
     await expect(uTrigger).toBeVisible()
     await uTrigger.click()
     const uPopover = page.locator('[data-testid="term-popover-ulinear16"]')
@@ -297,7 +311,9 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     await expect(uPopover).not.toContainText('非 PMBus 规范命名')
     await page.keyboard.press('Escape')
 
-    const sTrigger = page.getByTestId('term-trigger-slinear16')
+    const sTrigger = page
+      .locator('p', { hasText: '解释语义' })
+      .getByTestId('term-trigger-slinear16')
     await expect(sTrigger).toBeVisible()
     await sTrigger.click()
     const sPopover = page.locator('[data-testid="term-popover-slinear16"]')
@@ -315,8 +331,11 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
   }) => {
     await settle(page)
 
-    // L11 的 N：主断言是 LINEAR11 word bits[15:11]（§7.3）。
-    const l11n = page.getByTestId('term-trigger-linear11-exponent')
+    // L11 的 N：主断言是 LINEAR11 word bits[15:11]（§7.3）。结果工作区字段
+    // 行是 L11 专属放置，作用域化以避开同名 N 的其他触发器。
+    const l11n = page
+      .locator('[data-testid="result-row-fields"]')
+      .getByTestId('term-trigger-linear11-exponent')
     await expect(l11n).toBeVisible()
     await l11n.click()
     const l11Popover = page.locator('[data-testid="term-popover-linear11-exponent"]')
@@ -347,14 +366,18 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
   test('v2.6.1 模式切换卸载术语后无 stale surface，Escape 恢复到有效触发器', async ({ page }) => {
     await settle(page)
 
-    // 打开只属于 L11 的术语（LINEAR11 N 范围提示）。
-    const l11n = page.getByTestId('term-trigger-linear11-exponent')
+    // 打开只属于 L11 的术语（结果工作区字段行的 LINEAR11 N）。
+    const l11n = page
+      .locator('[data-testid="result-row-fields"]')
+      .getByTestId('term-trigger-linear11-exponent')
     await l11n.click()
     await expect(page.locator('[data-testid="term-popover-linear11-exponent"]')).toBeVisible()
 
     // 真实键盘 Ctrl+2 切到 L16：该触发器被条件渲染卸载。
     await page.keyboard.press('Control+2')
-    await expect(page.getByTestId('term-trigger-ulinear16')).toBeVisible()
+    await expect(
+      page.locator('[data-testid="result-panel"]').getByTestId('term-trigger-ulinear16'),
+    ).toBeVisible()
     await expect(page.locator('[data-testid="term-popover-linear11-exponent"]')).toHaveCount(0)
 
     // 切回 L11 也不得出现 stale 自动重开的浮层。

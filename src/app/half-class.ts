@@ -63,17 +63,27 @@ export function classifyHalf(raw: number): HalfClassFacts {
   return { raw: bits, sign, exponent, fraction, klass, signedZero, label }
 }
 
+/**
+ * Local KaTeX-safe sign-exponent rendering. The exponent stays a semantic
+ * superscript but is typeset at text style so `s` does not shrink to an
+ * unreadable script size. `\\textstyle` is supported by KaTeX 0.18.4 under
+ * `strict: 'error'` and preserves MathML; no global font scaling is involved.
+ */
+export function halfSignPowerLatex(exponent: number | 's'): string {
+  return `(-1)^{\\textstyle ${exponent}}`
+}
+
 /** Class-appropriate generic relation typeset by KaTeX (task C). */
 export function halfClassGenericLatex(klass: HalfClass): string {
   switch (klass) {
     case 'zero':
-      return 'X = (-1)^s \\times 0'
+      return `X = ${halfSignPowerLatex('s')} \\times 0`
     case 'subnormal':
-      return 'X = (-1)^s \\times 2^{-14} \\times \\frac{F}{2^{10}}'
+      return `X = ${halfSignPowerLatex('s')} \\times 2^{-14} \\times \\frac{F}{2^{10}}`
     case 'normal':
-      return 'X = (-1)^s \\times 2^{E-15} \\times \\left(1 + \\frac{F}{2^{10}}\\right)'
+      return `X = ${halfSignPowerLatex('s')} \\times 2^{E-15} \\times \\left(1 + \\frac{F}{2^{10}}\\right)`
     case 'infinity':
-      return 'X = (-1)^s \\times \\infty'
+      return `X = ${halfSignPowerLatex('s')} \\times \\infty`
     case 'nan':
       return 'X = \\text{NaN}'
   }

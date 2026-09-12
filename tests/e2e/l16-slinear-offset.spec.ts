@@ -105,8 +105,9 @@ test.describe('SLINEAR16 offset under relative VOUT_MODE (v2.5.1)', () => {
     await expect(rawHex(page)).toHaveValue(/0001/i)
     await expect(panel(page)).toHaveCount(0)
 
-    // Expand the calculation walkthrough: no quantization intermediate.
-    await page.locator('[data-testid="calculation-steps-summary"]').first().click()
+    // No supplemental steps exist for an ordinary signed-offset decode: the
+    // container is omitted and there is no quantization intermediate.
+    await expect(page.locator('[data-testid="calculation-steps-disclosure"]')).toHaveCount(0)
     await expect(page.getByText('格式编码量化误差（请求值 − 表示值）')).toHaveCount(0)
   })
 

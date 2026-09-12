@@ -50,7 +50,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     await expect(page.locator('.katex-error')).toHaveCount(0)
 
     const byteFont = await summary
-      .locator('[data-testid="result-row-generic"] .result-segment[data-role="data"]')
+      .locator('[data-testid="result-row-bitParse"] .result-segment[data-role="data"]')
       .first()
       .evaluate((el) => getComputedStyle(el).fontFamily)
     expect(byteFont).toContain('mono')
@@ -69,15 +69,11 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     await hexInput.press('Tab')
 
     await expect(page.locator('#value-input')).toHaveValue('12.5')
-    // 计算过程里的数值代入公式包含实际 N/Y 值（25 × 2^-1）。
-    // M36 起计算过程默认折叠，需先展开可访问 disclosure。
-    await page.locator('[data-testid="calculation-steps-summary"]').click()
-    const substitution = page
-      .locator('section[aria-label="辅助结果"] [data-step-kind="formula"]')
-      .filter({ hasText: '25' })
-      .first()
+    // 首屏“一条完整等式”包含实际 N/Y 值与最终结果：25 × 2^-1 = 12.5。
+    const substitution = page.locator('[data-testid="result-row-substitution"]').first()
     await expect(substitution).toBeVisible()
-    await expect(substitution).toContainText('2')
+    await expect(substitution).toContainText('25')
+    await expect(substitution).toContainText('12.5')
   })
 
   test('cursor 语义：按钮 pointer、输入 text、禁用 N 为 not-allowed', async ({ page }) => {

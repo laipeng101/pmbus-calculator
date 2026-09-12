@@ -2,11 +2,13 @@
  * Unified result workspace — one structural skeleton for all five modes.
  *
  * The result card is "one engineering instrument with five gears": a headline
- * value on the left and three reserved semantic rows on the right. Numeric
- * modes (L11 / L16 / DIRECT / HALF) fill the rows with canonical fields, the
- * generic relation and the current substitution, all typeset by KaTeX.
- * VOUT_MODE keeps the same three-row spatial rhythm but renders a bit-field
- * configuration parser walkthrough (UI/data font roles, never KaTeX).
+ * value on the left and, for numeric modes, exactly two semantic rows on the
+ * right — the live fields and ONE complete canonical equation
+ * (symbolic relation → substituted values → final result). VOUT_MODE keeps the
+ * same spatial rhythm but renders a three-row bit-field configuration parser
+ * (UI/data font roles, never KaTeX). The row layout is declared on the
+ * workspace VM so the container sizes its tracks from a data attribute rather
+ * than an inline style.
  *
  * This module owns presentation facts only: it consumes the canonical
  * derivations (deriveL16Semantics, PMBusMath, classifyHalf, the VOUT_MODE
@@ -21,7 +23,9 @@ import { classifyHalf } from './half-class'
 import { formatPlainNumber } from './numeric-presentation'
 import { formatByteHex } from './view-model/format'
 import { voutModeFormatTerm } from './vout-mode-formats'
+import type { TermId } from './terminology'
 import type {
+  ConfigResultRowKey,
   ResultDirectionVM,
   ResultFieldVM,
   ResultRowVM,
@@ -37,85 +41,92 @@ export interface ResultWorkspaceSource {
   voutModePage?: VoutModeInfoVM
 }
 
-function field(label: string, value: number | string, code = true): ResultFieldVM {
-  return code ? { label, value: String(value), code: true } : { label, value: String(value) }
+function field(label: string, value: number | string, termId?: TermId, code = true): ResultFieldVM {
+  const base = { label, value: String(value) }
+  if (code) {
+    return termId ? { ...base, code: true, termId } : { ...base, code: true }
+  }
+  return termId ? { ...base, termId } : base
 }
 
 function fieldsRow(fields: ResultFieldVM[]): ResultRowVM {
-  return { key: 'fields', label: '字段', presentation: 'fields', fields }
-}
-
-/** Row 2: generic relation straight from the single formula-presentation source. */
-function genericRow(formula: FormulaPresentation): ResultRowVM {
-  return {
-    key: 'generic',
-    label: '通用公式',
-    presentation: 'math',
-    latex: formula.genericLatex,
-    plainText: formula.genericPlainText,
-  }
+  return { layout: 'numeric', key: 'fields', label: '字段', presentation: 'fields', fields }
 }
 
 /**
- * Row 3: the current numeric substitution. The latest canonical expansion
- * line is used; the top-level formula is the fallback for fail-closed states
- * that intentionally carry no expansion (e.g. non-LINEAR L16).
+ * Row 2: the complete canonical first-screen equation straight from the
+ * formula-presentation source. The workspace never infers it from auxiliary
+ * lines and never rebuilds the equation from raw state.
  */
-function substitutionRow(formula: FormulaPresentation): ResultRowVM {
-  const expansion = [...formula.detailLines].reverse().find((line) => line.kind === 'expansion')
+function equationRow(formula: FormulaPresentation): ResultRowVM {
   return {
+    layout: 'numeric',
     key: 'substitution',
     label: '数值代入',
     presentation: 'math',
-    latex: expansion?.latex ?? formula.latex,
-    plainText: expansion?.plainText ?? formula.plainText,
+    latex: formula.equationLatex,
+    plainText: formula.equationPlainText,
   }
 }
 
 function mathRows(fields: ResultFieldVM[], formula: FormulaPresentation): ResultRowVM[] {
-  return [fieldsRow(fields), genericRow(formula), substitutionRow(formula)]
+  return [fieldsRow(fields), equationRow(formula)]
 }
 
 function l11Rows(state: AppState, formula: FormulaPresentation): ResultRowVM[] {
   const { n, y } = PMBusMath.decodeLinear11(state.raw)
-  return mathRows([field('N', n), field('Y', y)], formula)
+  return mathRows([field('N', n, 'linear11-exponent'), field('Y', y, 'linear11-y')], formula)
 }
 
 function l16Rows(state: AppState, formula: FormulaPresentation): ResultRowVM[] {
   const { analysis, interpretation } = deriveL16Semantics(state)
   const raw = state.raw & 0xffff
-  const byteField = field('VOUT_MODE', formatByteHex(analysis.byte))
+  const byteField = field('VOUT_MODE', formatByteHex(analysis.byte), 'vout-mode')
   switch (interpretation.kind) {
     case 'non-linear':
       // Fail closed: expose the actual shared byte and format, never a pseudo N.
       return mathRows([byteField, { label: '格式', value: analysis.formatName }], formula)
     case 'signed-offset':
       return mathRows(
-        [field('Y_s', interpretation.y), field('N', interpretation.n), byteField],
+        [
+          field('Y_s', interpretation.y, 'l16-ys'),
+          field('N', interpretation.n, 'exponent'),
+          byteField,
+        ],
         formula,
       )
     case 'relative-ratio':
       return mathRows(
         [
-          field('Y_u', raw),
-          field('N', interpretation.n),
+          field('Y_u', raw, 'l16-yu'),
+          field('N', interpretation.n, 'exponent'),
           field(
             'V_NOM',
             interpretation.nominal === null ? '—' : formatPlainNumber(interpretation.nominal),
+            'l16-vnom',
+            false,
           ),
           byteField,
         ],
         formula,
       )
     case 'absolute-unsigned':
-      return mathRows([field('V', raw), field('N', interpretation.n), byteField], formula)
+      return mathRows(
+        [field('V', raw, 'ulinear16-v'), field('N', interpretation.n, 'exponent'), byteField],
+        formula,
+      )
   }
 }
 
 function directRows(state: AppState, formula: FormulaPresentation): ResultRowVM[] {
   const { m, b, r } = state.direct
   return mathRows(
-    [field('Y', PMBusMath.toSigned(state.raw, 16)), field('m', m), field('b', b), field('R', r)],
+    [
+      field('Y', PMBusMath.toSigned(state.raw, 16), 'direct-y'),
+      field('m', m, 'direct-m'),
+      field('b', b, 'direct-b'),
+      field('R', r, 'direct-r'),
+    ],
     formula,
   )
 }
@@ -124,9 +135,9 @@ function halfRows(state: AppState, formula: FormulaPresentation): ResultRowVM[] 
   const facts = classifyHalf(state.raw)
   return mathRows(
     [
-      field('s', facts.sign),
-      field('E', facts.exponent),
-      field('F', facts.fraction),
+      field('s', facts.sign, 'half-s'),
+      field('E', facts.exponent, 'half-e'),
+      field('F', facts.fraction, 'half-f'),
       { label: '类别', value: facts.label },
     ],
     formula,
@@ -134,11 +145,11 @@ function halfRows(state: AppState, formula: FormulaPresentation): ResultRowVM[] 
 }
 
 function configRow(
-  key: ResultRowVM['key'],
+  key: ConfigResultRowKey,
   label: string,
   segments: ResultSegmentVM[],
 ): ResultRowVM {
-  return { key, label, presentation: 'config', segments }
+  return { layout: 'config', key, label, presentation: 'config', segments }
 }
 
 /**
@@ -186,7 +197,7 @@ function voutRows(info: VoutModeInfoVM): ResultRowVM[] {
       { text: ' = ', role: 'ui' },
       { text: paramBits, role: 'data' },
     ]),
-    configRow('generic', '位解析', [
+    configRow('bitParse', '位解析', [
       { text: info.hex, role: 'data' },
       { text: ' = ', role: 'ui' },
       { text: signBit, role: 'data' },
@@ -195,7 +206,7 @@ function voutRows(info: VoutModeInfoVM): ResultRowVM[] {
       { text: ' | ', role: 'ui' },
       { text: paramBits, role: 'data' },
     ]),
-    configRow('substitution', '结果', classification),
+    configRow('result', '结果', classification),
   ]
 }
 
@@ -235,5 +246,6 @@ export function buildResultWorkspace(
   })()
 
   const direction = resolveDirection(state, source.valueText)
-  return direction ? { rows, direction } : { rows }
+  const layout = state.mode === 'VOUT_MODE' ? 'config' : 'numeric'
+  return direction ? { layout, rows, direction } : { layout, rows }
 }

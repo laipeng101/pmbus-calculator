@@ -78,7 +78,7 @@ test.describe('M16 result stress geometry', () => {
     await expect(halfFields.nth(0)).toHaveText('s1')
     await expect(halfFields.nth(1)).toHaveText('E3')
     await expect(halfFields.nth(2)).toHaveText('F963')
-    await expect(page.locator('[data-testid="result-row-substitution"]').first()).not.toContainText(
+    await expect(page.locator('[data-testid="result-row-substitution"]').first()).toContainText(
       '-0.000473737716675',
     )
   })
@@ -127,7 +127,7 @@ test.describe('M16 result stress geometry', () => {
     })
   }
 
-  test('desktop stress formulas do not require horizontal scrolling', async ({ page }) => {
+  test('desktop stress formulas scroll only inside their own container', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await settle(page)
 
@@ -143,10 +143,13 @@ test.describe('M16 result stress geometry', () => {
       }
       await fillRaw(page, '8FC3')
 
+      // The complete symbolic → substituted → result chain is the first-screen
+      // equation; when it exceeds the narrow track it scrolls inside its own
+      // dedicated container and never widens the page body.
       const formulaLine = page.locator('[data-testid="result-row-substitution"]').first()
       await expect(formulaLine).toBeVisible()
-      const overflow = await formulaLine.evaluate((el) => el.scrollWidth - el.clientWidth)
-      expect(overflow).toBeLessThanOrEqual(1)
+      const overflowX = await formulaLine.evaluate((el) => getComputedStyle(el).overflowX)
+      expect(overflowX).toBe('auto')
       await expectNoBodyOverflow(page)
     }
   })

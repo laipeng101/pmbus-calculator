@@ -339,7 +339,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
             <div className="math-scroll rounded-lg px-3 py-2 text-center text-sm surface-muted color-text-primary">
               <MathFormula
-                latex={vm.formulaGenericLatex}
+                latex={vm.formulaSymbolicLatex}
                 plainText="X = (1/m) × (Y × 10^(-R) - b)"
                 displayMode
               />

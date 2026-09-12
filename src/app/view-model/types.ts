@@ -1,6 +1,5 @@
 import type { AppMode } from '../state'
 import type { VoutModeFormat, VoutModeStatus, VidCodeKind } from '../../legacy/vout-mode'
-import type { FormulaDetailLine } from '../formula-presentation'
 import type { CalculationStepVM } from '../calculation-steps'
 import type { HalfSpecialSemantics } from '../half-special-semantics'
 import type { L16FormatSemantics } from '../l16-payload-contract'
@@ -160,24 +159,47 @@ export interface VoutModeInfoVM {
 /** Stable four-slot result-context contract (UI_CONVENTIONS §2). */
 export type ResultContextSlotKey = 'raw' | 'format' | 'parameters' | 'context'
 
-export interface ResultContextItemVM {
+/** One structured parameter pair so each symbol keeps its own glossary term. */
+export interface ResultContextParamVM {
+  label: string
+  value: string
+  termId?: TermId
+}
+
+/** Plain single-text context slot. */
+export interface ResultContextTextVM {
+  kind: 'text'
   /** Stable logical slot; the glyph order never changes across modes. */
   key: ResultContextSlotKey
   label: string
   value: string
   code?: boolean
-  /** Existing glossary disclosure affordance (DIRECT source help); never a new copy source. */
+  /** Existing glossary disclosure affordance (e.g. the active format). */
   termId?: TermId
 }
 
-/** One semantic row of the result workspace's three-row contract. */
-export type ResultRowKey = 'fields' | 'generic' | 'substitution'
-export type ResultRowPresentation = 'fields' | 'math' | 'config'
+/** Structured parameter slot: never one opaque concatenated string. */
+export interface ResultContextParamsVM {
+  kind: 'params'
+  key: ResultContextSlotKey
+  label: string
+  params: ResultContextParamVM[]
+}
+
+export type ResultContextItemVM = ResultContextTextVM | ResultContextParamsVM
+
+/** Numeric workspace keeps exactly `fields | substitution`. */
+export type NumericResultRowKey = 'fields' | 'substitution'
+/** VOUT_MODE configuration walkthrough keeps `fields | bitParse | result`. */
+export type ConfigResultRowKey = 'fields' | 'bitParse' | 'result'
+export type ResultLayout = 'numeric' | 'config'
 
 export interface ResultFieldVM {
   label: string
   value: string
   code?: boolean
+  /** Optional existing glossary disclosure on the field label. */
+  termId?: TermId
 }
 
 /** One font-role-attributed span of a VOUT_MODE configuration row. */
@@ -188,15 +210,25 @@ export interface ResultSegmentVM {
   termId?: TermId
 }
 
-export interface ResultRowVM {
-  key: ResultRowKey
+export interface NumericResultRowVM {
+  layout: 'numeric'
+  key: NumericResultRowKey
   label: string
-  presentation: ResultRowPresentation
+  presentation: 'fields' | 'math'
   fields?: ResultFieldVM[]
   latex?: string
   plainText?: string
-  segments?: ResultSegmentVM[]
 }
+
+export interface ConfigResultRowVM {
+  layout: 'config'
+  key: ConfigResultRowKey
+  label: string
+  presentation: 'config'
+  segments: ResultSegmentVM[]
+}
+
+export type ResultRowVM = NumericResultRowVM | ConfigResultRowVM
 
 /** Real request provenance, derived centrally from committed state only. */
 export interface ResultDirectionVM {
@@ -205,6 +237,8 @@ export interface ResultDirectionVM {
 }
 
 export interface ResultWorkspaceVM {
+  /** Drives the row-track count via a data attribute; never an inline style. */
+  layout: ResultLayout
   rows: ResultRowVM[]
   direction?: ResultDirectionVM
 }
@@ -240,9 +274,9 @@ export interface CalculatorViewModel {
   cMacroText: string
   formulaText: string
   formulaLatex: string
-  formulaGenericLatex: string
-  formulaDetailLines: FormulaDetailLine[]
-  /** Unified calculation steps (fields -> formula -> intermediates -> result). */
+  /** Symbolic-only relation (auxiliary panels); the workspace builds its own equation rows. */
+  formulaSymbolicLatex: string
+  /** Supplemental derivation/diagnostics only; the first screen is complete without it. */
   steps: CalculationStepVM[]
   deltaText?: string
   deltaKind?: 'ok' | 'warn' | 'error'
