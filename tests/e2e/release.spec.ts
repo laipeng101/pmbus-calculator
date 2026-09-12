@@ -89,7 +89,7 @@ test.describe('production build smoke', () => {
     await expect(page).toHaveTitle(/VOUT_MODE/)
     await expect(page.getByRole('heading', { name: 'PMBus' })).toBeVisible()
     // 构建时从 package.json 注入的版本徽标必须与当前包版本一致。
-    await expect(page.getByTestId('version-badge')).toHaveText(`v${pkg.version}`)
+    await expect(page.getByTestId('version-badge')).toHaveText(`App v${pkg.version}`)
     await expect(page.getByLabel('模式切换')).toBeVisible()
     await expect(page.getByLabel('命令参考')).toBeVisible()
     await expect(page.getByLabel('结果面板')).toBeVisible()

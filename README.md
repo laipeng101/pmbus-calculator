@@ -34,6 +34,7 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 ## Features
 
 - 🔁 **Bidirectional conversion** — L11, L16, DIRECT, and HALF are fully bidirectional (encode/decode loops are implemented).
+- 🎛️ **One result workspace, five gears** — every mode shares the same result card: the physical value anchors the left, the right reserves the same three rows (fields → generic relation → current substitution), and four stable context slots (Raw / format / parameters / context) plus a decode/encode direction derived only from committed input provenance sit below. Numeric modes typeset real LaTeX through KaTeX (HTML + MathML); VOUT_MODE keeps the same rhythm as a bit-field configuration walkthrough and is never sent to KaTeX.
 - 📐 **Four encoding modes with a unified calculation walkthrough** — each mode shows fields → generic formula → numeric substitution → intermediate values → result; L16 exposes the VOUT_MODE bit layout and refuses to fabricate a LINEAR16 voltage for relative/non-LINEAR modes.
 - 🔲 **Interactive bit mappings** — the 16-bit panel sits directly below Raw Word, with clickable bits, nibble hex values and field legends. Both it and the VOUT_MODE 8-bit panel open by default; each remembers its collapsed state across mode changes and reloads. Hex and parameter editing remain available when collapsed.
 - 🧭 **Result context** — the result shows its raw word, format and parameter source, including L16 reference availability and the current DIRECT coefficients.
@@ -114,12 +115,13 @@ Calculator inputs and results—including PMBus raw words, physical values, DIRE
 
 ## Keyboard Shortcuts
 
-| Shortcut   | Action                             |
-| ---------- | ---------------------------------- |
-| `Ctrl + 1` | Switch to LINEAR11 mode            |
-| `Ctrl + 2` | Switch to LINEAR16 (VOUT) mode     |
-| `Ctrl + 3` | Switch to DIRECT mode              |
-| `Ctrl + 4` | Switch to IEEE Half-Precision mode |
+| Shortcut   | Action                                 |
+| ---------- | -------------------------------------- |
+| `Ctrl + 1` | Switch to LINEAR11 mode                |
+| `Ctrl + 2` | Switch to LINEAR16 (VOUT) mode         |
+| `Ctrl + 3` | Switch to DIRECT mode                  |
+| `Ctrl + 4` | Switch to IEEE Half-Precision mode     |
+| `Ctrl + 5` | Switch to VOUT_MODE configuration mode |
 
 ---
 

@@ -150,8 +150,40 @@ describe('formula presentation model', () => {
       ).genericLatex,
     ).toBe('X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right)')
     expect(getFormulaPresentation(state({ mode: 'HALF', raw: 0 })).genericLatex).toBe(
-      'X = \\text{IEEE 754 binary16 分段解码}',
+      'X = (-1)^s \\times 0',
     )
+    expect(getFormulaPresentation(state({ mode: 'L11', raw: 0 })).genericPlainText).toBe(
+      'X = Y × 2^N',
+    )
+    expect(getFormulaPresentation(state({ mode: 'L16', raw: 0 })).genericPlainText).toBe(
+      'X = V × 2^N',
+    )
+  })
+
+  it('HALF exposes class-appropriate generic relations with a plain-text mirror', () => {
+    const cases = [
+      { raw: 0x0000, latex: 'X = (-1)^s \\times 0', plain: 'X = (-1)^s × 0' },
+      {
+        raw: 0x0001,
+        latex: 'X = (-1)^s \\times 2^{-14} \\times \\frac{F}{2^{10}}',
+        plain: 'X = (-1)^s × 2^-14 × F/1024',
+      },
+      {
+        raw: 0x3c00,
+        latex: 'X = (-1)^s \\times 2^{E-15} \\times \\left(1 + \\frac{F}{2^{10}}\\right)',
+        plain: 'X = (-1)^s × 2^(E−15) × (1 + F/1024)',
+      },
+      { raw: 0x7c00, latex: 'X = (-1)^s \\times \\infty', plain: 'X = (-1)^s × ∞' },
+      { raw: 0x7e00, latex: 'X = \\text{NaN}', plain: 'X = NaN' },
+    ]
+    for (const c of cases) {
+      const presentation = getFormulaPresentation(state({ mode: 'HALF', raw: c.raw }))
+      expect(presentation.genericLatex, '0x' + c.raw.toString(16)).toBe(c.latex)
+      expect(presentation.genericPlainText, '0x' + c.raw.toString(16)).toBe(c.plain)
+      for (const command of latexCommands(presentation.genericLatex)) {
+        expect(ALLOWED_LATEX_COMMANDS.has(command), command).toBe(true)
+      }
+    }
   })
 
   it('existing formulaText and C macro output remain compatible', () => {

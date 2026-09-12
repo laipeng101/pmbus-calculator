@@ -51,7 +51,9 @@ test.describe('M16 result stress geometry', () => {
 
     await fillRaw(page, 'A3C1')
     await expect(page.locator('#value-input')).toHaveValue('0.234619140625')
-    await expect(page.locator('[data-testid="formula-line"]').first()).toContainText('961')
+    await expect(page.locator('[data-testid="result-row-substitution"]').first()).toContainText(
+      '961',
+    )
 
     await switchMode(page, /LINEAR16/)
     await page.locator('#vout-mode-input').fill('13')
@@ -65,15 +67,18 @@ test.describe('M16 result stress geometry', () => {
     await page.getByLabel('DIRECT 系数 r').press('Tab')
     await fillRaw(page, '8FC3')
     await expect(page.locator('#value-input')).toHaveValue('-2.8733e-8')
-    await expect(page.locator('[data-testid="formula-line"]').first()).toContainText('-28733')
+    await expect(page.locator('[data-testid="result-row-substitution"]').first()).toContainText(
+      '-28733',
+    )
 
     await switchMode(page, /HALF/)
     await fillRaw(page, '8FC3')
     await expect(page.locator('#value-input')).toHaveValue('-0.000473737716675')
-    await expect(page.locator('[data-testid="formula-summary"]')).toHaveText(
-      's = 1, E = 3, F = 963',
-    )
-    await expect(page.locator('[data-testid="formula-line"]').first()).not.toContainText(
+    const halfFields = page.locator('[data-testid="result-row-fields"] .result-field')
+    await expect(halfFields.nth(0)).toHaveText('s1')
+    await expect(halfFields.nth(1)).toHaveText('E3')
+    await expect(halfFields.nth(2)).toHaveText('F963')
+    await expect(page.locator('[data-testid="result-row-substitution"]').first()).not.toContainText(
       '-0.000473737716675',
     )
   })
@@ -138,7 +143,7 @@ test.describe('M16 result stress geometry', () => {
       }
       await fillRaw(page, '8FC3')
 
-      const formulaLine = page.locator('[data-testid="formula-line"]').first()
+      const formulaLine = page.locator('[data-testid="result-row-substitution"]').first()
       await expect(formulaLine).toBeVisible()
       const overflow = await formulaLine.evaluate((el) => el.scrollWidth - el.clientWidth)
       expect(overflow).toBeLessThanOrEqual(1)

@@ -37,7 +37,7 @@ source / Release / Pages 分发边界、全部 provenance 门禁和产品行为�
 ## 当前里程碑
 
 ```text
-M0–M42 complete；stable release v3.3.1（本源码发行目标）；production distribution: GitHub Pages。
+M0–M43 complete；stable release v3.3.1（本源码发行目标）；production distribution: GitHub Pages。
 ```
 
 以上版本声明是本源码的发行目标；在对应稳定 GitHub Release 公开前按待发布处理。
@@ -198,6 +198,18 @@ Analytics acceptance 通过；本地/PR/fresh 验证保持 exact stub 与隐私�
     提交后释放焦点，8 张 stress 基线逐图审查更新、其余 20 张不变）；Phase 5
     删除零引用 `ResultInspector.tsx`；Phase 6 文档与发布。UI_CONVENTIONS §7
     重写为「帮助浮层：术语气泡与控件说明」双合同。
+- M43（v3.3.1 源码树）：统一五模式结果工作区与 typeset 公式——结果卡成为
+  「同一台工程仪表切换五个档位」的单一结构 `src/app/result-workspace.ts`：字段/参数 →
+  通用关系式 → 当前数值代入三行固定行；数值模式继续经唯一 LaTeX→KaTeX→HTML+MathML
+  管线排版（`genericLatex`/`genericPlainText` 与 `detailLines` 同源，新增
+  `src/app/half-class.ts` 输出 HALF 零/次正规/正规/±Infinity/NaN 分类通用式，signed
+  zero 文本可辨）；结果上下文固定 `raw`/`format`/`parameters`/`context` 四逻辑槽位，
+  编码/解码方向只从已提交 `valueRequest`/`l11.valueInput` 推导（不读 DOM/焦点）；
+  VOUT_MODE 保持字节/位域配置解析：`字段`/`位解析`/`结果`三行 + UI/数据字体角色，
+  非法非零 DIRECT/Half 参数警告集中自 requirement 单一来源，绝不送入 KaTeX；模式栏
+  区分数值档位与配置解析并弱化 `Ctrl+1..5` 提示；版本徽标显示 `App vX.Y.Z`；移动端
+  压缩后 L16 标称参考值仍在 360/390 首屏内可达。删除零引用 `VoutModeConfigSummary.tsx`。
+  数值算法与 canonical raw 零变更。
 - v2.6.1（PATCH）：发布完整性与帮助系统契约加固——Pages `workflow_dispatch`
   必须在被部署 tag 的 ref 上发起，checkout 绑定解析出的 annotated tag 并校验
   peeled commit/HEAD/Release 元数据一致（`tests/pages-workflow.test.ts` 合同
@@ -319,6 +331,6 @@ Analytics acceptance 通过；本地/PR/fresh 验证保持 exact stub 与隐私�
 
 ## 下一产品目标
 
-- 当前切片为 v3.3.1 delivery hardening 的实现、验证与发行；源码版本声明不等于发布。
+- v3.3.1 源码树已完成 M43 五模式统一结果工作区；源码版本声明不等于发布。
   下一次产品增量（新功能、UI、算法或数据变更）由新的任务定义；发布流程遵循
   `docs/RELEASING.md`，里程碑状态在本文件更新。
