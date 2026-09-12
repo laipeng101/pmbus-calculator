@@ -445,7 +445,7 @@ describe('toCalculatorViewModel', () => {
   test('relative ULINEAR16 without nominal reference shows ratio but no final result', () => {
     const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0466, voutMode: { byte: 0x96 } }))
     expect(vm.valueText).toBe('—')
-    expect(vm.steps.some((s) => s.id === 'l16-ratio')).toBe(true)
+    expect(vm.steps.some((s) => s.id === 'l16-relative-nominal-missing')).toBe(true)
     expect(vm.steps.some((s) => s.kind === 'result')).toBe(false)
   })
 
@@ -460,7 +460,7 @@ describe('toCalculatorViewModel', () => {
       }),
     )
     expect(vm.valueText).toBe('—')
-    expect(vm.steps.some((s) => s.id === 'result' && s.value === '—')).toBe(true)
+    expect(vm.steps.some((s) => s.id === 'l16-relative-range')).toBe(true)
     expect(vm.steps.some((s) => s.plainText.includes('Infinity'))).toBe(false)
     expect(vm.formulaText).toContain('计算结果超出 JavaScript Number 可表示范围')
     expect(vm.formulaText).toContain('1e+308')
@@ -470,9 +470,8 @@ describe('toCalculatorViewModel', () => {
     )
     expect(vm.physicalValueCopy?.available).toBe(false)
     expect(vm.physicalValueCopy?.reason).toContain('Number')
-    // Nominal and ratio stay visible on every surface.
-    expect(vm.steps.some((s) => s.id === 'l16-nominal' && s.value === '1e+308')).toBe(true)
-    expect(vm.steps.some((s) => s.id === 'l16-ratio')).toBe(true)
+    // The nominal and ratio stay visible on the first-screen equation.
+    expect(vm.formulaText).toContain('1e+308')
   })
 
   test('relative ULINEAR16 derivation underflow is diagnosed, not shown as exact zero (v2.5.9)', () => {
@@ -486,7 +485,7 @@ describe('toCalculatorViewModel', () => {
       }),
     )
     expect(vm.valueText).toBe('—')
-    expect(vm.steps.some((s) => s.id === 'result' && s.value === '—')).toBe(true)
+    expect(vm.steps.some((s) => s.id === 'l16-relative-range')).toBe(true)
     expect(vm.formulaText).toContain('计算下溢')
     expect(vm.warnings.some((w) => w.id === 'l16-relative-underflow')).toBe(true)
     expect(vm.physicalValueCopy?.available).toBe(false)
@@ -627,7 +626,7 @@ describe('toCalculatorViewModel', () => {
     )
     expect(vm.valueText).toBe('1e+308')
     expect(vm.physicalValueCopy).toBeUndefined()
-    expect(vm.steps.some((s) => s.id === 'result' && s.value === '1e+308')).toBe(true)
+    expect(vm.steps).toEqual([])
   })
 
   test('SLINEAR16 offset under relative byte keeps its signed result and copy (v2.5.9)', () => {
@@ -1074,20 +1073,14 @@ describe('toCalculatorViewModel', () => {
   })
 
   describe('calculation steps (unified four-mode skeleton)', () => {
-    test('L11 steps include fields, formula, intermediate, result', () => {
+    test('L11 ordinary decode adds no supplemental steps (first screen is complete)', () => {
       const vm = toCalculatorViewModel(make({ raw: 0xf819 }))
-      expect(vm.steps.some((s) => s.kind === 'field' && s.label.includes('N'))).toBe(true)
-      expect(vm.steps.some((s) => s.kind === 'field' && s.label.includes('Y'))).toBe(true)
-      expect(vm.steps.some((s) => s.kind === 'formula' && s.plainText.includes('2^N'))).toBe(true)
-      expect(vm.steps.some((s) => s.kind === 'intermediate' && s.label === '2^N')).toBe(true)
-      expect(vm.steps.some((s) => s.kind === 'result' && s.value === '12.5')).toBe(true)
+      expect(vm.steps).toEqual([])
     })
 
-    test('L16 steps expose VOUT_MODE fields and result for absolute LINEAR', () => {
+    test('L16 absolute LINEAR decode adds no supplemental steps', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00 }))
-      expect(vm.steps.some((s) => s.label.includes('VOUT_MODE'))).toBe(true)
-      expect(vm.steps.some((s) => s.label.includes('格式'))).toBe(true)
-      expect(vm.steps.some((s) => s.kind === 'result' && s.value === '12')).toBe(true)
+      expect(vm.steps).toEqual([])
     })
 
     test('L16 relative LINEAR（缺 nominal）与 non-LINEAR steps contain no result', () => {
@@ -1115,7 +1108,7 @@ describe('toCalculatorViewModel', () => {
       }
     })
 
-    test('DIRECT steps expose M/B/R/Y fields and result', () => {
+    test('DIRECT ordinary decode adds no supplemental steps', () => {
       const vm = toCalculatorViewModel(
         make({
           mode: 'DIRECT',
@@ -1123,17 +1116,12 @@ describe('toCalculatorViewModel', () => {
           direct: { m: 2, b: 0, r: 0, errors: { m: null, b: null, r: null } },
         }),
       )
-      expect(vm.steps.some((s) => s.label === 'Y（16 位有符号整数）')).toBe(true)
-      expect(vm.steps.some((s) => s.label === 'M（斜率）')).toBe(true)
-      expect(vm.steps.some((s) => s.kind === 'result' && s.value === '5')).toBe(true)
+      expect(vm.steps).toEqual([])
     })
 
-    test('HALF steps expose S/E/F fields and classification', () => {
+    test('HALF normal decode adds no supplemental steps', () => {
       const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x3c00 }))
-      expect(vm.steps.some((s) => s.label.includes('S'))).toBe(true)
-      expect(vm.steps.some((s) => s.label.includes('E'))).toBe(true)
-      expect(vm.steps.some((s) => s.label.includes('F'))).toBe(true)
-      expect(vm.steps.some((s) => s.plainText.includes('正规数'))).toBe(true)
+      expect(vm.steps).toEqual([])
     })
   })
 
@@ -1364,11 +1352,9 @@ describe('toCalculatorViewModel', () => {
       expect(applied.nRangeText).toBe('0 ~ 255.99609375')
     })
 
-    test('L16 relative LINEAR 步骤解释指数/比值语义但不展示 V 字段与结果（缺 nominal）', () => {
+    test('L16 relative LINEAR（缺 nominal）只保留缺参考值诊断，不展示伪结果', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }))
-      expect(vm.steps.some((s) => s.id === 'l16-n')).toBe(true)
-      expect(vm.steps.some((s) => s.id === 'l16-2n')).toBe(true)
-      expect(vm.steps.some((s) => s.id === 'l16-ratio')).toBe(true)
+      expect(vm.steps.some((s) => s.id === 'l16-relative-nominal-missing')).toBe(true)
       expect(vm.steps.some((s) => s.id === 'l16-v')).toBe(false)
       expect(vm.steps.some((s) => s.kind === 'result')).toBe(false)
     })

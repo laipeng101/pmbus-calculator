@@ -92,7 +92,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   // v3.0.0: the main Raw Word hex is the canonical numeric raw word in every
   // mode — parse(format(raw)) === raw holds without any byte-order transform,
   // mirroring the raw/set-from-hex reducer exactly.
-  const formula = getFormulaPresentation(state)
+  const formula = getFormulaPresentation(state, valueText)
   const formulaText = formula.plainText
 
   const rawHex = state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(raw)
@@ -162,8 +162,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     cMacroText: buildCMacro(state.commandKey, formatRawHex(raw), formulaText),
     formulaText,
     formulaLatex: formula.latex,
-    formulaGenericLatex: formula.genericLatex,
-    formulaDetailLines: formula.detailLines,
+    formulaSymbolicLatex: formula.symbolicLatex,
     workspace: buildResultWorkspace(state, {
       formula,
       valueText,

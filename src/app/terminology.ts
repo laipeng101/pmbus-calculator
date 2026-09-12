@@ -29,12 +29,24 @@ export type TermId =
   | 'linear'
   | 'linear11'
   | 'linear11-exponent'
+  | 'linear11-y'
   | 'linear16'
   | 'ulinear16'
+  | 'ulinear16-v'
   | 'slinear16'
+  | 'l16-ys'
+  | 'l16-yu'
+  | 'l16-vnom'
   | 'vid'
   | 'direct'
+  | 'direct-y'
+  | 'direct-m'
+  | 'direct-b'
+  | 'direct-r'
   | 'binary16'
+  | 'half-s'
+  | 'half-e'
+  | 'half-f'
   | 'fp-special'
   | 'twos-complement'
   | 'quantization'
@@ -159,6 +171,16 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     specRef: 'Part II §7.3',
     scope: 'LINEAR11 word bits[15:11]',
   },
+  'linear11-y': {
+    id: 'linear11-y',
+    token: 'Y',
+    name: 'LINEAR11 数值',
+    detail:
+      'LINEAR11 数据字内的 11 位二补码整数（Part II §7.3，−1024～1023），位于两字节 word 的 bits[10:0]：X = Y × 2^N。它与 DIRECT 格式的接收整数 Y 是不同格式的不同字段。',
+    source: 'pmbus-spec',
+    specRef: 'Part II §7.3',
+    scope: 'LINEAR11 word bits[10:0]',
+  },
   linear16: {
     id: 'linear16',
     token: 'LINEAR16',
@@ -179,6 +201,16 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     specRef: 'Part II §8.4.1.1',
     scope: 'L16 payload（无符号）',
   },
+  'ulinear16-v': {
+    id: 'ulinear16-v',
+    token: 'V',
+    name: 'ULINEAR16 数值',
+    detail:
+      '输出电压 LINEAR16 的 16 位无符号数据字节值（Part II §8.4.1.1，0～65535）：X = V × 2^N，N 来自 VOUT_MODE bits[4:0]。它与 LINEAR11 的 Y 是不同格式的不同字段。',
+    source: 'pmbus-spec',
+    specRef: 'Part II §8.4.1.1',
+    scope: 'ULINEAR16 payload',
+  },
   slinear16: {
     id: 'slinear16',
     token: 'SLINEAR16',
@@ -188,6 +220,33 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     source: 'pmbus-spec',
     specRef: 'Part II §8.4.1.2',
     scope: 'L16 payload（偏移）',
+  },
+  'l16-ys': {
+    id: 'l16-ys',
+    token: 'Y_s',
+    name: 'SLINEAR16 偏移 payload',
+    detail:
+      '项目数学记号，表示 SLINEAR16 偏移命令的 16 位二补码 payload（规范基础 Part II §8.4.1.2），按 X_offset = Y_s × 2^N 解码；PMBus 1.3.1 本身不把该字段命名为 Y_s。',
+    source: 'project',
+    scope: 'SLINEAR16 payload（项目记号）',
+  },
+  'l16-yu': {
+    id: 'l16-yu',
+    token: 'Y_u',
+    name: 'ULINEAR16 比值 payload',
+    detail:
+      '项目数学记号，表示 relative ULINEAR16 的 16 位无符号 payload（规范基础 Part II §8.4.1.1 / §8.5），先解出无量纲比值 R = Y_u × 2^N；PMBus 1.3.1 本身不把该字段命名为 Y_u。',
+    source: 'project',
+    scope: 'ULINEAR16 relative payload（项目记号）',
+  },
+  'l16-vnom': {
+    id: 'l16-vnom',
+    token: 'V_NOM',
+    name: '标称参考电压',
+    detail:
+      '项目记号，表示 relative 语义使用的 VOUT_COMMAND 标称输出电压（规范基础 Part II §8.5）：最终电压 = V_NOM × 比值 R；规范化地该参考值就是 VOUT_COMMAND 的值。',
+    source: 'project',
+    scope: 'relative 参考值（项目记号）',
   },
   vid: {
     id: 'vid',
@@ -209,6 +268,46 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     specRef: 'Part II §7.4',
     scope: '数值格式',
   },
+  'direct-y': {
+    id: 'direct-y',
+    token: 'Y',
+    name: 'DIRECT 接收整数',
+    detail:
+      'DIRECT 格式中两字节二补码接收整数（Part II §7.4.1，−32768～32767）：X = (1/m)(Y × 10^(−R) − b)。它与 LINEAR11 的 Y 是不同格式的不同字段。',
+    source: 'pmbus-spec',
+    specRef: 'Part II §7.4.1',
+    scope: 'DIRECT 接收字',
+  },
+  'direct-m': {
+    id: 'direct-m',
+    token: 'm',
+    name: 'DIRECT 斜率系数',
+    detail:
+      'DIRECT 格式的两字节二补码斜率系数（Part II §7.4.1）：X = (1/m)(Y × 10^(−R) − b)；m = 0 时没有解码合同。系数必须来自器件 COEFFICIENTS 或产品资料，同一参数的读/写系数可能不同。',
+    source: 'pmbus-spec',
+    specRef: 'Part II §7.4.1',
+    scope: 'DIRECT 系数',
+  },
+  'direct-b': {
+    id: 'direct-b',
+    token: 'b',
+    name: 'DIRECT 偏移系数',
+    detail:
+      'DIRECT 格式的两字节二补码偏移系数（Part II §7.4.1）：X = (1/m)(Y × 10^(−R) − b)。系数必须来自器件 COEFFICIENTS 或产品资料。',
+    source: 'pmbus-spec',
+    specRef: 'Part II §7.4.1',
+    scope: 'DIRECT 系数',
+  },
+  'direct-r': {
+    id: 'direct-r',
+    token: 'R',
+    name: 'DIRECT 十进制指数',
+    detail:
+      'DIRECT 格式的一字节二补码十进制指数（Part II §7.4.1）：X = (1/m)(Y × 10^(−R) − b)。它是十进制指数，与 LINEAR11 / VOUT_MODE 的二进制指数 N 语义不同。',
+    source: 'pmbus-spec',
+    specRef: 'Part II §7.4.1',
+    scope: 'DIRECT 指数',
+  },
   binary16: {
     id: 'binary16',
     token: 'IEEE 754 binary16',
@@ -218,6 +317,33 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     source: 'pmbus-spec',
     specRef: 'Part II §7.6',
     scope: '数值格式',
+  },
+  'half-s': {
+    id: 'half-s',
+    token: 's',
+    name: 'HALF 符号位',
+    detail:
+      '项目数学记号，对应 IEEE 754 binary16 / Part II §7.6 的 bit[15] 符号位（0 为正、1 为负）：(−1)^s 决定数值符号。PMBus 1.3.1 正文按 bit 位置描述该字段，不命名为 s。',
+    source: 'project',
+    scope: 'HALF bit[15]（项目记号）',
+  },
+  'half-e': {
+    id: 'half-e',
+    token: 'E',
+    name: 'HALF 指数域',
+    detail:
+      '项目数学记号，对应 Part II §7.6 的 bits[14:10] 5 位原始指数域（raw field，0～31），不是 unbiased exponent：E=0 表示零/次正规，E=31 表示 Inf/NaN，normal 时按 2^(E−15) 使用。',
+    source: 'project',
+    scope: 'HALF bits[14:10]（项目记号）',
+  },
+  'half-f': {
+    id: 'half-f',
+    token: 'F',
+    name: 'HALF 尾数域',
+    detail:
+      '项目数学记号，对应 Part II §7.6 的 bits[9:0] 10 位尾数/小数域（0～1023），normal 形式为 1 + F/2^10。PMBus 1.3.1 未正式把该字段命名为 F。',
+    source: 'project',
+    scope: 'HALF bits[9:0]（项目记号）',
   },
   'fp-special': {
     id: 'fp-special',

@@ -27,14 +27,16 @@
 - 公式展示层集中在 `src/app/formula-presentation.ts`，输出：
   - `plainText`：纯文本公式，继续用于复制输出和 C 宏注释，保持兼容；
   - `latex`：KaTeX 源码，只用于屏幕排版；
-  - `genericLatex`：工作区通用关系式；
-  - `detailLines`：结果面板的语义化行数组（`summary` / `expansion`）。HALF 在 headline 已显示最终物理值时，展开式不重复最终长小数；
-  - `genericPlainText`：通用关系式的纯文本镜像，供无 KaTeX 环境与复制路径使用。
+  - `equationLatex` / `equationPlainText`：首屏“一条完整等式”，按符号关系 → 当前值代入 → 最终结果串联，终值直接取自同一 canonical 结果，不做第二次格式化；
+  - `symbolicLatex` / `symbolicPlainText`：纯符号关系式，供标题区与无 KaTeX 环境使用。
 - L11 / L16 / DIRECT / HALF 四种模式都从该层取得纯文本与 LaTeX；JSX 不自行拼装动态计算公式。
-- 五模式共享同一“结果工作区”三行结构（`src/app/result-workspace.ts`）：字段/参数 → 通用关系式 → 当前数值代入。
-  数值模式经 `MathFormula` 排版；VOUT_MODE 保持同一空间节奏，渲染 `字段` / `位解析` / `结果` 配置行，绝不进入 KaTeX。
+- 五模式共享同一“结果工作区”（`src/app/result-workspace.ts`）。数值模式固定两行：字段/参数 → 一条完整等式；
+  VOUT_MODE 保持同一空间节奏，渲染 `字段` / `位解析` / `结果` 三行配置，绝不进入 KaTeX。
 - 结果上下文固定为四个逻辑槽位 `raw` / `format` / `parameters` / `context`，顺序不随模式变化；
+  `parameters` 用结构化键值对（label/value）承载，组件不得按字符串切分。
   编码/解码方向只从已提交的 `valueRequest` / `l11.valueInput` 推导，不读 DOM、焦点或局部标志。
+- “计算过程”只保留首屏没有的补充推导/诊断（饱和、精确有理数/十进制、量化误差、标称参考与溢出/下溢）；
+  普通解码返回空列表，UI 整体省略该容器，绝不重复首屏等式或结果。
 - 公式只来自内部受控模板，不接受用户输入任意 TeX。
 - 必须正确处理负指数、负系数、括号、`m = 0` 和 HALF 特殊值。
 - 渲染组件 `src/components/math/MathFormula.tsx` 使用 `katex.render(tex, element, options)` DOM API，

@@ -2,12 +2,40 @@ import { PMBusMath } from '../../legacy/pmbus-math'
 import { formatPlainNumber } from '../numeric-presentation'
 import type { AppState } from '../state'
 import { classifyHalf } from '../half-class'
-import type { CalculatorViewModel, ResultContextItemVM } from './types'
+import { voutModeFormatTerm } from '../vout-mode-formats'
+import type {
+  CalculatorViewModel,
+  ResultContextItemVM,
+  ResultContextParamVM,
+  ResultContextTextVM,
+} from './types'
 
 type ContextSource = Pick<
   CalculatorViewModel,
   'rawHex' | 'voutModeInfo' | 'l16Payload' | 'physicalValueCopy'
 >
+
+function text(
+  key: ResultContextItemVM['key'],
+  label: string,
+  value: string,
+  options: { code?: boolean; termId?: ResultContextTextVM['termId'] } = {},
+): ResultContextItemVM {
+  const base = { kind: 'text' as const, key, label, value }
+  return {
+    ...base,
+    ...(options.code ? { code: true } : {}),
+    ...(options.termId ? { termId: options.termId } : {}),
+  }
+}
+
+function params(
+  key: ResultContextItemVM['key'],
+  label: string,
+  pairs: ResultContextParamVM[],
+): ResultContextItemVM {
+  return { kind: 'params', key, label, params: pairs }
+}
 
 /**
  * Stable four-slot result context (UI_CONVENTIONS §16): raw identity, active
@@ -16,16 +44,22 @@ type ContextSource = Pick<
  * reflows the semantic anchors. Values come from the same canonical
  * interpretation the rest of the view-model already projects — this module
  * formats, it never re-derives PMBus semantics.
+ *
+ * The `参数` slot is modelled as structured pairs (never one opaque string) so
+ * each symbol can carry its own glossary term and its value can be spaced
+ * independently.
  */
 export function buildResultContext(state: AppState, source: ContextSource): ResultContextItemVM[] {
   switch (state.mode) {
     case 'L11': {
       const { n } = PMBusMath.decodeLinear11(state.raw)
       return [
-        { key: 'raw', label: 'Raw Word', value: source.rawHex, code: true },
-        { key: 'format', label: '格式', value: 'LINEAR11' },
-        { key: 'parameters', label: '参数', value: `N = ${n}`, code: true },
-        { key: 'context', label: '上下文', value: state.l11.autoN ? '自动 N' : '手动 N' },
+        text('raw', 'Raw Word', source.rawHex, { code: true }),
+        text('format', '格式', 'LINEAR11', { termId: 'linear11' }),
+        params('parameters', '参数', [
+          { label: 'N', value: String(n), termId: 'linear11-exponent' },
+        ]),
+        text('context', '上下文', state.l11.autoN ? '自动 N' : '手动 N'),
       ]
     }
     case 'L16': {
@@ -38,7 +72,15 @@ export function buildResultContext(state: AppState, source: ContextSource): Resu
           : info.isRelative
             ? 'ULINEAR16 relative'
             : 'ULINEAR16'
-      const parameters = info.isLinear ? `${info.hex} · N = ${info.linearExponent}` : info.hex
+      const formatTerm = payload.nonLinear
+        ? voutModeFormatTerm(info.format)
+        : payload.signedOffset
+          ? ('slinear16' as const)
+          : ('ulinear16' as const)
+      const parameterPairs: ResultContextParamVM[] = [{ label: 'VOUT_MODE', value: info.hex }]
+      if (info.isLinear && info.linearExponent !== null) {
+        parameterPairs.push({ label: 'N', value: String(info.linearExponent), termId: 'exponent' })
+      }
 
       const contextParts: string[] = []
       if (payload.blocked) {
@@ -59,53 +101,49 @@ export function buildResultContext(state: AppState, source: ContextSource): Resu
       }
 
       return [
-        { key: 'raw', label: 'Raw Word', value: source.rawHex, code: true },
-        { key: 'format', label: '数据解释', value: format },
-        { key: 'parameters', label: '参数', value: parameters, code: true },
-        { key: 'context', label: '上下文', value: contextParts.join(' · ') },
+        text('raw', 'Raw Word', source.rawHex, { code: true }),
+        text('format', '数据解释', format, formatTerm ? { termId: formatTerm } : {}),
+        params('parameters', '参数', parameterPairs),
+        text('context', '上下文', contextParts.join(' · ')),
       ]
     }
     case 'DIRECT': {
       return [
-        { key: 'raw', label: 'Raw Word', value: source.rawHex, code: true },
-        { key: 'format', label: '格式', value: 'DIRECT（有符号 Y）' },
-        {
-          key: 'parameters',
-          label: '参数',
-          value: `m = ${state.direct.m}, b = ${state.direct.b}, R = ${state.direct.r}`,
-          code: true,
-        },
-        { key: 'context', label: '来源', value: '器件相关', termId: 'direct' },
+        text('raw', 'Raw Word', source.rawHex, { code: true }),
+        text('format', '格式', 'DIRECT（有符号 Y）', { termId: 'direct' }),
+        params('parameters', '参数', [
+          { label: 'm', value: String(state.direct.m), termId: 'direct-m' },
+          { label: 'b', value: String(state.direct.b), termId: 'direct-b' },
+          { label: 'R', value: String(state.direct.r), termId: 'direct-r' },
+        ]),
+        text('context', '来源', '器件相关', { termId: 'direct' }),
       ]
     }
     case 'HALF': {
       const facts = classifyHalf(state.raw)
       return [
-        { key: 'raw', label: 'Raw Word', value: source.rawHex, code: true },
-        { key: 'format', label: '格式', value: 'IEEE 754 binary16' },
-        {
-          key: 'parameters',
-          label: '参数',
-          value: `s = ${facts.sign}, E = ${facts.exponent}, F = ${facts.fraction}`,
-          code: true,
-        },
-        { key: 'context', label: '类别', value: facts.label },
+        text('raw', 'Raw Word', source.rawHex, { code: true }),
+        text('format', '格式', 'IEEE 754 binary16', { termId: 'binary16' }),
+        params('parameters', '参数', [
+          { label: 's', value: String(facts.sign), termId: 'half-s' },
+          { label: 'E', value: String(facts.exponent), termId: 'half-e' },
+          { label: 'F', value: String(facts.fraction), termId: 'half-f' },
+        ]),
+        text('context', '类别', facts.label),
       ]
     }
     case 'VOUT_MODE': {
       const info = source.voutModeInfo!
+      const parameterPairs: ResultContextParamVM[] = info.isLinear
+        ? [{ label: 'N', value: String(info.linearExponent), termId: 'exponent' }]
+        : [{ label: 'bits[4:0]', value: info.binary.slice(3) }]
       return [
-        { key: 'raw', label: 'Raw Byte', value: info.hex, code: true },
-        { key: 'format', label: '格式', value: info.formatName },
-        {
-          key: 'parameters',
-          label: '参数',
-          value: info.isLinear
-            ? `N = ${info.linearExponent}`
-            : `bits[4:0] = ${info.binary.slice(3)}`,
-          code: true,
-        },
-        { key: 'context', label: '状态', value: info.statusText },
+        text('raw', 'Raw Byte', info.hex, { code: true }),
+        text('format', '格式', info.formatName, {
+          termId: voutModeFormatTerm(info.format),
+        }),
+        params('parameters', '参数', parameterPairs),
+        text('context', '状态', info.statusText),
       ]
     }
   }

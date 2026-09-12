@@ -205,18 +205,11 @@ const VECTORS: PresentationVector[] = [
   },
 ]
 
-function resultStepOf(s: AppState) {
-  return buildCalculationSteps(s).find((step) => step.kind === 'result')
-}
-
 describe('plain-number presentation — cross-surface characterization', () => {
-  it('renders the same numeric text on the result card and the result step for every value class', () => {
+  it('renders the canonical numeric text on the result card for every value class', () => {
     for (const vector of VECTORS) {
       const vm = toCalculatorViewModel(vector.s)
-      const result = resultStepOf(vector.s)
-      expect(result, vector.name).toBeDefined()
       expect(vm.valueText, vector.name).toBe(vector.expectedValueText)
-      expect(result?.value, vector.name).toBe(vector.expectedValueText)
     }
   })
 
@@ -224,7 +217,7 @@ describe('plain-number presentation — cross-surface characterization', () => {
     for (const vector of VECTORS) {
       if (!vector.formulaEmbedsValue) continue
       const vm = toCalculatorViewModel(vector.s)
-      const formula = getFormulaPresentation(vector.s)
+      const formula = getFormulaPresentation(vector.s, vm.valueText)
       if (vector.formulaEmbedsValue === 'suffix') {
         expect(formula.plainText, vector.name).toContain(`=${vm.valueText}`)
       } else {
@@ -233,14 +226,12 @@ describe('plain-number presentation — cross-surface characterization', () => {
     }
   })
 
-  it('shows the shared relative-voltage fail-closed marker on all three surfaces', () => {
+  it('shows the shared relative-voltage fail-closed marker on both surfaces', () => {
     const overflow = VECTORS.find((v) => v.name === 'L16 relative overflow (nominal 1e308)')
     expect(overflow).toBeDefined()
     const vm = toCalculatorViewModel(overflow!.s)
-    const formula = getFormulaPresentation(overflow!.s)
-    const result = resultStepOf(overflow!.s)
+    const formula = getFormulaPresentation(overflow!.s, vm.valueText)
     expect(vm.valueText).toBe('—')
-    expect(result?.value).toBe('—')
     expect(formula.plainText).toContain('=—（计算结果超出 JavaScript Number 可表示范围）')
   })
 

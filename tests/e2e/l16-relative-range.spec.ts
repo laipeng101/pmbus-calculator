@@ -80,13 +80,12 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     const alerts = page.locator('section[aria-label="提示信息"]')
     await expect(alerts.getByText(/计算结果超出 JavaScript Number 可表示范围/)).toHaveCount(1)
 
-    // 计算步骤：最终电压以 — 结尾，无 Infinity；标称与比值仍可见
+    // 计算步骤只保留首屏没有的补充诊断：区间失败说明；标称值仍在首屏字段。
     await page.locator('[data-testid="calculation-steps-summary"]').click()
     const steps = page.locator('[data-testid="calculation-steps"]')
-    await expect(steps).toContainText(
-      'X = 1e+308 × 2 = —（计算结果超出 JavaScript Number 可表示范围）',
-    )
-    await expect(steps).toContainText('V_NOM（VOUT_COMMAND 标称值） = 1e+308')
+    await expect(steps).toContainText('V_NOM = 1e+308 与比值 R 的乘积')
+    await expect(steps).toContainText('计算结果超出 JavaScript Number 可表示范围')
+    await expect(steps).toContainText('结果卡已显示 —')
     await expect(steps).not.toContainText('Infinity')
 
     // 物理值复制禁用且有可访问原因；Hex/LE/BE 复制仍可用

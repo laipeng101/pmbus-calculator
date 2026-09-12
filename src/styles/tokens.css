@@ -701,10 +701,20 @@ select:disabled,
    motion (no layout shift); the global reduced-motion rule disables it. */
 .result-summary-rows {
   display: grid;
-  grid-template-rows: repeat(3, minmax(1.5rem, auto));
   align-content: center;
   gap: 6px;
   animation: result-workspace-enter 140ms ease-out;
+}
+
+/* Numeric modes reserve two semantic rows (fields + one complete equation);
+   VOUT_MODE keeps a three-row bit-field walkthrough. Track counts come from
+   the layout data attribute, never an inline style. */
+.result-summary-rows[data-row-layout='numeric'] {
+  grid-template-rows: repeat(2, minmax(1.5rem, auto));
+}
+
+.result-summary-rows[data-row-layout='config'] {
+  grid-template-rows: repeat(3, minmax(1.5rem, auto));
 }
 
 @keyframes result-workspace-enter {
@@ -740,7 +750,7 @@ select:disabled,
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 12px;
+  gap: 6px 16px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -749,7 +759,8 @@ select:disabled,
 .result-field {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  /* Deliberate label/value gap: the two roles must never read as one word. */
+  gap: 6px;
   font-size: 0.8125rem;
 }
 
@@ -769,6 +780,13 @@ select:disabled,
 .result-math {
   display: flex;
   justify-content: center;
+}
+
+/* The complete symbolic → substituted → result chain is wider than the old
+   single substitution line; keep it inside the desktop track without
+   enlarging the first-screen card. */
+.result-math .katex {
+  font-size: 1rem;
 }
 
 /* Keep the two math rows compact: KaTeX display math defaults to 1em block
@@ -841,8 +859,38 @@ select:disabled,
   font-size: 0.75rem;
 }
 
-.result-context-slot dt {
+.result-context-label {
   flex-shrink: 0;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.result-context-value {
+  color: var(--color-text-primary);
+}
+
+/* Structured `参数` slot: each symbol keeps its own label/value pair. */
+.result-context-params {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+}
+
+.result-context-param {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.result-context-param-label {
+  color: var(--color-text-muted);
+}
+
+.result-context-param-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
 }
 
 .result-context-slot dd {
@@ -866,8 +914,15 @@ select:disabled,
    context slots inside the first screen without horizontal overflow. */
 @media (max-width: 639px) {
   .result-summary-rows {
-    grid-template-rows: repeat(3, minmax(1.25rem, auto));
     gap: 2px;
+  }
+
+  .result-summary-rows[data-row-layout='numeric'] {
+    grid-template-rows: repeat(2, minmax(1.25rem, auto));
+  }
+
+  .result-summary-rows[data-row-layout='config'] {
+    grid-template-rows: repeat(3, minmax(1.25rem, auto));
   }
 
   .result-row {
@@ -879,10 +934,11 @@ select:disabled,
   }
 
   .result-field-list {
-    gap: 2px 8px;
+    gap: 4px 12px;
   }
 
   .result-field {
+    gap: 4px;
     font-size: 0.75rem;
   }
 

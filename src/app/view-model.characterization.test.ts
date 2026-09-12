@@ -130,7 +130,7 @@ describe('HALF characterization', () => {
   test('subnormal raw 0x0001 decodes with 12 significant digits and subnormal steps', () => {
     const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x0001 }))
     expect(vm.valueText).toBe('5.96046447754e-8')
-    expect(vm.steps.some((s) => s.plainText.includes('次正规数'))).toBe(true)
+    expect(vm.steps.some((s) => s.id === 'half-2e' && s.label === '2^-14')).toBe(true)
   })
 
   test('max subnormal raw 0x03FF and smallest normal 0x0400 bracket the boundary', () => {

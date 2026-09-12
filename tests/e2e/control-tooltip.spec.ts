@@ -245,6 +245,12 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
   test('disclosure 控件：计算过程/命令参考 hover 有说明，展开收起不受影响', async ({ page }) => {
     await settle(page)
 
+    // The first screen already carries the complete equation; a committed
+    // encode request adds the supplemental quantization diagnostic.
+    const valueInput = page.locator('#value-input')
+    await valueInput.fill('0.999999')
+    await valueInput.press('Tab')
+
     const steps = page.getByTestId('calculation-steps-summary')
     await steps.hover()
     const stepsTooltip = page.getByTestId('control-tooltip-steps-toggle')

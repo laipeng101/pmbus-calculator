@@ -14,11 +14,131 @@ function state(partial: Partial<AppState>): AppState {
   }
 }
 
-function kinds(steps: ReturnType<typeof buildCalculationSteps>): string[] {
-  return steps.map((s) => s.kind)
+function ids(steps: ReturnType<typeof buildCalculationSteps>): string[] {
+  return steps.map((s) => s.id)
 }
 
-describe('buildCalculationSteps — quantization-error step (LINEAR11 parity)', () => {
+function directCoeffs(m: number, b: number, r: number) {
+  return { m, b, r, errors: { m: null, b: null, r: null } }
+}
+
+describe('buildCalculationSteps — diagnostics-only contract', () => {
+  it('ordinary decode adds no supplemental steps for any numeric mode', () => {
+    expect(buildCalculationSteps(state({ mode: 'L11', raw: 0xf819 }))).toEqual([])
+    expect(
+      buildCalculationSteps(state({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x18 } })),
+    ).toEqual([])
+    expect(
+      buildCalculationSteps(state({ mode: 'DIRECT', raw: 10, direct: directCoeffs(2, 0, 0) })),
+    ).toEqual([])
+    expect(buildCalculationSteps(state({ mode: 'HALF', raw: 0x0000 }))).toEqual([])
+    expect(buildCalculationSteps(state({ mode: 'HALF', raw: 0x3c00 }))).toEqual([])
+  })
+
+  it('L11 adds a saturation warning plus the shared quantization step when a request exceeds the range', () => {
+    const max = 1023 * Math.pow(2, 15)
+    const saturated = buildCalculationSteps(
+      state({ mode: 'L11', l11: { ...INITIAL_STATE.l11, valueInput: max + 1 } }),
+    )
+    expect(ids(saturated)).toEqual(['l11-saturation', 'l11-quantization'])
+    expect(saturated[0]?.kind).toBe('warning')
+
+    const boundary = buildCalculationSteps(
+      state({ mode: 'L11', raw: 0x7fff, l11: { ...INITIAL_STATE.l11, valueInput: max } }),
+    )
+    expect(ids(boundary)).toEqual(['l11-quantization'])
+  })
+
+  it('L11 手动 N 饱和：超出锁定 N 的 Y 范围时出现饱和提示', () => {
+    const manual = state({
+      mode: 'L11',
+      raw: 0x03ff,
+      l11: { ...INITIAL_STATE.l11, autoN: false, n: 0, valueInput: 2000 },
+    })
+    expect(ids(buildCalculationSteps(manual))).toEqual(['l11-saturation', 'l11-quantization'])
+
+    const boundary = state({
+      mode: 'L11',
+      raw: 0x03ff,
+      l11: { ...INITIAL_STATE.l11, autoN: false, n: 0, valueInput: 1023 },
+    })
+    expect(ids(buildCalculationSteps(boundary))).toEqual(['l11-quantization'])
+  })
+
+  it('L16 relative without a nominal reference keeps only the reference warning', () => {
+    const steps = buildCalculationSteps(
+      state({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }),
+    )
+    expect(ids(steps)).toEqual(['l16-relative-nominal-missing'])
+    expect(steps[0]?.plainText).toContain('V_NOM')
+  })
+
+  it('L16 relative overflow/underflow keep only the range diagnostic, never Infinity', () => {
+    const overflow = buildCalculationSteps(
+      state({
+        mode: 'L16',
+        raw: 0x0200,
+        voutMode: { byte: 0x98 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
+      }),
+    )
+    expect(ids(overflow)).toEqual(['l16-relative-range'])
+    expect(overflow[0]?.plainText).toContain('计算结果超出 JavaScript Number 可表示范围')
+    expect(overflow.some((s) => s.plainText.includes('Infinity'))).toBe(false)
+
+    const underflow = buildCalculationSteps(
+      state({
+        mode: 'L16',
+        raw: 0x0001,
+        voutMode: { byte: 0x90 },
+        l16: { payloadKind: 'ulinear16', nominalVout: 5e-324 },
+      }),
+    )
+    expect(ids(underflow)).toEqual(['l16-relative-range'])
+    expect(underflow[0]?.plainText).toContain('计算下溢')
+    expect(underflow.some((s) => s.plainText.includes('= 0 V'))).toBe(false)
+  })
+
+  it('L16 非 LINEAR 共享字节 fail closed：无伪 N、无伪 V、无伪结果（v2.5.2）', () => {
+    for (const byte of [0x40, 0x60, 0xe0, 0x20, 0xa0, 0x41, 0xc1, 0xe1]) {
+      const steps = buildCalculationSteps(state({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
+      const tag = '0x' + byte.toString(16)
+      expect(ids(steps), tag).toEqual(['l16-nonlinear'])
+      expect(
+        steps.some((s) => s.id === 'l16-n' || s.id === 'l16-v'),
+        tag,
+      ).toBe(false)
+    }
+  })
+
+  it('DIRECT m=0 produces an explicit error step only', () => {
+    const steps = buildCalculationSteps(
+      state({
+        mode: 'DIRECT',
+        raw: 1,
+        direct: { m: 0, b: 0, r: 0, errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null } },
+      }),
+    )
+    expect(ids(steps)).toEqual(['direct-m-zero'])
+    expect(steps[0]?.kind).toBe('warning')
+  })
+
+  it('HALF keeps only subnormal scale factors and special-encoding notes', () => {
+    const subnormal = buildCalculationSteps(state({ mode: 'HALF', raw: 0x0001 }))
+    expect(ids(subnormal)).toEqual(['half-2e', 'half-fraction'])
+    expect(subnormal[0]?.value).toBe('0.00006103515625')
+
+    expect(ids(buildCalculationSteps(state({ mode: 'HALF', raw: 0x7e00 })))).toEqual(['half-nan'])
+    expect(ids(buildCalculationSteps(state({ mode: 'HALF', raw: 0x7c00 })))).toEqual([
+      'half-infinity',
+    ])
+    expect(ids(buildCalculationSteps(state({ mode: 'HALF', raw: 0xfc00 })))).toEqual([
+      'half-infinity',
+    ])
+  })
+})
+
+describe('buildCalculationSteps — quantization-error step (shared provenance)', () => {
   it('appends the quantization intermediate after an explicit L16 encode request', () => {
     const steps = buildCalculationSteps(
       state({
@@ -27,14 +147,23 @@ describe('buildCalculationSteps — quantization-error step (LINEAR11 parity)', 
         valueRequest: { mode: 'L16', value: 0.005 },
       }),
     )
+    expect(ids(steps)).toEqual(['l16-quantization'])
     const q = steps.at(-1)
-    expect(q?.id).toBe('l16-quantization')
     expect(q?.kind).toBe('intermediate')
     expect(q?.label).toBe('格式编码量化误差（请求值 − 表示值）')
     expect(q?.plainText).toContain('= ')
   })
 
-  it('appends the quantization intermediate for DIRECT and HALF requests', () => {
+  it('appends the quantization intermediate for L11, DIRECT and HALF requests', () => {
+    const l11 = buildCalculationSteps(
+      state({
+        mode: 'L11',
+        raw: 0xc101,
+        l11: { ...INITIAL_STATE.l11, n: -8, y: 257, autoN: false, valueInput: 1.005 },
+      }),
+    )
+    expect(l11.some((s) => s.id === 'l11-quantization' && s.kind === 'intermediate')).toBe(true)
+
     const direct = buildCalculationSteps(
       state({
         mode: 'DIRECT',
@@ -53,8 +182,6 @@ describe('buildCalculationSteps — quantization-error step (LINEAR11 parity)', 
   })
 
   it('keeps the walkthrough free of a quantization line without an explicit request', () => {
-    // No request on any page → no fabricated error line (the panel's ±0
-    // baseline is display-only and must not leak into the steps).
     expect(
       buildCalculationSteps(state({ mode: 'L16' })).some((s) => s.id.endsWith('-quantization')),
     ).toBe(false)
@@ -80,7 +207,7 @@ describe('buildCalculationSteps — DIRECT exact request transaction (v2.5.12)',
       state({
         mode: 'DIRECT',
         raw: 0x0001,
-        direct: { m: 1, b: 0, r: -17, errors: { m: null, b: null, r: null } },
+        direct: directCoeffs(1, 0, -17),
         valueRequest: { mode: 'DIRECT', value: 1e17, text: '100000000000000001' },
       }),
     )
@@ -96,7 +223,7 @@ describe('buildCalculationSteps — DIRECT exact request transaction (v2.5.12)',
       state({
         mode: 'DIRECT',
         raw: 0x0002,
-        direct: { m: 3, b: 0, r: 0, errors: { m: null, b: null, r: null } },
+        direct: directCoeffs(3, 0, 0),
         valueRequest: { mode: 'DIRECT', value: 0.5, text: '0.5' },
       }),
     )
@@ -111,204 +238,12 @@ describe('buildCalculationSteps — DIRECT exact request transaction (v2.5.12)',
       state({
         mode: 'DIRECT',
         raw: 0x0001,
-        direct: { m: 1, b: 0, r: -17, errors: { m: null, b: null, r: null } },
+        direct: directCoeffs(1, 0, -17),
       }),
     )
     expect(steps.some((s) => s.id === 'direct-request')).toBe(false)
     expect(steps.some((s) => s.id === 'direct-exact-represented')).toBe(false)
     expect(steps.some((s) => s.id === 'direct-exact-delta')).toBe(false)
-  })
-})
-
-describe('buildCalculationSteps — unified four-mode skeleton', () => {
-  it('L11 exposes fields, formula, intermediates, and result', () => {
-    const steps = buildCalculationSteps(state({ mode: 'L11', raw: 0xf819 }))
-    expect(kinds(steps)).toEqual(['field', 'field', 'formula', 'intermediate', 'formula', 'result'])
-    expect(steps[0]?.label).toContain('N')
-    expect(steps[1]?.label).toContain('Y')
-    expect(steps[4]?.plainText).toBe('X = 25 × 2^-1')
-    expect(steps[5]?.value).toBe('12.5')
-  })
-
-  it('L11 saturation adds a warning step only when out of range', () => {
-    const max = 1023 * Math.pow(2, 15)
-    const saturated = buildCalculationSteps(
-      state({ mode: 'L11', l11: { ...INITIAL_STATE.l11, valueInput: max + 1 } }),
-    )
-    expect(saturated.some((s) => s.kind === 'warning' && s.id === 'l11-saturation')).toBe(true)
-
-    const boundary = buildCalculationSteps(
-      state({ mode: 'L11', raw: 0x7fff, l11: { ...INITIAL_STATE.l11, valueInput: max } }),
-    )
-    expect(boundary.some((s) => s.id === 'l11-saturation')).toBe(false)
-  })
-
-  it('L16 absolute LINEAR exposes VOUT_MODE fields and the X = V × 2^N chain', () => {
-    const steps = buildCalculationSteps(
-      state({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x18 } }),
-    )
-    expect(kinds(steps)).toEqual([
-      'field',
-      'field',
-      'field',
-      'field',
-      'field',
-      'field',
-      'formula',
-      'intermediate',
-      'formula',
-      'result',
-    ])
-    expect(steps[2]?.plainText).toBe('bits[6:5] 格式 = LINEAR (0)')
-    expect(steps.some((s) => s.kind === 'result' && s.value === '12')).toBe(true)
-  })
-
-  it('L16 relative LINEAR explains exponent/ratio but never fakes an absolute result', () => {
-    const steps = buildCalculationSteps(
-      state({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }),
-    )
-    expect(steps.some((s) => s.kind === 'result')).toBe(false)
-    expect(steps.some((s) => s.kind === 'warning' && s.id === 'l16-relative-nominal-missing')).toBe(
-      true,
-    )
-    expect(steps.some((s) => s.plainText.includes('标称参考值'))).toBe(true)
-    // 相对 LINEAR 可解释 VOUT_MODE 参数位的指数/比值语义……
-    expect(steps.some((s) => s.id === 'l16-n')).toBe(true)
-    expect(steps.some((s) => s.id === 'l16-2n')).toBe(true)
-    expect(steps.some((s) => s.id === 'l16-ratio')).toBe(true)
-    // ……但不得把 raw 标成绝对电压（无 V 字段、无结果）。
-    expect(steps.some((s) => s.id === 'l16-v')).toBe(false)
-  })
-
-  it('L16 relative derivation overflow ends in — with the shared note, never Infinity (v2.5.9)', () => {
-    const steps = buildCalculationSteps(
-      state({
-        mode: 'L16',
-        raw: 0x0200,
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
-      }),
-    )
-    const final = steps.find((s) => s.id === 'l16-final')
-    expect(final?.plainText).toBe('X = 1e+308 × 2 = —（计算结果超出 JavaScript Number 可表示范围）')
-    const result = steps.find((s) => s.kind === 'result')
-    expect(result?.value).toBe('—')
-    expect(steps.some((s) => s.plainText.includes('Infinity'))).toBe(false)
-    // Nominal and ratio intermediates stay visible.
-    expect(steps.some((s) => s.id === 'l16-nominal' && s.value === '1e+308')).toBe(true)
-    expect(steps.some((s) => s.id === 'l16-ratio' && s.value === '2')).toBe(true)
-  })
-
-  it('L16 relative derivation underflow ends in — and is not presented as exact zero (v2.5.9)', () => {
-    const steps = buildCalculationSteps(
-      state({
-        mode: 'L16',
-        raw: 0x0001,
-        voutMode: { byte: 0x90 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 5e-324 },
-      }),
-    )
-    const result = steps.find((s) => s.kind === 'result')
-    expect(result?.value).toBe('—')
-    expect(steps.some((s) => s.plainText.includes('计算下溢'))).toBe(true)
-    expect(steps.some((s) => s.plainText.includes('= 0 V'))).toBe(false)
-  })
-
-  it('L16 非 LINEAR 共享字节 fail closed：无伪 N、无伪结果（v2.5.2）', () => {
-    for (const byte of [0x40, 0x60, 0xe0, 0x20, 0xa0, 0x41, 0xc1, 0xe1]) {
-      const steps = buildCalculationSteps(state({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
-      expect(
-        steps.some((s) => s.kind === 'warning' && s.id === 'l16-nonlinear'),
-        `0x${byte.toString(16)}`,
-      ).toBe(true)
-      // §8.4 fail-closed contract: no pseudo N field, no LINEAR V expansion,
-      // and never a fabricated result from a substituted 0x18.
-      expect(
-        steps.some((s) => s.id === 'l16-n'),
-        `0x${byte.toString(16)}`,
-      ).toBe(false)
-      expect(
-        steps.some((s) => s.id === 'l16-v'),
-        `0x${byte.toString(16)}`,
-      ).toBe(false)
-      expect(
-        steps.some((s) => s.kind === 'result' && s.value === '12'),
-        `0x${byte.toString(16)}`,
-      ).toBe(false)
-    }
-  })
-
-  it('L11 手动 N 饱和：超出锁定 N 的 Y 范围时出现饱和提示', () => {
-    const manual = state({
-      mode: 'L11',
-      raw: 0x03ff,
-      l11: { ...INITIAL_STATE.l11, autoN: false, n: 0, valueInput: 2000 },
-    })
-    const steps = buildCalculationSteps(manual)
-    expect(steps.some((s) => s.id === 'l11-saturation')).toBe(true)
-
-    const boundary = state({
-      mode: 'L11',
-      raw: 0x03ff,
-      l11: { ...INITIAL_STATE.l11, autoN: false, n: 0, valueInput: 1023 },
-    })
-    expect(buildCalculationSteps(boundary).some((s) => s.id === 'l11-saturation')).toBe(false)
-  })
-
-  it('DIRECT exposes fields, formula, intermediates, and result', () => {
-    const steps = buildCalculationSteps(
-      state({
-        mode: 'DIRECT',
-        raw: 10,
-        direct: { m: 2, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-      }),
-    )
-    expect(kinds(steps)).toEqual([
-      'field',
-      'field',
-      'field',
-      'field',
-      'formula',
-      'intermediate',
-      'intermediate',
-      'intermediate',
-      'intermediate',
-      'formula',
-      'result',
-    ])
-    expect(steps.some((s) => s.kind === 'result' && s.value === '5')).toBe(true)
-    expect(steps[5]?.plainText).toBe('10^(-R) = 10^0 = 1')
-  })
-
-  it('DIRECT m=0 produces an explicit error step without a result', () => {
-    const steps = buildCalculationSteps(
-      state({
-        mode: 'DIRECT',
-        raw: 1,
-        direct: { m: 0, b: 0, r: 0, errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null } },
-      }),
-    )
-    expect(steps.some((s) => s.kind === 'result')).toBe(false)
-    expect(steps.some((s) => s.kind === 'warning' && s.id === 'direct-m-zero')).toBe(true)
-  })
-
-  it('HALF exposes S/E/F fields, classification, piecewise formula, and result', () => {
-    const normal = buildCalculationSteps(state({ mode: 'HALF', raw: 0x3c00 }))
-    expect(normal[0]?.label).toContain('S')
-    expect(normal[1]?.label).toContain('E')
-    expect(normal[2]?.label).toContain('F')
-    expect(normal.some((s) => s.plainText.includes('正规数'))).toBe(true)
-    expect(normal.some((s) => s.kind === 'result' && s.value === '1')).toBe(true)
-
-    const minusZero = buildCalculationSteps(state({ mode: 'HALF', raw: 0x8000 }))
-    expect(minusZero.some((s) => s.kind === 'result' && s.value === '-0')).toBe(true)
-  })
-
-  it('HALF NaN and ±Infinity are classified without crashing', () => {
-    for (const raw of [0x7e00, 0x7c00, 0xfc00]) {
-      const steps = buildCalculationSteps(state({ mode: 'HALF', raw }))
-      expect(steps.length).toBeGreaterThan(3)
-    }
   })
 })
 
@@ -322,16 +257,15 @@ describe('buildCalculationSteps — VOUT_MODE page DIRECT/Half requirement split
   it('0x60/0xE0 step copy states standard binary16 and never claims device numbers', () => {
     for (const byte of [0x60, 0xe0]) {
       const steps = voutModeSteps(byte)
+      const tag = '0x' + byte.toString(16)
       const step = steps.find((s) => s.id === 'vout-mode-half')
-      expect(step, `0x${byte.toString(16)}`).toBeDefined()
+      expect(step, tag).toBeDefined()
       const copy = steps.map((s) => s.plainText).join('\n')
       expect(copy).toContain('标准 IEEE 754 binary16')
       for (const banned of HALF_BANNED) {
-        expect(copy, `0x${byte.toString(16)} unexpected copy: ${banned}`).not.toContain(banned)
+        expect(copy, tag + ' unexpected copy: ' + banned).not.toContain(banned)
       }
     }
-    // Absolute Half points at the existing HALF converter; only the relative
-    // byte adds the nominal-reference requirement (§8.5.2).
     const absolute = voutModeSteps(0x60)
       .map((s) => s.plainText)
       .join('\n')
@@ -349,7 +283,7 @@ describe('buildCalculationSteps — VOUT_MODE page DIRECT/Half requirement split
       const steps = voutModeSteps(byte)
       expect(
         steps.some((s) => s.id === 'vout-mode-direct'),
-        `0x${byte.toString(16)}`,
+        '0x' + byte.toString(16),
       ).toBe(true)
       const copy = steps.map((s) => s.plainText).join('\n')
       expect(copy).toContain('m/b/R')
@@ -366,7 +300,7 @@ describe('buildCalculationSteps — VOUT_MODE page DIRECT/Half requirement split
       expect(steps.some((s) => s.id === 'vout-mode-direct')).toBe(false)
       expect(
         steps.some((s) => s.plainText.includes('00000b')),
-        `0x${byte.toString(16)}`,
+        '0x' + byte.toString(16),
       ).toBe(true)
     }
   })
