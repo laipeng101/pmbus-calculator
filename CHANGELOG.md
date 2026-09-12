@@ -4,6 +4,39 @@
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-09-12
+
+> 本源码的发行目标为 v3.4.0；稳定 GitHub Release 公开前按待发布处理。
+> 发行与部署状态以 GitHub Release / Pages 验收记录为准。
+
+### Added
+
+- **统一五模式结果工作区**：结果卡成为「同一台工程仪表切换五个档位」的单一结构
+  （`src/app/result-workspace.ts`）。数值模式固定两行 `字段/参数` + `一条完整等式`；
+  VOUT_MODE 保持 `字段 → 位解析 → 结果` 三行配置解析并绝不进入 KaTeX；结果上下文固定
+  `raw`/`format`/`parameters`/`context` 四逻辑槽位，编码/解码方向只从已提交请求推导。
+- **首屏完整等式**：`equationLatex`/`equationPlainText` 按「符号关系 → 当前值代入 →
+  最终结果」串联，终值绑定同一 canonical headline 文本；复制/C 宏路径
+  （`plainText`/`latex`）保持字节不变。
+- **结构化参数与术语放置**：`parameters` 槽位改为 label/value 结构
+  （`ResultContextParamVM`）并携带术语元数据；`terminology.ts` 仍是唯一 glossary，
+  新增 12 个实际显示且可点击的符号（`linear11-y`、`ulinear16-v`、`direct-y/m/b/r`、
+  `half-s/e/f`、`l16-ys/yu/vnom`）。
+
+### Changed
+
+- **“计算过程”面板只保留补充诊断**：`buildCalculationSteps` 只返回首屏没有的饱和、
+  精确有理数/精度舍入、量化误差、标称参考与溢出/下溢诊断；普通解码返回空列表并整体
+  省略容器，绝不重复首屏等式或结果。
+- **HALF 指数可读性**：符号/数值 `(-1)^s` 经单一共享 helper 以 `(-1)^{\textstyle s}`
+  排版，纯文本保持 `(-1)^s`；最宽等式在自身滚动容器内滚动。
+
+### Unchanged
+
+- L11 / L16 / DIRECT / HALF 的计算与舍入语义、canonical raw word、字节序与复制格式、
+  命令元数据行为、已持久化用户偏好与 README 声明的公开用户流程均不变。
+- Release / Pages 分发边界与全部 provenance 门禁不变；本次为向后兼容 MINOR。
+
 ## [3.3.1] - 2026-09-09
 
 > 本源码的发行目标为 v3.3.1；稳定 GitHub Release 公开前按待发布处理。
