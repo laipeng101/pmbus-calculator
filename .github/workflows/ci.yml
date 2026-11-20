@@ -126,7 +126,8 @@ jobs:
         run: npm audit --audit-level=high
 
   e2e:
-    runs-on: ubuntu-latest
+    # Use the latest Ubuntu LTS supported by the locked Playwright version.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -293,7 +294,7 @@ jobs:
     # Chromium-only by design; this job proves the core user contracts on the
     # other two engines without tripling the E2E matrix.
     name: Browser compatibility (Firefox + WebKit core smoke)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
