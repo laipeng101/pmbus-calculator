@@ -3,7 +3,7 @@
 ## 当前里程碑
 
 ```text
-M0–M43 complete；stable release v3.4.1（本源码发行目标）；production distribution: GitHub Pages。
+M0–M43 complete；stable release v3.4.2（本源码发行目标）；production distribution: GitHub Pages。
 ```
 
 M43 于 2026-09-12 完成。稳定 GitHub Release 公开前，源码发行目标按待发布处理。发行和部署状态分别以 GitHub Release 与 Pages 验收记录为准。
