@@ -9,7 +9,7 @@ name: CI
 #
 # Parallel verification layout:
 #   quality        — format, typecheck, lint, coverage, build, base contracts
-#   e2e            — Playwright install, user flows, release + Pages-overlay smoke
+#   e2e            — Playwright install, visual regression, user flows, release + Pages-overlay smoke
 #   compatibility  — Node 22 typecheck + unit tests (Node runtime floor)
 #   browser-compat — Firefox + WebKit core smoke (browser compatibility floor;
 #                    a deliberately small cross-engine suite, not the full
@@ -160,6 +160,11 @@ jobs:
         if: steps.scope.outputs.run_full != 'false'
         run: npx playwright install --with-deps chromium
 
+      - name: Run Playwright visual regression
+        id: visual
+        if: steps.scope.outputs.run_full != 'false'
+        run: npm run test:e2e:visual
+
       # v2.5.15: the desktop semantic suite and the mobile-contract suite are
       # the primary acceptance targets and verify the PRODUCTION build
       # (`vite preview` of the exact dist/ under the official Pages prefix).
@@ -195,6 +200,16 @@ jobs:
         id: pages_overlay_smoke
         if: steps.scope.outputs.run_full != 'false'
         run: npm run test:pages-overlay
+
+      - name: Upload Playwright visual report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure() &&
+          steps.scope.outputs.run_full != 'false' &&
+          steps.visual.outcome == 'failure'
+        with:
+          name: playwright-report-visual
+          path: tests/e2e/report-visual
+          retention-days: 7
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

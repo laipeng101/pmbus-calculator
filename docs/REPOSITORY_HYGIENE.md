@@ -9,7 +9,7 @@
 ### 必须跟踪（Git）
 
 - 源码、配置、测试、Markdown 文档、package lock。
-- Playwright golden baseline：`tests/e2e/visual.spec.ts-snapshots/*.png`（darwin canonical）。
+- Playwright golden baseline：`tests/e2e/visual.spec.ts-snapshots/*.png`（Ubuntu 24.04 / amd64）。
 - 未来经审核采用的同目录 lossless WebP：`tests/e2e/visual.spec.ts-snapshots/*.webp`。
 - 规范 provenance：`document/specifications.json`（官方 URL、字节数与 SHA-256 的唯一机器可读来源）和 `document/README.md`（开发者使用说明）。
 - `THIRD_PARTY_NOTICES.md`：第三方规范与 MIT 代码的分发边界说明。
@@ -42,9 +42,9 @@
 
 1. Playwright golden snapshot 是测试输入，应提交到版本控制。
 2. actual、diff、failed screenshot 和 HTML report 是临时输出，不提交。
-3. snapshot 必须在与现有基线相同的环境中生成：
-   - 当前 canonical 环境为 darwin；
-   - 必须记录操作系统、Node、Playwright、Chromium 和 viewport。
+3. 使用 `npm run test:e2e:visual` 比对快照。该命令在 `scripts/test-visual.sh` 中按镜像摘要固定 Ubuntu 24.04、amd64、系统字体和 Chromium。Codex Cloud 与 GitHub Actions 的 full CI 使用同一入口。
+   - 经审查的基线更新使用 `npm run test:e2e:visual -- --update-snapshots=all`，更新后再用常规命令验证。
+   - 更新时记录镜像摘要、Node、Playwright、Chromium 和 viewport。
 4. `--update-snapshots` 不是普通修复命令：
    - 必须先确认变化是预期变化；
    - 必须审查实际截图或 diff；

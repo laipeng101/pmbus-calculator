@@ -75,6 +75,7 @@ const FULL_TIER_RUN_COMMANDS = [
   'npm run test:coverage',
   'npx playwright install --with-deps chromium',
   'npx playwright install --with-deps firefox webkit',
+  'npm run test:e2e:visual',
   'npm run test:e2e',
   'npm run test:e2e:mobile',
   'npm run test:e2e:cross-engine',
@@ -298,6 +299,7 @@ describe('ci.yml e2e job light-tier install gating', () => {
     for (const runCommand of [
       'npm ci',
       'npx playwright install --with-deps chromium',
+      'npm run test:e2e:visual',
       'npm run build',
       'npm run test:e2e',
       'npm run test:e2e:mobile',
@@ -371,6 +373,15 @@ describe('ci.yml canonical/compatibility runtimes', () => {
 })
 
 describe('ci.yml Playwright report upload gating', () => {
+  it('reports visual regressions through the required E2E job', () => {
+    expect(stepId(findStepByRun('npm run test:e2e:visual'))).toBe('visual')
+    const upload = normalize(findUploadStep('playwright-report-visual'))
+    expect(upload).toContain(
+      `if: failure() && ${FULL_TIER_CONDITION} && steps.visual.outcome == 'failure'`,
+    )
+    expect(upload).toContain('path: tests/e2e/report-visual')
+  })
+
   it('gives the Playwright E2E step the stable id e2e', () => {
     expect(stepId(findStepByName('Run Playwright E2E'))).toBe('e2e')
     expect(stepId(findStepByRun('npm run test:e2e'))).toBe('e2e')
@@ -402,6 +413,7 @@ describe('ci.yml Playwright report upload gating', () => {
 
   it('keeps Playwright steps in the e2e job', () => {
     const e2eSection = workflow.split(/^ {2}e2e:/m)[1] ?? ''
+    expect(e2eSection).toContain('Run Playwright visual regression')
     expect(e2eSection).toContain('Run Playwright E2E')
     expect(e2eSection).toContain('Run Playwright mobile contract E2E')
     expect(e2eSection).toContain('Run production release smoke')
