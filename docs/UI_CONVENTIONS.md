@@ -1,7 +1,6 @@
 # UI Conventions
 
-> 长期稳定规则。只有涉及 UI / 公式 / 交互动效的任务才需要读取本文件。
-> 本文不重复里程碑进度；进度以 `docs/ROADMAP.md` 为准。
+> 涉及界面、公式或交互时按改动定位相关章节。
 
 ## 1. Markdown 数学公式
 
@@ -17,7 +16,6 @@
     ````
 
 - 只转换真正的数学表达式。API 名、函数名、命令、路径、版本号、bit range 和代码片段继续使用反引号。
-- 历史快照 `docs/archive/**` 不修改、不搜索、不重新渲染。
 - 中英文文档的公式语义必须一致。
 - 只使用 GitHub MathJax 与 KaTeX 都支持的通用 LaTeX 子集；禁止未经验证的宏（如 `\operatorname`、`\newcommand`、`\def`）。
 - 本地 `npm run check:markdown-math` 只做文本扫描；PR 创建后必须用真实 GitHub 页面浏览器检查渲染结果并截图。
@@ -271,24 +269,17 @@
 - 视觉验收不能只凭 DOM 测试；必须包含关键 viewport 截图。
 - `visual snapshot` 是回归保护，不等同于设计质量批准；没有图像读取能力时，不得声称已“逐图目检”。
 - 没有图像读取能力时，必须把视觉要求转化为可执行的几何、对比度、换行、overflow、排列和 computed-style 断言；最终报告必须如实说明实际使用的验证方式。
-- `npm run verify:ui` 在 `npm run verify` 之后比对 Ubuntu 截图基线。GitHub Actions 的 full CI 使用同一视觉门禁。
 - visual regression 截图前等待 `document.fonts.ready`、KaTeX 完成和动画稳定。
 - reduced-motion 只关闭非必要动画，不得消除功能反馈；复制状态使用受控 timer（约 1.5–2s）。
 - KaTeX `htmlAndMathml` 已提供 MathML；外层不得用 `role="math"`/`aria-label` 覆盖；fallback 时再提供可访问名称。
 
 ## 11. 视觉基线治理
 
-> 完整政策见 [`docs/REPOSITORY_HYGIENE.md`](REPOSITORY_HYGIENE.md) 第 3 节；本文件只保留 UI 任务必须遵守的摘要。
-
-- Playwright golden snapshot 是测试输入，必须提交到版本控制；actual/diff/failed screenshot 和 HTML report 是临时输出，不提交。
-- 快照由 `npm run test:e2e:visual` 在锁定的 Ubuntu 镜像中比对。基线更新流程见仓库卫生政策。
-- `--update-snapshots` 不是普通修复命令：必须先确认变化是预期变化并审查截图或 diff。
-- 没有图像输入能力的 agent 不得自行接受或更新视觉基线，只能增加几何/overflow/换行/对比度/computed-style 断言并报告变化。
-- UI 任务如必须更新基线，应使用具备图像输入能力的复核模型，或停在等待视觉审批的状态。
-- 截图变化必须在 PR 中单独列出：新增/修改/删除数量、总字节变化、每张变化原因。
-- 视觉重构 PR 更新基线时必须附**新旧基线 diff 审查记录**（先记录失败场景为预期影响面、
-  更新后新旧 PNG 成对对比、核对更新集合与影响面吻合）；完整条款见
-  [`docs/REPOSITORY_HYGIENE.md`](REPOSITORY_HYGIENE.md) 第 3 节第 10 条。
+- Playwright 基线是测试输入，随 Git 跟踪。actual/diff/failed 截图和 HTML report 存为临时输出。
+- `npm run test:e2e:visual` 使用 [脚本](../scripts/test-visual.sh)按摘要固定的 Ubuntu 24.04 amd64 镜像，锁定系统字体与 Chromium。本地和 PR CI 使用同一入口。
+- 先运行比对确认预期受影响的场景，再按需用 `npm run test:e2e:visual -- --update-snapshots=all` 更新基线。成对检查新旧图，核对更新集合与影响面，再运行比对。
+- 更新基线的 PR 附场景、每张变化原因及新增、修改、删除数量与字节变化。视觉重构需提供成对审查记录。更新时记录镜像摘要、Node、Playwright、Chromium 和 viewport。
+- 缺少图像输入时可以运行已有基线并验证几何、overflow、对比度或 computed style。基线更新需要具备图像输入的复核。
 - 不使用 snapshot 替代数值、行为、无障碍或几何断言；不为了减小仓库而使用有损压缩。
 - visual scene 中的 volatile metadata（例如由 package.json 注入的版本徽标）必须在截图前先断言真实值，
   再规范化为明确的测试占位值；不 mask，且该规范化只存在于 E2E helper，不得进入 `src/` 或生产 bundle。

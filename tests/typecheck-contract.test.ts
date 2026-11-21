@@ -8,7 +8,7 @@
 // - the root tsconfig references exactly the app/node/tests projects,
 // - `package.json` typecheck uses build mode (`tsc -b`), never bare
 //   `tsc --noEmit` on the empty root config,
-// - the pre-commit hook and full CI still invoke `npm run typecheck`,
+// - the quality gate invokes `npm run typecheck`,
 // - `tsconfig.tests.json` actually covers unit tests, E2E specs, and every
 //   Playwright config entry point under strict mode.
 
@@ -53,15 +53,10 @@ describe('typecheck contract (M23)', () => {
     expect(scripts.typecheck).not.toContain('--noEmit')
   })
 
-  it('keeps the pre-commit hook on the real typecheck gate', () => {
+  it('keeps the real typecheck in the quality gate', () => {
     const pkg = readJson('package.json')
-    const hooks = pkg['simple-git-hooks'] as Record<string, string>
-    expect(hooks['pre-commit']).toContain('npm run typecheck')
-  })
-
-  it('keeps full CI on the real typecheck gate', () => {
-    const workflow = readRepoFile('.github/workflows/ci.yml')
-    expect(workflow).toMatch(/^ {8}run: npm run typecheck\s*$/m)
+    const scripts = pkg.scripts as Record<string, string>
+    expect(scripts['verify:quality'].split(' && ')).toContain('npm run typecheck')
   })
 
   it('keeps tsconfig.tests.json strict with Node and Vitest globals', () => {

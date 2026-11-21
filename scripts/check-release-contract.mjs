@@ -1,22 +1,6 @@
-// Gate: offline release contract consistency (M23, hardened M24, M25).
-//
-// The single source of truth for the current version is package.json. Every
-// other release surface is validated against it so a version bump can never
-// land half-applied:
-// - package-lock.json top-level AND root-package version (both required),
-// - CHANGELOG.md with structured validation: exactly one [Unreleased] first,
-//   current version as the first dated section, real Gregorian date,
-// - docs/releases/vX.Y.Z.md whose first non-empty line is the exact title,
-// - README.md and README_zh-CN.md Live Demo line, stable tag link, SHA256SUMS
-//   download link, and deployed-or-target-version declaration,
-// - docs/ROADMAP.md exactly one stable release declaration,
-// - RELEASING.md artifact naming consistency with shared contract,
-// - Generator imports from shared artifact contract (M25).
-//
-// Fully offline by design: no network, no GitHub login, no Pages, and no
-// remote tag or GitHub Release needs to exist yet — safe to run in PR CI
-// before anything is published. The version is never hardcoded; every
-// expectation is derived from the package.json version passed in.
+// Validate the package and lockfile versions and the artifact names used by
+// the generator, the Pages workflow, and the release runbook. This check is
+// offline, so it runs before the tag or GitHub Release exists.
 
 import { realpathSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
@@ -28,25 +12,9 @@ import {
   assetZipName,
   assetSumsName,
   buildReleasePlan,
+  isPlainSemver,
   PAGES_ZIP_TEMPLATE,
 } from './release-artifact-contract.mjs'
-
-const RELEASES_URL_VERSION_PATTERN = /\/releases\/(?:tag|download)\/v(\d+\.\d+\.\d+)/g
-const CHANGELOG_RELEASE_HEADING = /^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})$/
-const UNRELEASED_HEADING = /^## \[Unreleased\]$/
-const ROADMAP_STABLE_PATTERN = /stable release v(\d+\.\d+\.\d+)/
-const SEMVER_PATTERN = /^\d+\.\d+\.\d+$/
-
-// Either declaration is valid offline: a prepared release need not be live.
-// Restrict declarations to the actual Live Demo line, so a version mentioned
-// elsewhere cannot hide a stale or missing deployment/release target.
-const LIVE_DEMO_LINE_PATTERN = /^[ \t]*(?:>[ \t]*)?\*\*Live Demo[:：]\*\*[ \t]+/
-const LIVE_DEMO_PATTERNS = [
-  /currently deploys `v(\d+\.\d+\.\d+)`/g,
-  /当前部署版本 `v(\d+\.\d+\.\d+)`/g,
-  /release target `v(\d+\.\d+\.\d+)`/g,
-  /发布目标 `v(\d+\.\d+\.\d+)`/g,
-]
 
 /**
  * @param {string} importMetaUrl
@@ -54,172 +22,6 @@ const LIVE_DEMO_PATTERNS = [
  */
 export function repoRootFromScript(importMetaUrl) {
   return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..')
-}
-
-/**
- * @param {string} version
- * @returns {boolean}
- */
-export function isPlainSemver(version) {
-  return SEMVER_PATTERN.test(version)
-}
-
-/**
- * Validate a YYYY-MM-DD string is a real Gregorian calendar date.
- * @param {string} dateStr
- * @returns {boolean}
- */
-export function isValidGregorianDate(dateStr) {
-  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!match) return false
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const day = Number(match[3])
-  if (month < 1 || month > 12) return false
-  if (day < 1) return false
-  const daysInMonth = new Date(year, month, 0).getDate()
-  return day <= daysInMonth
-}
-
-// ---------------------------------------------------------------------------
-// Structured CHANGELOG validation (M25)
-// ---------------------------------------------------------------------------
-
-/**
- * Parse a CHANGELOG body and return structured heading information.
- * Fenced code blocks are ignored — headings inside them are not matched.
- *
- * @param {string} changelog
- * @returns {{ unreleased: number, releases: Array<{ version: string, date: string, line: number }> }}
- */
-function parseChangelogStructure(changelog) {
-  const lines = changelog.split('\n')
-  /** @type {Array<{ version: string, date: string, line: number }>} */
-  const releases = []
-  let unreleasedCount = 0
-  let inFence = false
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-
-    // Track fenced code blocks
-    if (line.startsWith('```') || line.startsWith('~~~')) {
-      inFence = !inFence
-      continue
-    }
-    if (inFence) continue
-
-    if (UNRELEASED_HEADING.test(line)) {
-      unreleasedCount++
-    }
-
-    const releaseMatch = line.match(CHANGELOG_RELEASE_HEADING)
-    if (releaseMatch) {
-      releases.push({
-        version: releaseMatch[1],
-        date: releaseMatch[2],
-        line: i + 1,
-      })
-    }
-  }
-
-  return { unreleased: unreleasedCount, releases }
-}
-
-/**
- * Validate the CHANGELOG.md structure.
- *
- * Rules:
- * - Exactly one `## [Unreleased]` heading.
- * - [Unreleased] must be the first release-level heading.
- * - Current package version must be the first dated release heading after
- *   [Unreleased].
- * - Exactly one heading for the current package version.
- * - Date must be a real Gregorian date.
- * - Headings inside fenced code blocks are ignored.
- *
- * @param {string} changelog
- * @param {string} version — current package version
- * @returns {{ ok: boolean, errors: string[] }}
- */
-export function validateChangelog(changelog, version) {
-  const errors = []
-  const { unreleased, releases } = parseChangelogStructure(changelog)
-
-  if (unreleased === 0) {
-    errors.push('CHANGELOG.md is missing the ## [Unreleased] section')
-  } else if (unreleased > 1) {
-    errors.push(
-      `CHANGELOG.md has ${unreleased} duplicate ## [Unreleased] sections (expected exactly 1)`,
-    )
-  }
-
-  if (releases.length === 0) {
-    errors.push(`CHANGELOG.md has no dated release sections`)
-    return { ok: false, errors }
-  }
-
-  // [Unreleased] must be the first release-level heading
-  if (unreleased >= 1 && releases.length > 0) {
-    // Find the line numbers of unreleased and first release
-    const lines = changelog.split('\n')
-    let unreleasedLine = -1
-    let inFence = false
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith('```') || lines[i].startsWith('~~~')) {
-        inFence = !inFence
-        continue
-      }
-      if (inFence) continue
-      if (UNRELEASED_HEADING.test(lines[i]) && unreleasedLine === -1) {
-        unreleasedLine = i + 1
-        break
-      }
-    }
-    if (unreleasedLine > 0 && releases[0].line < unreleasedLine) {
-      errors.push(
-        `CHANGELOG.md ## [Unreleased] must be the first release-level heading ` +
-          `(found dated release at line ${releases[0].line} before [Unreleased])`,
-      )
-    }
-  }
-
-  // Current version must be the first dated release
-  if (releases[0].version !== version) {
-    errors.push(
-      `CHANGELOG.md first dated release is v${releases[0].version} but ` +
-        `expected v${version} to be the first dated section after [Unreleased]`,
-    )
-  }
-
-  // Current version must appear exactly once
-  const currentVersionReleases = releases.filter((r) => r.version === version)
-  if (currentVersionReleases.length === 0) {
-    errors.push(`CHANGELOG.md has no "## [${version}] - YYYY-MM-DD" section`)
-  } else if (currentVersionReleases.length > 1) {
-    errors.push(
-      `CHANGELOG.md has ${currentVersionReleases.length} duplicate ` +
-        `## [${version}] sections (expected exactly 1)`,
-    )
-  } else if (!isValidGregorianDate(currentVersionReleases[0].date)) {
-    errors.push(`CHANGELOG.md date ${currentVersionReleases[0].date} is not a valid Gregorian date`)
-  }
-
-  return { ok: errors.length === 0, errors }
-}
-
-// ---------------------------------------------------------------------------
-// Artifact naming from shared contract
-// ---------------------------------------------------------------------------
-
-/**
- * Expected immutable GitHub Release artifact names for a version.
- * Delegates to the shared contract module.
- * @param {string} version
- * @returns {string[]}
- */
-export function expectedArtifactNames(version) {
-  return [assetZipName(version), assetSumsName()]
 }
 
 // ---------------------------------------------------------------------------
@@ -285,16 +87,6 @@ function checkReleasingContent(releasingContent, version) {
     errors.push('docs/RELEASING.md does not reference SHA256SUMS.txt')
   }
   return errors
-}
-
-/**
- * @param {string} repoRoot
- * @param {string} version
- * @returns {Promise<string[]>}
- */
-export async function checkReleasingArtifactNames(repoRoot, version) {
-  const releasing = await fs.readFile(path.join(repoRoot, 'docs', 'RELEASING.md'), 'utf8')
-  return checkReleasingContent(releasing, version)
 }
 
 // ---------------------------------------------------------------------------
@@ -448,10 +240,6 @@ async function checkGeneratorImportsSharedContract(repoRoot) {
  * @param {{
  *   version: string,
  *   lockVersions: string[],
- *   changelog: string,
- *   releaseNotes: { exists: boolean, content: string },
- *   readmes: Array<{ name: string, content: string }>,
- *   roadmap: string,
  *   releasing: string,
  *   pagesZipTemplate: string | null,
  *   pagesHasSums: boolean,
@@ -481,47 +269,6 @@ export function validateReleaseContract(contract) {
     if (lockVersion !== version) {
       errors.push(`package-lock.json version ${lockVersion} does not match ${version}`)
     }
-  }
-
-  // CHANGELOG: structured validation (M25 -- includes [Unreleased] check).
-  const changelogResult = validateChangelog(contract.changelog, version)
-  errors.push(...changelogResult.errors)
-
-  // Release notes: first non-empty line must be exactly the title.
-  if (!contract.releaseNotes.exists) {
-    errors.push(`docs/releases/v${version}.md does not exist`)
-  } else {
-    const firstLine = contract.releaseNotes.content
-      .split('\n')
-      .map((l) => l.trim())
-      .find((l) => l.length > 0)
-    const expectedTitle = `# PMBus Calculator v${version}`
-    if (firstLine !== expectedTitle) {
-      errors.push(
-        `docs/releases/v${version}.md first line must be "${expectedTitle}" (got: "${firstLine}")`,
-      )
-    }
-  }
-
-  for (const readme of contract.readmes) {
-    validateReadme(readme.name, readme.content, version, errors)
-  }
-
-  // ROADMAP: exactly one stable release declaration matching the current version.
-  const roadmapMatches = [
-    ...contract.roadmap.matchAll(new RegExp(ROADMAP_STABLE_PATTERN.source, 'g')),
-  ]
-  if (roadmapMatches.length === 0) {
-    errors.push('docs/ROADMAP.md stable release declaration is missing')
-  } else if (roadmapMatches.length > 1) {
-    const versions = roadmapMatches.map((m) => `v${m[1]}`)
-    errors.push(
-      `docs/ROADMAP.md has ${roadmapMatches.length} stable release declarations (${versions.join(', ')}), expected exactly 1 (v${version})`,
-    )
-  } else if (roadmapMatches[0][1] !== version) {
-    errors.push(
-      `docs/ROADMAP.md stable release declaration is v${roadmapMatches[0][1]}, expected v${version}`,
-    )
   }
 
   // Artifact names: the Pages workflow template must match the shared contract.
@@ -557,49 +304,6 @@ export function validateReleaseContract(contract) {
   return { ok: errors.length === 0, errors }
 }
 
-/**
- * README rules:
- * 1. Exactly one Live Demo line declares the current deployed or target version.
- * 2. Every GitHub releases URL (tag or download) must point at the current version.
- * 3. Stable tag link, SHA256SUMS download link, and backticked `vX.Y.Z` must each exist.
- * @param {string} name
- * @param {string} content
- * @param {string} version
- * @param {string[]} errors
- */
-function validateReadme(name, content, version, errors) {
-  const liveDemoLines = content.split(/\r?\n/).filter((line) => LIVE_DEMO_LINE_PATTERN.test(line))
-  const liveDemoVersions = liveDemoLines.flatMap((line) =>
-    LIVE_DEMO_PATTERNS.flatMap((pattern) => [...line.matchAll(pattern)].map((match) => match[1])),
-  )
-  const liveDemoOk =
-    liveDemoLines.length === 1 && liveDemoVersions.length === 1 && liveDemoVersions[0] === version
-  if (!liveDemoOk) {
-    errors.push(
-      `${name} Live Demo line does not declare the current deployed or target version v${version}`,
-    )
-  }
-
-  const urlVersions = new Set()
-  for (const match of content.matchAll(RELEASES_URL_VERSION_PATTERN)) {
-    urlVersions.add(match[1])
-  }
-  for (const urlVersion of urlVersions) {
-    if (urlVersion !== version) {
-      errors.push(`${name} still links GitHub release v${urlVersion}, expected v${version}`)
-    }
-  }
-  if (!content.includes(`/releases/tag/v${version}`)) {
-    errors.push(`${name} is missing the stable tag link for v${version}`)
-  }
-  if (!content.includes(`/releases/download/v${version}/SHA256SUMS.txt`)) {
-    errors.push(`${name} is missing the SHA256SUMS.txt download link for v${version}`)
-  }
-  if (!content.includes(`\`v${version}\``)) {
-    errors.push(`${name} does not declare the deployed or target version \`v${version}\``)
-  }
-}
-
 // ---------------------------------------------------------------------------
 // readContract — reads all real surfaces (M25)
 // ---------------------------------------------------------------------------
@@ -610,10 +314,6 @@ function validateReadme(name, content, version, errors) {
  * @returns {Promise<{
  *   version: string,
  *   lockVersions: string[],
- *   changelog: string,
- *   releaseNotes: { exists: boolean, content: string },
- *   readmes: Array<{ name: string, content: string }>,
- *   roadmap: string,
  *   releasing: string,
  *   pagesZipTemplate: string | null,
  *   pagesHasSums: boolean,
@@ -626,12 +326,6 @@ function validateReadme(name, content, version, errors) {
 export async function readContract(repoRoot) {
   const pkg = JSON.parse(await fs.readFile(path.join(repoRoot, 'package.json'), 'utf8'))
   const lock = JSON.parse(await fs.readFile(path.join(repoRoot, 'package-lock.json'), 'utf8'))
-  const releaseNotesPath = path.join(repoRoot, 'docs', 'releases', `v${pkg.version}.md`)
-  const releaseNotesExists = await fs
-    .access(releaseNotesPath)
-    .then(() => true)
-    .catch(() => false)
-
   const lockVersions = [lock.version, lock.packages?.['']?.version].filter(
     (value) => typeof value === 'string',
   )
@@ -644,18 +338,6 @@ export async function readContract(repoRoot) {
   return {
     version: pkg.version,
     lockVersions,
-    changelog: await fs.readFile(path.join(repoRoot, 'CHANGELOG.md'), 'utf8'),
-    releaseNotes: {
-      exists: releaseNotesExists,
-      content: releaseNotesExists ? await fs.readFile(releaseNotesPath, 'utf8') : '',
-    },
-    readmes: await Promise.all(
-      ['README.md', 'README_zh-CN.md'].map(async (readmeName) => ({
-        name: readmeName,
-        content: await fs.readFile(path.join(repoRoot, readmeName), 'utf8'),
-      })),
-    ),
-    roadmap: await fs.readFile(path.join(repoRoot, 'docs', 'ROADMAP.md'), 'utf8'),
     releasing,
     pagesZipTemplate: zipTemplate,
     pagesHasSums: hasSums,

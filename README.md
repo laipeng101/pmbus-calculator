@@ -8,11 +8,9 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 > **Scope:** this tool converts numeric formats; it is **not** a PMBus/SMBus controller, bus-transport implementation, command executor, device-profile engine, or conformance test suite. It covers the common numeric-format semantics across multiple PMBus revisions and does **not** claim full PMBus 1.5 protocol compliance (including the 1.5 security extensions).
 >
-> **Live Demo:** https://laipeng101.github.io/pmbus-calculator/ (release target `v3.4.1`)
+> [Live Demo](https://laipeng101.github.io/pmbus-calculator/)
 >
-> **Stable release target:** [`v3.4.1`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.4.1) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.4.1/SHA256SUMS.txt)
->
-> This source targets v3.4.1; treat it as unpublished until its stable GitHub Release is public. GitHub Release and Pages acceptance records determine publication and deployment status.
+> [Latest stable release](https://github.com/laipeng101/pmbus-calculator/releases/latest) · [Release history](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/latest/download/SHA256SUMS.txt)
 
 ---
 
@@ -39,7 +37,7 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 - 🔲 **Interactive bit mappings** — the 16-bit panel sits directly below Raw Word, with clickable bits, nibble hex values and field legends. Both it and the VOUT_MODE 8-bit panel open by default; each remembers its collapsed state across mode changes and reloads. Hex and parameter editing remain available when collapsed.
 - 🧭 **Result context** — the result shows its raw word, format and parameter source, including L16 reference availability and the current DIRECT coefficients.
 - 📋 **One-click copy** — copy the raw hex value, the decoded physical value, or a ready-to-paste C macro.
-- 📖 **Read-only PMBus command reference** — a collapsed reference panel listing command code, transactions, data type, units, format source and spec section for 13 PMBus 1.3 commands. It never switches mode, injects parameters, or rewrites raw; no demo presets are shipped.
+- 📖 **Read-only PMBus command reference** — expand the panel to look up standard command definitions without affecting calculations.
 - ♾️ **Optimal N auto-selection** — for LINEAR11 mode, the tool automatically finds the N exponent that minimises representation error.
 - 🌙 **Light / Dark mode** — respects `prefers-color-scheme` and supports a manual toggle.
 - 📱 **Fully responsive** — sticky result panel, adaptive grid, and touch-optimised controls for mobile.
@@ -68,30 +66,11 @@ It supports bidirectional conversion for **LINEAR11 (L11)**, **LINEAR16 / VOUT (
 
 ### Legacy single-file (repository-internal offline archive)
 
-`pmbus-calculator.html` is a self-contained single HTML file — no build step, no server required.
-It remains in the repository root for **repository-internal offline compatibility purposes**: only necessary corrections are accepted, and it is no longer the Pages product entry point. GitHub Pages serves the React web app at the root (HTTP 200); only the legacy `/pmbus-calculator.html` path returns 404.
-
-> Known numeric deviations in this archive (epsilon-based L11 tie handling without the modern full-range saturation contract, and `Math.round` half-up mantissa rounding in `encodeHalf` instead of IEEE 754 round-to-nearest-even) are documented in [docs/MIGRATION_MATRIX.md](docs/MIGRATION_MATRIX.md); the React app is the numeric authority.
-
-**Open locally:**
-
-1. Clone or download the repository.
-2. Open `pmbus-calculator.html` directly in any modern browser.
+Clone or download the repository and open `pmbus-calculator.html` directly in a modern browser for offline use. Use the current web app when you need its numeric behavior and rounding rules. [Known differences and maintenance policy](docs/LEGACY_COMPATIBILITY.md)
 
 ### New web app (primary)
 
-**Source development:**
-
-```bash
-npm ci
-npm run dev      # starts Vite dev server at http://localhost:5173
-npm run build    # production build to dist/
-npm test         # runs Vitest
-```
-
-**Static build package:** the production build in `dist/` is a static bundle and must be used through an HTTP static server (for example `npm run preview` or any static hosting service). Directly double-clicking `dist/index.html` via `file://` is not supported.
-
-**Production deployment:** the official site at https://laipeng101.github.io/pmbus-calculator/ starts from a verified immutable Release ZIP, then applies a deterministic Pages-only overlay after all Release integrity, tag rebuild and local Release smoke gates pass. This source targets `v3.4.1`; full rollout acceptance requires the entire Pages workflow, including its final GitHub-hosted real Analytics check. Local and PR verification stub Cloudflare, so maintainers can keep privacy blockers enabled. See [docs/DEPLOYING.md](docs/DEPLOYING.md).
+Extract the Web ZIP from the latest stable release and serve its contents over HTTP, or serve the source build in `dist/`. For local use, preview a source build with `npm run preview`. [Local development and verification](CONTRIBUTING.md)
 
 **Workflow:**
 
@@ -109,7 +88,7 @@ Clones, Download source ZIPs, forks, ordinary `npm run build` output, Release We
 
 The official GitHub Pages deployment uses privacy-oriented, aggregate **Cloudflare Web Analytics** for page-level statistics. It makes the narrowly allowed Cloudflare requests and adds a small source-repository icon link beside the header's theme button, with the accessible name “在 GitHub 查看项目源码”. The calculator keeps its full width on mobile. These additions are applied only to the Pages staging tree; the immutable Release ZIP remains unchanged.
 
-Calculator inputs and results—including PMBus raw words, physical values, DIRECT coefficients, VOUT_MODE values and copied content—are not collected as custom analytics events. No calculator event parameters are added to the standard page-level beacon.
+Calculator inputs and results—including PMBus raw words, physical values, DIRECT coefficients, VOUT_MODE values and copied content—are not collected as custom analytics events. No calculator event parameters are added to the standard page-level beacon. [Deployment and verification](docs/DEPLOYING.md)
 
 ---
 
@@ -127,55 +106,19 @@ Calculator inputs and results—including PMBus raw words, physical values, DIRE
 
 ## PMBus Command Reference
 
-The built-in reference records what PMBus specifies for 13 standard commands (command code, transaction, data type, units, format source, spec section). It is deliberately **read-only**: selecting a command cannot reliably derive the payload format — the device datasheet or `VOUT_MODE` decides — so the panel never switches mode, injects parameters, or rewrites raw, and no demo presets are shipped.
-
-| Command               | Code   | Encoding rule                                                                  |
-| --------------------- | ------ | ------------------------------------------------------------------------------ |
-| `VOUT_COMMAND`        | `0x21` | follows VOUT_MODE                                                              |
-| `VOUT_OV_FAULT_LIMIT` | `0x40` | follows VOUT_MODE                                                              |
-| `READ_VOUT`           | `0x8B` | follows VOUT_MODE                                                              |
-| `READ_VIN`            | `0x88` | device-defined (datasheet)                                                     |
-| `READ_IOUT`           | `0x8C` | device-defined (datasheet)                                                     |
-| `READ_TEMPERATURE_1`  | `0x8D` | device-defined (datasheet)                                                     |
-| `VIN_OV_FAULT_LIMIT`  | `0x55` | device-defined (datasheet)                                                     |
-| `OT_FAULT_LIMIT`      | `0x4F` | device-defined (datasheet)                                                     |
-| `FAN_COMMAND_1`       | `0x3B` | device-defined (datasheet)                                                     |
-| `READ_POUT`           | `0x96` | device-defined (datasheet)                                                     |
-| `READ_FAN_SPEED_1`    | `0x90` | device-defined (datasheet)                                                     |
-| `STATUS_WORD`         | `0x79` | status bit field (read word; special write clears UNKNOWN bits only)           |
-| `READ_EIN`            | `0x86` | block read (more than 16 bits; spec-internal byte-count conflict shown in-app) |
+The built-in reference shows PMBus command codes, transactions, data types, units, format sources and specification sections. The panel is read-only. Use the device datasheet or `VOUT_MODE` to determine the payload format. [Command definitions](src/legacy/command-metadata.ts) · [Domain rules](docs/DOMAIN_MODEL.md)
 
 ---
 
 ## Tech Stack
 
-### Legacy (single-file archive)
-
-- **Pure HTML + CSS + Vanilla JavaScript** — no frameworks, no dependencies.
-- CSS custom properties for full light/dark theming.
-- Static CSP in the single-file page.
-- Kept as a repository-internal historical archive; not deployed on Pages.
-
-### New Web App (primary)
-
-- **Vite** + **React 19** + **TypeScript** — modern component-based architecture.
-- **Tailwind CSS** + CSS variables — design-token-driven theming.
-- **Vitest** — unit testing for PMBus math core and reducer/view-model.
-- **Playwright** — real-user E2E flows across desktop and mobile Chromium projects.
-- Live roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md) · domain rules: [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) · architecture decisions: [`docs/adr/`](docs/adr/) · frozen full plan: [`docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md`](docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md).
-
-> **Current status:** The new web app has L11 / L16 / DIRECT / HALF fully bidirectional and is the primary tool. The legacy `pmbus-calculator.html` is retained for repository-internal offline compatibility only (necessary corrections only); it is no longer the Pages product entry point.
+Vite, React, TypeScript and Tailwind CSS. [Architecture decisions](docs/adr/) · [Contributing](CONTRIBUTING.md)
 
 ---
 
 ## Browser Compatibility
 
-Automated verification evidence, by scope:
-
-- **Desktop Chromium** — full coverage: the complete desktop semantic E2E suite runs on the production build in CI (`e2e` job).
-- **Mobile Chromium** — automated device-emulation contract suite (Pixel 7 emulation, same CI `e2e` job).
-- **Firefox & WebKit** — automated cross-engine core smoke (CI `browser-compat` job, production build): a deliberately small suite covering the core user contracts — app boot & mode switching, encode/decode journeys in all four numeric modes, L16 non-LINEAR fail-closed behavior, canonical raw ↔ bit grid ↔ wire-byte synchronization, hex stepper pointer & keyboard activation, terminology popover, and the copy path. It does not rerun the full semantic suite, so deeper automated coverage remains Chromium-only by design.
-- Playwright's WebKit build is **not** Safari: no macOS Safari conformance or support claim is made. Other browsers remain best effort.
+Automated browser coverage includes desktop and mobile-emulated Chromium and core flows in Firefox and WebKit. Safari and other browsers are best effort. [Verification commands and scope](CONTRIBUTING.md)
 
 ---
 
@@ -184,7 +127,6 @@ Automated verification evidence, by scope:
 - Numeric-format subset only: no bus transport, command execution, device profiles, PMBus 1.5 security extensions, or Part IV.
 - `DIRECT` coefficients are device-specific; the tool never guesses them — it prompts for the device datasheet.
 - `READ_EIN` is a block read with a spec-internal byte-count conflict; the app shows both sources instead of picking an authority.
-- See [docs/releases/v1.0.0.md#known-limitations](docs/releases/v1.0.0.md#known-limitations).
 
 ## License
 

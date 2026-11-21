@@ -1,11 +1,17 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
-const files = execFileSync('git', ['ls-files', '*.md'], { encoding: 'utf8' })
-  .trim()
-  .split('\n')
-  .filter(Boolean)
-  .filter((f) => f.startsWith('docs/archive/') === false)
+const files = new Set(
+  execFileSync(
+    'git',
+    ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.md'],
+    {
+      encoding: 'utf8',
+    },
+  )
+    .split('\0')
+    .filter(Boolean),
+)
 
 const FORBIDDEN_STRINGS = [
   ['\\operatorname', 'forbidden \\operatorname'],
@@ -42,8 +48,17 @@ function fenceMarker(line) {
   return match ? match[1] : ''
 }
 
+let checked = 0
 for (const file of files) {
-  const text = readFileSync(file, 'utf8')
+  let text
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch (error) {
+    // Locally a tracked document may already be removed from the working tree.
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') continue
+    throw error
+  }
+  checked++
   const lines = text.split(/\r?\n/)
 
   let inMathFence = false
@@ -99,4 +114,4 @@ for (const file of files) {
 }
 
 if (failed) process.exit(1)
-console.log(`checked ${files.length} active markdown files`)
+console.log(`checked ${checked} active markdown files`)

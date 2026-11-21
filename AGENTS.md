@@ -1,231 +1,28 @@
 # AGENTS.md
 
-> 所有编程 Agent（Claude / Copilot / Cursor / Codex）在本仓库工作前必须阅读并遵守本文件。
-> 稳定规则只放在这里；里程碑状态看 `docs/ROADMAP.md`；legacy parity 看 `docs/MIGRATION_MATRIX.md`；
-> 格式/舍入/字节序/命令 profile 规则看 `docs/DOMAIN_MODEL.md`；开发流程看 `CONTRIBUTING.md`；仓库卫生与制品政策看 `docs/REPOSITORY_HYGIENE.md`。
+PMBus Calculator 是 Web-first 静态计算器，提供 L11、L16、DIRECT、HALF 与 VOUT_MODE 工具。任务从改动入口、直接调用方和相关测试开始。
 
-## 0. Context Loading Policy
+## 按任务读取
 
-- **Always**：`AGENTS.md`、当前 `docs/ROADMAP.md`、`docs/REPOSITORY_HYGIENE.md`
-- **Conditional**：
-  - 数学/格式/命令元数据任务才读 `DOMAIN_MODEL.md`
-  - UI/公式/交互动效任务才读 `docs/UI_CONVENTIONS.md`，且视觉验收必须包含关键 viewport 截图与逐图检查
-  - Git/PR/CI 流程任务才读 `CONTRIBUTING.md`
-  - 发布任务才读 `docs/RELEASING.md`
-  - Pages / Analytics / 部署 / CI-CD 任务还须读 `docs/DEPLOYING.md`
-  - legacy/parity 任务才读 `MIGRATION_MATRIX.md`
-  - 决策相关任务只读相关 ADR
-  - 规范核查任务先读 `document/specifications.json`，只按需 `npm run specs:fetch -- --id <id>` 对应文档，下载进 ignored `.cache/specifications/`，并只打开所需章节；不提交 PDF
-- **Historical**：`docs/archive/**` 默认不读、不搜索；只有明确历史调查理由时才加载
-- 使用 `rg` 做普通代码搜索时，默认添加：
+| 改动                               | 从这里展开                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| PMBus 算法、格式、字节序、命令数据 | [领域规则](docs/DOMAIN_MODEL.md) 的相关章节、`src/legacy/` 与 `src/app/`      |
+| 状态、输入、公式、UI               | `src/app/`、`src/components/` 与 [UI 约定](docs/UI_CONVENTIONS.md) 的相关章节 |
+| 测试、CI、贡献流程                 | [贡献指南](CONTRIBUTING.md)                                                   |
+| 生成物、清理、仓库体积             | [仓库卫生](docs/REPOSITORY_HYGIENE.md)                                        |
+| 发布、Pages、Analytics             | [发布](docs/RELEASING.md) 或 [部署](docs/DEPLOYING.md) 的相关步骤             |
+| 旧版单文件兼容性                   | [兼容性说明](docs/LEGACY_COMPATIBILITY.md)                                    |
 
-```bash
-rg ... -g '!docs/archive/**'
-```
+需要决策背景时查相关 [ADR](docs/adr/)。变更历史查 Git、PR 或 GitHub Releases。核对第三方规范时从 [manifest](document/specifications.json) 查找来源，按需下载并读取所需章节，PDF 放入忽略的缓存。规范基线见 [领域规则](docs/DOMAIN_MODEL.md)。
 
-## 1. 项目主线
+## 代码约束
 
-```text
-把单文件 PMBus Calculator 重构为可维护的现代 Web App。
-主线：Web-first。当前里程碑状态一律以 docs/ROADMAP.md 为准，不在本文件重复。
-```
+- `src/app/` 管理状态、计算结果呈现和动作。组件消费 view model，计算、命令数据与格式化集中在已有层。偏好写入经 `src/app/persistence.ts`。
+- `state.raw` 是规范的 16 位 Raw Word，字节序只在序列化层处理。命令参考只读，器件系数与编码资料以真实数据手册为准。
+- 修改 PMBus 换算、VOUT_MODE 或 PEC 时验证边界、舍入与 golden case。界面交互、样式与公式遵循 UI 约定。
+- JSX 使用现有样式和事件处理方式。新增动态 inline style 须有实际理由。
 
-不追求（除非用户明确要求进入对应阶段）：
+## 验证与交付
 
-```text
-Tauri / Electron / 移动原生 / 硬件通信 / 后端 / 复杂状态库 / 算法重写 / monorepo
-```
-
-## 2. 规范来源与分发边界
-
-- 当前领域基线是 PMBus 1.3 / SMBus 3.0；不把 PMBus 1.5 当成当前领域基线。
-- 第三方规范 PDF 不进入当前 Git tree。来源、字节数和 SHA-256 只在
-  `document/specifications.json` 维护，PDF 由开发者按需下载到 ignored
-  `.cache/specifications/`。
-- 规范核查任务先读 manifest，只 fetch 实际需要的文档，只打开所需章节，不提交 PDF。
-- 官方来源与仓库规则直接冲突且无法保守处理时才停止。
-
-## 3. 绝对禁止
-
-1. 禁止推倒重写旧实现。必须：先迁移 → 再替换 → 再验证 → 最后删除。
-2. 禁止无测试修改以下函数：`decodeLinear11`、`encodeLinear11`、`findBestLinear11`、
-   `decodeLinear16`、`encodeLinear16`、`decodeDirect`、`encodeDirect`、`decodeHalf`、
-   `encodeHalf`、`parseVoutMode`、`calculatePEC`。
-3. 禁止在 JSX 中硬编码命令字典、模式配置、profile、单位；必须来自统一数据层。
-4. 禁止新增 inline `onclick` / inline `style`（极少数动态 style 可接受，必须有明确理由）。
-5. 禁止在组件中直接写 `localStorage`；必须集中在 `src/app/persistence.ts`。
-6. 禁止让 UI 在运行时宣称 CI 测试状态（例如“51/51 通过”）。
-
-## 4. 技术栈与目录
-
-```text
-Vite + React 19 + TypeScript + Tailwind CSS + CSS variables + Vitest + Playwright
-```
-
-目录约定：
-
-```text
-src/app/          state / actions / reducer / view-model / persistence
-src/legacy/       pmbus-math.ts、command-metadata.ts（迁移资产）
-src/components/   组件只做展示与交互，不写算法
-tests/e2e/        Playwright 真实用户流程
-```
-
-## 5. 状态与组件规则
-
-- 状态入口：`src/app/state.ts` 的 `AppState`；使用 `useReducer`。
-- `state.raw` 是 canonical 的 16-bit raw word（v3.0.0）：主 Raw Word Hex、位网格、
-  公式操作数、decode/encode、Raw Word 复制与 C 宏都指向它；字节序只存在于
-  Wire Bytes serialization 层，规则见 `docs/DOMAIN_MODEL.md` §4。
-- Action 命名使用命名空间：`mode/set`、`command/set`、`raw/set-from-hex`、
-  `bit/toggle`、`value/set`、`l11/set-n`、`l11/set-y`、`l11/toggle-auto-n`、
-  `vout-mode/set-byte`、`vout-mode/toggle-bit`、`vout-mode/set-relative`、
-  `vout-mode/set-format`、`vout-mode/set-linear-n`、`vout-mode/set-parameter`、
-  `vout-mode/normalize`、`l16/set-payload-kind`、`l16/set-nominal-vout`、
-  `direct/set-y`、`direct/set-coeff`、`copy/toggle-prefix`、
-  `copy/toggle-space`、`ui/set-theme`。
-- UI 统一使用 `toCalculatorViewModel(state)`；格式化结果不要在 JSX 中重复计算。
-- 组件只能：接收 props、显示 viewModel、dispatch(action)、维护局部 UI 状态（如 popover open）。
-- 主题由 `state.ui.theme` 驱动；`App.tsx` 负责把主题写到 `document.documentElement.dataset.theme`。
-- 偏好持久化只允许通过 `src/app/persistence.ts`。
-
-## 6. 命令字典与领域模型
-
-- 命令字典唯一数据源：`src/legacy/command-metadata.ts`，且只作只读命令参考。
-- 标准命令定义包含：命令码、`transactions`（可同时表达 write/read）、`valueType`、`units`、`spec`、`encodingRule`。
-- `encodingRule` 只能是：`follows_vout_mode`、`device_defined`、`status`、`block`。
-- 命令参考完全无副作用：不选择、不切换模式、不注入参数、不重编码 raw。产品面不再内置任何
-  preset（`command/apply-preset` 已移除）；没有真实器件数据手册就禁止内置 `device-datasheet` 预设。
-
-## 7. 测试规则
-
-- 算法测试至少覆盖 L11 / L16 / DIRECT / HALF / PEC。
-- UI E2E 至少覆盖：模式切换、Hex 输入、Value 输入、bit toggle、只读命令参考、复制、主题、移动端布局。
-- 跨引擎核心验收底线：Firefox + WebKit 各运行小型核心 smoke（`playwright.cross-engine.config.ts`，
-  生产 dist + 官方 Pages 前缀，`reuseExistingServer: false`）；不把完整语义套件复制到每个引擎；
-  核心用户流程变更必须保持该套件通过。Playwright WebKit 不等于 Safari 一致性证据。
-- 修改算法必须同时补 golden case。
-- `npm run test:coverage` 必须达到 `vite.config.ts` 中声明的阈值。
-- 分层覆盖策略：`src/app` 与 `src/legacy` 由 Vitest + v8 coverage 覆盖；
-  `src/components` 为薄展示/交互层，由 Playwright E2E 覆盖，不纳入 v8 coverage 阈值。
-
-## 8. 每次任务执行流程
-
-1. 读取任务要求、本文件、`docs/ROADMAP.md` 当前状态、`docs/REPOSITORY_HYGIENE.md`；按 Context Loading Policy 条件加载其他文档。
-2. 在任务开头明确：Goal、Out of scope、影响模式、规范来源、验收向量。
-3. 确认工作区干净；fresh environment 先执行 `npm ci` 与 `npm run test:e2e:install`。
-4. 只实现一个可验证的垂直切片，不夹带无关改动。
-5. 完成后必须运行：
-
-   ```bash
-   npm run verify
-   ```
-
-   `npm run verify` 的步骤组合以 package.json 的 `verify` / `verify:light` 脚本为唯一
-   真值（涵盖 format、typecheck、lint、inline style、markdown 数学、规范 manifest、
-   发布合同、发布操作文档命令、工具链、coverage、桌面/移动/跨引擎 E2E、build、
-   Tailwind scope、release smoke、repo hygiene、两个 whitespace 检查与 audit）；本文件不逐条
-   复制该命令链，避免与脚本漂移。
-   CI 的 whitespace gate 检查完整 PR base→head 范围（main 不再有 push CI）。
-   CI 仅由目标为 main 的 PR 与手动 `workflow_dispatch` 触发，manual run 始终 full；
-   按 `scripts/classify-ci-scope.mjs` 分级（fail closed）：纯 light-only 变更在 CI 中跳过
-   coverage/E2E/build/audit，本地对应入口是 `npm run verify:light`；mixed/unknown 或
-   产品相关变更必须完整 `npm run verify`。
-   任务结束前还需执行 `docs/REPOSITORY_HYGIENE.md` 中「Agent 生命周期清理 → 任务结束」的简短门禁。
-
-6. 输出：changed files、affected modes、实际测试命令与结果、剩余缺口。
-   验收记录必须包含每条命令、exit code、实际测试数、coverage 和 CI URL。
-7. 里程碑状态与合并流程遵循 `docs/ROADMAP.md` 与 `CONTRIBUTING.md`：ROADMAP 只有 main 上的
-   版本是正式事实来源；里程碑 `Done` 在实现 PR 的最终提交中一并翻转；main 由 ruleset
-   `protect-main` 严格保护（必须 PR、required `check`、strict up-to-date、禁止 force push）。
-8. 器件数据不明确时不得猜测：保持禁用/留空，并在 UI 与文档中注明“需要器件数据手册”。
-   只有仓库内规范与官方规范存在无法保守处理的直接冲突时才停止。
-
-## 9. Shell, timeout and long-running task guardrails
-
-1. 每次 shell 调用显式指定工作目录（`cd <repo>` 开头），不得依赖 persistent shell 上一次的 cwd。
-2. 一个 shell 调用只承担一个主要动作；不把文件写入、测试、网络请求和 CI 等待拼成超长命令。
-3. 优先使用已加载的 editor/patch/write 工具修改文件。
-4. 在 DSH persistent Bash 中，禁止用单个大 heredoc 写入超过约 3 KiB 的内容。
-5. 如果只有 Bash 可用：
-   - 将内容拆为不超过约 2 KiB 的块；
-   - 每块后检查文件字节数/行数；
-   - 完成后运行格式化、语法检查或目标测试；
-   - 不使用同一超长 heredoc 原样重试。
-6. 同一命令发生 timeout 后最多允许一次诊断，不得原样重试：
-   - 先检查 `git status`、目标文件、临时文件、后台进程和 shell reset 状态；
-   - 第二次必须改变工具、拆分粒度或执行策略。
-7. 不通过调大全局 timeout 掩盖 heredoc、死锁或错误轮询。
-8. 普通搜索、编辑、静态检查和目标测试使用短前台调用。
-9. 长验证、构建、下载、CI/部署等待：
-   - 工具暴露 `run_in_background`/job 能力时使用后台任务，并通过 `job_output`/`job_kill` 管理；
-   - 没有后台能力时使用一个有明确 deadline、短于有效工具 timeout 的原生命令；
-   - 禁止长时间 `for ... sleep ...` 前台轮询；
-   - 禁止无上限 sleep 和无限重试。
-10. 网络命令必须有 connect timeout、总 timeout 和有限重试；不得静默使用第三方镜像。
-11. 大输出命令写入临时日志，只返回尾部摘要，但必须保留真实退出码：
-
-    ```bash
-    command >"$log" 2>&1
-    rc=$?
-    tail -80 "$log"
-    exit "$rc"
-    ```
-
-12. 使用 pipeline 时启用 `set -o pipefail`；不得让 `tail`、`tee` 或 `echo` 的成功掩盖原命令失败。
-13. `command; echo exit:$?` 只能用于观察，不得作为 Harness 成功状态的唯一依据。
-14. 开发阶段优先运行目标测试；最后一次代码/配置修改完成后才运行完整 `npm run verify`。
-15. 依赖没有变化时，不因 compact 或上下文恢复重复运行已经有效的长测试。
-16. push 前完成本地最终验证；原则上一次 push 形成最终 PR head。
-17. CI 必须按精确 head SHA 核对，不只按 branch 的“最新 run”猜测。
-18. CI 失败必须先本地复现和定位，不盲目 rerun。
-19. PR 描述应在 merge 前完成；除纠正事实错误外，不在 merge 后反复编辑 PR。
-20. timeout 后的检查点至少记录：命令、有效 timeout、持续时间、是否 shell reset、工作区状态、策略变化。
-21. heredoc 限制同样适用于 shell/Python/Node heredoc、测试源码、临时文件和 PR body；不得用 Python 脚本包裹大内容绕过限制。
-22. 使用 editor/patch 工具时不需要人为拆碎正常的结构化修改；只有 Bash 写入才必须 chunk ≤ 约 2 KiB 并逐块检查。
-23. 大日志必须以 `rc=$?` 捕获后 `exit "$rc"` 返回；`command; echo rc:$?; tail ...` 不能作为成功判定。
-24. 最终报告不得在没有实测 chunk 大小的情况下宣称“完全符合 guardrails”。
-
-## 10. 文档更新规则
-
-- 文档更新继续遵循条件加载；普通代码变更不再要求每次检查全部 `docs/ROADMAP.md`、`docs/MIGRATION_MATRIX.md`、`README.md`，只需在变更实际影响对应文档时更新。
-- 发布任务才读取 `docs/RELEASING.md`，并按其规则更新 `CHANGELOG.md` 与 `docs/releases/`。
-- 不要在多份文档中重复维护同一份进度表。
-- 不再维护手工 WEB-xxxx 变更记录；PR、commit 和 CI 是变更审计来源。
-
-## 11. Pull Request 检查清单
-
-- [ ] 已读 AGENTS.md 与相关 DOMAIN_MODEL 规则
-- [ ] 符合 Web-first 主线，未引入 Tauri/Electron/后端/硬件通信
-- [ ] 未无测试修改 PMBus 算法
-- [ ] 未删除旧功能而不记录 Migration Gap
-- [ ] 未新增 inline onclick / 散落 localStorage / 硬编码命令字典
-- [ ] 已运行格式、lint、typecheck、单测+coverage、E2E、build
-- [ ] 公式变更已确认单一数据源（`formulaText` 与 `formulaLatex` 来自同一层）
-- [ ] 已检查键盘焦点（focus-visible）、移动端布局与 `prefers-reduced-motion`
-- [ ] UI 任务已生成关键 viewport 截图；dropdown/popover 已测试 viewport 边界与不跳动；无图像读取能力时用几何/对比度/overflow/computed-style 断言代替目检
-- [ ] 视觉重构 PR 已附新旧基线 diff 审查记录：更新集合与预期影响面吻合，逐图（或成对）说明变化原因；未更新的相邻基线已核对不受影响
-- [ ] Markdown 数学变更已通过本地检查，并已用 GitHub 实际渲染页面验证
-- [ ] 发布前已确认 `github-pages` environment 允许对应稳定 tag（branch/tag policy）
-- [ ] CI tier（light/full）已标注；policy-skipped 门禁如实说明，未虚构测试数
-- [ ] 里程碑 Done 已在实现 PR 最终提交中翻转，未创建第二个 bookkeeping PR
-- [ ] 文档已更新，进度表与代码一致
-
-## 12. Pages / Analytics CI-CD contract
-
-- 本地网络可能且允许主动屏蔽 Cloudflare Analytics；不得要求关闭 Surge、AdBlock、
-  DNS filter 或隐私规则，也不得修改 DNS、代理、hosts 来绕过它们。
-- 本地、PR CI、fresh release 与 deterministic remote smoke 必须使用精确 Cloudflare
-  stub；真实第三方网络验收不得加入 `npm run verify` 或 PR CI。
-- 真实 Analytics 验收只以 GitHub-hosted Pages job 的 tracked post-deploy step 为权威。
-  本机 real check 被隐私/网络策略阻止时标为 `ENVIRONMENT_BLOCKED`，既不是应用失败，
-  也不是 Analytics PASS；不继续排查项目 TLS/DNS/CSP 来绕过明确的本机 blocker。
-- stable Release / Pages 只有 hosted real acceptance 也成功后才可声明 fully accepted。
-  部署后验收失败须如实区分 deployment completed 与 rollout acceptance failed；
-  不自动回滚、不移动 tag、不替换 immutable Release assets。
-- source / 普通 build / Release ZIP 默认无 Analytics 与 Pages-only UI；overlay 只在
-  全部 Release provenance 门禁之后修改 FINAL `_site`，永不修改两个 Release ZIP。
-  性能优化不得削弱 byte comparison、CSP、精确 endpoints 或既有验证覆盖。
-- 发行审计必须绑定当前 Git tree、精确 remote ref / tag / SHA 与 API evidence，
-  不从缓存的 main 网页推断 workflow。详细流程与失败处理见
-  [`DEPLOYING`](docs/DEPLOYING.md) 和 [`RELEASING`](docs/RELEASING.md)。
+- 按改动风险运行目标测试。局部改动先跑相关用例，需要扩大覆盖时按[贡献指南](CONTRIBUTING.md#验证)选择检查。只有所选检查需要浏览器或 Docker 时才准备对应环境。
+- 更新受影响的现行契约与操作说明。报告实际验证结果和影响验收的缺口，将 CI 结果绑定到已核对的 revision。

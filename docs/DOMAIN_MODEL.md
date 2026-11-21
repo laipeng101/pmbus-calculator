@@ -3,6 +3,8 @@
 > 本文件是 PMBus 数据格式、舍入、饱和、字节序与命令 profile 的领域规则。
 > 算法实现位于 `src/legacy/pmbus-math.ts`；命令元数据位于 `src/legacy/command-metadata.ts`。
 
+领域参考基线为 PMBus 1.3 / 1.3.1 与 SMBus 3.0，规范实体见 [manifest](../document/specifications.json)。Rev 1.3.1 冲突按显式模型呈现。本工具的范围是数值换算、VOUT_MODE 解读和只读命令参考。总线通信、命令执行、器件 profile 与 PMBus 1.5 一致性属于范围之外。
+
 ## 1. 数据格式
 
 | 格式     | 公式                                               | 取值范围                                                |
@@ -82,7 +84,7 @@
 ### 2.3 DIRECT
 
 - `state.direct.error` 只在 DIRECT 模式显示；切换到其他模式后必须隐藏系数校验错误（模式作用域隔离）。
-- 应用有效 DIRECT preset 必须清除旧错误；无效系数不得破坏已存在的有效 `state.raw`。
+- 提交有效 DIRECT 系数清除该字段的旧错误。系数编辑保持 `state.raw`。
 - `m === 0` 时解码返回 `NaN`，UI 显示错误提示，不得崩溃。
 - `Y` 是 16-bit signed（`-32768..32767`）；`state.raw` 是唯一编码事实来源，
   `Y = toSigned(raw, 16)` 始终派生自 `raw`，`state.direct` 只保存 `m/b/R`。

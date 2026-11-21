@@ -8,11 +8,9 @@
 
 > **范围声明：** 本工具只做数值格式换算；它**不是** PMBus/SMBus 控制器、总线传输实现、命令执行器、设备 Profile 引擎或一致性测试套件。它覆盖 PMBus 多个修订版本中通用的数值格式语义，且**不声明**完整 PMBus 1.5 协议一致性（含 1.5 安全扩展）。
 >
-> **Live Demo：** https://laipeng101.github.io/pmbus-calculator/ （发布目标 `v3.4.1`）
+> [在线使用](https://laipeng101.github.io/pmbus-calculator/)
 >
-> **稳定发行目标：** [`v3.4.1`](https://github.com/laipeng101/pmbus-calculator/releases/tag/v3.4.1) · [Releases](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/download/v3.4.1/SHA256SUMS.txt)
->
-> 本源码的发行目标为 v3.4.1；在对应稳定 GitHub Release 公开前按待发布处理。实际发行和部署状态以 GitHub Release / Pages 验收记录为准。
+> [最新稳定发行](https://github.com/laipeng101/pmbus-calculator/releases/latest) · [发行历史](https://github.com/laipeng101/pmbus-calculator/releases) · [SHA256SUMS.txt](https://github.com/laipeng101/pmbus-calculator/releases/latest/download/SHA256SUMS.txt)
 
 ---
 
@@ -26,7 +24,7 @@
 - [PMBus 命令参考](#pmbus-命令参考)
 - [技术栈](#技术栈)
 - [浏览器兼容性](#浏览器兼容性)
-- [Known Limitations](#known-limitations)
+- [已知限制](#已知限制)
 - [开源许可](#开源许可)
 
 ---
@@ -40,8 +38,7 @@
 - 🔲 **可交互位映射面板** — 16 位面板紧邻 Raw Word，保留可点击位值、半字节 Hex 和字段图例；它与 VOUT_MODE 8 位面板均默认展开，分别记忆收起状态，切换模式或刷新后仍有效。收起时仍可编辑 Hex 和参数。
 - 🧭 **结果上下文** — 结果旁展示 raw、格式和参数来源，包括 L16 标称参考是否可用及当前 DIRECT 系数。
 - 📋 **一键复制** — 可分别复制原始 Hex 值、解码后的物理值，或直接可用的 C 语言宏定义代码。
-- 📖 **只读 PMBus 命令参考** — 默认折叠的参考面板，列出 13 条 PMBus 1.3 命令的命令码、事务、数据类型、单位、格式来源与规范章节；
-  参考面板不切换模式、不注入参数、不重写 raw，也不提供任何演示预设。
+- 📖 **只读 PMBus 命令参考** — 展开面板可查看标准命令定义，计算过程独立于参考面板。
 - ♾️ **最优 N 值自动求解** — LINEAR11 模式下，工具自动寻找使表示误差最小的最优指数 N。
 - 🌙 **亮色 / 暗黑模式** — 自动跟随 `prefers-color-scheme`，同时支持手动切换。
 - 📱 **完整响应式设计** — Sticky 结果面板、自适应位网格、移动端触控优化。
@@ -70,28 +67,11 @@
 
 ### 旧版单文件（仓库内离线历史归档）
 
-`pmbus-calculator.html` 是独立的单 HTML 文件，无需构建步骤，无需服务器。
-它保留在仓库根目录，用于**仓库内离线兼容用途**：只接受必要纠偏，不再作为当前 Pages 产品入口。Pages 根路径为产品入口（HTTP 200），仅 legacy `/pmbus-calculator.html` 路径返回 404；新版 Web App 是主要工具。
-
-**本地打开：**
-
-1. 克隆或下载本仓库。
-2. 在任意现代浏览器中直接打开 `pmbus-calculator.html`。
+克隆或下载仓库后，可在现代浏览器中直接打开 `pmbus-calculator.html` 离线使用。需要当前的数值行为与舍入规则时，请使用新版 Web App。[已知差异与维护规则](docs/LEGACY_COMPATIBILITY.md)
 
 ### 新版 Web App（主要工具）
 
-**源码开发方式：**
-
-```bash
-npm ci
-npm run dev      # 启动 Vite 开发服务器，访问 http://localhost:5173
-npm run build    # 生产构建输出到 dist/
-npm test         # 运行 Vitest 测试
-```
-
-**静态构建包：** `dist/` 是静态构建产物，必须通过 HTTP 静态服务器使用（例如 `npm run preview` 或任意静态托管服务），不承诺直接双击 `dist/index.html` 以 `file://` 方式打开。
-
-**正式部署：** 官方站点 https://laipeng101.github.io/pmbus-calculator/ 从已验证的不可变 Release ZIP 开始，全部 Release 完整性、tag 重建与本地 Release smoke 门禁通过后，再执行确定性的 Pages-only overlay。本源码的发行目标为 `v3.4.1`；完整上线验收要求整个 Pages workflow 成功，包括最后的 GitHub-hosted 真实 Analytics 检查。本地与 PR 验证使用 Cloudflare stub，维护者可以始终启用隐私拦截规则。见 [docs/DEPLOYING.md](docs/DEPLOYING.md)。
+解压最新稳定发行的 Web ZIP 后，通过 HTTP 静态服务器提供解压内容，也可直接托管源码构建产物 `dist/`。本地可用 `npm run preview` 预览源码构建。[本地开发与验证](CONTRIBUTING.md)
 
 **操作流程：**
 
@@ -109,7 +89,7 @@ clone、Download source ZIP、fork、普通 `npm run build`、Release Web ZIP �
 
 官方 GitHub Pages 部署使用面向隐私的聚合 **Cloudflare Web Analytics** 页面级统计，仅发出精确允许的 Cloudflare 请求，并在页头主题按钮旁提供源码仓库图标链接，可访问名称为“在 GitHub 查看项目源码”。移动端计算器保持完整宽度。这些内容只注入 Pages staging tree；不可变 Release ZIP 保持原样。
 
-计算器输入与结果，包括 PMBus raw word、物理值、DIRECT 系数、VOUT_MODE 值及复制内容，均不会作为自定义 analytics event 收集。标准页面级 beacon 不附加计算器行为参数。
+计算器输入与结果，包括 PMBus raw word、物理值、DIRECT 系数、VOUT_MODE 值及复制内容，均不会作为自定义 analytics event 收集。标准页面级 beacon 不附加计算器行为参数。[部署与验收](docs/DEPLOYING.md)
 
 ---
 
@@ -127,70 +107,27 @@ clone、Download source ZIP、fork、普通 `npm run build`、Release Web ZIP �
 
 ## PMBus 命令参考
 
-内置参考记录 13 条 PMBus 1.3 标准命令的规范定义（命令码、事务、数据类型、单位、格式来源、规范章节）。参考面板刻意保持**只读**：选择命令不能可靠推导数据格式——器件数据手册或 `VOUT_MODE` 决定格式——因此面板不切换模式、不注入参数、不重写 raw，也不提供演示预设。
-
-| 命令                  | 命令码 | 编码规则                                               |
-| --------------------- | ------ | ------------------------------------------------------ |
-| `VOUT_COMMAND`        | `0x21` | 跟随 VOUT_MODE                                         |
-| `VOUT_OV_FAULT_LIMIT` | `0x40` | 跟随 VOUT_MODE                                         |
-| `READ_VOUT`           | `0x8B` | 跟随 VOUT_MODE                                         |
-| `READ_VIN`            | `0x88` | 由器件资料决定                                         |
-| `READ_IOUT`           | `0x8C` | 由器件资料决定                                         |
-| `READ_TEMPERATURE_1`  | `0x8D` | 由器件资料决定                                         |
-| `VIN_OV_FAULT_LIMIT`  | `0x55` | 由器件资料决定                                         |
-| `OT_FAULT_LIMIT`      | `0x4F` | 由器件资料决定                                         |
-| `FAN_COMMAND_1`       | `0x3B` | 由器件资料决定                                         |
-| `READ_POUT`           | `0x96` | 由器件资料决定                                         |
-| `READ_FAN_SPEED_1`    | `0x90` | 由器件资料决定                                         |
-| `STATUS_WORD`         | `0x79` | STATUS 位（通常 Read Word；特殊写入仅清除 UNKNOWN 位） |
-| `READ_EIN`            | `0x86` | BLOCK（超过 16 位；规范内部字节数冲突在应用内展示）    |
+只读参考面板提供 PMBus 命令码、事务、数据类型、单位、格式来源与规范章节。命令载荷格式以器件数据手册或 `VOUT_MODE` 为准。[命令定义](src/legacy/command-metadata.ts) · [领域规则](docs/DOMAIN_MODEL.md)
 
 ---
 
 ## 技术栈
 
-### 旧版（单文件归档）
-
-- **纯 HTML + CSS + 原生 JavaScript** — 无框架，无任何外部依赖。
-- CSS 自定义属性驱动完整的亮色/暗黑主题。
-- 单文件页内置静态 CSP。
-- 仅作为仓库内历史离线归档，不在 Pages 部署。
-
-### 新版 Web App（主要工具）
-
-- **Vite** + **React 19** + **TypeScript** — 现代组件化架构。
-- **Tailwind CSS** + CSS 变量 — 设计 Token 驱动的主题系统。
-- **Vitest** — PMBus 数学核心、reducer 与 view-model 的单元测试。
-- **Playwright** — 桌面与移动 Chromium 项目的真实用户 E2E 流程。
-- 实时路线图：[docs/ROADMAP.md](docs/ROADMAP.md) · 领域规则：[docs/DOMAIN_MODEL.md](docs/DOMAIN_MODEL.md) · 架构决策：[docs/adr/](docs/adr/) · 冻结的完整历史计划：[docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md](docs/archive/web-refactor-m0-m10.1/WEB_REFACTOR_PLAN_FULL.md)。
-
-> **当前状态：** 新版 Web App 已具备 L11 / L16 / DIRECT / HALF 完整双向闭环，是主要工具。旧版 `pmbus-calculator.html` 仅保留仓库内离线兼容用途（只接受必要纠偏），不再作为当前 Pages 产品入口。
+Vite、React、TypeScript 和 Tailwind CSS。[架构决策](docs/adr/) · [贡献指南](CONTRIBUTING.md)
 
 ---
 
 ## 浏览器兼容性
 
-```text
-自动化验证证据（按范围）：
-- desktop Chromium：完整桌面语义 E2E 套件（CI e2e job）。
-- mobile Chromium：设备仿真合同套件（Pixel 7 仿真，同一 e2e job）。
-- Firefox / WebKit：跨引擎核心 smoke（CI browser-compat job，生产构建）——
-  小型合同套件覆盖应用启动与模式切换、四种数值模式 encode/decode 旅程、
-  L16 非 LINEAR fail closed、canonical raw ↔ 位网格 ↔ wire 字节同步、
-  Hex 步进器 pointer/keyboard 激活、术语气泡与复制路径；不重跑完整语义套件，
-  更深的自动化覆盖仍按设计仅限 Chromium。
-- Playwright WebKit 不等于 Safari：不声称 macOS Safari 一致性或支持；
-  其他浏览器仍为 best effort。
-```
+自动化浏览器测试覆盖桌面 Chromium、Chromium 移动设备仿真，以及 Firefox 与 WebKit 上的核心流程。Safari 与其他浏览器的兼容性以实际使用为准。[验证命令与范围](CONTRIBUTING.md)
 
 ---
 
-## Known Limitations
+## 已知限制
 
 - 仅数值格式子集：不覆盖总线传输、命令执行、设备 Profile、PMBus 1.5 安全扩展与 Part IV。
 - `DIRECT` 系数为器件专属；工具不猜测系数，提示需要器件数据手册。
 - `READ_EIN` 为 block read，且规范内部存在字节数冲突；应用同时展示两个来源，不自行选定权威数字。
-- 更多见 [docs/releases/v1.0.0.md#known-limitations](docs/releases/v1.0.0.md#known-limitations)。
 
 ## 开源许可
 
