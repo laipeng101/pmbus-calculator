@@ -126,20 +126,35 @@ exact stub，不要求任何隐私规则例外。真实第三方验收只在 Git
 > 执行，release-published 事件触发的 Pages 在资产尚未存在时读取失败。本节顺序
 > 是对该竞态的流程修复，不是可选优化。
 
-0. **平台前置条件复核（tag/draft 之前，人工授权步骤）**：
+0. **平台前置条件复核（tag/draft 之前）**。
+
+   首次配置时，在仓库 **Settings → Environments** 新建 `release-preflight`，将
+   Deployment branches and tags 设为 **Selected branches and tags**，仅添加 `main`
+   分支。添加名为 `PMBUS_RELEASE_GITHUB_TOKEN` 的 Environment secret，值为仅授权
+   `laipeng101/pmbus-calculator` 的 fine-grained PAT，仓库权限为 **Administration: Read-only**
+   和 **Environments: Read-only**。PAT 到期时在同一位置更新。
+
+   在 GitHub 托管的 runner 上从 `main` 运行 [Release preflight](../.github/workflows/release-preflight.yml)。
+   以本次触发的 run 为证据，确认其 `headSha` 等于本次已验证的精确 main merge SHA、
+   `Verify release prerequisites` job 成功，并记录 run 链接。该 job 读取 immutable
+   releases 的启用状态与 `github-pages` 的 `CLOUDFLARE_WEB_ANALYTICS_TOKEN` 元数据。
+   若未启用 immutable releases，由仓库管理员在 GitHub Settings 启用后重新运行预检。
 
    ```bash
-   gh api repos/laipeng101/pmbus-calculator/immutable-releases
+   gh workflow run release-preflight.yml --ref main
+   gh run list --workflow release-preflight.yml --event workflow_dispatch --branch main --commit <exact-merge-sha>
+   gh run view <run-id> --json conclusion,headSha,jobs,url
+   ```
+
+   同时核对执行发布的身份和目标 tag。
+
+   ```bash
    gh api repos/laipeng101/pmbus-calculator --jq '{full_name, permissions: .permissions.admin}'
    git ls-remote --tags origin refs/tags/vX.Y.Z
    ```
 
-   三项必须分别满足：immutable releases 返回 `enabled: true`（未启用时先以
-   admin 执行 `gh api --method PUT repos/laipeng101/pmbus-calculator/immutable-releases`
-   并再次 GET 复核；该设置只影响未来 Release）；authenticated 身份对
-   `laipeng101/pmbus-calculator` 具有 admin 权限且 full_name 与预期仓库一致；
-   目标 tag 不存在。任一不满足：停止发布并解决前置条件，不得绕过。
-   设置查询/启用属于发布前人工步骤，Pages workflow 不持有也不需要 admin 权限。
+   任一条件未满足时暂停发布。发布身份必须对正确的 `full_name` 具有 admin 权限，
+   tag 查询必须成功且无匹配。Pages 部署使用自己的 `github-pages` 环境和权限。
 
 1. 全部验证成功后创建 annotated tag：
 

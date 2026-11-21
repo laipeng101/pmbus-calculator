@@ -1,0 +1,49 @@
+name: Release preflight
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    name: Verify release prerequisites
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    environment: release-preflight
+    steps:
+      - name: Check GitHub release and Pages settings
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PMBUS_RELEASE_GITHUB_TOKEN }}
+          GH_PROMPT_DISABLED: '1'
+        run: |
+          if [[ "$GITHUB_REPOSITORY" != laipeng101/pmbus-calculator || "$GITHUB_REF" != refs/heads/main ]]; then
+            echo '::error::Run release preflight on laipeng101/pmbus-calculator main.'
+            exit 1
+          fi
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo '::error::Set PMBUS_RELEASE_GITHUB_TOKEN in the release-preflight environment.'
+            exit 1
+          fi
+
+          echo "Checking release prerequisites for $GITHUB_SHA"
+          failed=0
+          if enabled=$(timeout 20s gh api --method GET "repos/$GITHUB_REPOSITORY/immutable-releases" --jq '.enabled == true') &&
+             [[ "$enabled" == true ]]; then
+            echo 'Immutable releases are enabled.'
+          else
+            echo '::error::Could not verify that immutable releases are enabled (requires Administration: Read).'
+            failed=1
+          fi
+
+          secret_name=CLOUDFLARE_WEB_ANALYTICS_TOKEN
+          if name=$(timeout 20s gh api --method GET "repos/$GITHUB_REPOSITORY/environments/github-pages/secrets/$secret_name" --jq .name) &&
+             [[ "$name" == "$secret_name" ]]; then
+            echo "The github-pages environment has $secret_name."
+          else
+            echo '::error::Could not verify the Pages Analytics secret (requires Environments: Read).'
+            failed=1
+          fi
+
+          exit "$failed"
