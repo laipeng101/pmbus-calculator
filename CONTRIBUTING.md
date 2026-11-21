@@ -52,6 +52,8 @@ npm run test:e2e:install
 CI 的 e2e job 继续显式安装 `chromium`，browser-compat job 显式安装
 `npx playwright install --with-deps firefox webkit`（官方安装流程，无镜像、无强制 flag）。
 
+视觉回归使用 `npm run test:e2e:visual`。在 Linux x64 上用仓库指定的 Node 和 npm 执行 `npm ci`，并提供可用的 Docker。Codex Cloud 和 full CI 使用同一个锁定的 Ubuntu Playwright 镜像。
+
 ## 4. 本地验证
 
 Fresh environment 先执行 `npm ci` 与 `npm run test:e2e:install`。核心门禁与 CI 保持一致，可直接使用：

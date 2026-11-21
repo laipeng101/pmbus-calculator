@@ -1,17 +1,20 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const artifactDir = process.env.PMBUS_VISUAL_ARTIFACTS ?? './tests/e2e'
+
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/visual.spec.ts',
-  outputDir: './tests/e2e/output-visual',
+  outputDir: `${artifactDir}/output-visual`,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
   workers: 1,
+  updateSnapshots: 'none',
   reporter: [
     ['list'],
-    ['html', { outputFolder: './tests/e2e/report-visual', open: 'never' }],
-    ['json', { outputFile: './tests/e2e/e2e-results-visual.json' }],
+    ['html', { outputFolder: `${artifactDir}/report-visual`, open: 'never' }],
+    ['json', { outputFile: `${artifactDir}/e2e-results-visual.json` }],
   ],
   use: {
     baseURL: 'http://localhost:5173',
@@ -30,7 +33,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:5173',
-    reuseExistingServer: process.env.CI ? false : true,
+    reuseExistingServer: false,
     timeout: 10_000,
   },
 })

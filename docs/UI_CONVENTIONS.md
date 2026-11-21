@@ -271,7 +271,7 @@
 - 视觉验收不能只凭 DOM 测试；必须包含关键 viewport 截图。
 - `visual snapshot` 是回归保护，不等同于设计质量批准；没有图像读取能力时，不得声称已“逐图目检”。
 - 没有图像读取能力时，必须把视觉要求转化为可执行的几何、对比度、换行、overflow、排列和 computed-style 断言；最终报告必须如实说明实际使用的验证方式。
-- `npm run verify:ui` 会在 `npm run verify` 之后运行 visual snapshot；visual snapshot 当前为 darwin 基线，CI 默认不运行 `test:e2e:visual`。
+- `npm run verify:ui` 在 `npm run verify` 之后比对 Ubuntu 截图基线。GitHub Actions 的 full CI 使用同一视觉门禁。
 - visual regression 截图前等待 `document.fonts.ready`、KaTeX 完成和动画稳定。
 - reduced-motion 只关闭非必要动画，不得消除功能反馈；复制状态使用受控 timer（约 1.5–2s）。
 - KaTeX `htmlAndMathml` 已提供 MathML；外层不得用 `role="math"`/`aria-label` 覆盖；fallback 时再提供可访问名称。
@@ -281,7 +281,7 @@
 > 完整政策见 [`docs/REPOSITORY_HYGIENE.md`](REPOSITORY_HYGIENE.md) 第 3 节；本文件只保留 UI 任务必须遵守的摘要。
 
 - Playwright golden snapshot 是测试输入，必须提交到版本控制；actual/diff/failed screenshot 和 HTML report 是临时输出，不提交。
-- snapshot 必须在 canonical darwin 环境生成，并记录 OS、Node、Playwright、Chromium 和 viewport。
+- 快照由 `npm run test:e2e:visual` 在锁定的 Ubuntu 镜像中比对。基线更新流程见仓库卫生政策。
 - `--update-snapshots` 不是普通修复命令：必须先确认变化是预期变化并审查截图或 diff。
 - 没有图像输入能力的 agent 不得自行接受或更新视觉基线，只能增加几何/overflow/换行/对比度/computed-style 断言并报告变化。
 - UI 任务如必须更新基线，应使用具备图像输入能力的复核模型，或停在等待视觉审批的状态。
