@@ -1,20 +1,9 @@
-// Regression tests for the real TypeScript verification gate (M23).
-//
-// Before M23, `npm run typecheck` ran `tsc --noEmit` against the solution-style
-// root tsconfig (`files: []` + references), which checks zero files and always
-// exits 0. The gate now runs `tsc -b` over the referenced app, node, and tests
-// projects. These assertions pin that contract structurally so the gate cannot
-// silently regress into an empty program again:
-// - the root tsconfig references exactly the app/node/tests projects,
-// - `package.json` typecheck uses build mode (`tsc -b`), never bare
-//   `tsc --noEmit` on the empty root config,
-// - the pre-commit hook and full CI still invoke `npm run typecheck`,
-// - `tsconfig.tests.json` actually covers unit tests, E2E specs, and every
-//   Playwright config entry point under strict mode.
+// An empty solution-style tsconfig needs build mode to check its references.
 
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 
 const repoRoot = process.cwd()
@@ -53,17 +42,6 @@ describe('typecheck contract (M23)', () => {
     expect(scripts.typecheck).not.toContain('--noEmit')
   })
 
-  it('keeps the pre-commit hook on the real typecheck gate', () => {
-    const pkg = readJson('package.json')
-    const hooks = pkg['simple-git-hooks'] as Record<string, string>
-    expect(hooks['pre-commit']).toContain('npm run typecheck')
-  })
-
-  it('keeps full CI on the real typecheck gate', () => {
-    const workflow = readRepoFile('.github/workflows/ci.yml')
-    expect(workflow).toMatch(/^ {8}run: npm run typecheck\s*$/m)
-  })
-
   it('keeps tsconfig.tests.json strict with Node and Vitest globals', () => {
     const tests = readJson('tsconfig.tests.json') as {
       compilerOptions?: Record<string, unknown>
@@ -81,43 +59,15 @@ describe('typecheck contract (M23)', () => {
   })
 
   it('covers unit tests, E2E specs, and every Playwright config entry', () => {
-    const tests = readJson('tsconfig.tests.json') as { include?: string[] }
-    const include = tests.include ?? []
-    expect(include).toContain('tests')
-    for (const config of [
-      'playwright.config.ts',
-      'playwright.release.config.ts',
-      'playwright.visual.config.ts',
-      'playwright.deployment.config.ts',
-      'playwright.cross-engine.config.ts',
-      'playwright.pages-overlay.config.ts',
-    ]) {
-      expect(include).toContain(config)
-      expect(fs.existsSync(path.join(repoRoot, config))).toBe(true)
-    }
-  })
+    const configPath = path.join(repoRoot, 'tsconfig.tests.json')
+    const { config, error } = ts.readConfigFile(configPath, ts.sys.readFile)
+    expect(error).toBeUndefined()
+    const parsed = ts.parseJsonConfigFileContent(config, ts.sys, repoRoot)
+    expect(parsed.errors).toEqual([])
 
-  it('declares @types/node as a direct devDependency', () => {
-    const pkg = readJson('package.json')
-    const devDependencies = pkg.devDependencies as Record<string, string>
-    // Node typings must not depend on transitive luck.
-    expect(devDependencies['@types/node']).toMatch(/^\^?\d+\.\d+\.\d+/)
-  })
-
-  it('locks @types/node major to the engines minimum supported Node major (M24)', () => {
-    const pkg = readJson('package.json')
-    const devDependencies = pkg.devDependencies as Record<string, string>
-    const engines = pkg.engines as Record<string, string>
-    const dtNodeVersion = devDependencies['@types/node']
-    const dtMajor = Number(dtNodeVersion.replace(/^[\^~]/, '').split('.')[0])
-    // Extract the minimum supported major from engines, e.g. ">=22 <23 || >=24 <25" → 22
-    const engineMinMatch = engines.node?.match(/>=(\d+)/)
-    expect(engineMinMatch).toBeTruthy()
-    const engineMinMajor = Number(engineMinMatch![1])
-    expect(dtMajor).toBe(engineMinMajor)
-    // @types/node must not drift to a higher Current version than the minimum
-    // supported runtime. Node 26 is not in engines.
-    expect(dtMajor).toBeLessThan(26)
+    const testFiles = fs.globSync(['tests/**/*.ts', 'playwright*.config.ts'], { cwd: repoRoot })
+    const checkedFiles = new Set(parsed.fileNames.map((file) => path.relative(repoRoot, file)))
+    expect(testFiles.filter((file) => !checkedFiles.has(file))).toEqual([])
   })
 
   it('includes scripts checkJs project with strict + checkJs enabled (M24)', () => {

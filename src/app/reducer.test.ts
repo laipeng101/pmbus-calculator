@@ -16,50 +16,6 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('command/set', () => {
-    it('sets commandKey only, without switching mode or rewriting raw', () => {
-      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const withRaw = appReducer(l16, { type: 'raw/set', raw: '4660' })
-      const s = appReducer(withRaw, { type: 'command/set', commandKey: 'VOUT_COMMAND' })
-      expect(s.commandKey).toBe('VOUT_COMMAND')
-      expect(s.mode).toBe('L16')
-      expect(s.raw).toBe(0x1234)
-      expect(s.voutMode.byte).toBe(withRaw.voutMode.byte)
-    })
-
-    it('does not auto-apply device_defined presets', () => {
-      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const s = appReducer(l16, { type: 'command/set', commandKey: 'READ_VIN' })
-      expect(s.commandKey).toBe('READ_VIN')
-      expect(s.mode).toBe('L16')
-      expect(s.raw).toBe(l16.raw)
-    })
-
-    it('clears commandKey with null', () => {
-      const withCmd = appReducer(base, { type: 'command/set', commandKey: 'VOUT_COMMAND' })
-      const s = appReducer(withCmd, { type: 'command/set', commandKey: null })
-      expect(s.commandKey).toBeNull()
-    })
-
-    it('ignores an unknown command key', () => {
-      const s = appReducer(base, { type: 'command/set', commandKey: 'NOT_A_COMMAND' })
-      expect(s.commandKey).toBeNull()
-    })
-
-    it('does not force a numeric mode for STATUS_WORD', () => {
-      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const s = appReducer(l16, { type: 'command/set', commandKey: 'STATUS_WORD' })
-      expect(s.commandKey).toBe('STATUS_WORD')
-      expect(s.mode).toBe('L16')
-    })
-
-    it('does not force a numeric mode for READ_EIN', () => {
-      const s = appReducer(base, { type: 'command/set', commandKey: 'READ_EIN' })
-      expect(s.commandKey).toBe('READ_EIN')
-      expect(s.mode).toBe('L11')
-    })
-  })
-
   describe('raw/set-from-hex', () => {
     it('parses plain hex', () => {
       const s = appReducer(base, { type: 'raw/set-from-hex', hex: 'e0c0' })
@@ -910,7 +866,6 @@ describe('appReducer — state transitions', () => {
       const vm = toCalculatorViewModel(s)
       expect(vm.rawHex).toBe('0xC000')
       expect(vm.rawHexDigits).toBe('C000')
-      expect(vm.rawWordHex).toBe('0xC000')
       expect(vm.wireBytes).toBe('0x 00 C0')
       expect(vm.msbFirstBytes).toBe('0x C0 00')
     })

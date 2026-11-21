@@ -20,8 +20,6 @@
  *   surface (2026) — demo values must not be mistaken for standard defaults.
  */
 
-export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF'
-
 export type CommandWriteTransactionType = 'send_byte' | 'write_byte' | 'write_word' | 'block_write'
 export type CommandReadTransactionType = 'read_byte' | 'read_word' | 'block_read'
 export type CommandTransactionType = CommandWriteTransactionType | CommandReadTransactionType
@@ -254,14 +252,6 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
     dataBytesConflict: READ_EIN_DATA_BYTES_CONFLICT,
     note: describeDataBytesConflict(READ_EIN_DATA_BYTES_CONFLICT),
   },
-}
-
-export const COMMAND_KEYS = Object.keys(COMMAND_METADATA) as Array<keyof typeof COMMAND_METADATA>
-
-export function getCommandConfig(key: string | null): CommandMeta | null {
-  if (!key) return null
-  const cmd = COMMAND_METADATA[key as keyof typeof COMMAND_METADATA]
-  return (cmd as CommandMeta | undefined) ?? null
 }
 
 export function describeEncodingRule(rule: CommandEncodingRule): string {

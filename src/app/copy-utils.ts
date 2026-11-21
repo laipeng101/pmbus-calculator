@@ -5,27 +5,9 @@
  * testable in jsdom without mounting React.
  */
 
-/** Normalize a PMBus command key into a safe C macro identifier fragment. */
-export function sanitizeMacroName(value: string | null | undefined): string {
-  if (!value) return 'RAW_VALUE'
-  const cleaned = value
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9_]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '')
-  if (!cleaned) return 'RAW_VALUE'
-  if (/^[0-9]/.test(cleaned)) return `CMD_${cleaned}`
-  return cleaned
-}
-
 /** Build a C macro for the un-swapped 16-bit raw word. */
-export function buildCMacro(
-  name: string | null | undefined,
-  rawWordHex: string,
-  formula: string,
-): string {
-  return `#define ${sanitizeMacroName(name)} ${rawWordHex} /* ${formula} */`
+export function buildCMacro(rawWordHex: string, formula: string): string {
+  return `#define RAW_VALUE ${rawWordHex} /* ${formula} */`
 }
 
 export async function copyTextToClipboard(text: string): Promise<void> {

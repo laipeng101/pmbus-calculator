@@ -1,4 +1,3 @@
-import { getCommandConfig } from '../../legacy/command-metadata'
 import type { AppState } from '../state'
 import type { WarningVM } from './types'
 import { resolveL11SaturationWarning } from './l11'
@@ -10,8 +9,7 @@ import { resolveVoutModeByteWarnings } from './vout-mode'
  * Warning/info/error aggregation for the InfoPanel. Mode-scoped policies
  * live in the mode projectors (L11 saturation, DIRECT fold, L16 nonlinear
  * and relative-ratio diagnostics, shared VOUT_MODE byte wording); this
- * orchestrator only selects by mode, preserves the historical push order
- * and owns the read-only command-reference notes.
+ * orchestrator selects by mode and orders the diagnostics for display.
  */
 export function buildWarnings(state: AppState): WarningVM[] {
   const warnings: WarningVM[] = []
@@ -44,25 +42,5 @@ export function buildWarnings(state: AppState): WarningVM[] {
     warnings.push(...resolveL16RelativeDiagnostics(state))
   }
 
-  if (state.commandKey) {
-    const cmd = getCommandConfig(state.commandKey)
-    if (cmd?.note) {
-      warnings.push({ id: 'cmd-note', level: 'info', text: cmd.note })
-    }
-    if (cmd?.encodingRule === 'device_defined') {
-      warnings.push({
-        id: 'cmd-device-defined',
-        level: 'info',
-        text: `${cmd.label} 需要器件数据手册确定数据格式；选择命令不会自动应用参数。`,
-      })
-    }
-    if (cmd?.encodingRule === 'follows_vout_mode') {
-      warnings.push({
-        id: 'cmd-follows-vout-mode',
-        level: 'info',
-        text: `${cmd.label} 的数据格式跟随 VOUT_MODE；选择命令不会自动应用参数。`,
-      })
-    }
-  }
   return warnings
 }

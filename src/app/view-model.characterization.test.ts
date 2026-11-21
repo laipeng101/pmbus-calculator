@@ -13,7 +13,6 @@ import type { AppState } from './state'
 const BASE: AppState = {
   mode: 'L11',
   raw: 0,
-  commandKey: null,
   voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   valueRequest: null,
@@ -66,7 +65,6 @@ describe('LINEAR16 / VOUT_MODE characterization', () => {
     const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234 }))
     expect(vm.rawHex).toBe('0x1234')
     expect(vm.rawHexDigits).toBe('1234')
-    expect(vm.rawWordHex).toBe('0x1234')
     expect(vm.valueText).toBe('18.203125')
     expect(vm.wireBytes).toBe('0x 34 12')
     expect(vm.msbFirstBytes).toBe('0x 12 34')
@@ -74,11 +72,8 @@ describe('LINEAR16 / VOUT_MODE characterization', () => {
   })
 
   test('VOUT_MODE page: raw fields show the 8-bit byte, serialization follows state.raw', () => {
-    // v3.0.0 layering: the byte calculator's Raw Word display is the byte,
-    // while byte serialization stays derived from the canonical 16-bit word.
     const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', raw: 0x1234 }))
     expect(vm.rawHex).toBe('0x18')
-    expect(vm.rawWordHex).toBe('0x18')
     expect(vm.rawHexDigits).toBe('18')
     expect(vm.valueText).toBe('0x18')
     expect(vm.wireBytes).toBe('0x 34 12')
@@ -98,7 +93,7 @@ describe('LINEAR16 / VOUT_MODE characterization', () => {
     )
     expect(vm.wireBytes).toBe('3412')
     expect(vm.msbFirstBytes).toBe('1234')
-    expect(vm.rawWordHex).toBe('0x1234')
+    expect(vm.rawHex).toBe('0x1234')
     expect(vm.valueText).toBe('18.203125')
   })
 })
@@ -167,22 +162,6 @@ describe('HALF characterization', () => {
   })
 })
 
-describe('command reference characterization', () => {
-  test('follows_vout_mode command announces its format source as info', () => {
-    const vm = toCalculatorViewModel(make({ commandKey: 'VOUT_COMMAND' }))
-    expect(vm.commandNote).toContain('跟随 VOUT_MODE')
-    const ids = vm.warnings.filter((w) => w.id.startsWith('cmd-')).map((w) => `${w.id}:${w.level}`)
-    expect(ids).toEqual(['cmd-note:info', 'cmd-follows-vout-mode:info'])
-  })
-
-  test('device_defined command keeps the datasheet requirement as info', () => {
-    const vm = toCalculatorViewModel(make({ commandKey: 'READ_VIN' }))
-    expect(vm.commandNote).toContain('需要器件数据手册')
-    const ids = vm.warnings.filter((w) => w.id.startsWith('cmd-')).map((w) => `${w.id}:${w.level}`)
-    expect(ids).toEqual(['cmd-note:info', 'cmd-device-defined:info'])
-  })
-})
-
 describe('VOUT_MODE byte warning copy characterization', () => {
   test('vid-not-used code 00h warns without a VID profile', () => {
     const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x20 } }))
@@ -204,17 +183,6 @@ describe('VOUT_MODE byte warning copy characterization', () => {
     const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x25 } }))
     expect(vm.warnings.map((w) => `${w.id}:${w.level}`)).toEqual(['vout-mode-vid-reserved:warning'])
     expect(vm.warnings[0].text).toContain('Table 3 未列出')
-  })
-
-  test('command notes are appended after the byte-level warnings, in order', () => {
-    const vm = toCalculatorViewModel(
-      make({ mode: 'VOUT_MODE', voutMode: { byte: 0x20 }, commandKey: 'VOUT_COMMAND' }),
-    )
-    expect(vm.warnings.map((w) => w.id)).toEqual([
-      'vout-mode-vid-not-used',
-      'cmd-note',
-      'cmd-follows-vout-mode',
-    ])
   })
 })
 

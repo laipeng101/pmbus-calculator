@@ -9,13 +9,7 @@ import TechnicalTerm from '../term/TechnicalTerm'
 import { ChevronDownIcon, ChevronUpIcon } from '../icons/Icon'
 
 /**
- * Read-only PMBus command reference.
- *
- * Deliberately has NO selection state and NO side effects: choosing a command
- * cannot reliably derive the payload format (device datasheet or VOUT_MODE
- * decides), so this panel only displays command code, transactions, data type,
- * units, encoding-rule source, spec section and the metadata note. It never
- * switches mode, injects parameters, or rewrites raw.
+ * References command metadata without inferring a device's payload format.
  */
 export default function CommandReference() {
   const [open, setOpen] = useState(false)
@@ -67,12 +61,7 @@ export default function CommandReference() {
             </thead>
             <tbody>
               {commands.map((cmd) => (
-                <tr
-                  key={cmd.key}
-                  data-command-key={cmd.key}
-                  data-command-note={cmd.note ?? ''}
-                  className="command-ref-row"
-                >
+                <tr key={cmd.key} className="command-ref-row">
                   <td className="px-3 py-2 font-medium">{cmd.label}</td>
                   <td className="px-3 py-2 font-mono">
                     0x{cmd.cmd.toString(16).toUpperCase().padStart(2, '0')}

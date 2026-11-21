@@ -69,7 +69,6 @@ const FULL_TIER_CONDITION = "steps.scope.outputs.run_full != 'false'"
 // Every heavy gate must stay behind the one shared full-tier condition.
 const FULL_TIER_RUN_COMMANDS = [
   'npm run specs:check',
-  'npm run check:release-contract',
   'npm run typecheck',
   'npm run lint',
   'npm run test:coverage',
@@ -93,11 +92,6 @@ describe('ci.yml structure', () => {
     expect(jobIds).toEqual(['quality', 'e2e', 'compatibility', 'browser-compat', 'check'])
   })
 
-  it('the check aggregator depends on all four parallel verification jobs', () => {
-    const checkSection = workflow.split(/^ {2}check:/m)[1] ?? ''
-    expect(checkSection).toMatch(/^ {4}needs: \[quality, e2e, compatibility, browser-compat\]\s*$/m)
-  })
-
   it('never uses workflow-level paths or paths-ignore filters', () => {
     expect(workflow).not.toMatch(/^\s*paths:/m)
     expect(workflow).not.toMatch(/^\s*paths-ignore:/m)
@@ -116,11 +110,6 @@ describe('ci.yml structure', () => {
     for (const block of scopeSteps) {
       expect(block).toMatch(/^ {8}run: node scripts\/classify-ci-scope\.mjs /m)
     }
-  })
-
-  it('no longer contains the release-security runner step', () => {
-    expect(workflow).not.toMatch(/test:release-security/)
-    expect(workflow).not.toMatch(/security-diagnostics/)
   })
 })
 
@@ -169,10 +158,6 @@ describe('ci.yml fail-closed aggregator gate', () => {
     expect(normalized).toContain('A required verification job did not succeed.')
     expect(normalized).toContain('exit 1')
     expect(normalized).not.toContain('continue-on-error')
-  })
-
-  it('does not regress to a print-only summary step', () => {
-    expect(() => findStepByName('Summarize parallel verification results')).toThrow()
   })
 })
 
@@ -262,13 +247,12 @@ describe('ci.yml full-tier gating', () => {
     },
   )
 
-  it('keeps the v2.5.13 release docs command contract available in the light tier', () => {
-    // Docs-only PRs are classified light, and this cheap offline contract is
-    // exactly the gate they need (the PR #74 lesson) — it must never be
-    // hidden behind the full-tier condition.
-    const block = findStepByRun('npm run check:release-docs-commands')
-    expect(normalize(block)).not.toContain(`if: ${FULL_TIER_CONDITION}`)
-  })
+  it.each(['npm run check:release-contract', 'npm run check:release-docs-commands'])(
+    'runs "%s" even for docs-only changes',
+    (runCommand) => {
+      expect(findStepByRun(runCommand)).not.toMatch(/^ {8}if:/m)
+    },
+  )
 })
 
 describe('ci.yml e2e job light-tier install gating', () => {

@@ -6,7 +6,7 @@
 //   known leaked rules `.lowercase{}` / `.table{}` must not appear. Those
 //   selectors previously leaked from English prose in non-production files.
 // - positive: utilities proven to be authored in production sources
-//   (`flex`, `uppercase`, `min-w-0`, `italic`) must exist, so a broken
+//   (`flex`, `uppercase`, `min-w-0`, `font-mono`) must exist, so a broken
 //   `source(none)` / `@source` config cannot silently strip every utility.
 //
 // Only CSS that embeds the `--color-canvas` theme marker (the compiled
@@ -25,7 +25,7 @@ const TAILWIND_CSS_MARKER = '--color-canvas'
 
 // Selectors authored in production sources; update consciously if product
 // code stops using one of them.
-const REQUIRED_PRODUCT_UTILITIES = ['flex', 'uppercase', 'min-w-0', 'italic']
+const REQUIRED_PRODUCT_UTILITIES = ['flex', 'uppercase', 'min-w-0', 'font-mono']
 
 // Rules that previously leaked from non-production prose. If product code ever
 // needs one of these classes for real, remove it here and say why in the PR.

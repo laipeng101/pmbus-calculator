@@ -73,11 +73,10 @@ jobs:
       - name: Markdown math gate
         run: npm run check:markdown-math
 
-      # v2.5.13: release-operator docs (docs/RELEASING.md) and the Pages
-      # workflow must keep matching the real verifier CLI. Deliberately NOT
-      # behind the full-tier condition: docs-only PRs are classified light,
-      # and this cheap offline contract is exactly the gate they need (the
-      # PR #74 lesson). scripts/ changes classify full anyway.
+      # Docs-only changes can affect version declarations and operator commands.
+      - name: Release contract check
+        run: npm run check:release-contract
+
       - name: Release docs command contract
         run: npm run check:release-docs-commands
 
@@ -100,10 +99,6 @@ jobs:
       - name: Specification manifest check
         if: steps.scope.outputs.run_full != 'false'
         run: npm run specs:check
-
-      - name: Release contract check
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run check:release-contract
 
       - name: Canonical toolchain check
         if: steps.scope.outputs.run_full != 'false'

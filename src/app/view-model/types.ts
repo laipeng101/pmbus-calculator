@@ -252,14 +252,12 @@ export interface CalculatorViewModel {
   /** Unified three-row result workspace shared by all five modes. */
   workspace: ResultWorkspaceVM
   /**
-   * The main Raw Word hex ('0x' + 4 digits) — always the canonical numeric
-   * raw word in every mode (v3.0.0). Identical to rawWordHex.
+   * Canonical 16-bit Raw Word for numeric modes, or the 8-bit VOUT_MODE
+   * configuration byte on its dedicated page. Includes the 0x prefix.
    */
   rawHex: string
   /** Digit-only raw hex (no 0x prefix) for fixed-prefix inputs. */
   rawHexDigits: string
-  /** Canonical unsigned 16-bit raw word, never byte-swapped for display. */
-  rawWordHex: string
   /**
    * SMBus / PMBus wire bytes, low byte first (SMBus 3.0 §6.5.4/§6.5.5:
    * word data moves low byte first). Serialization only — derived from the
@@ -284,7 +282,6 @@ export interface CalculatorViewModel {
   deltaNote?: string
   warnings: WarningVM[]
   bitGroups: BitGroupVM[]
-  commandNote?: string
   nRangeText?: string
   /**
    * Present ONLY when the result has no copyable physical value, including
@@ -326,11 +323,4 @@ export interface CalculatorViewModel {
    * expose it (v2.5.5).
    */
   halfSpecial?: HalfSpecialSemantics
-  visible: {
-    voutMode: boolean
-    directCoefficients: boolean
-    halfNote: boolean
-    nRange: boolean
-    byteCalculator: boolean
-  }
 }

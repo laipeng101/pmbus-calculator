@@ -1,13 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { appBasePath, appUrl } from './helpers/app-url'
 
-// v2.5.15 URL/目标合同：默认套件以生产构建（vite preview 挂载在官方
-// /pmbus-calculator/ 前缀下）为主要验收目标。本 spec 显式锁定三件事：
-// 1) 受测页面必须是 production build（防止 dev 绿灯冒充 production）；
-// 2) 应用加载在配置的部署前缀上，全部静态资源同源、成功且不是 HTML
-//    fallback（vite preview 的 SPA fallback 会对未知路径返回 index.html）；
-// 3) ?debug 查询入口经 appUrl() 构造，保留部署前缀（生产构建下 ?debug
-//    是调试面板的唯一显式入口）。
 test.describe('应用 URL 与受测构建合同', () => {
   test('生产构建在前缀路径下加载且资源同源成功', async ({ page, baseURL }) => {
     const basePath = appBasePath()
@@ -25,7 +18,13 @@ test.describe('应用 URL 与受测构建合同', () => {
     })
 
     await page.goto(appUrl())
+    await expect(page).toHaveTitle(/PMBus/)
+    await expect(page.getByRole('heading', { name: 'PMBus' })).toBeVisible()
+    await expect(page.getByLabel('模式切换')).toBeVisible()
+    await expect(page.getByLabel('命令参考')).toBeVisible()
+    await expect(page.getByLabel('结果面板')).toBeVisible()
     await expect(page.getByTestId('version-badge')).toBeVisible()
+    await expect(page.getByLabel('展开调试面板')).toHaveCount(0)
 
     // 受测构建来源：production dist 没有 Vite dev 注入的客户端脚本。
     const isDevServer = await page.evaluate(() =>
@@ -57,6 +56,9 @@ test.describe('应用 URL 与受测构建合同', () => {
     const toggle = page.getByLabel('展开调试面板')
     await expect(toggle).toBeVisible()
     await toggle.click()
-    await expect(page.getByText(/质量门禁/)).toBeVisible()
+    const status = page.getByRole('region', { name: '调试状态' })
+    await expect(status).toBeVisible()
+    await expect(status.getByText('LINEAR11', { exact: true })).toBeVisible()
+    await expect(status.getByText('0x0000', { exact: true })).toBeVisible()
   })
 })

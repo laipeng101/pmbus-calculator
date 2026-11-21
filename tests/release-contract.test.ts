@@ -837,6 +837,7 @@ describe('release contract gate wiring (M23)', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'))
     expect(pkg.scripts['check:release-contract']).toBe('node scripts/check-release-contract.mjs')
     expect(pkg.scripts.verify).toContain('npm run check:release-contract')
+    expect(pkg.scripts['verify:light']).toContain('npm run check:release-contract')
     const workflow = fs.readFileSync(path.join(process.cwd(), '.github/workflows/ci.yml'), 'utf8')
     expect(workflow).toMatch(/^ {8}run: npm run check:release-contract\s*$/m)
   })

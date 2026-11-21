@@ -5,7 +5,6 @@ import {
   describeEncodingRule,
   describeTransactionType,
   describeTransactions,
-  getCommandConfig,
 } from './command-metadata'
 
 interface ExpectedCommand {
@@ -327,11 +326,5 @@ describe('command metadata — read-only standard definitions (no presets)', () 
     expect(describeTransactionType('read_byte')).toBe('Read Byte')
     expect(describeTransactionType('read_word')).toBe('Read Word')
     expect(describeTransactionType('block_read')).toBe('Block Read')
-  })
-
-  it('getCommandConfig returns null for missing keys', () => {
-    expect(getCommandConfig(null)).toBeNull()
-    expect(getCommandConfig('NOPE')).toBeNull()
-    expect(getCommandConfig('VOUT_COMMAND')?.cmd).toBe(0x21)
   })
 })

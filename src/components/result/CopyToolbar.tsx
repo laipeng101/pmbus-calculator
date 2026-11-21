@@ -57,7 +57,7 @@ export default function CopyToolbar({ vm, copyPrefs, onTogglePrefix, onToggleSpa
 
   // v3.0.0: explicit representation actions replace the ambiguous endian
   // switch — each button copies exactly the representation its name states.
-  const rawWordText = formatRawWordCopyText(vm.rawWordHex, copyPrefs.prefix0x)
+  const rawWordText = formatRawWordCopyText(vm.rawHex, copyPrefs.prefix0x)
   // The view-model supplies all unavailable-result reasons; Raw Word and
   // wire-byte copies remain independent of physical-value availability.
   const physicalCopyUnavailable = vm.physicalValueCopy?.available === false

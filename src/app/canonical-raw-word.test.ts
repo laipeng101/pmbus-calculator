@@ -51,7 +51,6 @@ describe('canonical Raw Word — raw identity (v3.0.0)', () => {
           `0x${formatCanonical(raw)}`,
         )
         expect(vm.rawHexDigits).toBe(formatCanonical(raw))
-        expect(vm.rawWordHex).toBe(`0x${formatCanonical(raw)}`)
       }
     }
   })
@@ -89,7 +88,6 @@ describe('canonical Raw Word — bit-grid identity', () => {
     expect(toggled.raw).toBe(0xc010)
     const vm = toCalculatorViewModel(toggled)
     expect(vm.rawHex).toBe('0xC010')
-    expect(vm.rawWordHex).toBe('0xC010')
     // Nibble hex in the bit grid reflects the same word.
     expect(vm.bitGroups.map((g) => g.hex).join('')).toBe('C010')
     // Decode follows the same word (N=-8: 0xC010 → 49152 × 2^-8 = 192).
@@ -121,7 +119,6 @@ describe('canonical Raw Word — serialization invariants (SMBus 3.0 §6.5.4)', 
       }
       const after = toCalculatorViewModel(flipped)
       expect(after.rawHex).toBe(neutral.rawHex)
-      expect(after.rawWordHex).toBe(neutral.rawWordHex)
       expect(after.bitGroups).toEqual(neutral.bitGroups)
       expect(after.valueText).toBe(neutral.valueText)
       expect(after.cMacroText).toBe(neutral.cMacroText)
@@ -131,8 +128,8 @@ describe('canonical Raw Word — serialization invariants (SMBus 3.0 §6.5.4)', 
 
   it('the Raw Word copy action always emits the canonical word', () => {
     const vm = toCalculatorViewModel(appReducer(base(), { type: 'raw/set', raw: '49220' }))
-    expect(formatRawWordCopyText(vm.rawWordHex, true)).toBe('0xC044')
-    expect(formatRawWordCopyText(vm.rawWordHex, false)).toBe('C044')
+    expect(formatRawWordCopyText(vm.rawHex, true)).toBe('0xC044')
+    expect(formatRawWordCopyText(vm.rawHex, false)).toBe('C044')
     // The C macro always uses the canonical raw word.
     expect(vm.cMacroText).toContain('0xC044')
   })
@@ -148,7 +145,6 @@ describe('golden vectors — L16 (VOUT_MODE 0x14, N = -12)', () => {
     expect(encoded.raw).toBe(0xc000)
     const vm = toCalculatorViewModel(encoded)
     expect(vm.rawHex).toBe('0xC000')
-    expect(vm.rawWordHex).toBe('0xC000')
     expect(vm.wireBytes).toBe('0x 00 C0')
     expect(vm.msbFirstBytes).toBe('0x C0 00')
   })

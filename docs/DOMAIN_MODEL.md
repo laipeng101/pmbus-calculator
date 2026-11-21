@@ -81,8 +81,7 @@
 
 ### 2.3 DIRECT
 
-- `state.direct.error` 只在 DIRECT 模式显示；切换到其他模式后必须隐藏系数校验错误（模式作用域隔离）。
-- 应用有效 DIRECT preset 必须清除旧错误；无效系数不得破坏已存在的有效 `state.raw`。
+- DIRECT 系数错误只在对应的系数字段旁显示。提交有效系数时清除该字段的错误；无效系数不得改写 `state.raw`。
 - `m === 0` 时解码返回 `NaN`，UI 显示错误提示，不得崩溃。
 - `Y` 是 16-bit signed（`-32768..32767`）；`state.raw` 是唯一编码事实来源，
   `Y = toSigned(raw, 16)` 始终派生自 `raw`，`state.direct` 只保存 `m/b/R`。
@@ -326,11 +325,8 @@
   - `units`：物理单位或位字段标记；标准定义不固定 FAN_COMMAND_1 为 RPM（依 FAN_CONFIG_1_2）
   - `spec`：规范章节（Part II 命令章节 + Appendix I Table 31）
   - `encodingRule`：`follows_vout_mode` | `device_defined` | `status` | `block`
-- 命令参考面板是只读的：只显示命令码、事务、数据类型、单位、格式来源与规范章节；
-  选择命令不能可靠推导数据格式（器件数据手册或 VOUT_MODE 决定），因此参考面板不参与
-  模式切换、参数注入或结果计算，也不提供任何 preset 应用入口。
-- `command/set` 仅为状态层兼容保留，不得切换模式、加载参数或重编码 raw；
-  `command/apply-preset` 已从产品面移除。
+- 命令参考面板只读，显示命令码、事务、数据类型、单位、格式来源、规范章节和备注。
+  查阅命令不改变工作区状态。数据格式须依据器件数据手册或 VOUT_MODE 确定。
 - DIRECT 系数必须以具体器件数据手册为准；没有真实来源时禁止内置虚构系数。
 - `STATUS_WORD` 是状态位摘要（`encodingRule: status`），`READ_EIN` 是 block read（`encodingRule: block`），均不分配数值转换模式。
 - `STATUS_WORD` 通常为 Read Word；特殊写入仅用于清除 UNKNOWN 位（写 0x0100），其他状态位通过底层状态寄存器或 `CLEAR_FAULTS` 处理；不得写成“写入可清除所有状态位”。
