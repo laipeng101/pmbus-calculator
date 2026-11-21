@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { PMBusMath } from '../src/legacy/pmbus-math'
 import { toCalculatorViewModel } from '../src/app/view-model'
 import { getFormulaPresentation } from '../src/app/formula-presentation'
-import { buildCMacro } from '../src/app/copy-utils'
 import type { AppState } from '../src/app/state'
 import { INITIAL_STATE } from '../src/app/reducer'
 
@@ -30,9 +29,7 @@ describe('M16 non-zero stress golden cases', () => {
     expect(vm.wireBytes).toBe('0x C1 A3')
     expect(vm.msbFirstBytes).toBe('0x A3 C1')
     expect(vm.formulaText).toBe('Y=961 × 2^-12')
-    expect(buildCMacro(null, vm.rawWordHex, vm.formulaText)).toBe(
-      '#define RAW_VALUE 0xA3C1 /* Y=961 × 2^-12 */',
-    )
+    expect(vm.cMacroText).toBe('#define RAW_VALUE 0xA3C1 /* Y=961 × 2^-12 */')
 
     const f = getFormulaPresentation(base({ mode: 'L11', raw: 0xa3c1 }), vm.valueText)
     expect(f.equationPlainText).toBe('X = Y × 2^N = 961 × 2^-12 = 0.234619140625')

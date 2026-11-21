@@ -1,8 +1,7 @@
 # REPOSITORY HYGIENE
 
 > 本文件是仓库卫生与制品政策的唯一详细来源。
-> 其他文档只保留简短链接：`AGENTS.md`（agent 必读与任务结束门禁）、`CONTRIBUTING.md`（提交前命令）、`docs/UI_CONVENTIONS.md`（视觉基线专属规则）、`.gitignore`（实际模式）、`package.json`（可执行命令）。
-> `docs/archive/**` 默认不读、不搜索，不参与普通 agent 上下文。
+> 忽略模式见 `.gitignore`，日常验证入口见 [CONTRIBUTING](../CONTRIBUTING.md)。
 
 ## 1. Tracked / untracked 文件政策
 
@@ -68,8 +67,6 @@
     - 核对实际更新集合与预期影响面吻合；预期受影响却未更新的基线必须解释原因；
     - 禁止"以新渲染结果直接为新基线"而不做新旧对比：基线锁定的是正确形态，不是当前渲染。
 
-`reduced-motion` 已改为普通 computed-style/行为断言，不使用独立 snapshot；其余基线不得被该变更更新。
-
 visual scene 中 volatile metadata 的规范化策略见 [`docs/UI_CONVENTIONS.md`](UI_CONVENTIONS.md) 第 11 节；不在此重复流程。
 
 ## 4. Artifact 政策
@@ -92,18 +89,10 @@ CI Artifact 使用短期 retention（当前 Playwright report 为 7 天），不
 ```bash
 npm run clean                  # 安全删除允许重建的生成目录，支持 -- --dry-run
 npm run check:repo-hygiene     # 基于 git ls-files 的跟踪文件门禁
-npm run verify                 # 完整本地门禁（已包含 specs:check 与 check:repo-hygiene）
 ```
 
 `scripts/clean-generated.mjs` 只删除其 `GENERATED_TARGETS` 常量允许重建的生成目标；
-该常量是精确路径与类型（目录 / 单文件 reporter JSON）的唯一真值，本文件不再复制
-易漂移的整份列表（v2.5.15：此处曾硬编码一份缺漏副本——mobile 套件目录、五份
-reporter JSON 与 `.release-staging` 均缺失）。覆盖类别：
-
-- 构建/打包输出目录：`dist`、`build`、`out`、`coverage`、`playwright-report`、`test-results`、`release-output`、`.release-staging`；
-- 每个 Playwright 配置（default/mobile/release/deployment/visual）各自的 `outputDir` 与 HTML report 目录；
-- 每个 Playwright 配置的 JSON reporter 产物（单文件目标，`tests/e2e/e2e-results*.json`）；
-- 按需下载的规范缓存 `.cache/specifications`。
+路径与类型见脚本中的定义。允许清理的类别为构建/打包输出、各 Playwright 套件的输出与报告及规范缓存。
 
 `tests/playwright-artifacts-consistency.test.ts` 从实际 Playwright 配置推导产物集合并与
 清理器常量交叉比对；新增/更名套件输出时该测试与门禁同步失败，不再依赖人工抄列表。
@@ -152,53 +141,13 @@ reporter JSON 与 `.release-staging` 均缺失）。覆盖类别：
 - tracked tree size 是当前 Git index/HEAD 中每个 tracked path 对应 blob size 的求和，按路径 entry 计数，不是 Git pack size，也不是 GitHub API 返回的 repository size。
 - 脚本结果必须与 `git ls-tree -r -l HEAD` 的 tree size 语义一致；同一 blob 被多个路径共享时，每个路径都计入。
 
-## 6. Agent 生命周期清理
+## 6. 任务产物
 
-### 任务开始
+诊断日志、会话记录和临时计划留在会话、临时目录或 CI Artifact。失败报告保留到定位结束，需交付的截图与报告按上文策略提交或提供链接。
 
-每次 agent 任务先报告：
+结束时查看 `git status --short`，关闭本次启动的任务，清理本次生成且无需保留的产物。只在可确认待删除目录均可丢弃时运行 `npm run clean`，必要时先预览。`verify` 与 `verify:light` 已包含跟踪文件卫生和本地空白检查。
 
-- 当前 SHA、分支和工作区状态；
-- 本次允许修改范围；
-- 预计生成的临时目录；
-- 本地验证计划；
-- 是否涉及 snapshot 更新；
-- 是否具备图像读取能力。
-
-### 执行中
-
-每个阶段结束时更新一次：
-
-- 已完成事项；
-- 实际改动文件；
-- 已运行测试及结果；
-- 当前阻塞；
-- 下一阶段。
-
-不要每执行一个 shell 命令就写长报告，也不要静默运行很长时间。
-进度信息保留在 DSH 会话/plan 中，不创建并提交临时 TODO、agent transcript、compact summary、screenshot review 日志或命令输出全文。
-
-### compact 前后
-
-1. compact 前保存简洁检查点：当前分支和 HEAD、已修改文件、已完成阶段、未完成阶段、最近一次有效测试、尚未解决的风险。
-2. compact 后重新执行：`git status --short --branch`、`git diff --stat`、当前 plan 核对。
-3. 不因为 compact 重跑已证明且其依赖未变化的长测试。
-4. 最终完整门禁仍必须在最后一次代码/配置修改之后运行。
-
-### 任务结束
-
-依次执行：
-
-1. `npm run clean`
-2. `npm run check:repo-hygiene`
-3. `git status --short`
-4. `git diff --check`
-5. `git diff --cached --check`
-6. `git ls-files` 禁止项扫描
-7. 确认没有意外 untracked report/output
-8. 确认 snapshot 数量和大小变化符合 PR 说明
-
-禁止使用 `git clean -fdx`、面向仓库根目录的递归删除、未展开变量的 `rm -rf`、删除未知用户文件、重写 main 历史。
+保护他人文件、缓存和工作成果。禁止用 `git clean -fdx` 或对仓库根目录执行递归删除。
 
 ## 7. 例外审批方式
 
@@ -214,20 +163,8 @@ reporter JSON 与 `.release-staging` 均缺失）。覆盖类别：
   与 `npm run check:repo-hygiene` 双通过。
 - 第三方规范 PDF 不进入当前 Git tree；provenance、官方链接和哈希进入 `document/specifications.json`，PDF 由开发者按需下载到 ignored `.cache/specifications/`。历史 tag/commit 不重写。
 
-## 8. PR 统计与流程证据
+## 8. 资产变更统计
 
-1. PR 统计必须来自 final committed HEAD，不允许把 working tree、中间 commit 或 PR base 的统计写成最终结果。
-2. 每次新增修复提交后都要重新生成统计；旧统计立即失效。
-3. branch 全量 whitespace 检查使用 `git diff --check origin/main...HEAD`。
-4. 最终树大小必须使用当前 HEAD，并通过 `npm run check:repo-hygiene` 与 `git ls-tree -r -l HEAD` 交叉验证。
-5. PR CI 必须核对其 `head_sha` 等于最终 PR head。
-6. merge 后必须比较 PR CI `Record checked revision` 步骤记录的 `checked_tree` 与最终
-   merge SHA 的 `HEAD^{tree}`，两者必须完全相同（M19-B：main 不再有 push CI，tree
-   一致即验证完成；不一致属于真实阻塞，用 `workflow_dispatch` 执行 full CI 并定位）。
-7. 文件数、树大小、snapshot 数量、tracked PDF 数量（当前应为 0）和 legacy HTML 是否存在，均以 `git ls-tree -r -l HEAD` 为准；manifest 记录数以 `document/specifications.json` 为准。
-8. 树增长报告随 release（或重大资产变更）PR 记录：tracked file count / tracked
-   bytes（`git ls-tree -r -l HEAD`）、GitHub repo API size、分类占比
-   （visual snapshots、`docs/releases`、`docs/archive`、legacy HTML）与近几个
-   tag 的树体积趋势。不设总字节硬阈值（正常新增测试/快照会合理增长）；
-   单个新增大文件沿用第 5 节 >1 MiB 规则与例外审批；重写 Git 历史不是
-   认可的体积治理手段。
+发行或重大资产变更时，在 PR 记录最终提交的跟踪文件数、字节数、主要资产分类占比、GitHub repo API size 和近几个 tag 的树体积趋势。跟踪树统计以 `git ls-tree -r -l HEAD` 为准，可与 `npm run check:repo-hygiene` 交叉验证。规范记录数取自 `document/specifications.json`。
+
+单文件大小门禁见第 5 节。治理当前树的资产体积时保留 Git 历史。

@@ -1,7 +1,6 @@
 # UI Conventions
 
-> 长期稳定规则。只有涉及 UI / 公式 / 交互动效的任务才需要读取本文件。
-> 本文不重复里程碑进度；进度以 `docs/ROADMAP.md` 为准。
+> 按改动查阅相关的公式、交互、布局与视觉验收约定。
 
 ## 1. Markdown 数学公式
 
@@ -51,11 +50,7 @@
 - 在应用入口导入 `katex/dist/katex.min.css`，由 Vite 将字体打入 Release 资产。
 - Release / 自托管 production bundle 的 CSP 不增加外部运行时依赖；
   `vite.config.ts` 继续只定义严格 Release CSP。字体、CSS、应用 JS 必须来自同源。
-- 官方 GitHub Pages 可在 Release 完整性、tag fresh rebuild 逐字节比较与本地
-  Release smoke 全部通过后，仅对 `_site` 执行经审计的 Pages-only overlay：
-  `script-src` 只额外允许 `https://static.cloudflareinsights.com/beacon.min.js`，
-  `connect-src` 为 `'self' https://cloudflareinsights.com`；其他 directive 语义不变，
-  不允许 wildcard 或宽泛 `https:`。Pages-only CSS 仍为同源资源。
+- 官方 Pages 的 CSP 例外与注入边界见[部署约定](DEPLOYING.md#pages-only-overlay-与隐私边界)。
 - KaTeX 输出同时包含 HTML 与 MathML；E2E 必须确认 DOM 中存在 `math` 元素且无 `.katex-error`。
 - 移动端长公式只允许公式容器局部横向滚动（`.math-scroll`），不得造成 body 横向溢出。
 - 结果主数值使用等宽 + `font-variant-numeric: tabular-nums`；按内容长度使用可预测字号档位，不省略、不换行、不 `transform: scale()`。
@@ -92,11 +87,7 @@
 - Playwright：四模式 KaTeX 容器与 MathML 存在；无 `.katex-error`；输入后公式同步更新；
   cursor / hover / active / focus-visible / disabled 状态；reduced-motion；360/390 无 body 横向滚动；
   light/dark 下公式与 focus ring 可读。
-- Release/Pages smoke：KaTeX CSS 与全部字体加载，资源为 Pages 同源。
-- Release smoke 必须证明没有 Cloudflare beacon、Cloudflare CSP 域、Pages-only
-  repository link 或 `pages-overlay.css`；Pages overlay smoke 则验证精确 CSP、
-  外部资源 allowlist 与新增控件。Cloudflare 网络可用性使用受控 route stub 隔离，
-  不以第三方网络成功代替本地 wiring、可访问性、几何与视觉证明。
+- 改动 KaTeX、字体或资源路径时，用 Release/Pages smoke 验证 KaTeX CSS 与字体通过同源加载。涉及 Pages-only 资源时，按[部署约定](DEPLOYING.md#pages-only-overlay-与隐私边界)验收。
 
 ## 7. 帮助浮层：术语气泡与控件说明（v2.6.0 起）
 
@@ -218,11 +209,8 @@
 
 ## 9. 命令参考（只读，无副作用）
 
-- 命令参考是默认折叠的只读面板：只显示命令码、事务、数据类型、单位、格式来源
-  与规范章节；不得提供选择器、搜索框或预设应用入口。
-- 选择/阅读任何命令不得改变 mode、raw、VOUT_MODE、DIRECT 系数或任何计算结果；
-  面板本身没有任何 selection state（不写 `command/set`）。
-- `command/apply-preset` 已从产品面移除；命令元数据不携带 preset。
+- 命令参考默认折叠，显示命令码、事务、数据类型、单位、格式来源、规范章节与必要备注。界面不提供选择器、搜索框或预设入口，命令元数据不携带预设。
+- 查看命令不会改变模式、Raw Word、VOUT_MODE、DIRECT 系数或计算结果。面板仅维护展开/收起状态。
 - 表格在窄 viewport 使用容器内横向滚动（`overflow-x-auto`），不得造成 body
   横向溢出。
 - 回归矩阵在 `tests/e2e/command-reference.spec.ts`：默认折叠、13 条命令行、
@@ -268,28 +256,16 @@
 - 圆角：控件约 8px，panel 12px，shell 16px；间距以 8px 为基准。
 - 图标为 `currentColor` SVG，`aria-hidden=true`，按钮有可访问文本或 `aria-label`。
 - 中文为 UI 主语言；PMBus、L11、L16、DIRECT、HALF、Hex、LE/BE 等技术缩写保留。
-- 视觉验收不能只凭 DOM 测试；必须包含关键 viewport 截图。
-- `visual snapshot` 是回归保护，不等同于设计质量批准；没有图像读取能力时，不得声称已“逐图目检”。
-- 没有图像读取能力时，必须把视觉要求转化为可执行的几何、对比度、换行、overflow、排列和 computed-style 断言；最终报告必须如实说明实际使用的验证方式。
-- `npm run verify:ui` 会在 `npm run verify` 之后运行 visual snapshot；visual snapshot 当前为 darwin 基线，CI 默认不运行 `test:e2e:visual`。
-- visual regression 截图前等待 `document.fonts.ready`、KaTeX 完成和动画稳定。
+- 视觉变更截取受影响的关键 viewport，逐图检查布局、可读性与交互状态；图像不可用时，以几何、对比度、换行、overflow、排列和 computed-style 断言验证可量化要求，并报告待目检项。
 - reduced-motion 只关闭非必要动画，不得消除功能反馈；复制状态使用受控 timer（约 1.5–2s）。
 - KaTeX `htmlAndMathml` 已提供 MathML；外层不得用 `role="math"`/`aria-label` 覆盖；fallback 时再提供可访问名称。
 
 ## 11. 视觉基线治理
 
-> 完整政策见 [`docs/REPOSITORY_HYGIENE.md`](REPOSITORY_HYGIENE.md) 第 3 节；本文件只保留 UI 任务必须遵守的摘要。
+基线环境、更新条件与证据要求见[仓库卫生 §3](REPOSITORY_HYGIENE.md#3-visual-snapshot-审批规则)。
 
-- Playwright golden snapshot 是测试输入，必须提交到版本控制；actual/diff/failed screenshot 和 HTML report 是临时输出，不提交。
-- snapshot 必须在 canonical darwin 环境生成，并记录 OS、Node、Playwright、Chromium 和 viewport。
-- `--update-snapshots` 不是普通修复命令：必须先确认变化是预期变化并审查截图或 diff。
-- 没有图像输入能力的 agent 不得自行接受或更新视觉基线，只能增加几何/overflow/换行/对比度/computed-style 断言并报告变化。
-- UI 任务如必须更新基线，应使用具备图像输入能力的复核模型，或停在等待视觉审批的状态。
-- 截图变化必须在 PR 中单独列出：新增/修改/删除数量、总字节变化、每张变化原因。
-- 视觉重构 PR 更新基线时必须附**新旧基线 diff 审查记录**（先记录失败场景为预期影响面、
-  更新后新旧 PNG 成对对比、核对更新集合与影响面吻合）；完整条款见
-  [`docs/REPOSITORY_HYGIENE.md`](REPOSITORY_HYGIENE.md) 第 3 节第 10 条。
-- 不使用 snapshot 替代数值、行为、无障碍或几何断言；不为了减小仓库而使用有损压缩。
+- `npm run test:e2e:visual` 单独运行视觉回归，`npm run verify:ui` 在完整本地验证后运行该套件。PR CI 默认不运行视觉快照。
+- 截图前等待 `document.fonts.ready`、KaTeX 渲染和动画稳定。
 - visual scene 中的 volatile metadata（例如由 package.json 注入的版本徽标）必须在截图前先断言真实值，
   再规范化为明确的测试占位值；不 mask，且该规范化只存在于 E2E helper，不得进入 `src/` 或生产 bundle。
 

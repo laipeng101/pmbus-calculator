@@ -224,14 +224,15 @@ test.describe('DIRECT（768×1024 light）：m/b/R 与 Y 字段级错误、修�
   }) => {
     const mInput = page.getByLabel('DIRECT 系数 m')
     const hexInput = page.locator('input[placeholder="0000"]')
+    const inlineError = page.locator('#direct-coeff-m-input-error')
 
     await mInput.fill('0')
+    await expect(inlineError).toContainText('m 不能为 0')
     await mInput.press('Tab')
     await expectFieldError(page, 'direct-coeff-m-input')
     await expect(mInput).toHaveValue('0')
 
     // 同一错误只在内联出现一次，InfoPanel 不重复
-    const inlineError = page.locator('#direct-coeff-m-input-error')
     await expect(inlineError).toContainText('m 不能为 0')
     expect(
       await page
@@ -283,6 +284,7 @@ test.describe('HALF（1280×900 dark）：NaN/Infinity 合法、垃圾文本非�
 
     await valueInput.fill('NaN')
     await expect(hexInput).toHaveValue('7E00')
+    await expect(valueInput).toHaveValue('NaN')
     await expectNoFieldError(page, 'value-input')
 
     await valueInput.fill('Infinity')

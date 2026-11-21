@@ -26,7 +26,7 @@ const CLEAN_TAILWIND_CSS = [
   '.flex{display:flex}',
   '.uppercase{text-transform:uppercase}',
   '.min-w-0{min-width:calc(var(--spacing)*0)}',
-  '.italic{font-style:italic}',
+  '.font-mono{font-family:monospace}',
 ].join('')
 
 async function makeEnvironment(
@@ -50,7 +50,7 @@ async function makeEnvironment(
   await fs.mkdir(path.join(productionSrcDir, 'components'), { recursive: true })
   await fs.writeFile(
     path.join(productionSrcDir, 'components', 'Example.tsx'),
-    "export const example = () => <div className='flex italic' />\n",
+    "export const example = () => <div className='flex font-mono' />\n",
     'utf8',
   )
 
@@ -112,10 +112,10 @@ describe('checkTailwindScope', () => {
 
   it('fails when a required product utility is missing from the compiled CSS', async () => {
     const root = await makeTempRoot()
-    const stripped = CLEAN_TAILWIND_CSS.replace('.italic{font-style:italic}', '')
+    const stripped = CLEAN_TAILWIND_CSS.replace('.font-mono{font-family:monospace}', '')
     const result = await checkTailwindScope(await makeEnvironment(root, stripped))
     expect(result.ok).toBe(false)
-    expect(result.errors.join('\n')).toMatch(/required product utility "\.italic\{…\}" missing/)
+    expect(result.errors.join('\n')).toMatch(/required product utility "\.font-mono\{…\}" missing/)
   })
 
   it('fails when the dist directory does not exist', async () => {

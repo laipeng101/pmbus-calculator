@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { PMBusMath } from '../../legacy/pmbus-math'
-import { getCommandConfig } from '../../legacy/command-metadata'
 import { buildCMacro } from '../copy-utils'
 import { getFormulaPresentation } from '../formula-presentation'
 import { buildCalculationSteps } from '../calculation-steps'
@@ -8,7 +7,6 @@ import type { AppState } from '../state'
 import type { CalculatorViewModel, VoutModeInfoVM } from './types'
 import {
   buildBitGroups,
-  byteDigits,
   formatByteHex,
   formatBytes,
   formatRawHex,
@@ -95,11 +93,8 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   const formula = getFormulaPresentation(state, valueText)
   const formulaText = formula.plainText
 
-  const rawHex = state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(raw)
-  const rawHexDigits =
-    state.mode === 'VOUT_MODE'
-      ? byteDigits(state.voutMode.byte)
-      : (raw & 0xffff).toString(16).toUpperCase().padStart(4, '0')
+  const rawWordHex = formatRawHex(raw)
+  const rawHex = state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : rawWordHex
 
   const halfSpecial = state.mode === 'HALF' ? resolveHalfSpecial(raw) : undefined
 
@@ -149,8 +144,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       physicalValueCopy: physicalValueCopyUnavailability,
     }),
     rawHex,
-    rawHexDigits,
-    rawWordHex: state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(raw),
+    rawHexDigits: rawHex.slice(2),
     wireBytes: formatBytes(le, {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
@@ -159,7 +153,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
     }),
-    cMacroText: buildCMacro(state.commandKey, formatRawHex(raw), formulaText),
+    cMacroText: buildCMacro(rawWordHex, formulaText),
     formulaText,
     formulaLatex: formula.latex,
     formulaSymbolicLatex: formula.symbolicLatex,
@@ -175,7 +169,6 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     warnings: buildWarnings(state),
     bitGroups: buildBitGroups(raw),
     directY: state.mode === 'DIRECT' ? PMBusMath.toSigned(raw, 16) : undefined,
-    commandNote: getCommandConfig(state.commandKey)?.note,
     nRangeText,
     l16Payload,
     physicalValueCopy: physicalValueCopyUnavailability,
@@ -184,13 +177,6 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     voutModeInfo,
     voutModePage,
     halfSpecial,
-    visible: {
-      voutMode: state.mode === 'L16',
-      directCoefficients: state.mode === 'DIRECT',
-      halfNote: state.mode === 'HALF',
-      nRange: state.mode === 'L11' || state.mode === 'L16',
-      byteCalculator: state.mode === 'VOUT_MODE',
-    },
   }
 }
 

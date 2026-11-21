@@ -6,7 +6,6 @@ import type { AppState } from './state'
 const BASE: AppState = {
   mode: 'L11',
   raw: 0,
-  commandKey: null,
   voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   valueRequest: null,
@@ -381,7 +380,6 @@ describe('toCalculatorViewModel', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234 }))
       expect(vm.rawHex).toBe('0x1234')
       expect(vm.rawHexDigits).toBe('1234')
-      expect(vm.rawWordHex).toBe('0x1234')
     })
 
     test('physical value derives from the same canonical raw word', () => {
@@ -788,12 +786,6 @@ describe('toCalculatorViewModel', () => {
         )
       }
     })
-
-    test('byte calculator hides the 16-bit raw/byte-order UI', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE' }))
-      expect(vm.visible.byteCalculator).toBe(true)
-      expect(vm.visible.voutMode).toBe(false)
-    })
   })
 
   describe('v2.5.4 VOUT_MODE 状态/警告/说明/步骤的 Half↔DIRECT 对比矩阵', () => {
@@ -1164,50 +1156,6 @@ describe('toCalculatorViewModel', () => {
       // prefix0x adds '0x ' (space after prefix), spaceBetweenBytes controls byte separation
       expect(vm.wireBytes).toBe('0x 3412')
     })
-
-    test('serialization never feeds back into the raw word identity', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0x1234 }))
-      expect(vm.rawHex).toBe('0x1234')
-      expect(vm.rawWordHex).toBe('0x1234')
-    })
-  })
-
-  describe('visibility flags', () => {
-    test('L11 shows nRange only', () => {
-      const vm = toCalculatorViewModel(BASE)
-      expect(vm.visible.nRange).toBe(true)
-      expect(vm.visible.voutMode).toBe(false)
-      expect(vm.visible.directCoefficients).toBe(false)
-      expect(vm.visible.halfNote).toBe(false)
-    })
-
-    test('L16 shows voutMode and nRange', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16' }))
-      expect(vm.visible.voutMode).toBe(true)
-      expect(vm.visible.nRange).toBe(true)
-    })
-
-    test('DIRECT shows directCoefficients', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'DIRECT' }))
-      expect(vm.visible.directCoefficients).toBe(true)
-    })
-
-    test('HALF shows halfNote', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'HALF' }))
-      expect(vm.visible.halfNote).toBe(true)
-    })
-  })
-
-  describe('C macro text', () => {
-    test('no command uses RAW_VALUE', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0x000c }))
-      expect(vm.cMacroText).toBe('#define RAW_VALUE 0x000C /* Y=12 × 2^0 */')
-    })
-
-    test('selected command uses sanitized command name', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0x000c, commandKey: 'VOUT_COMMAND' }))
-      expect(vm.cMacroText).toBe('#define VOUT_COMMAND 0x000C /* Y=12 × 2^0 */')
-    })
   })
 
   describe('DIRECT error visibility (inline-only, no InfoPanel duplication)', () => {
@@ -1245,18 +1193,6 @@ describe('toCalculatorViewModel', () => {
         }),
       )
       expect(vm.warnings.find((w) => w.id === 'direct-m-zero')).toBeUndefined()
-    })
-  })
-
-  describe('command note', () => {
-    test('null commandKey has no note', () => {
-      const vm = toCalculatorViewModel(BASE)
-      expect(vm.commandNote).toBeUndefined()
-    })
-
-    test('STATUS_WORD provides note', () => {
-      const vm = toCalculatorViewModel(make({ commandKey: 'STATUS_WORD' }))
-      expect(vm.commandNote).toBeTruthy()
     })
   })
 

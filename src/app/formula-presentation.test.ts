@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getFormulaPresentation } from './formula-presentation'
 import { toCalculatorViewModel } from './view-model'
-import { buildCMacro } from './copy-utils'
 import type { AppState } from './state'
 import { INITIAL_STATE } from './reducer'
 
@@ -210,9 +209,7 @@ describe('formula presentation model', () => {
     const vm = toCalculatorViewModel(s)
     expect(vm.formulaText).toBe('Y=12 × 2^0')
     expect(vm.formulaLatex).toBe('X = Y \\times 2^N = 12 \\times 2^{0}')
-    expect(buildCMacro('VOUT_COMMAND', vm.rawWordHex, vm.formulaText)).toBe(
-      '#define VOUT_COMMAND 0x000C /* Y=12 × 2^0 */',
-    )
+    expect(vm.cMacroText).toBe('#define RAW_VALUE 0x000C /* Y=12 × 2^0 */')
   })
 
   it('KaTeX templates only use the safe common subset', () => {

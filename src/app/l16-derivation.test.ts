@@ -11,7 +11,6 @@ import type { AppState } from './state'
 const BASE: AppState = {
   mode: 'L16',
   raw: 0x0c00,
-  commandKey: null,
   voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   valueRequest: null,
