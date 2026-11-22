@@ -1,6 +1,6 @@
 import { getCommandConfig } from '../../legacy/command-metadata'
 import type { AppState } from '../state'
-import type { WarningVM } from './types'
+import type { DirectFidelityVM, WarningVM } from './types'
 import { resolveL11SaturationWarning } from './l11'
 import { resolveDirectFoldWarning } from './direct'
 import { resolveL16NonlinearWarnings, resolveL16RelativeDiagnostics } from './l16'
@@ -13,7 +13,10 @@ import { resolveVoutModeByteWarnings } from './vout-mode'
  * orchestrator only selects by mode, preserves the historical push order
  * and owns the read-only command-reference notes.
  */
-export function buildWarnings(state: AppState): WarningVM[] {
+export function buildWarnings(
+  state: AppState,
+  directFidelity: DirectFidelityVM | null,
+): WarningVM[] {
   const warnings: WarningVM[] = []
   // DIRECT coefficient errors (including m=0) live in state.direct.errors and
   // are rendered inline next to the corresponding input; the InfoPanel must
@@ -21,8 +24,7 @@ export function buildWarnings(state: AppState): WarningVM[] {
   const l11Saturation = resolveL11SaturationWarning(state)
   if (l11Saturation) warnings.push(l11Saturation)
 
-  const directFold = resolveDirectFoldWarning(state)
-  if (directFold) warnings.push(directFold)
+  if (directFidelity) warnings.push(resolveDirectFoldWarning(directFidelity))
 
   if (state.mode === 'L16' || state.mode === 'VOUT_MODE') {
     // Both modes show the shared VOUT_MODE byte card warnings; the byte is

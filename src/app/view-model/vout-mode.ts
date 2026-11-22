@@ -94,17 +94,6 @@ export function buildVoutModeVM(byte: number, source?: 'linked' | 'non-linear'):
       : 'ok'
 
   const explanations = buildVoutModeExplanations(a)
-  if (source === 'non-linear') {
-    explanations.unshift({
-      id: 'l16-nonlinear',
-      severity: 'warning',
-      title: '共享 VOUT_MODE 非 LINEAR，本页不可计算',
-      detail:
-        '输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4）；' +
-        'LINEAR16 页不隐式替换字节。显式应用计算器 LINEAR 示例 0x18（absolute、N=-8）后才恢复计算。',
-      specRef: 'Part II §8.3 / §8.4',
-    })
-  }
 
   return {
     byte,

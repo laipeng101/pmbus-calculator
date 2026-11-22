@@ -20,8 +20,7 @@ export default function AppHeader({ theme, onThemeChange }: Props) {
           </span>
         </div>
         <p className="mt-0.5 text-xs color-text-muted">
-          数值格式换算，不实现完整 PMBus/
-          <TechnicalTerm termId="smbus" /> 协议栈
+          换算数值，查看 <TechnicalTerm termId="smbus" /> 传输字节
         </p>
       </div>
       <ThemeToggle theme={theme} onChange={onThemeChange} />

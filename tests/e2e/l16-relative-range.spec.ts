@@ -85,7 +85,6 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     const steps = page.locator('[data-testid="calculation-steps"]')
     await expect(steps).toContainText('V_NOM = 1e+308 与比值 R 的乘积')
     await expect(steps).toContainText('计算结果超出 JavaScript Number 可表示范围')
-    await expect(steps).toContainText('结果卡已显示 —')
     await expect(steps).not.toContainText('Infinity')
 
     // 物理值复制禁用且有可访问原因；Hex/LE/BE 复制仍可用

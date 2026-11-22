@@ -1,9 +1,9 @@
 # 旧版单文件兼容性
 
-[`pmbus-calculator.html`](../pmbus-calculator.html) 供仓库内离线使用，只接受必要纠偏。其 GitHub Pages 路径返回 404，官方站点根路径提供当前 Web App。部署规则见 [DEPLOYING](DEPLOYING.md)。
+下载 [`pmbus-calculator.html`](../pmbus-calculator.html)，可直接在浏览器中打开并离线使用。该文件仅维护必要的修复。需要最新换算和舍入规则时，请使用 [README 中的在线版或发布包](../README_zh-CN.md)。
 
-当前 Web App 的数值行为以 [领域模型](DOMAIN_MODEL.md) 和 [数值实现](../src/legacy/pmbus-math.ts) 为准。离线单文件有以下已知差异。
+旧版单文件与[当前换算规则](DOMAIN_MODEL.md)有以下已知差异。
 
-- **LINEAR11 自动选择指数** — 旧版 `findBestLinear11` 以 `1e-15` 容差判断误差并列，且缺少当前实现的全范围饱和规则。接近并列或超出范围时，编码结果可能不同。
-- **HALF 尾数舍入** — 旧版 `encodeHalf` 使用 `Math.round`，尾数遇到中点会向上取整。当前实现使用 IEEE 754 round-to-nearest-even。例如，`1 + 2^-11` 在旧版编码为 `0x3C01`，当前编码为 `0x3C00`。
-- **ULINEAR16 编码** — 旧版未被调用的 `encodeLinear16` 忽略指数 `N`，只将输入限制在 `0..65535`。当前实现按照 PMBus Part II §8.4.1，对 `X / 2^N` 取整后再限制范围。
+- **LINEAR11 自动选指数**。旧版用 `1e-15` 的容差判断两个候选值的误差是否相等。候选误差很接近或输入超出可表示范围时，两版可能选出不同的编码。
+- **HALF 尾数舍入**。旧版遇到中点时向上取整，当前遵循 IEEE 754 的最近偶数舍入。`1 + 2^-11` 在旧版编码为 `0x3C01`，当前编码为 `0x3C00`。
+- **ULINEAR16 编码函数**。旧版界面未调用的 `encodeLinear16` 只将输入限制在 `0..65535`。当前实现先按 PMBus Part II §8.4.1 对 `X / 2^N` 取整，再限制范围。

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { appendFileSync, realpathSync } from 'node:fs'
+import { appendFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
@@ -31,9 +31,8 @@ function pathTier(file) {
     return 'light'
   }
   if (
-    /^(?:src\/(?:app|legacy|components)\/.+|tests\/[^/]+)\.test\.[cm]?tsx?$/.test(file) ||
-    file === 'document/specifications.json' ||
-    file === '.gitignore'
+    /^(?:src\/(?:app|legacy|components)\/.+|tests\/[^/]+)\.test\.tsx?$/.test(file) ||
+    file === 'document/specifications.json'
   ) {
     return 'checks'
   }
@@ -41,7 +40,8 @@ function pathTier(file) {
     /^src\/(?:app|legacy|components|styles)\/.+\.(?:tsx?|css)$/.test(file) ||
     /^src\/(?:App\.tsx|main\.tsx|vite-env\.d\.ts)$/.test(file) ||
     /^tests\/e2e\/.+\.(?:ts|png|webp)$/.test(file) ||
-    file === 'index.html'
+    file === 'index.html' ||
+    file === '.gitignore'
   ) {
     return 'product'
   }
@@ -57,20 +57,15 @@ export function classifyPaths(paths) {
   return TIERS[highest]
 }
 
-/** @param {string | undefined} sha */
-function isCommitSha(sha) {
-  return Boolean(sha && /^[0-9a-f]{40}$/i.test(sha) && !/^0+$/.test(sha))
-}
+/** @param {{event?: string, cwd?: string}} options */
+export function classifyCiScope({ event, cwd }) {
+  if (event !== 'pull_request') return { tier: 'full', count: 0 }
 
-/** @param {{event?: string, baseSha?: string, headSha?: string, cwd?: string}} options */
-export function classifyCiScope({ event, baseSha, headSha, cwd }) {
-  if (event !== 'pull_request' || !isCommitSha(baseSha) || !isCommitSha(headSha)) {
-    return { tier: 'full', count: 0 }
-  }
-  // Include both sides of moves so a renamed source file retains its checks.
+  // The first parent of GitHub's PR merge commit is the target branch.
+  // Include both paths of a rename so the old path retains its checks.
   const diff = spawnSync(
     'git',
-    ['diff', '--name-only', '--no-renames', '-z', `${baseSha}...${headSha}`, '--'],
+    ['diff', '--name-only', '--no-renames', '-z', 'HEAD^1', 'HEAD', '--'],
     {
       cwd,
       encoding: 'utf8',
@@ -81,21 +76,14 @@ export function classifyCiScope({ event, baseSha, headSha, cwd }) {
   return { tier: classifyPaths(paths), count: paths.length }
 }
 
-if (
-  process.argv[1] &&
-  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
-) {
+if (import.meta.main) {
   const { values } = parseArgs({
     options: {
       event: { type: 'string' },
-      'base-sha': { type: 'string' },
-      'head-sha': { type: 'string' },
     },
   })
   const { tier, count } = classifyCiScope({
     event: values.event,
-    baseSha: values['base-sha'],
-    headSha: values['head-sha'],
     cwd: fileURLToPath(new URL('..', import.meta.url)),
   })
   console.log(`ci-scope: tier=${tier} changed_paths=${count}`)

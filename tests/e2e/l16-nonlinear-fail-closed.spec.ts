@@ -163,7 +163,7 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
         .first()
       await expect(invalidParamAlert).toBeAttached()
       await expect(invalidParamAlert).toHaveAttribute('data-level', 'error')
-      await expect(blockCard(page)).toContainText('无有效解释合同')
+      await expect(blockCard(page)).toContainText('的参数无效')
       await expect(page.locator('[data-testid="result-value"]')).toContainText('—')
       await expect(legend(page)).toContainText('未按 LINEAR16 解释')
     }
@@ -190,47 +190,14 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
     await expect(page.locator('#value-input')).toHaveCount(0)
   })
 
-  test('0x18 反词：可见表面不得称规范/器件默认，必须表述为计算器示例（v2.5.7）', async ({
-    page,
-  }) => {
-    await settle(page)
-    await enterL16(page, '60', 'ulinear16')
-    await expect(blockCard(page)).toBeVisible()
-
-    // 旧按钮文案与自动回退措辞绝不允许出现；「默认」只允许出现在否定免责
-    // 语境（不是/并非/不代表）中。扫描范围是承载 0x18 文案的表面：阻断卡、
-    // composer 与提示面板（不含无关的字节序提示「默认低字节在前」）。
-    const scopeText = (
-      await Promise.all([
-        page.locator('.workspace-l16-block').innerText(),
-        page.locator('.vout-composer').innerText(),
-        page.locator('section[aria-label="提示信息"]').innerText(),
-      ])
-    ).join('\n')
-    expect(scopeText).not.toContain('应用默认 VOUT_MODE')
-    expect(scopeText).not.toContain('自动回退')
-    for (const m of scopeText.matchAll(/默认/g)) {
-      const index = m.index ?? 0
-      const before = scopeText.slice(Math.max(0, index - 14), index)
-      expect(
-        before,
-        `默认 without negation near: ${scopeText.slice(Math.max(0, index - 20), index + 10)}`,
-      ).toMatch(/不是|并非|不代表/)
-    }
-
-    // 阻断卡与恢复入口必须使用计算器示例表述并带免责声明。
-    await expect(blockCard(page)).toContainText('计算器 LINEAR 示例 0x18')
-    await expect(blockCard(page)).toContainText('不是 PMBus 规范默认值')
-    await expect(blockCard(page)).toContainText('不代表真实器件一定接受 VOUT_MODE 写入')
-    await expect(page.getByRole('button', { name: '应用计算器 LINEAR 示例 0x18' })).toBeVisible()
-  })
-
   test('explicit apply of the calculator example byte writes 0x18 and restores encoding', async ({
     page,
   }) => {
     await settle(page)
     await enterL16(page, '20', 'slinear16-offset')
     await expect(page.locator('#value-input')).toHaveCount(0)
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x20')
+    await expect(page.locator('.vout-composer')).toContainText('器件数据手册指定的 VOUT_MODE')
 
     // The explicit action really rewrites the shared byte.
     await page.getByRole('button', { name: '应用计算器 LINEAR 示例 0x18' }).click()
@@ -261,6 +228,7 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
     await settle(page)
     await enterL16(page, '3E', 'ulinear16')
     await expect(page.locator('#value-input')).toHaveCount(0)
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x3E')
 
     await page.getByRole('button', { name: '应用计算器 LINEAR 示例 0x18' }).click()
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
@@ -276,7 +244,7 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
 
     await page.locator('[data-testid="calculation-steps-summary"]').first().click()
     const aux = page.getByRole('region', { name: '辅助结果' })
-    await expect(aux).toContainText('本页不隐式替换字节')
+    await expect(aux).toContainText('当前为 DIRECT')
     await expect(aux).toContainText('§8.4')
     // No LINEAR quantization step and no result step.
     await expect(page.getByText('格式编码量化误差（请求值 − 表示值）')).toHaveCount(0)

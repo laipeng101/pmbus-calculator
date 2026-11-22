@@ -52,13 +52,9 @@
   而非字节级 status：
 - 非 LINEAR 共享字节（VID / DIRECT / IEEE Half 格式）遵循 §3 的 fail-closed 契约（v2.5.2）：
   输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），`value/set` 对
-  非 LINEAR 共享字节**直接 no-op**——不生成 raw、不伪造 provenance、不回退到
-  `CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE`。UI 显示实际共享字节与非 LINEAR 说明；恢复
-  LINEAR16 编码的唯一路径是显式 `l16/apply-calculator-linear-example`（真正写入
-  0x18 并清除旧 provenance）。「拒绝 non-LINEAR 与 relative `value/set`」都是本仓库行为。
-- 只有 **absolute LINEAR** 才显示绝对电压结果、V、N、2^N 与可表示电压范围；
-  relative LINEAR 可以解释 VOUT_MODE 参数位的 exponent/ratio 语义，但不得把 raw 标成
-  绝对电压；VID/DIRECT/IEEE Half 不得生成虚假的 LINEAR16 V/N/range/result。
+  非 LINEAR 共享字节**直接 no-op**，保留现有原始字和编码请求来源。界面显示实际 VOUT_MODE 字节和当前格式。
+  用户可把 VOUT_MODE 改为适用的 LINEAR 字节，或点击示例按钮。按钮触发
+  `l16/apply-calculator-linear-example`，写入示例并清除旧编码请求来源。
 - L16 payload 是独立于 VOUT_MODE 字节的命令 payload 语义，分两种：
   - `ULINEAR16`：`X = Y_u × 2^N`，`Y_u` 是无符号 16 位整数 `0..65535`；absolute LINEAR
     直接解出电压，relative LINEAR 解出无量纲正比例 `R = Y_u × 2^N`，最终电压
@@ -119,19 +115,11 @@
   格式化折叠全盲（(1,1,12) 全族 0 触发而 29491/65536 复制不安全）。
   该模块是 fidelity 判断的单一来源；组件与测试不得用浮点比较或 binary64
   guard 自行推导回录安全。
-- **回录不可安全时的呈现（v2.5.11；v3.1.1 按损失分层）**：当显示文本经
-  typed 编码会落到不同 Y 时，view-model 输出 `directFidelity`（精确有理数/
-  十进制文本、近似显示值、显示文本真实回编 Y、经验证回录文本及其
-  exact/approximate kind）；警告 `direct-precision-fold`、量化读数注记
-  （deltaKind 降为 warn）与计算步骤的精确值行全部消费同一解析。`lossKind`
-  区分两种损失并必须在文案中区分：`binary64-representation`（binary64 值
-  本身回编即改变 payload，如 (1,1,17)）与 `display-formatting`（binary64 值
-  可安全回录、仅 12 位有效数字显示文本不行，如 (1,1,12)、(3,1,16)）——不得
-  把所有折叠都称为「超出 binary64 精度」。循环有理数的经验证近似回录文本
-  不得冒充精确有限小数。m=0 时物理值复制禁用并给出可访问原因（占位符
-  `—` 不是可回录的物理值）。这不是 PMBus 公式错误，也不表示
-  `encodeDirect(Number)` 有错——是显示层不可逆性的诚实标注；
-  raw/Y 编辑始终是位级真值的权威路径。
+- **重新输入显示值会改变编码时**，视图模型通过 `directFidelity` 提供精确有理数、有限十进制值（若有）、
+  近似显示值、重新编码得到的 Y，以及经精确编码验证的复制文本。`lossKind` 区分浮点表示精度有限
+  (`binary64-representation`，如 `m=1,b=1,R=17`) 和显示位数有限
+  (`display-formatting`，如 `m=1,b=1,R=12`)。量化误差仍按精确值计算，原为 `ok` 时提示 `warn`，
+  饱和等错误保留 `error`。显示和复制行为见[界面约定](UI_CONVENTIONS.md#15-格式编码量化误差读数errordelta)。
 - **精确请求 provenance 与 exact 分类（v2.5.12）**：`valueRequest` 是模式
   判别联合；DIRECT 保留 reducer 实际用于 exact 编码的同一 lexeme
   （`{ mode: 'DIRECT', value, text }`），L16/HALF 行为不变。DIRECT 的量化

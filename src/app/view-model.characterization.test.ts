@@ -253,8 +253,7 @@ describe('projection order characterization', () => {
     ])
   })
 
-  test('payload note precedes the fail-closed note in the explanation list', () => {
-    // Both unshifts apply: slinear16-bit7-na lands before l16-nonlinear.
+  test('signed offset explains bit 7 before the general VOUT_MODE notes', () => {
     const vm = toCalculatorViewModel(
       make({
         mode: 'L16',
@@ -262,7 +261,6 @@ describe('projection order characterization', () => {
         l16: { payloadKind: 'slinear16-offset', nominalVout: null },
       }),
     )
-    const ids = vm.voutModeInfo?.explanations.map((e) => e.id) ?? []
-    expect(ids.slice(0, 2)).toEqual(['slinear16-bit7-na', 'l16-nonlinear'])
+    expect(vm.voutModeInfo?.explanations[0]?.id).toBe('slinear16-bit7-na')
   })
 })

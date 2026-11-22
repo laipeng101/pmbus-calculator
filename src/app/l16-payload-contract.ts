@@ -43,7 +43,7 @@ export type L16FormatSemantics =
   | { status: 'vid-relative-invalid' }
   | { status: 'direct-profile-required' }
   | { status: 'half-unsupported-in-l16' }
-  | { status: 'reserved-or-invalid'; reason: string }
+  | { status: 'reserved-or-invalid' }
 
 export interface L16PayloadContext {
   byte: number
@@ -104,7 +104,7 @@ export function resolveL16PayloadContext(
   } else if (analysis.format === 3 && analysis.status === 'valid') {
     semantics = { status: 'half-unsupported-in-l16' }
   } else {
-    semantics = { status: 'reserved-or-invalid', reason: analysis.reason }
+    semantics = { status: 'reserved-or-invalid' }
   }
 
   return {

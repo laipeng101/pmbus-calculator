@@ -3,7 +3,7 @@
 // Generates pmbus-calculator-vX.Y.Z-web.zip and SHA256SUMS.txt from the
 // final dist/ directory. Key properties:
 // - Version is read from package.json (single source of truth).
-// - The release plan comes exclusively from buildReleasePlan()
+// - Asset names use the same rules as the release verifier.
 //   (scripts/release-artifact-contract.mjs) — no local naming templates.
 // - Zip contents are sorted, timestamped at DOS epoch, no extra fields.
 // - Same dist/ + same Python/zlib toolchain -- same zip bytes.
@@ -31,7 +31,8 @@ import { fileURLToPath } from 'node:url'
 import {
   OUTPUT_DIR,
   STAGING_DIR,
-  buildReleasePlan,
+  isStableReleaseVersion,
+  releaseAssetNames,
   validateZipEntry,
 } from './release-artifact-contract.mjs'
 
@@ -354,7 +355,7 @@ export function verifyAssetPair(dir, zipName, sumsName, deps) {
  *   createHash?: typeof createHash,
  *   lstatSync?: typeof fs.lstatSync,
  * }} [deps]
- * @returns {Promise<{ plan: ReturnType<typeof buildReleasePlan>, zipSize: number, sumsName: string }>}
+ * @returns {Promise<{ zipName: string, sumsName: string, zipSize: number }>}
  */
 export async function generateAssets(distDir, outputDir, force, python3 = PYTHON3, deps = {}) {
   const mkdirSync = deps.mkdirSync || fs.mkdirSync
@@ -367,12 +368,15 @@ export async function generateAssets(distDir, outputDir, force, python3 = PYTHON
 
   const repoRoot = path.resolve(outputDir, '..')
 
-  // Read version from package.json and derive the ENTIRE plan from the
-  // shared contract: no local naming templates here.
-  const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
-  const plan = buildReleasePlan(pkg.version)
-  const zipPath = path.join(outputDir, plan.zipName)
-  const sumsPath = path.join(outputDir, plan.sumsName)
+  const { version } = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
+  if (!isStableReleaseVersion(version)) {
+    throw new Error(
+      `package.json version must be a stable SemVer starting at 1.0.0 (got ${JSON.stringify(version)})`,
+    )
+  }
+  const { zipName, sumsName } = releaseAssetNames(`v${version}`)
+  const zipPath = path.join(outputDir, zipName)
+  const sumsPath = path.join(outputDir, sumsName)
 
   // Check if output already exists
   const outputExists = existsSync(zipPath) || existsSync(sumsPath)
@@ -382,7 +386,7 @@ export async function generateAssets(distDir, outputDir, force, python3 = PYTHON
 
   // If output exists, verify it's a valid asset pair before replacing it
   if (outputExists && force) {
-    verifyAssetPair(outputDir, plan.zipName, plan.sumsName, {
+    verifyAssetPair(outputDir, zipName, sumsName, {
       existsSync,
       readdirSync: fs.readdirSync,
     })
@@ -401,22 +405,22 @@ export async function generateAssets(distDir, outputDir, force, python3 = PYTHON
   const stagingRoot = path.join(repoRoot, STAGING_DIR)
   mkdirSync(stagingRoot, { recursive: true })
   const stagingDir = mkdtempSync(path.join(stagingRoot, `run-${randomUUID().split('-')[0]}-`))
-  const stagingZip = path.join(stagingDir, plan.zipName)
-  const stagingSums = path.join(stagingDir, plan.sumsName)
+  const stagingZip = path.join(stagingDir, zipName)
+  const stagingSums = path.join(stagingDir, sumsName)
 
   let promoted = false
   try {
-    console.log(`Creating ${plan.zipName} ...`)
+    console.log(`Creating ${zipName} ...`)
     await createDeterministicZip(distDir, files, stagingZip, python3, deps)
 
-    console.log(`Creating ${plan.sumsName} ...`)
+    console.log(`Creating ${sumsName} ...`)
     generateChecksums(stagingZip, stagingSums, deps)
 
     // Verify staging: checksum + asset pair + the real ZIP verifier. All
     // three must pass before anything touches release-output/.
     console.log('Verifying checksum ...')
     verifyChecksums(stagingSums, stagingDir, deps)
-    verifyAssetPair(stagingDir, plan.zipName, plan.sumsName, {
+    verifyAssetPair(stagingDir, zipName, sumsName, {
       existsSync,
       readdirSync: fs.readdirSync,
     })
@@ -441,7 +445,7 @@ export async function generateAssets(distDir, outputDir, force, python3 = PYTHON
     promoted = true
 
     const zipSize = statSync(zipPath).size
-    return { plan, zipSize, sumsName: plan.sumsName }
+    return { zipName, sumsName, zipSize }
   } finally {
     // Clean up disposable staging residue (never touches release-output/).
     if (!promoted && existsSync(stagingDir)) {
@@ -503,7 +507,7 @@ export async function runCli(argv, io = {}) {
 
   try {
     const result = await generateAssets(distDir, outputDir, force, python3)
-    stdout.write(`\nDone: ${result.plan.zipName} (${result.zipSize} bytes)\n`)
+    stdout.write(`\nDone: ${result.zipName} (${result.zipSize} bytes)\n`)
     stdout.write(`      ${result.sumsName}\n`)
     return 0
   } catch (e) {

@@ -59,12 +59,10 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   const le = toBytesLE(raw)
   const be = toBytesBE(raw)
 
-  // v2.5.11: DIRECT precision fidelity is resolved once and consumed by the
-  // quantization readout, the copy override and the VM field alike.
   const directFidelity = resolveDirectFidelity(state)
   // Displayed physical value — also the reference for whether the committed
   // request lexeme is already fully visible to the user.
-  const valueText = computeValueText(state)
+  const valueText = directFidelity?.approxValueText ?? computeValueText(state)
   const { deltaText, deltaKind, deltaNote } = resolveQuantizationPresentation(
     state,
     valueText,
@@ -103,39 +101,8 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
 
   const halfSpecial = state.mode === 'HALF' ? resolveHalfSpecial(raw) : undefined
 
-  // L16 missing/unsupported results and relative range errors disable the
-  // physical-value copy with an accessible reason from the interpretation.
-  // v3.1.1: DIRECT m=0 has no decode contract, so the copy is disabled with
-  // its own accessible reason instead of copying the '—' placeholder.
-  let physicalValueCopyUnavailability =
-    resolveL16PhysicalValueCopy(state) ?? resolveDirectPhysicalValueCopy(state)
-
-  // v2.5.11, unified v3.1.1: a DIRECT display text that cannot re-enter
-  // safely swaps the 物理值 copy payload for the verified safe re-entry
-  // text (kind-labelled); when no verified text exists the copy degrades to
-  // disabled instead of handing out the approximation.
-  let physicalValueCopyOverride:
-    | { text: string; note: string; kind: 'exact' | 'approximate' }
-    | undefined
-  if (directFidelity) {
-    if (directFidelity.safeReentryText !== null && directFidelity.safeReentryKind) {
-      const kind = directFidelity.safeReentryKind
-      const textClause =
-        kind === 'exact'
-          ? `经验证可安全回录的精确文本 ${directFidelity.safeReentryText}（与当前 raw 的精确值一致，回输后回到当前 raw）`
-          : `经验证可回录的近似文本 ${directFidelity.safeReentryText}（当前 raw 的精确值 ${directFidelity.exactFractionText} 是循环小数，该文本经精确编码验证回输后回到当前 raw）`
-      physicalValueCopyOverride = {
-        text: directFidelity.safeReentryText,
-        kind,
-        note: `物理值复制返回${textClause}；显示值 ${directFidelity.approxValueText} 是近似值。`,
-      }
-    } else {
-      physicalValueCopyUnavailability = {
-        available: false,
-        reason: `物理值复制不可用：显示值 ${directFidelity.approxValueText} 是近似值，且当前无法生成经验证可回录的文本。请使用 Raw Word / Wire 字节复制，或直接编辑 raw / Y 保留位级真值。`,
-      }
-    }
-  }
+  const directCopy = resolveDirectPhysicalValueCopy(state, directFidelity)
+  const physicalValueCopy = resolveL16PhysicalValueCopy(state) ?? directCopy.physicalValueCopy
 
   return {
     mode: state.mode,
@@ -146,7 +113,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       rawHex,
       voutModeInfo,
       l16Payload,
-      physicalValueCopy: physicalValueCopyUnavailability,
+      physicalValueCopy,
     }),
     rawHex,
     rawHexDigits,
@@ -172,14 +139,14 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     deltaText,
     deltaKind,
     deltaNote,
-    warnings: buildWarnings(state),
+    warnings: buildWarnings(state, directFidelity),
     bitGroups: buildBitGroups(raw),
     directY: state.mode === 'DIRECT' ? PMBusMath.toSigned(raw, 16) : undefined,
     commandNote: getCommandConfig(state.commandKey)?.note,
     nRangeText,
     l16Payload,
-    physicalValueCopy: physicalValueCopyUnavailability,
-    physicalValueCopyOverride,
+    physicalValueCopy,
+    physicalValueCopyOverride: directCopy.physicalValueCopyOverride,
     directFidelity: directFidelity ?? undefined,
     voutModeInfo,
     voutModePage,

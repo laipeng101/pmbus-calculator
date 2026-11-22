@@ -233,12 +233,14 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
             <div className="space-y-2 text-xs color-text-muted">
               <p>
-                Raw Word 是未交换的 16 位数值；SMBus/PMBus word 事务在线上按低字节在前传输 （SMBus
-                3.0 §6.5.4），线上字节顺序只在 Wire Bytes 显示/复制层出现 （
-                <TechnicalTerm termId="le" /> / <TechnicalTerm termId="be" />）
+                输入 16 位原始字，例如 0x1234。SMBus 传输时低字节在前（
+                <TechnicalTerm termId="le" />
+                ：34 12），也可按高字节在前查看（
+                <TechnicalTerm termId="be" />
+                ：12 34）。
               </p>
               <p>
-                解释语义：
+                数据类型：
                 <TechnicalTerm termId="ulinear16" /> · <TechnicalTerm termId="slinear16" />
               </p>
             </div>
@@ -252,20 +254,11 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
                       {line}
                     </p>
                   ))}
-                  <p>
-                    显式应用计算器 LINEAR 示例 0x18（absolute、N=-8）后才恢复 LINEAR16 编码。0x18
-                    是本计算器的示例值，不是 PMBus 规范默认值，也不代表真实器件一定接受 VOUT_MODE
-                    写入。
-                  </p>
                 </div>
               ) : (
                 <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
-                  <p className="mb-2">
-                    VOUT_MODE {vm.voutModeInfo?.hex} 为 {vm.voutModeInfo?.statusText}
-                    ；当前数据解释为相对比值 R = Y_u × 2^N（仅适用于 §8.5 列出的相对阈值 命令），需
-                    VOUT_COMMAND 标称参考值才能得到最终电压；本页不提供其物理值
-                    反向编码，也不给出伪造的 LINEAR16 电压结果。SLINEAR16（二补码偏移） 解释不受
-                    bit7 影响并保留物理值输入。
+                  <p>
+                    相对模式只支持解码。在 VOUT_COMMAND 标称参考值中输入电压，即可把比值换算为电压。
                   </p>
                 </div>
               ))}
@@ -347,9 +340,8 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
 
             <div className="text-center text-xs color-text-muted">
               <TechnicalTerm termId="twos-complement" />
-              整数：m、b 为 16 位，R 为 8 位；m ≠ 0。系数非法时不会静默接受。Y 按 §7.4 generic
-              契约为有符号 16 位；输出电压命令的 DIRECT 数据按 §8.1.1/§8.4.3
-              为无符号正值语义，需命令/器件上下文，本页不提供 unsigned profile。
+              整数中，m、b、Y 为有符号 16 位，R 为有符号 8 位，且 m ≠ 0。本页只支持有符号
+              DIRECT；处理输出电压命令的无符号数据时，请查阅器件数据手册。
             </div>
           </div>
         )}

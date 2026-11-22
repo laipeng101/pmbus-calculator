@@ -18,7 +18,7 @@
 - 只转换真正的数学表达式。API 名、函数名、命令、路径、版本号、bit range 和代码片段继续使用反引号。
 - 中英文文档的公式语义必须一致。
 - 只使用 GitHub MathJax 与 KaTeX 都支持的通用 LaTeX 子集；禁止未经验证的宏（如 `\operatorname`、`\newcommand`、`\def`）。
-- 本地 `npm run check:markdown-math` 只做文本扫描；PR 创建后必须用真实 GitHub 页面浏览器检查渲染结果并截图。
+- 改动公式时，按需在 GitHub 上查看受影响的段落，确认公式和表格渲染。
 
 ## 2. Web 公式单一数据源
 
@@ -400,13 +400,10 @@
     且 Half 是合法输出电压数据格式。**禁止出现「需要器件 profile / DIRECT 系数 /
     设备数据」类表述**——Half 的换算不依赖任何器件数值；
   - invalid-parameter / invalid-combination 提示保持 error 级。
-    恢复入口只有显式「应用计算器 LINEAR 示例 0x18」按钮（`l16/apply-calculator-linear-example`，
-    v2.5.7 更名）：点击后共享字节真实变为 `0x18`、source 徽标回到「已关联」，
-    输入/范围/结果/量化读数随之恢复，旧 provenance 被清除。0x18（absolute、N=-8）
-    必须表述为**计算器初始/恢复示例值**并附免责声明（不是 PMBus 规范默认值、不代表
-    真实器件一定接受 VOUT_MODE 写入）；禁止称其为规范/器件默认，禁止重新引入任何
-    隐式 fallback 通道或「按 fallback 0x18 计算」读数标注。反词回归在
-    `tests/e2e/l16-nonlinear-fail-closed.spec.ts` 与 `src/app/view-model.test.ts`。
+    恢复入口为「应用计算器 LINEAR 示例 0x18」，并在按钮附近提示用户核对器件设置。
+    用户点击后才写入示例值，恢复输入、范围和结果。[VOUT_MODE 领域规则](DOMAIN_MODEL.md#3-vout_mode)
+    说明示例值的含义和写入行为。相关交互测试见
+    `tests/e2e/l16-nonlinear-fail-closed.spec.ts`。
 - L16 物理值复制与结果可用性同源：非 LINEAR、缺少标称参考及派生溢出/下溢导致
   结果为 `—` 时，复制按钮必须禁用，并通过可见说明与 `aria-describedby` 给出原因。
   已提供的标称值 `0` 与缺失参考值不同；有限零值可正常复制。修改配置、补填/清除
@@ -417,24 +414,11 @@
   VID/DIRECT/IEEE Half/非法参数状态都不得显示「数值 V [15:0]」或「有符号值 Y [15:0]」；
   payload 下拉切换不得复活 V/Y 图例；LINEAR 字节（含 bit7=1）恢复 payload-specific
   图例。ARIA 标签不含 V/Y 语义（bits 无 semantic 字段），复制路径不输出图例文字。
-- **DIRECT 回录保真表面（v2.5.11；v3.1.1 统一为显示文本合同）**：当**显示
-  文本**经真实 typed 编码（classify → 精确 parse → 精确 encode，与 reducer
-  同一合同）回编不是当前 Y 时（如 m=1、b=1、R=17 的 raw FFFF：精确
-  -1.00000000000000001、显示 -1；或 m=1、b=1、R=12 的 raw FFFF：binary64
-  值可安全回录但显示文本 "-1" 编码为 Y=0），view-model 的 `directFidelity`
-  驱动三个表面——InfoPanel 警告 `direct-precision-fold`（明确显示值为近似、
-  直接回输会编码为 Y=<displayReencodedY>，是"不同的请求"）、量化读数注记
-  （`deltaKind` 降为 warn，不因 binary64 零误差读数读成干净 exact）与计算
-  步骤的精确有理数/十进制行（循环小数显式声明无有限精确十进制）；「物理值」
-  复制按钮经 `physicalValueCopyOverride` 返回经独立 exact encoder 验证、
-  可安全回录的文本（附说明行，aria-describedby 指向该说明；无法生成验证
-  文本时禁用复制并给出原因，绝不交出未验证字符串）。文案必须按 `lossKind`
-  区分 binary64 表示损失与显示格式化损失，不得把所有折叠都称为「超出
-  binary64 精度」；复制说明按 `safeReentryKind` 如实区分精确文本与循环
-  小数的经验证近似文本。m=0 时物理值复制禁用并给出可访问原因（`—` 占位符
-  不可回录）。安静状态不出现任何保真表面；raw/系数变化实时重算，untouched
-  blur 严格 no-op 不变。警告文案不得把折叠状态称为 exact，也不得声称
-  "浮点有误差可以忽略"。
+- **DIRECT 显示值与复制**。按[领域规则](DOMAIN_MODEL.md#23-direct)判断重新输入显示值后所得的 Y。
+  若 Y 会变化，警告应区分浮点精度和显示位数两种原因，给出重新输入后得到的 Y，并指向「计算过程」中的精确分数或小数。
+  量化误差按精确值计算，有此提示时采用至少警告级别，饱和仍显示为错误。
+  「物理值」复制精确小数或经验证可以得到原 Raw Word 的近似值，说明关联到按钮的 `aria-describedby`。
+  无法计算物理值或生成可重新输入的数值时，禁用该按钮并显示原因。
 
 ## 16. 独立 VOUT_MODE 页面的 requirement 文案合同（v2.5.4 / v2.5.5）
 

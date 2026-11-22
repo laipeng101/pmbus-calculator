@@ -1,262 +1,159 @@
-# RELEASING
+# 发布
 
-## 版本号规则
+PMBus Calculator 通过 GitHub Release 发布静态 Web ZIP。每次发布都对应一个经过验证的 `main` 提交和带注释的 Git tag。已公开的 Release、资产和 tag 保持不可变。在同一 Bash 会话中从仓库根目录执行下列命令，先确认 `origin` 指向 `laipeng101/pmbus-calculator`。
 
-- 使用 Semantic Versioning 2.0.0（https://semver.org/spec/v2.0.0.html）。
-- `package.json` 中的 package version 不带 `v`（例如 `1.0.0`）。
-- Git tag 带 `v`（例如 `v1.0.0`）。
-- PATCH：向后兼容的 bug、安全、文档或构建修复。
-- MINOR：向后兼容的新功能。
-- MAJOR：计算语义、持久化数据、现有用户流程等不兼容变化。
-- prerelease 使用 `1.1.0-rc.1` 格式。
+## 版本号
 
-## 发布纪律
+使用 [SemVer](https://semver.org/spec/v2.0.0.html) 稳定版本，从 `1.0.0` 起。版本号写入 `package.json`，tag 加 `v` 前缀。按对用户的影响选择版本号。
 
-- 已发布的 tag 和 GitHub Release 永不修改、移动或覆盖。
-- **GitHub 强制 Release 不可变**。发布前必须复核仓库设置 `immutable-releases` 已启用（见发布流程 §4 第 0 步）。
-  publish 后 Release API 必须报告 `immutable: true`。手动 Pages 部署只允许使用
-  Release 不可变且 tag tree 自带不可变校验的版本，见 [DEPLOYING](DEPLOYING.md)。
-- 正式发行时 `package.json` 版本必须和稳定 tag 一致。发布说明在 GitHub Release
-  草稿维护，变更历史从 Git tag、提交和 PR 查询。发行和部署状态分别查看 GitHub
-  Release 和 Pages 验收记录。
-- 禁止在验证完成前创建或推送 tag；tag 永远建立在已通过完整验证的精确 main merge SHA 上。
-- 已发布版本的缺陷按 SemVer 规则准备后续版本。
-- GitHub Release 是当前正式发行渠道，不发布 npm 包（`private: true`，不得执行 `npm publish`）。
-- Pages 只使用不可变 GitHub Release 资产作为产品基线，不部署 main 的临时构建。
-  全部 Release 完整性、tag fresh rebuild 逐字节比较与本地 Release
-  smoke 门禁通过后，才允许对解压后的 `_site` 执行确定性 Pages-only overlay；
-  overlay 不修改下载或重建的 Release ZIP，细节见 [DEPLOYING](DEPLOYING.md)。
-- `npm run check:release-contract` 离线校验 lockfile 版本与发行资产命名。
+| 版本  | 适用变更                                                                                |
+| ----- | --------------------------------------------------------------------------------------- |
+| PATCH | 向后兼容的修复，包括安全、文档和构建修复                                                |
+| MINOR | 向后兼容的新功能                                                                        |
+| MAJOR | 计算和舍入、Raw Word 与字节序、复制格式、命令参考、已保存偏好或公开使用流程的不兼容变化 |
 
-## 发布流程
+在拟发布的 PR 中执行 `npm version X.Y.Z --no-git-tag-version` 更新版本，并运行 `npm run check:release-contract` 核对锁文件。
 
-### 1. 版本准备（实现 PR 内完成）
+## 核对合入后的 CI
 
-1. 在目标 `origin/main` 之上创建实现分支，完成代码、测试与文档变更。
-2. 用 `npm version X.Y.Z --no-git-tag-version` 同步
-   `package.json` 与 `package-lock.json`。
-3. 运行 `npm run check:release-contract`。
-
-### 2. 合入 main
-
-1. 按 [CONTRIBUTING](../CONTRIBUTING.md) 完成本次改动所需的本地验证和 PR。
-2. 核对 PR 最新 head SHA 的 `full` 档 CI 及 required `check` 已通过。版本变更会触发该档。
-3. 普通 merge commit 合入 main（不 squash）。
-4. `git fetch origin` 后比较 PR CI `Record checked revision` 步骤记录的 `checked_tree` 与
-   main merge SHA 的 `HEAD^{tree}`：
-   - 两者相同时复用该 tree 的 PR CI 结果。
-   - 缺少成功的 full 结果或 tree 不一致时，定位原因并用 `workflow_dispatch` 补验。
-     补验记录的 tree 必须匹配拟发布的 merge SHA。
-
-### 3. 发布前验证（tag 之前，强制）
-
-tree 审计成功后，复用对应 CI 的单测、浏览器回归与视觉结果。使用以下命令在精确
-merge SHA 创建干净 detached worktree，从锁文件安装依赖、重新构建并运行 Release smoke。
-后续打包使用这份新生成的 `dist/`。
+按[贡献指南](../CONTRIBUTING.md)完成本地验证和 PR。版本变更触发 `full` 档。最新 PR 提交的 `check` 通过后，以 merge commit 合入 `main`。
 
 ```bash
-git worktree add --detach <path> <exact-merge-sha>
-cd <path>
-npm ci
-npm run build
-npx playwright install chromium       # 已安装锁定版本时可复用
-npm run test:e2e:release
+git fetch origin main
+release_sha=$(git rev-parse origin/main)
+git rev-parse "$release_sha^{tree}"
 ```
 
-若在验证与发布之间发生源码、配置或依赖变化，须重新验证受影响的环节。
+比较 `main` 提交的 tree 与成功运行的 CI 在 `Record checked revision` 步骤记录的 `checked_tree`。确认该次 CI 的 `check` 成功且日志显示 `tier=full`，tree 相同即可复用结果。
 
-本机 Surge/anti-ad/privacy rule 可以全程启用；本阶段的 Cloudflare 请求必须使用
-exact stub，不要求任何隐私规则例外。真实第三方验收只在 GitHub-hosted Pages job
-部署后执行，不得加入 `npm run verify`。本机 real check 若被明确 blocker 阻止，
-记为 `ENVIRONMENT_BLOCKED`，不算应用失败或 Analytics PASS。
+缺少上述证据时，从 `main` 手动触发 `full` 档。将以下 `RUN_ID` 换成本次触发的运行 ID。
 
-然后生成并校验发行资产：
+```bash
+gh workflow run ci.yml --ref main
+gh run list --workflow ci.yml --event workflow_dispatch --branch main --commit "$release_sha"
+gh run view RUN_ID --json conclusion,headSha,jobs,url
+gh run view RUN_ID --log
+```
 
-1. 运行 `npm run release:prepare-assets`（`scripts/prepare-release-assets.mjs`），
-   该命令从 `dist/` 生成 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`，
-   输出到 `release-output/`；版本唯一来源是 `package.json`。
-2. 资产生成是确定性的：相同 `dist/` 两次生成，zip 与 SHA256SUMS 逐字节一致。
-   生成过程自动调用 `verify_release_zip.py` 与 checksum 反向验证。
-3. zip 可解压；内容只来自最终 `dist/`；`index.html` 资源路径与 CSP 正确；
-   不包含源码、`node_modules`、source map 或临时文件。普通 build 与 Release ZIP
-   必须没有 Cloudflare beacon/域名、部署 token、Pages-only repository marker
-   或 `pages-overlay.css`；Release smoke 和 ZIP 合同对此提供负向回归门禁。
-4. 再次运行 `npm run release:prepare-assets -- --force` 以验证可复现性（两次
-   zip hash 必须完全相同）。
+同一次运行的 `headSha` 必须等于 `release_sha`，`checked_tree` 必须等于上方 Git 输出，且 `full` 档的 `check` 成功。若 `main` 已前进，重新选定发布提交并核对其版本、CI 与预检证据。
 
-以上任一步失败：停止发布并修复，不得带病打 tag。
+## 构建和生成资产
 
-### 4. tag 与 GitHub Release（draft → 上传 → 回验 → publish）
+将下方 `release-worktree` 替换为工作目录。检出已验证的提交，从锁文件安装依赖，重新构建并对产物运行 Release smoke。Chromium 已按当前锁定版本安装时可复用。
 
-先创建草稿并上传、回验所有资产。发布事件会立即触发依赖这些资产的 Pages workflow。
+```bash
+git worktree add --detach release-worktree "$release_sha"
+cd release-worktree
+npm ci
+npm run build
+npx playwright install chromium
+npm run test:e2e:release
+npm run release:prepare-assets
+```
 
-0. **平台前置条件复核（tag/draft 之前）**。
+生成器将 `dist/` 打包为 `release-output/pmbus-calculator-vX.Y.Z-web.zip`，并同时生成 `SHA256SUMS.txt`，检查 ZIP 内容与校验和。打包使用 Python 3 和 zlib。使用与 [Pages 工作流](../.github/workflows/pages.yml) 一致的环境，以便部署时重建相同的 ZIP 字节。每个工作目录一次只运行一个生成进程。失败或中断后，可在该临时工作目录运行 `npm run clean` 后重新构建和打包。
 
-   首次配置时，在仓库 **Settings → Environments** 新建 `release-preflight`，将
-   Deployment branches and tags 设为 **Selected branches and tags**，仅添加 `main`
-   分支。添加名为 `PMBUS_RELEASE_GITHUB_TOKEN` 的 Environment secret，值为仅授权
-   `laipeng101/pmbus-calculator` 的 fine-grained PAT，仓库权限为 **Administration: Read-only**
-   和 **Environments: Read-only**。PAT 到期时在同一位置更新。
+## 发布前检查
 
-   在 GitHub 托管的 runner 上从 `main` 运行 [Release preflight](../.github/workflows/release-preflight.yml)。
-   以本次触发的 run 为证据，确认其 `headSha` 等于本次已验证的精确 main merge SHA、
-   `Verify release prerequisites` job 成功，并记录 run 链接。该 job 读取 immutable
-   releases 的启用状态与 `github-pages` 的 `CLOUDFLARE_WEB_ANALYTICS_TOKEN` 元数据。
-   若未启用 immutable releases，由仓库管理员在 GitHub Settings 启用后重新运行预检。
+首次配置时，在仓库 **Settings → Environments** 添加 `release-preflight` 环境，仅允许 `main`。在该环境保存 `PMBUS_RELEASE_GITHUB_TOKEN`。使用只授权本仓库的 fine-grained PAT，授予 **Administration: Read-only** 和 **Environments: Read-only**。
 
-   ```bash
-   gh workflow run release-preflight.yml --ref main
-   gh run list --workflow release-preflight.yml --event workflow_dispatch --branch main --commit <exact-merge-sha>
-   gh run view <run-id> --json conclusion,headSha,jobs,url
-   ```
+从 `main` 运行 [Release preflight](../.github/workflows/release-preflight.yml)，核对其 `headSha` 与 `release_sha` 一致、`Verify release prerequisites` 作业成功。预检确认仓库已启用不可变 Release，以及 Pages 环境已配置 Analytics。预检失败时修正设置并重跑。
 
-   同时核对执行发布的身份和目标 tag。
+```bash
+gh workflow run release-preflight.yml --ref main
+gh run list --workflow release-preflight.yml --event workflow_dispatch --branch main --commit "$release_sha"
+gh run view RUN_ID --json conclusion,headSha,jobs,url
+```
 
-   ```bash
-   gh api repos/laipeng101/pmbus-calculator --jq '{full_name, permissions: .permissions.admin}'
-   git ls-remote --tags origin refs/tags/vX.Y.Z
-   ```
+在发布用的工作目录从 `package.json` 读取版本，核对当前 GitHub 身份具有仓库管理员权限，且远端 tag 查询成功、没有匹配项。以下命令均针对正式仓库。
 
-   任一条件未满足时暂停发布。发布身份必须对正确的 `full_name` 具有 admin 权限，
-   tag 查询必须成功且无匹配。Pages 部署使用自己的 `github-pages` 环境和权限。
+```bash
+repo=laipeng101/pmbus-calculator
+tag="v$(node -p 'require("./package.json").version')"
+zip_name="pmbus-calculator-${tag}-web.zip"
+gh api "repos/$repo" --jq '{full_name, admin: .permissions.admin}'
+git ls-remote --tags origin "refs/tags/$tag"
+```
 
-1. 全部验证成功后创建 annotated tag：
+## 创建草稿并回验
 
-   ```bash
-   git tag -a vX.Y.Z <exact-merge-sha> -m "PMBus Calculator vX.Y.Z"
-   ```
+只有 CI、构建、测试和平台预检全部通过后，才能给 `release_sha` 加 tag。核对解引用后的提交再推送。
 
-2. 推送 tag 前再次确认 `git rev-parse vX.Y.Z^{commit}` 等于已验证 merge SHA、
-   `vX.Y.Z^{tree}` 等于已验证 tree，然后推送 tag。
-   tag push 是 PR 合并后的独立发布动作，不是源代码分支的第二次 push。
-3. 从已推送的 tag 创建由 GitHub 生成发布说明的稳定 Release 草稿。
+```bash
+(
+  set -euo pipefail
+  git tag -a "$tag" "$release_sha" -m "PMBus Calculator $tag"
+  [[ "$(git rev-parse "$tag^{commit}")" == "$release_sha" ]]
+  git push origin "refs/tags/$tag"
+  gh release create "$tag" --repo "$repo" --verify-tag --draft \
+    --title "PMBus Calculator $tag" --generate-notes
+)
+```
 
-   ```bash
-   gh release create vX.Y.Z --verify-tag --draft --title "PMBus Calculator vX.Y.Z" \
-     --generate-notes
-   ```
+在 GitHub 草稿中确认生成的内容，补充用户可以感知的变化与迁移说明。默认使用 GitHub 选择的比较起点，也可用 `--notes-start-tag` 指定上一个稳定 tag。
 
-   在草稿中核对生成内容，并按需补充用户可感知的改动和迁移说明。需要指定比较起点时，
-   使用 `--notes-start-tag` 指向上一个稳定 tag。
+```bash
+gh release upload "$tag" --repo "$repo" \
+  "release-output/$zip_name" release-output/SHA256SUMS.txt
+```
 
-4. 上传 `pmbus-calculator-vX.Y.Z-web.zip` 与 `SHA256SUMS.txt`（不使用 clobber）：
+从 Releases 列表取得草稿元数据，并下载这份草稿挂载的两个资产。校验资产名、大小、SHA-256 与 ZIP 内容，再与本次构建生成的文件逐字节比较。任一命令失败时，保留草稿并排查。中断后继续时，先核对远端 tag 仍指向本次提交、Release 仍是草稿，再从未完成的步骤继续。公开前重新回验两项资产。
 
-   ```bash
-   gh release upload vX.Y.Z release-output/pmbus-calculator-vX.Y.Z-web.zip \
-     release-output/SHA256SUMS.txt
-   ```
+```bash
+(
+  set -euo pipefail
+  draft_dir=$(mktemp -d)
+  gh api --paginate "repos/$repo/releases" |
+    jq -es --arg tag "$tag" 'add | .[] | select(.tag_name == $tag and .draft == true)' \
+    > "$draft_dir/release.json"
+  gh release download "$tag" --repo "$repo" --dir "$draft_dir"
+  node scripts/verify-downloaded-assets.mjs --metadata "$draft_dir/release.json" \
+    --dir "$draft_dir" --tag "$tag" --repo "$repo" --mode draft
+  cmp "$draft_dir/$zip_name" "release-output/$zip_name"
+  cmp "$draft_dir/SHA256SUMS.txt" release-output/SHA256SUMS.txt
+)
+```
 
-5. **publish 前强制回验 draft 资产**。draft 不可经 `/releases/tags/<tag>` 读取，
-   用 release list 过滤出 REST 形状的元数据后运行统一字节门禁：
+## 公开和部署
 
-   ```bash
-   gh api repos/laipeng101/pmbus-calculator/releases \
-     --jq '.[] | select(.tag_name=="vX.Y.Z")' > draft-release.json
-   gh release download vX.Y.Z --dir /tmp/vX.Y.Z-draft-assets
-   node scripts/verify-downloaded-assets.mjs --metadata draft-release.json \
-     --dir /tmp/vX.Y.Z-draft-assets \
-     --tag vX.Y.Z --repo laipeng101/pmbus-calculator --mode draft > draft-verified.json
-   ```
+草稿回验全部通过后公开。Release API 必须返回匹配的 `tag_name`、`immutable: true`、`draft: false` 及 `prerelease: false`。
 
-   这是 publish 前的资产门禁（脚本：
-   `scripts/verify-downloaded-assets.mjs`），它在进程内复用
-   `release-assets-verify.mjs` 的完整元数据合同（tag/prerelease、资产存在
-   且名称唯一、`state == "uploaded"`、`size > 0`、draft 模式接受 GitHub 的
-   `untagged-<hex>` 占位 URL；published 模式额外强制
-   `immutable: true`——GitHub draft 尚不可 immutable，draft 模式不执行
-   该检查），并叠加本地字节校验：文件存在且为普通文件、
-   本地字节数等于元数据 size、`SHA256SUMS.txt` 严格格式合同、ZIP 的
-   SHA-256（node:crypto，跨平台）与共享 python ZIP 安全校验。失败按类分级
-   报告：元数据 2-8、本地缺失 10、大小不符 11、sums 合同 12、checksum 13、
-   ZIP 安全 14。stdout 只输出一个 JSON 对象（数据），诊断走 stderr——不要
-   把它的输出交给 `source`/`eval` 等会再次解释文本的机制。**任何一项失败都停止在
-   draft 状态，不得 publish。**
+```bash
+gh release edit "$tag" --repo "$repo" --draft=false
+```
 
-6. 两项资产回验通过后，将 draft 公开为稳定 Release：
+```bash
+(
+  set -euo pipefail
+  gh api "repos/$repo/releases/tags/$tag" |
+    jq -e --arg tag "$tag" '
+      select(.tag_name == $tag and .immutable == true and .draft == false and .prerelease == false)
+      | {tag_name, immutable, draft, prerelease}
+    '
+)
+```
 
-   ```bash
-   gh release edit vX.Y.Z --draft=false
-   ```
+API 复核通过后，用 GitHub CLI 核对 Release 签名及本地资产。
 
-7. 下载刚发布的两个资产，重新校验 checksum 与预期名称（公开态复核）。
-8. **publish 后不可变与完整性复核**：
+```bash
+gh release verify "$tag" --repo "$repo"
+gh release verify-asset "$tag" "release-output/$zip_name" --repo "$repo"
+gh release verify-asset "$tag" release-output/SHA256SUMS.txt --repo "$repo"
+```
 
-   ```bash
-   gh api repos/laipeng101/pmbus-calculator/releases/tags/vX.Y.Z \
-     --jq '{draft, prerelease, immutable, tag_name}'
-   gh release verify vX.Y.Z        # 校验 Release 加密签名 attestation（CLI 支持时）
-   gh release verify-asset vX.Y.Z pmbus-calculator-vX.Y.Z-web.zip
-   ```
+若 CLI 缺少签名校验命令，改用公开链接下载两项资产并与本次构建比对。
 
-   API 必须报告 `draft: false`、`prerelease: false`、`immutable: true` 且
-   `tag_name` 精确匹配；`gh release verify` / `verify-asset` 校验资产
-   attestation（CLI 不支持时以匿名重新下载的
-   SHA-256 与 size 复核为准）。若 `immutable` 不是 `true`：保留现场、停止
-   声明完成，不得删除重建同名 Release，也不得移动 tag。
+```bash
+(
+  set -euo pipefail
+  public_dir=$(mktemp -d)
+  for asset in "$zip_name" SHA256SUMS.txt; do
+    curl -fsSL "https://github.com/$repo/releases/download/$tag/$asset" -o "$public_dir/$asset"
+    cmp "$public_dir/$asset" "release-output/$asset"
+  done
+)
+```
 
-9. 若 tag 已存在或远端版本冲突：停止，不得移动或覆盖。
+公开结果异常时保留现场，停止报告发布成功。
 
-### 5. Pages 部署与线上 smoke
-
-1. `release published` 事件自动触发 Pages workflow（或手动 dispatch 传入 tag）；
-   等待其成功。部署顺序与校验细节见 `docs/DEPLOYING.md`（Release → tag-rebuild
-   字节绑定 → 本地 Release smoke → 解压 → Pages overlay / verifier / 本地 smoke
-   → Pages → FINAL `_site` 全清单实体验证 → deterministic deployment smoke
-   → GitHub-hosted real Analytics acceptance）。
-   workflow 会用被部署 tag 的 checkout fresh rebuild，要求 rebuild zip 与 Release
-   zip 逐字节一致，之后才在已下载 ZIP 解压出的 `_site` 上增加页面级 Cloudflare
-   Web Analytics、可访问源码仓库图标和最小 CSP 例外。两个 ZIP 不改写；最终
-   Pages payload 有意不同于 Release ZIP，部署后以 overlay 后的 FINAL `_site`
-   动态枚举全清单逐实体校验线上字节。
-   正式发布前须已在 `github-pages` Environment 配置
-   `CLOUDFLARE_WEB_ANALYTICS_TOKEN`（见 DEPLOYING 一次性配置）；workflow 仅通过
-   step `env` 使用，缺失或非法时在 deploy-pages 前失败，不能临时塞入 source、
-   Vite、CLI argument 或普通 build。所有可准备的 overlay / browser 门禁都在
-   deploy-pages 之前，失败保持线上旧站不变。
-2. 核对同一 job 的 remote deployment smoke 使用正式 deployment URL；
-   全部 deployment tests 必须实际运行并通过，不得记为 skip。
-   该 deterministic smoke 对精确 Cloudflare beacon 与 RUM endpoints 使用 stub，
-   验证公开 HTML/CSP、同源资产、allowlist 和交互，不声明第三方服务健康。
-3. 确认线上页面来自对应 Release 基线及该 tag 的受控 overlay，而非 main 临时构建。
-   本地 `npm run test:pages-overlay` 可证明 overlay wiring 与本地模拟的 deployment
-   交互合同，但不能替代真实 Pages HTTPS、实体校验与发布后 remote smoke。
-4. 核对同一 GitHub-hosted job 的 **Real Cloudflare Analytics acceptance** step，
-   按 [DEPLOYING](DEPLOYING.md#发布后真实-cloudflare-analytics-验收) 观察正式页面
-   实际产生的 beacon GET 与精确 `/cdn-cgi/rum` POST：2xx 且请求完成、无 CORS /
-   hostname mismatch、未知外部请求或 pageerror。入口无需 secret，最多 3 次独立
-   尝试、累计 ≤45s；不记录 token、RUM body 或敏感 payload。保存精确 tag/SHA 的
-   run URL 与脱敏结果；不再要求维护者手工探针或临时关闭本机 blocker。
-5. 所有线上验收成功后，清理任务分支、detached worktree 与临时产物。
-
-**Fully accepted** 必须同时满足：Release immutable、Release ZIP clean、全部
-Pages provenance 门禁、deploy、FINAL `_site` entity verification、deterministic
-remote smoke、GitHub-hosted real Analytics acceptance 成功。deploy 完成但最后一步
-失败时，准确记录 **Pages deployed; real Analytics rollout acceptance failed.**
-此时不能声明完整 rollout 成功，也不能声称旧站未修改。
-
-## 失败处理
-
-- 发布资产生成失败时，`release-output/` 保持旧值或不存在；可丢弃的临时 staging 残留
-  （`.release-staging/`）可安全清理。恢复方式就是**清理临时输出并重新执行**：
-  `npm run clean` 后重新 `npm run build` 与 `npm run release:prepare-assets`。
-- 不维护长期 release 锁、事务 journal 或恢复命令；生成流程不支持并发运行，
-  不要在多个进程同时执行 `release:prepare-assets`。
-- 中断（Ctrl+C、进程崩溃）后的处理与上述失败处理相同：清理临时输出并重新执行。
-- post-deploy real acceptance 失败不改变 Release 的 immutable 状态；不能移动 tag、
-  替换 assets 或自动回滚。真实代码/部署配置缺陷按后续 PATCH 修复。明确瞬时
-  Cloudflare 故障保留失败证据后，可按 [DEPLOYING](DEPLOYING.md) 的既有受控
-  dispatch 规则，从同一 immutable tag ref、同名 release input 重跑 Pages workflow；
-  不从 main 部署、不放宽 CSP/allowlist，全部 provenance 门禁仍须重新通过。
-
-## 稳定公共契约
-
-稳定公共契约定义为：
-
-- L11 / L16 / DIRECT / HALF 的计算和舍入语义。
-- raw word、字节序和复制格式。
-- 命令元数据行为。
-- 已持久化的用户偏好。
-- README 中声明的用户流程。
-
-任何不向后兼容地改变以上稳定公共契约的变更必须提升 MAJOR 版本；
-向后兼容的新能力使用 MINOR，兼容性修复使用 PATCH。
+Release 公开后会自动触发 [Pages 部署](DEPLOYING.md)。记录本次发布的 tag、提交、CI、预检和 Pages 运行链接，等整个 Pages 作业通过后再报告上线完成。

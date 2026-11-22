@@ -526,10 +526,10 @@ describe('Release/provenance and CLI integration', () => {
     const root = fixture()
     fs.cpSync(path.join(root, '_site'), path.join(root, 'dist'), { recursive: true })
     const output = path.join(root, 'release-output')
-    const { plan } = await generateAssets(path.join(root, 'dist'), output, false)
-    const zip = path.join(output, plan.zipName)
+    const { zipName, sumsName } = await generateAssets(path.join(root, 'dist'), output, false)
+    const zip = path.join(output, zipName)
     const originalZip = fs.readFileSync(zip)
-    const sums = fs.readFileSync(path.join(output, plan.sumsName))
+    const sums = fs.readFileSync(path.join(output, sumsName))
     fs.rmSync(path.join(root, '_site'), { recursive: true })
     execFileSync(
       'python3',
@@ -544,7 +544,7 @@ describe('Release/provenance and CLI integration', () => {
     apply(root)
     expect(verify(root).ok).toBe(true)
     expect(fs.readFileSync(zip)).toEqual(originalZip)
-    expect(fs.readFileSync(path.join(output, plan.sumsName))).toEqual(sums)
+    expect(fs.readFileSync(path.join(output, sumsName))).toEqual(sums)
     await generateAssets(path.join(root, 'dist'), output, true)
     expect(fs.readFileSync(zip)).toEqual(originalZip)
   })

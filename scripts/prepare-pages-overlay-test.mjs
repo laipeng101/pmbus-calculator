@@ -35,10 +35,10 @@ export async function preparePagesOverlayTest(repoRoot = DEFAULT_ROOT) {
     fs.cpSync(dist, path.join(temp, 'dist'), { recursive: true })
     const output = path.join(temp, 'release-output')
     // Exercises the real deterministic packager, checksum and ZIP safety gate.
-    const { plan } = await generateAssets(path.join(temp, 'dist'), output, false)
-    const zip = path.join(output, plan.zipName)
+    const { zipName, sumsName } = await generateAssets(path.join(temp, 'dist'), output, false)
+    const zip = path.join(output, zipName)
     const originalZip = fs.readFileSync(zip)
-    const sums = fs.readFileSync(path.join(output, plan.sumsName))
+    const sums = fs.readFileSync(path.join(output, sumsName))
     if (fs.lstatSync(site, { throwIfNoEntry: false })) {
       // This one ignored, rebuildable target is the same clean-policy target.
       // Reject symlinks/special files before replacing an earlier test fixture.
@@ -61,7 +61,7 @@ export async function preparePagesOverlayTest(repoRoot = DEFAULT_ROOT) {
     const verified = verifyPagesOverlay('_site', { repoRoot: root, env })
     requireContract(
       originalZip.equals(fs.readFileSync(zip)) &&
-        sums.equals(fs.readFileSync(path.join(output, plan.sumsName))),
+        sums.equals(fs.readFileSync(path.join(output, sumsName))),
       'Overlay changed Release assets',
     )
     const final = readSiteFiles(site)

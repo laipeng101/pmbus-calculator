@@ -3,7 +3,8 @@ import type { AppState } from '../../app/state'
 import type { AppAction } from '../../app/actions'
 import type { VoutModeInfoVM } from '../../app/view-model'
 import { findRadioNeighbor, radioArrowDirection, radioTabStop } from '../../app/radio-navigation'
-import { VID_CODE_TABLE } from '../../legacy/vout-mode'
+import { CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE, VID_CODE_TABLE } from '../../legacy/vout-mode'
+import { formatByteHex } from '../../app/view-model/format'
 import { PMBusMath } from '../../legacy/pmbus-math'
 import DecimalInput from '../inputs/DecimalInput'
 import IntegerInput from '../inputs/IntegerInput'
@@ -269,7 +270,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         <div className="vout-term-row" data-testid="vout-term-row">
           <span className="text-xs color-text-muted">配置字节：</span>
           <TechnicalTerm termId="vout-mode" />
-          <span className="text-xs color-text-muted">bit7 语义：</span>
+          <span className="text-xs color-text-muted">bit 7（绝对或相对）</span>
           <TechnicalTerm termId="abs-rel" />
           {info.format === 0 && (
             <>
@@ -430,13 +431,12 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
                   onClick={() => dispatch({ type: 'l16/apply-calculator-linear-example' })}
                   className="vout-apply-default min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
                 >
-                  应用计算器 LINEAR 示例 0x18
+                  应用计算器 LINEAR 示例 {formatByteHex(CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE)}
                 </button>
               )}
             </ControlTooltip>
             <p className="text-xs color-text-muted">
-              0x18（absolute、N=-8）是本计算器的初始/恢复示例值，不是 PMBus
-              规范默认值，也不代表真实器件一定接受 VOUT_MODE 写入。
+              计算实际器件的电压时，请使用器件数据手册指定的 VOUT_MODE 设置。
             </p>
           </>
         ) : null

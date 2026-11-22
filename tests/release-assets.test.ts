@@ -25,9 +25,11 @@ import {
   validateAndCollectEntries,
   walkDist,
 } from '../scripts/prepare-release-assets.mjs'
-import { buildReleasePlan, validateZipEntry } from '../scripts/release-artifact-contract.mjs'
+import { validateZipEntry } from '../scripts/release-artifact-contract.mjs'
 
 const tempRoots: string[] = []
+const ZIP_NAME = 'pmbus-calculator-v1.1.5-web.zip'
+const SUMS_NAME = 'SHA256SUMS.txt'
 
 function makeTempRepo(version = '1.1.5'): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pmbus-assets-'))
@@ -159,22 +161,21 @@ describe('release asset generator normal path', () => {
     const dist = path.join(repo, 'dist')
     makeValidDist(dist)
     const output = path.join(repo, 'release-output')
-    const plan = buildReleasePlan('1.1.5')
 
     const result = await generateAssets(dist, output, false)
-    expect(result.plan.zipName).toBe(plan.zipName)
-    expect(result.sumsName).toBe('SHA256SUMS.txt')
+    expect(result.zipName).toBe(ZIP_NAME)
+    expect(result.sumsName).toBe(SUMS_NAME)
     expect(result.zipSize).toBeGreaterThan(0)
 
-    const zipPath = path.join(output, plan.zipName)
-    const sumsPath = path.join(output, plan.sumsName)
+    const zipPath = path.join(output, ZIP_NAME)
+    const sumsPath = path.join(output, SUMS_NAME)
     expect(fs.existsSync(zipPath)).toBe(true)
     expect(fs.existsSync(sumsPath)).toBe(true)
-    expect(fs.readdirSync(output).sort()).toEqual([plan.sumsName, plan.zipName])
+    expect(fs.readdirSync(output).sort()).toEqual([SUMS_NAME, ZIP_NAME])
 
     // SHA256SUMS must list the actual zip hash.
     const sums = fs.readFileSync(sumsPath, 'utf8')
-    expect(sums).toBe(`${sha256(zipPath)}  ${plan.zipName}\n`)
+    expect(sums).toBe(`${sha256(zipPath)}  ${ZIP_NAME}\n`)
 
     // No disposable staging residue after success.
     expect(fs.existsSync(path.join(repo, '.release-staging'))).toBe(false)
@@ -197,12 +198,12 @@ describe('release asset generator normal path', () => {
     const output = path.join(repo, 'release-output')
 
     await generateAssets(dist, output, false)
-    const firstZip = sha256(path.join(output, buildReleasePlan('1.1.5').zipName))
+    const firstZip = sha256(path.join(output, ZIP_NAME))
 
     // Touch a file inside dist (same structure) and regenerate with --force.
     fs.writeFileSync(path.join(dist, 'assets', 'app.js'), 'console.log("release v2")')
     await generateAssets(dist, output, true)
-    const secondZip = sha256(path.join(output, buildReleasePlan('1.1.5').zipName))
+    const secondZip = sha256(path.join(output, ZIP_NAME))
     expect(secondZip).not.toBe(firstZip)
   })
 })
@@ -212,19 +213,17 @@ describe('release asset generator determinism', () => {
     const repo = makeTempRepo()
     const dist = path.join(repo, 'dist')
     makeValidDist(dist)
-    const plan = buildReleasePlan('1.1.5')
 
     const first = await generateAssets(dist, path.join(repo, 'release-output'), false)
-    const firstZip = path.join(repo, 'release-output', plan.zipName)
-    const firstSums = path.join(repo, 'release-output', plan.sumsName)
+    const firstZip = path.join(repo, 'release-output', ZIP_NAME)
+    const firstSums = path.join(repo, 'release-output', SUMS_NAME)
     expect(first.zipSize).toBe(fs.statSync(firstZip).size)
 
     const second = await generateAssets(dist, path.join(repo, 'release-output-2'), false)
     expect(second.zipSize).toBe(first.zipSize)
-    const secondZip = path.join(repo, 'release-output-2', plan.zipName)
-    const secondSums = path.join(repo, 'release-output-2', plan.sumsName)
+    const secondZip = path.join(repo, 'release-output-2', ZIP_NAME)
+    const secondSums = path.join(repo, 'release-output-2', SUMS_NAME)
     expect(fs.readFileSync(secondZip)).toEqual(fs.readFileSync(firstZip))
-    expect(sha256(secondZip)).toBe(sha256(firstZip))
     expect(fs.readFileSync(secondSums, 'utf8')).toBe(fs.readFileSync(firstSums, 'utf8'))
   })
 })
@@ -273,10 +272,9 @@ describe('Release ZIP excludes every Pages-only deployment resource', () => {
     const dist = path.join(repo, 'dist')
     makeValidDist(dist)
     const output = path.join(repo, 'release-output')
-    const plan = buildReleasePlan('1.1.5')
     await generateAssets(dist, output, false)
-    const oldZip = fs.readFileSync(path.join(output, plan.zipName))
-    const oldSums = fs.readFileSync(path.join(output, plan.sumsName))
+    const oldZip = fs.readFileSync(path.join(output, ZIP_NAME))
+    const oldSums = fs.readFileSync(path.join(output, SUMS_NAME))
     appendDistFile(
       dist,
       'assets/app.js',
@@ -293,9 +291,9 @@ describe('Release ZIP excludes every Pages-only deployment resource', () => {
     expect(err.join('')).toContain('release:prepare-assets failed:')
     expect(out.join('') + err.join('')).not.toContain(fixtureBeaconToken)
     expect(out.join('') + err.join('')).not.toContain(fixtureContentSentinel)
-    expect(fs.readFileSync(path.join(output, plan.zipName))).toEqual(oldZip)
-    expect(fs.readFileSync(path.join(output, plan.sumsName))).toEqual(oldSums)
-    expect(fs.readdirSync(output).sort()).toEqual([plan.sumsName, plan.zipName])
+    expect(fs.readFileSync(path.join(output, ZIP_NAME))).toEqual(oldZip)
+    expect(fs.readFileSync(path.join(output, SUMS_NAME))).toEqual(oldSums)
+    expect(fs.readdirSync(output).sort()).toEqual([SUMS_NAME, ZIP_NAME])
     expect(fs.existsSync(path.join(repo, '.release-staging'))).toBe(false)
   })
 })
@@ -349,11 +347,10 @@ describe('release asset generator fail-closed rejection', () => {
     const dist = path.join(repo, 'dist')
     makeValidDist(dist)
     const output = path.join(repo, 'release-output')
-    const plan = buildReleasePlan('1.1.5')
 
     // First: valid generation.
     await generateAssets(dist, output, false)
-    const oldZip = sha256(path.join(output, plan.zipName))
+    const oldZip = sha256(path.join(output, ZIP_NAME))
 
     // Second: break the CSP so verify_release_zip.py fails.
     fs.writeFileSync(
@@ -363,10 +360,10 @@ describe('release asset generator fail-closed rejection', () => {
     await expect(generateAssets(dist, output, true)).rejects.toThrow(/failed/)
 
     // The old verified output is untouched; no partial new output.
-    expect(fs.existsSync(path.join(output, plan.zipName))).toBe(true)
-    expect(sha256(path.join(output, plan.zipName))).toBe(oldZip)
+    expect(fs.existsSync(path.join(output, ZIP_NAME))).toBe(true)
+    expect(sha256(path.join(output, ZIP_NAME))).toBe(oldZip)
     const entries = fs.readdirSync(output)
-    expect(entries.sort()).toEqual([plan.sumsName, plan.zipName])
+    expect(entries.sort()).toEqual([SUMS_NAME, ZIP_NAME])
   })
 
   it('walkDist fails on unknown non-regular types via validateAndCollectEntries', () => {

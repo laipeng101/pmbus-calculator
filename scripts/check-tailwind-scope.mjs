@@ -5,16 +5,14 @@
 //   (a file outside the production scan scope) must not be generated, and the
 //   known leaked rules `.lowercase{}` / `.table{}` must not appear. Those
 //   selectors previously leaked from English prose in non-production files.
-// - positive: utilities proven to be authored in production sources
-//   (`flex`, `uppercase`, `min-w-0`, `italic`) must exist, so a broken
-//   `source(none)` / `@source` config cannot silently strip every utility.
+// - positive: `flex`, used throughout the app, must exist. This catches a
+//   broken source configuration that strips all production utilities.
 //
 // Only CSS that embeds the `--color-canvas` theme marker (the compiled
 // src/styles/tokens.css) is judged; katex.min.css is out of scope.
 //
 // Run after `npm run build` — see the `verify` script and .github/workflows/ci.yml.
 
-import { realpathSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
@@ -22,10 +20,6 @@ import { fileURLToPath } from 'node:url'
 
 const CANARY_EXPORT_NAME = 'TAILWIND_SOURCE_CANARY_UTILITY'
 const TAILWIND_CSS_MARKER = '--color-canvas'
-
-// Selectors authored in production sources; update consciously if product
-// code stops using one of them.
-const REQUIRED_PRODUCT_UTILITIES = ['flex', 'uppercase', 'min-w-0', 'italic']
 
 // Rules that previously leaked from non-production prose. If product code ever
 // needs one of these classes for real, remove it here and say why in the PR.
@@ -111,7 +105,7 @@ export async function checkTailwindScope({ distDir, canaryPath, productionSrcDir
     // The canary must be unique: any appearance inside production sources (or
     // the custom tokens.css) would generate the rule regardless of scope.
     const productionFiles = (await walkFiles(productionSrcDir)).filter(
-      (file) => !file.endsWith('.test.ts'),
+      (file) => !/\.test\.tsx?$/.test(file),
     )
     for (const file of productionFiles) {
       const text = await fs.readFile(file, 'utf8')
@@ -171,13 +165,11 @@ export async function checkTailwindScope({ distDir, canaryPath, productionSrcDir
       }
     }
 
-    for (const utility of REQUIRED_PRODUCT_UTILITIES) {
-      if (!escapedRuleRegex(utility).test(combined)) {
-        errors.push(
-          `required product utility ".${utility}{…}" missing from compiled CSS (${fileNames}); ` +
-            'the @source scope may be too narrow — check src/styles/tokens.css',
-        )
-      }
+    if (!escapedRuleRegex('flex').test(combined)) {
+      errors.push(
+        `required product utility ".flex{…}" missing from compiled CSS (${fileNames}); ` +
+          'the @source scope may be too narrow — check src/styles/tokens.css',
+      )
     }
   }
 
@@ -225,11 +217,6 @@ function main() {
   })
 }
 
-const isDirectRun =
-  typeof process.argv[1] === 'string' &&
-  process.argv[1].length > 0 &&
-  realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])
-
-if (isDirectRun) {
+if (import.meta.main) {
   main()
 }

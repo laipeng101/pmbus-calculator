@@ -290,7 +290,7 @@ test.describe('移动端合同：被拒编辑的触摸失焦（v2.5.14，390）'
     await page.locator(RAW_HEX_INPUT).fill('FFFF')
     await page.locator(RAW_HEX_INPUT).press('Tab')
     await expect(page.getByTestId('result-value')).toHaveText('-1')
-    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    await expect(page.getByRole('alert').filter({ hasText: '重新输入显示值' })).toBeVisible()
 
     await page.locator(VALUE_INPUT).fill('9'.repeat(4_097))
     await expect(page.getByText(OVERLONG_ERROR)).toBeVisible()

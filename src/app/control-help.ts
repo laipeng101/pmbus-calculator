@@ -236,8 +236,7 @@ export const CONTROL_HELP: ControlHelpRegistry = {
   },
   'vout-apply-example': {
     name: '应用计算器 LINEAR 示例',
-    render: () =>
-      '把共享 VOUT_MODE 字节恢复为计算器 LINEAR 示例 0x18（absolute、N=-8），并清除旧的编码请求。0x18 是计算器示例/恢复值，不是 PMBus 规范默认值，也不代表真实器件一定接受写入。',
+    render: () => '用示例字节替换当前 VOUT_MODE，恢复 LINEAR16 换算。',
   },
   'vout-explanations-toggle': {
     name: 'VOUT_MODE 说明折叠',
@@ -262,12 +261,11 @@ export const CONTROL_HELP: ControlHelpRegistry = {
   'copy-physical': {
     name: '物理值复制',
     render: ({ available, usesOverride, overrideKind, unavailableReason }) => {
-      if (!available)
-        return `物理值复制不可用：${unavailableReason ?? '当前状态没有可回录的物理值'}`
-      if (!usesOverride) return '复制当前物理值文本；粘贴回物理值输入可安全重编码。'
-      return overrideKind === 'approximate'
-        ? '复制经验证可回录的近似文本：当前 raw 的精确值是循环小数，显示值为近似；此文本经独立编码器验证回输后回到当前 raw，但不是精确值本身。'
-        : '复制经验证的精确回录文本：当前显示值为近似，直接复制会编码为不同的请求；此文本经独立编码器验证可安全回录。'
+      if (!available) return unavailableReason ?? '当前没有可复制的物理值。'
+      if (!usesOverride) return '复制当前显示的物理值。'
+      const copyDescription =
+        overrideKind === 'approximate' ? '结果是循环小数，将复制近似值。' : '复制完整的精确值。'
+      return `${copyDescription}粘贴回物理值输入框后，可得到原来的 Raw Word。`
     },
   },
   'copy-c-macro': {
@@ -301,10 +299,7 @@ export const CONTROL_HELP: ControlHelpRegistry = {
   },
   'debug-toggle': {
     name: '调试面板开关',
-    render: ({ open }) =>
-      open
-        ? '收起调试面板。面板内容为状态快照，仅用于诊断。'
-        : '展开调试面板（状态快照，仅诊断用途）。',
+    render: ({ open }) => (open ? '收起调试面板。' : '查看当前模式、Raw Word 和主题。'),
   },
 }
 

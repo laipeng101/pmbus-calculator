@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
@@ -15,7 +16,7 @@ describe('required CI check', () => {
     expect(workflow.match(/scripts\/classify-ci-scope\.mjs/g)).toHaveLength(1)
     expect(workflow).not.toMatch(/^ {10}ref:/m)
     expect(workflow).toContain("git rev-parse --verify 'HEAD^{tree}'")
-    expect(workflow).toContain('git diff --check "$BASE_SHA" "$HEAD_SHA"')
+    expect(workflow).toContain('git diff --check HEAD^1 HEAD --')
   })
 
   it('reads every job result even after a failure or skip', () => {

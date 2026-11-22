@@ -123,7 +123,7 @@ describe('pages.yml checkout binding', () => {
 
   it('keeps the stable SemVer tag restriction', () => {
     const semver = normalize(findStepByName('Validate stable SemVer tag format'))
-    expect(semver).toContain('^v[1-9][0-9]*\\.[0-9]+\\.[0-9]+$')
+    expect(semver).toContain('^v[1-9][0-9]*\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$')
     expect(semver).toContain('exit 1')
   })
 
@@ -186,7 +186,8 @@ describe('pages.yml preserved release-security contracts', () => {
 
   it('extracts exactly the validated release zip', () => {
     const step = normalize(findStepByName('Extract release assets to _site'))
-    expect(step).toContain('unzip -q "pmbus-calculator-${VERSION}-web.zip" -d _site')
+    expect(step).toContain(`zip_name="$(jq -er '.zip.name' downloaded-assets.json)"`)
+    expect(step).toContain('unzip -q "$zip_name" -d _site')
   })
 
   it('pins every action to a full 40-hex commit SHA', () => {
@@ -215,8 +216,9 @@ describe('pages.yml release-to-source byte binding', () => {
   it('compares the rebuilt zip with the release zip byte-for-byte', () => {
     const compare = normalize(findStepByName('Compare rebuilt zip with the release zip'))
     expect(compare).toContain('node scripts/verify-release-rebuild.mjs')
-    expect(compare).toContain('--expected "pmbus-calculator-${VERSION}-web.zip"')
-    expect(compare).toContain('--actual "release-output/pmbus-calculator-${VERSION}-web.zip"')
+    expect(compare).toContain(`zip_name="$(jq -er '.zip.name' downloaded-assets.json)"`)
+    expect(compare).toContain('--expected "$zip_name"')
+    expect(compare).toContain('--actual "release-output/$zip_name"')
   })
 
   it('runs the rebuild and comparison after byte verification and before extraction/deployment', () => {
