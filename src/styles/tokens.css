@@ -1864,10 +1864,6 @@ select:disabled,
   background: var(--color-success);
 }
 
-.debug-info-dot {
-  background: var(--color-info);
-}
-
 /* =========================================================
    Command reference (read-only panel)
    ========================================================= */

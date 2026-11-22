@@ -1,171 +1,46 @@
-# Contributing
+# 贡献指南
 
-本仓库为单人维护模式。Agent 可以在 CI 全绿后自审合并；人工评审只适用于外部贡献者，不是当前合并的阻塞条件。
+按 [AGENTS.md](AGENTS.md) 找到与改动有关的源码、测试和约定。提交说明使用 Conventional Commits。PR 说明改动原因、受影响的行为和实际验证。
 
-## 1. 开始之前
+## 环境
 
-1. 阅读 [`AGENTS.md`](AGENTS.md)（强制规则）。
-2. 阅读 [`docs/REPOSITORY_HYGIENE.md`](docs/REPOSITORY_HYGIENE.md)（仓库卫生与制品政策）。
-3. 阅读 [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) 中与本次变更相关的规则。
-4. 阅读 [`docs/ROADMAP.md`](docs/ROADMAP.md) 确认当前里程碑状态，避免重复或越界。
-5. 器件数据不明确时不得猜测：保持禁用/留空，并在 UI 与文档中注明“需要器件数据手册”。
-   只有仓库内规范与官方规范存在无法保守处理的直接冲突时才停止。
+使用 [`.node-version`](.node-version) 和 [`package.json`](package.json) 指定的 Node.js 和 npm 版本。首次开发或锁文件变化后运行 `npm ci`。主工作副本上的提交钩子只检查暂存区的空白字符。需要单独更新钩子时运行 `npm run postinstall`。
 
-## 2. 分支与 PR
+运行 `npm run dev` 启动开发服务器。预览生产产物时先运行 `npm run build`，再运行 `npm run preview`。
 
-- 所有开发分支必须从最新 `origin/main` 创建：`git fetch origin --prune && git switch -c agent/<scope> origin/main`。
-- PR base 固定为 `main`；禁止以 `web-refactor` 或任何旧 `agent/*` 分支作为长期开发线。
-- 每个 PR 只实现一个可验证的垂直切片。
-- 当前为单人维护：同一 Agent 可以完成本地检查、创建 PR、等待 CI、自审与普通 merge commit 合并的闭环；不为每个小任务机械创建 Issue。
-- main 由 ruleset `protect-main` 严格保护（M19-B 起）：必须 PR、required `check`（GitHub Actions）、
-  strict up-to-date、管理员无绕过、禁止 force push 与删除、不要求人工 approval（0 approvals）。
-  不等待人工确认；所有 main 变更必须经 PR。
-
-单人无人值守闭环（M19-B 起）：
-
-```text
-latest protected main → one scoped branch → complete local verification
-→ one final push → one PR CI（默认测试 merge ref）→ required check success
-→ self-review → normal merge commit → compare tested PR tree with final main tree
-→ delete branch → sync main
-```
-
-所有推送新提交都会使此前验收失效，必须等待最新 head 的 CI。
-
-里程碑闭环采用单 PR（M18 起）：`docs/ROADMAP.md` 以 main 上的版本为正式事实来源；
-实现分支在最终提交中一并把对应里程碑翻为 `Done`（含完成日期），最终 PR head CI
-全绿并 merge 后，Done 才在 main 正式生效。不再创建第二个纯文档 PR 只为补写
-Review → Done、CI URL 或 SHA。merge 后不执行第二次完整 CI（M19-B）：PR CI 的
-`Record checked revision` 步骤记录实际测试的 `checked_sha`/`checked_tree`，与最终
-merge SHA 的 `HEAD^{tree}` 比较必须完全相同；不一致属于真实阻塞，立即用
-`workflow_dispatch` 对最终 main 执行 full CI 并定位，不得当作正常现象或用
-bookkeeping PR 掩盖。`workflow_dispatch` 是紧急/诊断入口，不是每次 merge 的固定步骤。
-
-## 3. Fresh environment 初始化
+按测试需要安装浏览器。桌面、移动端、发布包和 Pages 测试使用 Chromium，跨浏览器核心流程测试使用 Firefox 和 WebKit。
 
 ```bash
-npm ci
-npm run test:e2e:install
+npx playwright install chromium
+npx playwright install firefox webkit
 ```
 
-`test:e2e:install` 安装全部验收套件需要的浏览器（chromium、firefox、webkit）。
-CI 的 e2e job 继续显式安装 `chromium`，browser-compat job 显式安装
-`npx playwright install --with-deps firefox webkit`（官方安装流程，无镜像、无强制 flag）。
+Linux 缺少系统库时，在安装命令加 `--with-deps`。截图比对使用 [界面约定](docs/UI_CONVENTIONS.md#11-视觉基线治理)中的镜像，需要 Linux x64 和 Docker。
 
-视觉回归使用 `npm run test:e2e:visual`。在 Linux x64 上用仓库指定的 Node 和 npm 执行 `npm ci`，并提供可用的 Docker。Codex Cloud 和 full CI 使用同一个锁定的 Ubuntu Playwright 镜像。
+## 验证
 
-## 4. 本地验证
+按改动选择本地检查。维护脚本组合时直接修改 [`package.json`](package.json)。
 
-Fresh environment 先执行 `npm ci` 与 `npm run test:e2e:install`。核心门禁与 CI 保持一致，可直接使用：
+| 改动                 | 本地验证                                                                                                                                                                                           |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 文档和协作规则       | `npm run verify:light`                                                                                                                                                                             |
+| 算法、状态或单元测试 | `npm run test:run -- <用例路径>`。涉及模块间的接口时可运行 `npm run verify:quality`                                                                                                                |
+| 交互和布局           | 先运行 `npm run build`，再运行相关 `npm run test:e2e -- <用例路径>` 或移动端用例。核心流程补跑 `npm run test:e2e:cross-engine`，涉及外观时看[截图比对流程](docs/UI_CONVENTIONS.md#11-视觉基线治理) |
+| CI、构建、依赖及分发 | 运行受影响的检查。需要完整验证时运行 `npm run verify`，需要同时比对截图时运行 `npm run verify:ui`                                                                                                  |
 
-```bash
-npm run verify
-```
+算法回归优先补在已有 Vitest 测试中。端到端测试使用生产构建，Firefox 和 WebKit 运行同一组核心流程用例。
 
-`npm run verify` 的步骤组合以 package.json 的 `verify` / `verify:light` 脚本为
-唯一真值（涵盖 format、typecheck、lint、inline style、markdown 数学、规范
-manifest、发布合同、发布操作文档命令、工具链、coverage、桌面/移动 E2E、build、
-Tailwind scope、release smoke、repo hygiene、两个 whitespace 检查与 audit）。
-本文件不再逐条复制该命令链，避免与脚本漂移；各门禁的职责与失败处理见下文
-与 `docs/REPOSITORY_HYGIENE.md`。
+### PR CI
 
-本地、PR CI 与 fresh release 验证的 Cloudflare 请求使用精确 stub，包括
-`test:pages-overlay`；维护者可以始终保留主动拦截 Analytics 的隐私规则。
-真实外部服务验收只在 GitHub-hosted Pages job 部署后的 tracked step 执行，
-不得接入 `verify` 或 PR CI。被本机规则阻止的 real check 标为
-`ENVIRONMENT_BLOCKED`，不算应用失败或 Analytics PASS；详见
-[`DEPLOYING`](docs/DEPLOYING.md#发布后真实-cloudflare-analytics-验收)。
+目标为 `main` 的 PR 自动测试 GitHub 生成的合并提交。[`scripts/classify-ci-scope.mjs`](scripts/classify-ci-scope.mjs) 根据这个合并提交与其第一父提交之间的文件差异选择检查。第一父提交是本次合并使用的目标分支版本。一次 PR 涉及多类改动时，取最高档。
 
-提交前建议先执行：
+| 档位      | 在前一档基础上运行的检查                                  |
+| --------- | --------------------------------------------------------- |
+| `light`   | `npm run verify:light`                                    |
+| `checks`  | `npm run verify:quality`                                  |
+| `product` | `npm run verify:browser` 和截图比对                       |
+| `full`    | Node.js 22 兼容性测试和依赖审计。手动运行 CI 时使用这一档 |
 
-```bash
-npm run clean
-npm run check:repo-hygiene
-git status --short
-```
+合并前需要通过 `check`，并让 PR 与目标分支保持同步。CI 记录实际验证的提交和 Git tree。[CI 工作流](.github/workflows/ci.yml) · [发布流程](docs/RELEASING.md) · [Pages 部署](docs/DEPLOYING.md)
 
-`npm run verify:light` 只用于 `scripts/classify-ci-scope.mjs` 判定为 pure light-only 的任务；
-其步骤组合同样以 package.json 的 `verify:light` 脚本为唯一真值（含发布操作文档命令
-门禁 `check:release-docs-commands`），本文件不复制逐条列表。mixed/unknown 或产品相关
-变更必须完整 `npm run verify`。无参数调用 `npm run ci:classify`
-返回用法错误并 exit 2，不会悄悄得到 light。
-
-第三方规范 PDF 不进入当前 Git tree：provenance、官方链接和哈希维护在
-`document/specifications.json`，PDF 按需下载到 ignored `.cache/specifications/`；
-CI 只执行 `npm run specs:check`，不依赖也不发起规范 PDF 下载。DSH 会话、
-缓存和 PDF 均不得提交；历史 tag/commit 不重写。
-
-详细安全边界见 [`docs/REPOSITORY_HYGIENE.md`](docs/REPOSITORY_HYGIENE.md)。
-Shell 超时、后台等待、日志与退出码 guardrails 见 [`AGENTS.md`](AGENTS.md) 第 9 节；本文件只同步实际命令，不复制整套规则。
-
-whitespace 检查口径：
-
-- `git diff --check`：未暂存工作区；
-- `git diff --cached --check`：暂存区；
-- PR 本地全量检查：`git diff --check origin/main...HEAD`；
-- PR CI：完整 PR base→head；
-- M19-B 起 main 不再有 push CI，不存在 before→head whitespace 检查；
-- 不得再把 `git show --check` 描述成普通 merge commit 的完整变更检查。
-
-所有命令都必须以 exit code 0 正常结束，并记录在验收记录中。
-`npm run check` 只用于快速检查（format/typecheck/lint/test:run/build），不包含 coverage、E2E 与 audit，不得宣称它覆盖这些门禁。
-
-## 5. 验收记录
-
-每个 PR 描述必须包含可验证事实：
-
-- 每条质量命令与 exit code；
-- 单元测试实际数量与 coverage；
-- E2E 实际数量（default / mobile / cross-engine / release / pages-overlay / visual / deployment 分开统计）；
-- CI URL、head SHA 与 conclusion。
-
-CI/CD 时间是 review target，不是 job timeout：full PR CI 稳态目标 ≤5m30s，
-超过 6m30s 须说明 critical path；Pages 完整 rollout 目标 ≤2m30s，超过 3m 须审查
-新增工作。hosted real Analytics 通常应小于 15s，累计硬预算 ≤45s。使用 GitHub
-run/job/step timing 与相同配置的 benchmark 评估优化；保留现有下载重试安全上限，
-不靠减少测试或 provenance 门禁达标。
-
-失败与 flaky 的留存纪律（v2.5.9 起）：
-
-- 命令退出码必须来自被测命令本身；pipeline 中 `tail`/`tee` 的成功不得当作
-  被测命令的成功（大日志按 `AGENTS.md` 第 9 节以 `rc=$?` 捕获后返回）。
-- Playwright 配置统一使用 `trace: 'retain-on-failure'`：首次失败（含本地
-  `retries: 0` 的首跑）即保留 trace 等产物，成功运行不额外上传 trace；
-  CI 上传的 HTML report 包含这些失败产物。
-- 一次失败先定位（完整日志、用例名、断言、commit/版本），再做有目的的
-  确认性重跑；不得以多轮全绿或"资源竞争"归因替代定位。无法定位的失败
-  属于未解释失败，阻塞发布。
-- 结果数字从当次运行的 report（Playwright JSON/list reporter、Vitest 汇总）
-  提取；skip/flaky/retry 必须单独列出，不把最终重试通过写成首跑通过。
-
-PR 统计必须来自 final committed HEAD，并通过 `npm run check:repo-hygiene` 与 `git ls-tree -r -l HEAD` 交叉验证；每次新增修复提交后必须重新采集。详细证据规则见 [`docs/REPOSITORY_HYGIENE.md`](docs/REPOSITORY_HYGIENE.md) 第 8 节。
-
-## 6. 提交信息
-
-```text
-type(scope): summary
-```
-
-类型：`feat`、`fix`、`docs`、`chore`、`test`、`refactor`。
-示例：`fix(L11): saturate out-of-range values instead of encoding 0x0000`。
-
-## 7. PR 流程
-
-1. 填写 PR 模板中的验收清单。
-2. 确保 CI 全绿。CI 仅由目标为 main 的 PR 与手动 `workflow_dispatch`（始终 full）触发；
-   PR checkout 默认测试 merge ref（不覆盖 `ref`）。分级由 `scripts/classify-ci-scope.mjs`
-   完成（fail closed）：纯 light-only 变更执行轻量门禁与完整 whitespace gate，跳过的门禁
-   在 PR 中如实标 `policy-skipped`；full/mixed/unknown 变更执行完整 format、typecheck、
-   lint、coverage、E2E、build、whitespace gate 与 audit。所有推送新提交都会使此前验收
-   失效，必须等待最新 head 的 CI（required `check` 由分支保护强制）。
-3. PR 描述中写明：changed files、affected modes、测试命令与结果、剩余缺口。
-4. CI 全绿后使用普通 merge commit 合入，不使用 squash。
-5. merge 后拉取最新 main，核对 PR CI 的 `checked_tree` 与 merge SHA 的 `HEAD^{tree}`
-   完全相同（见第 2 节），然后删除分支并同步本地 main。
-
-## 8. 文档同步
-
-- 里程碑状态只更新 `docs/ROADMAP.md`。
-- legacy parity 只更新 `docs/MIGRATION_MATRIX.md`。
-- 架构/原则变更更新 `docs/adr/` 与 `docs/DOMAIN_MODEL.md`。
-- 不要在 README、AGENTS、计划文档中重复维护进度表。
+生成文件的存放位置和清理方法见[文件跟踪与清理](docs/REPOSITORY_HYGIENE.md)。

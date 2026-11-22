@@ -1,26 +1,17 @@
 import { test, expect, type Page } from '@playwright/test'
 import { appUrl } from './helpers/app-url'
 
-/**
- * v2.5.11 — DIRECT 精度保真合同（正式站反例 m=1,b=1,R=17）：
- *
- * raw FFFF 的精确物理值是 -1.00000000000000001，binary64 只能显示 -1。
- * 旧产品把两个不同 raw（0000 与 FFFF）无差别显示为同一个 -1，真实回输
- * 显示值会静默改变 payload 并被称为精确零误差。现在：
- *
- * - 折叠状态在提交前就被明确标记：近似值、精确值/分数、回编后果
- *   （"不同的请求"）全部可见；
- * - 「物理值」复制返回经验证可安全回录的精确文本，回输后回到原 raw；
- * - 真实键盘/剪贴板回录路径被逐字节断言，不以 fill 后外观为准；
- * - raw 0000/FFFF 切换、系数修改实时重算，无 stale 状态泄漏；
- * - 安全普通向量不出现噪音告警；v2.5.8 的 1e21/-1e21 向量不回归。
- */
+// The displayed DIRECT value can round to a number that encodes to a different
+// Raw Word. Exercise typing it and pasting the calculator's copy through the
+// real input and clipboard paths.
 
 const valueInput = (page: Page) => page.locator('#value-input')
 const hexInput = (page: Page) => page.locator('#raw-hex-input')
 const resultValue = (page: Page) => page.getByTestId('result-value')
 const quantizationPanel = (page: Page) => page.getByTestId('quantization-error')
 const copyNote = (page: Page) => page.locator('#physical-value-copy-note')
+const precisionWarning = (page: Page) =>
+  page.getByRole('alert').filter({ hasText: '重新输入显示值' })
 
 async function setDirectCoefficients(page: Page, m: number, b: number, r: number) {
   await page.locator('#direct-coeff-m-input').fill(String(m))
@@ -55,15 +46,14 @@ test.describe('DIRECT 精度保真（m=1,b=1,R=17 正式站反例，1280×900）
     await setRaw(page, 'FFFF')
     await expect(resultValue(page)).toHaveText('-1')
 
-    // 提交前的事实：显示值是近似值，直接回输会编码为 Y=0（不同的请求）。
-    const warning = page.getByText(/不同的请求/).first()
+    const warning = precisionWarning(page)
     await expect(warning).toBeVisible()
-    await expect(warning).toContainText('-1.00000000000000001')
-    await expect(warning).toContainText('Y=0')
+    await expect(warning).toContainText('浮点精度有限')
+    await expect(warning).toContainText('Y = 0')
 
     // 复制覆盖：物理值复制给出经验证的精确文本（对当前 raw 而非近似值）。
     await expect(copyNote(page)).toBeVisible()
-    await expect(copyNote(page)).toContainText('-1.00000000000000001')
+    await expect(copyNote(page)).toContainText('复制精确值')
 
     // 计算步骤给出精确有理数与精确十进制。
     await expandSteps(page)
@@ -74,7 +64,7 @@ test.describe('DIRECT 精度保真（m=1,b=1,R=17 正式站反例，1280×900）
     // raw 0000（同一系数）是安全状态：无折叠告警、无复制覆盖、无精确值步骤。
     await setRaw(page, '0000')
     await expect(resultValue(page)).toHaveText('-1')
-    await expect(page.getByText(/不同的请求/)).toHaveCount(0)
+    await expect(precisionWarning(page)).toHaveCount(0)
     await expect(copyNote(page)).toHaveCount(0)
     // Safe state: no supplemental exact-value step exists, so the whole
     // calculation-steps container is omitted rather than showing a skeleton.
@@ -99,13 +89,13 @@ test.describe('DIRECT 精度保真（m=1,b=1,R=17 正式站反例，1280×900）
     await valueInput(page).press('Enter')
     await expect(hexInput(page)).toHaveValue('FFFF')
     await expect(valueInput(page)).toHaveValue('-1')
-    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    await expect(precisionWarning(page)).toBeVisible()
   })
 
-  test('显式输入 -1 提交为 raw 0000：提交前已说明这是不同请求', async ({ page }) => {
+  test('显示值 -1 重新输入后编码为 0000，提交前有提示', async ({ page }) => {
     await setRaw(page, 'FFFF')
     // 提交前：折叠告警可见（用户在输入前就能知道 -1 会编码为不同 raw）。
-    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    await expect(precisionWarning(page)).toBeVisible()
 
     // 真实键盘输入 -1 并提交。
     await valueInput(page).click()
@@ -116,43 +106,40 @@ test.describe('DIRECT 精度保真（m=1,b=1,R=17 正式站反例，1280×900）
     // 新状态是诚实的：raw 0000、精确 -1、无折叠告警。
     await expect(hexInput(page)).toHaveValue('0000')
     await expect(resultValue(page)).toHaveText('-1')
-    await expect(page.getByText(/不同的请求/)).toHaveCount(0)
+    await expect(precisionWarning(page)).toHaveCount(0)
     await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
     await expect(copyNote(page)).toHaveCount(0)
   })
 
   test('raw 0000 ↔ FFFF 切换：告警/步骤/复制无 stale 泄漏', async ({ page }) => {
     await setRaw(page, 'FFFF')
-    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    await expect(precisionWarning(page)).toBeVisible()
     await setRaw(page, '0000')
-    await expect(page.getByText(/不同的请求/)).toHaveCount(0)
+    await expect(precisionWarning(page)).toHaveCount(0)
     await setRaw(page, 'FFFF')
-    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
-    await expect(copyNote(page)).toContainText('-1.00000000000000001')
+    await expect(precisionWarning(page)).toBeVisible()
+    await expect(copyNote(page)).toContainText('复制精确值')
   })
 
   test('系数修改实时重算：R=17 → R=0 后同一 raw 不再折叠', async ({ page }) => {
     await setRaw(page, 'FFFF')
-    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    await expect(precisionWarning(page)).toBeVisible()
     await page.locator('#direct-coeff-r-input').fill('0')
     await page.locator('#direct-coeff-r-input').press('Tab')
     // R=0 时 Y=-1 精确等于 -1：安全状态，所有折叠表面消失。
-    await expect(page.getByText(/不同的请求/)).toHaveCount(0)
+    await expect(precisionWarning(page)).toHaveCount(0)
     await expect(copyNote(page)).toHaveCount(0)
     await expect(hexInput(page)).toHaveValue('FFFF')
   })
 
   test('untouched focus/blur 保持严格 no-op（raw 与告警都不变）', async ({ page }) => {
     await setRaw(page, 'FFFF')
-    const warningBefore = await page
-      .getByText(/不同的请求/)
-      .first()
-      .textContent()
+    const warningBefore = await precisionWarning(page).textContent()
     await valueInput(page).click()
     await valueInput(page).press('Tab')
     await expect(hexInput(page)).toHaveValue('FFFF')
     await expect(valueInput(page)).toHaveValue('-1')
-    await expect(page.getByText(/不同的请求/).first()).toHaveText(warningBefore ?? '')
+    await expect(precisionWarning(page)).toHaveText(warningBefore ?? '')
   })
 
   test('折叠告警与复制说明的 ARIA 关联正确', async ({ page }) => {
@@ -176,7 +163,7 @@ test.describe('DIRECT 循环小数与安全向量（1280×900）', () => {
     await setDirectCoefficients(page, 3, 1, 17)
     await setRaw(page, '8001')
     // Y=-32767 的 float 解码回编为 Y=-32768：折叠状态必须被标记。
-    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    await expect(precisionWarning(page)).toBeVisible()
     // 步骤声明循环小数没有有限精确十进制。
     await expandSteps(page)
     await expect(page.getByTestId('calculation-steps')).toContainText('循环小数，无有限精确十进制')
@@ -197,7 +184,7 @@ test.describe('DIRECT 循环小数与安全向量（1280×900）', () => {
     await valueInput(page).fill('12')
     await valueInput(page).press('Tab')
     await expect(hexInput(page)).toHaveValue('000C')
-    await expect(page.getByText(/不同的请求/)).toHaveCount(0)
+    await expect(precisionWarning(page)).toHaveCount(0)
     await expect(quantizationPanel(page)).toHaveAttribute('data-kind', 'ok')
 
     await setDirectCoefficients(page, 1, 0, -21)
@@ -207,7 +194,7 @@ test.describe('DIRECT 循环小数与安全向量（1280×900）', () => {
     await valueInput(page).fill('-1e21')
     await valueInput(page).press('Tab')
     await expect(hexInput(page)).toHaveValue('FFFF')
-    await expect(page.getByText(/不同的请求/)).toHaveCount(0)
+    await expect(precisionWarning(page)).toHaveCount(0)
   })
 })
 
@@ -222,7 +209,7 @@ test.describe('DIRECT 精度保真响应式与资源（390/360px）', () => {
   for (const width of [390, 360]) {
     test(`${width}px：告警/复制说明可见且无横向溢出`, async ({ page }) => {
       await page.setViewportSize({ width, height: 844 })
-      await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+      await expect(precisionWarning(page)).toBeVisible()
       await expect(copyNote(page)).toBeVisible()
       const { scrollWidth, clientWidth } = await page
         .locator('body')
@@ -249,10 +236,7 @@ test.describe('DIRECT 精度保真响应式与资源（390/360px）', () => {
 })
 
 test.describe('DIRECT 显示文本回录合同（v3.1.1 正式站反例，1280×900）', () => {
-  // v2.5.11 的 binary64 回程守卫对显示格式化折叠全盲：(1,1,12) 全族 0 告警，
-  // 但 65536 个 Y 中 29491 个的显示文本经真实 typed 路径回编会改变 raw。
-  // v3.1.1 把保真谓词统一到「显示文本 → 真实 typed 编码」上，两个失败族
-  // 在提交前可见，「物理值」复制返回经验证的回录文本。
+  // 浮点值可编码回原数据字，显示时减少位数仍可能改变编码。
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto(appUrl())
@@ -264,12 +248,11 @@ test.describe('DIRECT 显示文本回录合同（v3.1.1 正式站反例，1280×
     await setRaw(page, 'FFFF')
     await expect(resultValue(page)).toHaveText('-1')
 
-    // 提交前的事实：显示值 -1 直接回输会编码为 Y=0（不同的请求）。
-    const warning = page.getByText(/不同的请求/).first()
+    const warning = precisionWarning(page)
     await expect(warning).toBeVisible()
-    await expect(warning).toContainText('Y=0')
-    // 精确值 -1.000000000001 与回录文本出现在对应表面。
-    await expect(copyNote(page)).toContainText('-1.000000000001')
+    await expect(warning).toContainText('Y = 0')
+    await expect(warning).toContainText('显示位数有限')
+    await expect(copyNote(page)).toContainText('复制精确值')
     await expandSteps(page)
     await expect(page.getByTestId('calculation-steps')).toContainText('-1.000000000001')
 
@@ -291,12 +274,12 @@ test.describe('DIRECT 显示文本回录合同（v3.1.1 正式站反例，1280×
     await expect(resultValue(page)).toHaveText('-0.333333333333')
 
     // 显示文本 -0.333333333333 回编为 Y=10000：告警在提交前可见。
-    const warning = page.getByText(/不同的请求/).first()
+    const warning = precisionWarning(page)
     await expect(warning).toBeVisible()
-    await expect(warning).toContainText('循环小数')
-    // 复制说明如实标注近似性质（不冒充精确值）。
-    await expect(copyNote(page)).toContainText('循环小数')
-    await expect(copyNote(page)).toContainText('-1/3')
+    await expect(warning).toContainText('Y = 10000')
+    await expect(copyNote(page)).toContainText('近似值')
+    await expandSteps(page)
+    await expect(page.getByTestId('calculation-steps')).toContainText('-1/3')
 
     // 真实剪贴板：复制 → 粘贴 → Enter，raw 保持 0000。
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -314,7 +297,7 @@ test.describe('DIRECT 显示文本回录合同（v3.1.1 正式站反例，1280×
     await setDirectCoefficients(page, 1, 1, 12)
     await setRaw(page, '0001')
     await expect(resultValue(page)).toHaveText('-0.999999999999')
-    await expect(page.getByText(/不同的请求/)).toHaveCount(0)
+    await expect(precisionWarning(page)).toHaveCount(0)
     await expect(copyNote(page)).toHaveCount(0)
     // 复制显示文本 → 真实回录 → raw 不变。
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -455,7 +438,7 @@ test.describe('DIRECT 精确请求 provenance（v2.5.12 正式站反例，1280×
     // 但显示值折叠——两个告警必须同时可见。
     await commitViaKeyboard(page, '-1.00000000000000001')
     await expect(hexInput(page)).toHaveValue('FFFF')
-    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    await expect(precisionWarning(page)).toBeVisible()
     await expect(quantizationPanel(page)).toContainText('+0.000000 (0.0000%)')
     await expect(quantizationPanel(page)).toContainText('用户请求 -1.00000000000000001')
   })
@@ -605,7 +588,7 @@ test.describe('DIRECT 被拒编辑的事务边界（v2.5.14 正式站反例，12
     await setDirectCoefficients(page, 1, 1, 17)
     await setRaw(page, 'FFFF')
     await expect(resultValue(page)).toHaveText('-1')
-    await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+    await expect(precisionWarning(page)).toBeVisible()
     await expect(quantizationPanel(page)).toHaveCount(0)
   }
 
@@ -646,7 +629,7 @@ test.describe('DIRECT 被拒编辑的事务边界（v2.5.14 正式站反例，12
       // 拒绝状态与错误保持真实：错误不清除、不伪造新请求。
       await expect(overlongError(page)).toBeVisible()
       await expect(quantizationPanel(page)).toHaveCount(0)
-      await expect(page.getByText(/不同的请求/).first()).toBeVisible()
+      await expect(precisionWarning(page)).toBeVisible()
     })
   }
 

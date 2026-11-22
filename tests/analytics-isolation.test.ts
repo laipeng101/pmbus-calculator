@@ -39,10 +39,9 @@ function scriptClosure(command: string, seen = new Set<string>()): string {
 
 describe('deterministic versus real Analytics entry isolation', () => {
   it('keeps full verify and full PR CI overlay validation while excluding the real entry transitively', () => {
-    expect(pkg.scripts.verify.split(' && ')).toContain('npm run test:pages-overlay')
-    expect(ci).toMatch(
-      /if: steps\.scope\.outputs\.run_full != 'false'\n {8}run: npm run test:pages-overlay/,
-    )
+    for (const command of ['npm run verify', ci]) {
+      expect(scriptClosure(command)).toContain('npm run test:pages-overlay')
+    }
     for (const command of ['npm run verify', 'npm run verify:light', ci]) {
       expect(scriptClosure(command)).not.toMatch(
         /verify-live-analytics|Real Cloudflare Analytics acceptance/,

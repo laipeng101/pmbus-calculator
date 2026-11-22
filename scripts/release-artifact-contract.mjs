@@ -1,125 +1,30 @@
-// Single source of truth for release artifact naming and ZIP entry policy (M25).
-//
-// Every surface that needs to know the artifact zip name, SHA256SUMS name,
-// or stable tag format must import from this module. No other file may
-// duplicate these definitions.
-//
-// Used by:
-// - prepare-release-assets.mjs  (generates the assets)
-// - check-release-contract.mjs  (validates cross-file consistency)
+// Version, asset names and ZIP entry rules shared by generation and verification.
 
-// ---------------------------------------------------------------------------
-// Version helpers
-// ---------------------------------------------------------------------------
+const RELEASE_VERSION = /^[1-9][0-9]*\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/
 
-const SEMVER_PATTERN = /^\d+\.\d+\.\d+$/
-
-/**
- * @param {string} version
- * @returns {boolean}
- */
-export function isPlainSemver(version) {
-  return SEMVER_PATTERN.test(version)
+/** @param {unknown} version @returns {version is string} */
+export function isStableReleaseVersion(version) {
+  return typeof version === 'string' && RELEASE_VERSION.test(version)
 }
 
-/**
- * @param {string} version — plain semver (no "v" prefix)
- * @returns {string} — stable Git tag, e.g. "v1.1.6"
- */
-export function stableTag(version) {
-  if (!isPlainSemver(version)) {
-    throw new Error(`stable tag requires plain semver, got: ${version}`)
-  }
-  return `v${version}`
+/** @param {unknown} tag @returns {tag is string} */
+export function isStableReleaseTag(tag) {
+  return typeof tag === 'string' && tag.startsWith('v') && isStableReleaseVersion(tag.slice(1))
 }
 
-// ---------------------------------------------------------------------------
-// Asset names
-// ---------------------------------------------------------------------------
-
-/**
- * @param {string} version — plain semver
- * @returns {string}
- */
-export function assetZipName(version) {
-  return `pmbus-calculator-v${version}-web.zip`
-}
-
-/**
- * @returns {string}
- */
-export function assetSumsName() {
-  return 'SHA256SUMS.txt'
-}
-
-/**
- * @param {string} version — plain semver
- * @returns {{ zip: string, sums: string }}
- */
-export function assetNames(version) {
+/** @param {string} tag - validated stable Git tag (for example, v1.2.3) */
+export function releaseAssetNames(tag) {
   return {
-    zip: assetZipName(version),
-    sums: assetSumsName(),
+    zipName: `pmbus-calculator-${tag}-web.zip`,
+    sumsName: 'SHA256SUMS.txt',
   }
 }
-
-// ---------------------------------------------------------------------------
-// Pages workflow template
-// ---------------------------------------------------------------------------
-
-/**
- * The template used in .github/workflows/pages.yml to construct the zip
- * download name. `${RELEASE_TAG}` is substituted at workflow runtime.
- */
-export const PAGES_ZIP_TEMPLATE = 'pmbus-calculator-${RELEASE_TAG}-web.zip'
-
-// ---------------------------------------------------------------------------
-// Release plan (M27 WP-E) -- the single implementation
-// ---------------------------------------------------------------------------
 
 /** Disposable per-run staging root, relative to the repository root. */
 export const STAGING_DIR = '.release-staging'
 
-/** Published output directory, relative to repo root. */
+/** Published output directory, relative to the repository root. */
 export const OUTPUT_DIR = 'release-output'
-
-/** Schema version recorded in release plans. */
-export const RELEASE_PLAN_SCHEMA_VERSION = 2
-
-/**
- * Build the complete release plan for a version.
- *
- * This is the ONLY implementation of the release layout/naming plan.
- * prepare-release-assets.mjs consumes this function's result exclusively —
- * it must not derive artifact names, staging/output paths, tag strings or
- * Pages templates by any other means. check-release-contract.mjs imports
- * the same function as its behavioral expectation.
- *
- * @param {string} version -- plain semver from package.json
- * @returns {{
- *   tag: string,
- *   zipName: string,
- *   sumsName: string,
- *   stagingDir: string,
- *   outputDir: string,
- *   pagesZipTemplate: string,
- *   contractSchemaVersion: number,
- * }}
- */
-export function buildReleasePlan(version) {
-  if (!isPlainSemver(version)) {
-    throw new Error(`buildReleasePlan requires plain semver without a v prefix, got: ${version}`)
-  }
-  return {
-    tag: stableTag(version),
-    zipName: assetZipName(version),
-    sumsName: assetSumsName(),
-    stagingDir: STAGING_DIR,
-    outputDir: OUTPUT_DIR,
-    pagesZipTemplate: PAGES_ZIP_TEMPLATE,
-    contractSchemaVersion: RELEASE_PLAN_SCHEMA_VERSION,
-  }
-}
 
 // ---------------------------------------------------------------------------
 // ZIP entry path policy
@@ -136,17 +41,13 @@ const FORBIDDEN_SEGMENTS = new Set(['node_modules', 'src'])
  */
 const FORBIDDEN_ENTRY_CHARS = /[\x00-\x1f\x7f\\]/
 
-/**
- * Windows drive prefix (absolute `C:/`, `C:\` and drive-relative `C:`) --
- * M29 WP-E: rejected by ALL three validation layers.
- */
+/** Windows drive prefixes include drive-relative paths such as `C:foo`. */
 const WINDOWS_DRIVE = /^[A-Za-z]:/
 
 /**
  * Validate a single ZIP entry path from the dist/ directory.
  *
- * Rules (M29 WP-E: identical verdict across JS validateZipEntry,
- * scripts/_zip_helper.py and verify_release_zip.py):
+ * Keep the path rules aligned with both Python ZIP helpers.
  * - Non-empty.
  * - POSIX relative (no leading `/`, no `..` components, no `.` component).
  * - No Windows drive prefix (absolute or drive-relative).

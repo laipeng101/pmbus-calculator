@@ -24,9 +24,6 @@ afterEach(async () => {
 const CLEAN_TAILWIND_CSS = [
   ':root{--color-canvas:#f8fafc;--color-panel:#ffffff}',
   '.flex{display:flex}',
-  '.uppercase{text-transform:uppercase}',
-  '.min-w-0{min-width:calc(var(--spacing)*0)}',
-  '.italic{font-style:italic}',
 ].join('')
 
 async function makeEnvironment(
@@ -50,7 +47,7 @@ async function makeEnvironment(
   await fs.mkdir(path.join(productionSrcDir, 'components'), { recursive: true })
   await fs.writeFile(
     path.join(productionSrcDir, 'components', 'Example.tsx'),
-    "export const example = () => <div className='flex italic' />\n",
+    "export const example = () => <div className='flex' />\n",
     'utf8',
   )
 
@@ -76,9 +73,13 @@ describe('parseCanaryUtility', () => {
 })
 
 describe('checkTailwindScope', () => {
-  it('passes for a clean dist that keeps the required product utilities', async () => {
+  it('passes for a clean dist even if excluded colocated tests mention the canary', async () => {
     const root = await makeTempRoot()
     const env = await makeEnvironment(root, CLEAN_TAILWIND_CSS)
+    await fs.writeFile(
+      path.join(env.productionSrcDir, 'components', 'Example.test.tsx'),
+      `const testCanary = '${TAILWIND_SOURCE_CANARY_UTILITY}'\n`,
+    )
     const result = await checkTailwindScope(env)
     expect(result.ok).toBe(true)
     expect(result.errors).toEqual([])
@@ -112,10 +113,10 @@ describe('checkTailwindScope', () => {
 
   it('fails when a required product utility is missing from the compiled CSS', async () => {
     const root = await makeTempRoot()
-    const stripped = CLEAN_TAILWIND_CSS.replace('.italic{font-style:italic}', '')
+    const stripped = CLEAN_TAILWIND_CSS.replace('.flex{display:flex}', '')
     const result = await checkTailwindScope(await makeEnvironment(root, stripped))
     expect(result.ok).toBe(false)
-    expect(result.errors.join('\n')).toMatch(/required product utility "\.italic\{…\}" missing/)
+    expect(result.errors.join('\n')).toMatch(/required product utility "\.flex\{…\}" missing/)
   })
 
   it('fails when the dist directory does not exist', async () => {

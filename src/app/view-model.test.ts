@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest'
 import { toCalculatorViewModel } from './view-model'
 import { PMBusMath } from '../legacy/pmbus-math'
+import { appReducer } from './reducer'
 import type { AppState } from './state'
 
 const BASE: AppState = {
@@ -153,38 +154,6 @@ describe('toCalculatorViewModel', () => {
           `0x${byte.toString(16)}`,
         ).toBe(true)
         expect(vm.deltaText, `0x${byte.toString(16)}`).toBeUndefined()
-      }
-    })
-
-    test('0x18 只表述为计算器示例；「默认/回退」只允许出现在否定免责语境（v2.5.7 反词）', () => {
-      // Surfaces must never CALL 0x18 a default or claim an auto-fallback.
-      // Negated disclaimers ("不是 PMBus 规范默认值") are the only allowed use
-      // of the word 默认 — every occurrence must sit in a negation context.
-      for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
-        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
-        const surfaces = [
-          ...(vm.voutModeInfo?.explanations ?? []).map((e) => `${e.title}\n${e.detail}`),
-          ...vm.warnings.map((w) => w.text),
-          vm.l16Payload?.blocked?.title ?? '',
-          ...(vm.l16Payload?.blocked?.detailLines ?? []),
-        ]
-        for (const text of surfaces) {
-          // The old standalone action phrasing must be gone entirely.
-          expect(text, `0x${byte.toString(16)}`).not.toContain('应用默认 VOUT_MODE')
-          expect(text, `0x${byte.toString(16)}`).not.toContain('回退')
-          expect(text, `0x${byte.toString(16)}`).not.toContain('fallback 0x18')
-          for (const m of text.matchAll(/默认/g)) {
-            const before = text.slice(Math.max(0, (m.index ?? 0) - 14), m.index ?? 0)
-            expect(before, `0x${byte.toString(16)}: 默认 without negation in ${text}`).toMatch(
-              /不是|并非|不代表|非 $|非$/,
-            )
-          }
-        }
-        // The recovery entry must name the byte as the calculator's example
-        // value with its absolute/N=-8 semantics and an explicit disclaimer.
-        const joined = surfaces.join('\n')
-        expect(joined).toContain('计算器 LINEAR 示例 0x18')
-        expect(joined).toContain('不是 PMBus 规范默认值')
       }
     })
 
@@ -1433,14 +1402,13 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     // Copy override hands out the verified exact text with the note.
     expect(vm.physicalValueCopyOverride?.text).toBe('-1.00000000000000001')
     expect(vm.physicalValueCopyOverride?.kind).toBe('exact')
-    expect(vm.physicalValueCopyOverride?.note).toContain('-1.00000000000000001')
+    expect(vm.physicalValueCopyOverride?.note).toContain('复制精确值')
     // The InfoPanel warning names the approximation and the re-entry verdict.
     const warning = vm.warnings.find((w) => w.id === 'direct-precision-fold')
     expect(warning).toBeDefined()
     expect(warning!.level).toBe('warning')
-    expect(warning!.text).toContain('-1.00000000000000001')
-    expect(warning!.text).toContain('Y=0')
-    expect(warning!.text).toContain('不同的请求')
+    expect(warning!.text).toContain('浮点精度有限')
+    expect(warning!.text).toContain('重新输入显示值会得到 Y = 0')
     // The calculation steps carry the exact value lines.
     const steps = vm.steps
     expect(steps.find((s) => s.id === 'direct-exact-value')?.value).toBe(
@@ -1462,8 +1430,8 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     expect(vm.physicalValueCopyOverride?.text).toBe('-1.000000000001')
     const warning = vm.warnings.find((w) => w.id === 'direct-precision-fold')
     expect(warning).toBeDefined()
-    expect(warning!.text).toContain('Y=0')
-    expect(warning!.text).toContain('不同的请求')
+    expect(warning!.text).toContain('显示位数有限')
+    expect(warning!.text).toContain('重新输入显示值会得到 Y = 0')
     // The exact value rows appear in the steps for the newly-covered family.
     expect(vm.steps.find((s) => s.id === 'direct-exact-value')?.value).toBe(
       '-1000000000001/1000000000000',
@@ -1483,10 +1451,10 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     // Copy note must not present the verified approximation as the exact value.
     expect(vm.physicalValueCopyOverride?.kind).toBe('approximate')
     expect(vm.physicalValueCopyOverride?.note).toContain('循环小数')
-    expect(vm.physicalValueCopyOverride?.note).toContain('-1/3')
+    expect(vm.physicalValueCopyOverride?.note).toContain('近似值')
     const warning = vm.warnings.find((w) => w.id === 'direct-precision-fold')
-    expect(warning).toBeDefined()
-    expect(warning!.text).toContain('循环小数')
+    expect(warning?.text).toContain('重新输入显示值会得到 Y = 10000')
+    expect(vm.steps.find((s) => s.id === 'direct-exact-value')?.value).toBe('-1/3')
   })
 
   test('quiet (1,1,12) states stay noise-free: Y=1 display "-0.999999999999" re-enters safely', () => {
@@ -1515,7 +1483,17 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     )
     expect(vm.deltaText).toBe('+1e-17（约 1e-15%）')
     expect(vm.deltaKind).toBe('warn')
-    expect(vm.deltaNote).toContain('精度折叠')
+    expect(vm.deltaNote).toContain('量化误差按精确值计算')
+  })
+
+  test('preserves the saturation error when the endpoint displays an approximation', () => {
+    const state = appReducer(directWith(0, 1, 1, 17), { type: 'value/set', value: '-2' })
+    const vm = toCalculatorViewModel(state)
+
+    expect(vm.rawHexDigits).toBe('8000')
+    expect(vm.directFidelity?.displayReencodedY).toBe(0)
+    expect(vm.deltaKind).toBe('error')
+    expect(vm.deltaText).toContain('已编码到边界值')
   })
 
   test('safe ordinary vector keeps ok kind and no fold note', () => {

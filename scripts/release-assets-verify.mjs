@@ -1,78 +1,29 @@
 #!/usr/bin/env node
 /**
- * Release asset readiness verifier (v2.5.8; JSON data interface since v2.5.9;
- * exported core since v2.5.12).
+ * Resolve the two assets from a GitHub REST release object. Both modes require
+ * a matching stable tag and uploaded, nonempty assets with canonical URLs.
+ * Published mode requires an immutable release. Draft mode allows GitHub's
+ * untagged-<hex> URLs while the release is still private.
  *
- * Single source for the "are the release assets actually ready?" contract.
- * Consumed by the real Pages workflow BEFORE any download/deploy action and
- * by the release operator against the DRAFT release BEFORE publishing — the
- * v2.5.7 race (publish → upload) must be impossible to reintroduce, and an
- * upload-in-progress asset must never be mistaken for a ready one.
+ * The CLI writes one JSON object to stdout and diagnostics to stderr. Pages
+ * reads the JSON as data. The downloaded-asset verifier reuses this resolver
+ * before checking file bytes and ZIP contents.
  *
- * Input: a GitHub REST release object (JSON file) with the shape
- *   { tag_name, draft, prerelease, immutable, assets: [{ name, state, size, browser_download_url }] }
- * Produced by `GET /releases/tags/<tag>` (published) or
- * `gh api repos/OWNER/REPO/releases --jq '.[] | select(.tag_name=="<tag>")'`
- * (drafts are not reachable via /releases/tags).
- *
- * Modes:
- *   --mode published (default): draft must be false and the release must
- *     report `immutable: true` — the Pages entry gate (docs/RELEASING.md:
- *     Pages 只部署不可变 GitHub Release 资产). A release that is not
- *     immutable (false, absent, null, or any non-true value) is rejected so
- *     tag assets can never be swapped after a verified deployment. Manual
- *     workflow_dispatch runs the workflow AND these verifier scripts from
- *     the dispatched tag's tree, so this gate protects releases whose tree
- *     carries it (v2.6.2+); older mutable releases must never be dispatched
- *     for deployment (see docs/RELEASING.md).
- *   --mode draft: draft must be true — the operator's pre-publish check.
- *     A draft is never immutable on GitHub, so this mode does NOT enforce
- *     the immutable field.
- * Both modes require prerelease === false and an exact tag match, because a
- * prerelease or retagged release must never reach the stable Pages flow.
- *
- * Output contract (v2.5.9, data-not-code): stdout carries ONE JSON object
- *   {"tag":"vX.Y.Z","mode":"published","zip":{"name","size","url"},"sums":{...}}
- * and ALL diagnostics go to stderr. The previous `key=value` stdout was
- * consumed by `source` in the Pages workflow, which executed command
- * substitutions embedded in metadata strings (v2.5.9 boundary defect); JSON
- * consumers extract values with static queries and never re-interpret
- * metadata text as code. The Pages workflow consumes this JSON through
- * `scripts/download-release-assets.mjs`, which re-validates every URL via
- * `scripts/release-url-contract.mjs`.
- *
- * URL contract: each `browser_download_url` must be the canonical public
- * GitHub download URL for the expected repository (`--repo owner/repo`),
- * tag and asset name — validated with the URL parser (scheme, host, path,
- * no userinfo/query/fragment/control characters), not a string prefix.
- * `--mode draft` additionally accepts GitHub's draft placeholder tag
- * segment (`releases/download/untagged-<hex>/<name>` — a draft release's
- * asset URLs keep that form until publish); `--mode published` (the Pages
- * gate) requires the exact tag path.
- *
- * Exit codes (documented contract; tests pin them):
- *   0  ready — JSON resolution on stdout
- *   2  usage error, unreadable/invalid JSON, or malformed release shape
- *   3  release metadata contract violation (tag mismatch, draft/prerelease,
- *      non-immutable published release)
- *   4  asset list empty
- *   5  duplicate asset name among the expected assets
- *   6  an expected asset is missing
- *   7  an expected asset exists but is not in the 'uploaded' state
- *   8  an expected asset has a non-positive/unknown size or an invalid URL
- *
- * Since v2.5.12 the contract lives in the exported `resolveReleaseAssets`
- * (throwing `ReleaseVerifyError` with the codes above) so the DOWNLOADED
- * asset gate `scripts/verify-downloaded-assets.mjs` can reuse the exact
- * same metadata resolution in-process. The CLI wrapper keeps its behavior
- * byte-for-byte. Checksum, local-size and zip-content contracts live in the
- * downloaded-asset gate; offline tests pin both (tests/release-assets-verify.test.ts,
- * tests/verify-downloaded-assets.test.ts, tests/zip-helper-security.test.ts).
+ * Exit codes:
+ *   0  assets ready
+ *   2  usage, invalid JSON or malformed release data
+ *   3  wrong tag or release state
+ *   4  empty asset list
+ *   5  duplicate asset
+ *   6  missing asset
+ *   7  asset not uploaded
+ *   8  invalid asset size or URL
  */
 
 import fs from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import process from 'node:process'
+import { isStableReleaseTag, releaseAssetNames } from './release-artifact-contract.mjs'
 import {
   assertCanonicalAssetDownloadUrl,
   assertSafeAssetName,
@@ -114,11 +65,12 @@ export function resolveReleaseAssets(release, options) {
   const tag = options.tag
   const repo = options.repo
   const mode = options.mode ?? 'published'
-  const sumsName = options.sumsName ?? 'SHA256SUMS.txt'
-  const zipName = options.zipName ?? `pmbus-calculator-${tag}-web.zip`
-  if (!tag || !/^v[1-9][0-9]*\.[0-9]+\.[0-9]+$/.test(tag)) {
+  if (!isStableReleaseTag(tag)) {
     throw new ReleaseVerifyError(2, '--tag must be a stable SemVer tag like v1.2.3')
   }
+  const names = releaseAssetNames(tag)
+  const sumsName = options.sumsName ?? names.sumsName
+  const zipName = options.zipName ?? names.zipName
   if (!repo) throw new ReleaseVerifyError(2, '--repo is required')
   try {
     assertValidRepoSlug(repo)
@@ -248,14 +200,13 @@ export function resolveReleaseAssets(release, options) {
  * @param {string[]} argv
  */
 function parseArgs(argv) {
-  /** @type {{ positional: string[], tag: string|null, repo: string|null, mode: 'published'|'draft', zipName: string|null, sumsName: string, help: boolean }} */
+  /** @type {{ positional: string[], tag: string|null, repo: string|null, mode: 'published'|'draft', zipName: string|null, sumsName?: string, help: boolean }} */
   const args = {
     positional: [],
     tag: null,
     repo: null,
     mode: 'published',
     zipName: null,
-    sumsName: 'SHA256SUMS.txt',
     help: false,
   }
   for (let i = 0; i < argv.length; i++) {
@@ -286,7 +237,7 @@ const USAGE =
   '[--mode published|draft] [--zip-name <name>] [--sums-name <name>]'
 
 /**
- * CLI wrapper: same behavior as the pre-2.5.12 top-level script.
+ * CLI entry for resolving GitHub Release metadata.
  * @param {string[]} argv
  */
 export function runCli(argv) {

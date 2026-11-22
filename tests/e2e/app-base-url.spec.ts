@@ -47,16 +47,19 @@ test.describe('应用 URL 与受测构建合同', () => {
     expect(badResponses).toEqual([])
   })
 
-  test('?debug 显式入口保留部署前缀并可展开调试面板', async ({ page }) => {
+  test('生产构建可通过 ?debug 查看当前的 Raw Word', async ({ page }) => {
     const basePath = appBasePath()
+    const toggle = page.getByRole('button', { name: '展开调试面板' })
+
+    await page.goto(appUrl())
+    await expect(toggle).toHaveCount(0)
 
     await page.goto(appUrl('/', 'debug'))
     expect(new URL(page.url()).pathname).toBe(`${basePath}/`)
     expect(new URL(page.url()).search).toBe('?debug')
 
-    const toggle = page.getByLabel('展开调试面板')
-    await expect(toggle).toBeVisible()
+    await page.getByRole('textbox', { name: 'Raw Word（16 位原始字）' }).fill('3442')
     await toggle.click()
-    await expect(page.getByText(/质量门禁/)).toBeVisible()
+    await expect(page.getByLabel('调试信息').getByText('0x3442', { exact: true })).toBeVisible()
   })
 })

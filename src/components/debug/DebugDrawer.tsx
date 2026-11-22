@@ -1,5 +1,5 @@
-import type { AppState } from '../../app/state'
-import type { AppMode } from '../../app/state'
+import type { AppMode, AppState } from '../../app/state'
+import { formatByteHex, formatRawHex } from '../../app/view-model/format'
 import ControlTooltip from '../help/ControlTooltip'
 import { ChevronDownIcon, ChevronUpIcon } from '../icons/Icon'
 
@@ -45,41 +45,27 @@ export default function DebugDrawer({ open, state, onToggle }: Props) {
       </ControlTooltip>
 
       {open && (
-        <div className="mt-2 space-y-3 rounded-xl p-4 text-sm panel-surface-muted">
-          {/* Quality gates — the UI must not claim CI test status at runtime */}
-          <div className="flex items-center gap-2">
-            <span className="debug-info-dot inline-block h-2.5 w-2.5 rounded-full" />
-            <span className="color-text-secondary">
-              质量门禁：npm run test:run · npm run test:e2e · npm run test:coverage
-            </span>
+        <dl
+          aria-label="调试信息"
+          className="mt-2 space-y-1.5 rounded-xl p-4 font-mono text-xs panel-surface-muted color-text-secondary"
+        >
+          <div className="flex justify-between">
+            <dt>模式</dt>
+            <dd className="color-text-primary">{MODE_LABELS[state.mode]}</dd>
           </div>
-
-          {/* Diagnostics */}
-          <div className="space-y-1.5 rounded-lg p-3 font-mono text-xs surface color-text-secondary">
-            <div className="flex justify-between">
-              <span>模式</span>
-              <span className="color-text-primary">{MODE_LABELS[state.mode]}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Raw</span>
-              <span className="color-text-primary">
-                0x{state.raw.toString(16).toUpperCase().padStart(4, '0')}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>命令</span>
-              <span className="color-text-primary">{state.commandKey ?? '—'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>主题</span>
-              <span className="color-text-primary">{state.ui.theme}</span>
-            </div>
+          <div className="flex justify-between">
+            <dt>Raw Word</dt>
+            <dd className="color-text-primary">{formatRawHex(state.raw)}</dd>
           </div>
-
-          <p className="text-xs italic color-text-muted">
-            边界测试由 Vitest golden cases 覆盖，无需 UI 入口
-          </p>
-        </div>
+          <div className="flex justify-between">
+            <dt>VOUT_MODE</dt>
+            <dd className="color-text-primary">{formatByteHex(state.voutMode.byte)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt>主题</dt>
+            <dd className="color-text-primary">{state.ui.theme}</dd>
+          </div>
+        </dl>
       )}
     </div>
   )

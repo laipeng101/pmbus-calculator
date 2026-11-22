@@ -455,7 +455,9 @@ describe('release-assets-verify: usage and shape errors', () => {
     expect(run(['--tag', TAG])).toBe(2)
     expect(run(['--tag', TAG, '--repo', 'owner'])).toBe(2)
     expect(run(['--tag', TAG, '--repo', 'owner/../repo'])).toBe(2)
-    expect(run(['--tag', 'not-semver', '--repo', REPO])).toBe(2)
+    for (const invalidTag of ['not-semver', 'v0.1.0', 'v1.02.3', 'v1.2.03']) {
+      expect(run(['--tag', invalidTag, '--repo', REPO])).toBe(2)
+    }
   })
 
   it('rejects unsafe --zip-name/--sums-name values (path or shell fragments)', () => {

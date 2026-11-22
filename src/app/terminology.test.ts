@@ -142,26 +142,34 @@ describe('v2.6.0 control help registry (single source of truth)', () => {
     expect(controlHelpText('theme-toggle', { themeLabel: '暗色' })).toContain('暗色')
   })
 
-  it('keeps the calculator-example disclaimer in the apply-example help', () => {
-    const text = controlHelpText('vout-apply-example', undefined)
-    expect(text).toContain('0x18')
-    expect(text).toContain('不是 PMBus 规范默认值')
-  })
-
   it('surfaces the physical-value copy contract including the disabled reason', () => {
-    expect(controlHelpText('copy-physical', { available: true, usesOverride: false })).toContain(
-      '安全重编码',
+    expect(controlHelpText('copy-physical', { available: true, usesOverride: false })).toBe(
+      '复制当前显示的物理值。',
     )
-    expect(controlHelpText('copy-physical', { available: true, usesOverride: true })).toContain(
-      '经验证的精确回录文本',
-    )
-    const unavailable = controlHelpText('copy-physical', {
-      available: false,
-      usesOverride: false,
-      unavailableReason: '相对派生范围错误',
+    const exact = controlHelpText('copy-physical', {
+      available: true,
+      usesOverride: true,
+      overrideKind: 'exact',
     })
-    expect(unavailable).toContain('不可用')
-    expect(unavailable).toContain('相对派生范围错误')
+    const approximate = controlHelpText('copy-physical', {
+      available: true,
+      usesOverride: true,
+      overrideKind: 'approximate',
+    })
+    expect(exact).toContain('精确值')
+    expect(approximate).toContain('循环小数')
+    expect(approximate).toContain('近似值')
+    expect(exact).toContain('原来的 Raw Word')
+    expect(approximate).toContain('原来的 Raw Word')
+
+    const unavailableReason = '尚未提供 VOUT_COMMAND 标称电压，无法复制实际电压。'
+    expect(
+      controlHelpText('copy-physical', {
+        available: false,
+        usesOverride: false,
+        unavailableReason,
+      }),
+    ).toBe(unavailableReason)
   })
 
   it('states preference toggle effects in both states', () => {

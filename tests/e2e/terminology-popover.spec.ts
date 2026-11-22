@@ -299,9 +299,8 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
   }) => {
     await settle(page)
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    const uTrigger = page
-      .locator('p', { hasText: '解释语义' })
-      .getByTestId('term-trigger-ulinear16')
+    const workspace = page.getByRole('tabpanel')
+    const uTrigger = workspace.getByTestId('term-trigger-ulinear16')
     await expect(uTrigger).toBeVisible()
     await uTrigger.click()
     const uPopover = page.locator('[data-testid="term-popover-ulinear16"]')
@@ -311,9 +310,7 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     await expect(uPopover).not.toContainText('非 PMBus 规范命名')
     await page.keyboard.press('Escape')
 
-    const sTrigger = page
-      .locator('p', { hasText: '解释语义' })
-      .getByTestId('term-trigger-slinear16')
+    const sTrigger = workspace.getByTestId('term-trigger-slinear16')
     await expect(sTrigger).toBeVisible()
     await sTrigger.click()
     const sPopover = page.locator('[data-testid="term-popover-slinear16"]')

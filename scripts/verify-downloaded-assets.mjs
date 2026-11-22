@@ -93,7 +93,7 @@ const USAGE =
  * @param {string[]} argv
  */
 function parseArgs(argv) {
-  /** @type {{ metadata: string|null, dir: string|null, tag: string|null, repo: string|null, mode: 'published'|'draft', zipName: string|null, sumsName: string, help: boolean }} */
+  /** @type {{ metadata: string|null, dir: string|null, tag: string|null, repo: string|null, mode: 'published'|'draft', zipName: string|null, sumsName?: string, help: boolean }} */
   const args = {
     metadata: null,
     dir: null,
@@ -101,7 +101,6 @@ function parseArgs(argv) {
     repo: null,
     mode: 'published',
     zipName: null,
-    sumsName: 'SHA256SUMS.txt',
     help: false,
   }
   for (let i = 0; i < argv.length; i++) {

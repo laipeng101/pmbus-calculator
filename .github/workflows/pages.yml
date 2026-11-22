@@ -26,8 +26,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      # Official deployment inputs must never turn a fork build into an
-      # official Pages payload. The overlay also checks this controlled env.
+      # Forks may build the app, but only the official repository may deploy it.
       - name: Verify official Pages repository
         run: |
           set -euo pipefail
@@ -36,9 +35,7 @@ jobs:
             exit 1
           fi
 
-      # Tag resolution and SemVer validation are pure shell: they need no
-      # repository source and must run BEFORE checkout so the checkout ref
-      # itself is bound to the exact release tag.
+      # Bind the checkout to the release before reading code from the tag.
       - name: Resolve release tag
         id: resolve
         env:
@@ -71,11 +68,10 @@ jobs:
           RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          if ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v[1-9][0-9]*\.[0-9]+\.[0-9]+$'; then
-            echo "::error::release_tag must match ^v[1-9][0-9]*\.[0-9]+\.[0-9]+$ (got: $RELEASE_TAG)"
+          if [[ ! "$RELEASE_TAG" =~ ^v[1-9][0-9]*\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo '::error::release_tag must be a stable version tag like v1.2.3.'
             exit 1
           fi
-          echo "VERSION=$RELEASE_TAG" >> "$GITHUB_ENV"
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -83,10 +79,6 @@ jobs:
           ref: ${{ steps.resolve.outputs.tag }}
           persist-credentials: false
 
-      # The verifier scripts (release-assets-verify / download /
-      # verify-downloaded-assets) run from this working tree, so the tree
-      # itself must be the deployed tag: an annotated tag object, a 40-hex
-      # peeled commit, and a detached HEAD exactly at that commit.
       - name: Verify checkout matches the resolved tag
         env:
           RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
@@ -123,27 +115,14 @@ jobs:
           RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          # Metadata fetch: connect + total timeout; --retry covers transient
-          # transport failures only (with -f, permanent 4xx contract errors
-          # fail fast and are never retried).
           curl -fsSL --connect-timeout 10 --max-time 60 --retry 3 \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" > release-metadata.json
 
-          # The metadata must describe exactly the resolved tag, not merely
-          # "a release found for this tag path".
           jq -e --arg tag "${RELEASE_TAG}" '.tag_name == $tag' release-metadata.json >/dev/null
 
-          # Asset readiness gate (v2.5.8, scripts/release-assets-verify.mjs):
-          # draft/prerelease/tag contract, asset presence, uniqueness,
-          # uploaded state, positive size and canonical URL — each failure
-          # class reports its own error and exit code (2-8). This must fail
-          # BEFORE any download or deploy action; the v2.5.7 publish-before-upload
-          # race surfaces here as a clear contract error, not an exit 4.
-          # Since v2.5.9 stdout is ONE JSON object (data, not shell program):
-          # the previous key=value env file was consumed with `source`, which
-          # executed command substitutions embedded in metadata strings.
+          # Verify asset readiness before download. Treat metadata as JSON data.
           node scripts/release-assets-verify.mjs release-metadata.json \
             --tag "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --mode published \
             > release-assets.json
@@ -159,28 +138,11 @@ jobs:
           ' >/dev/null || { echo "::error::Git tag validation failed for ${RELEASE_TAG}"; exit 1; }
 
       - name: Download release assets
-        env:
-          RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          # URLs and sizes were resolved and contract-validated by
-          # release-assets-verify.mjs; the JSON is consumed as DATA by the
-          # Node downloader (no source/eval), every URL is re-validated
-          # against the canonical github.com/<repo>/releases/download contract
-          # and downloaded bytes are checked against the verified metadata
-          # before anything is written (mismatch exits 9). Metadata text is
-          # never interpreted as code, so the v2.5.9 boundary defect class
-          # (command substitution inside metadata strings) cannot execute.
           node scripts/download-release-assets.mjs release-assets.json \
             --repo "${GITHUB_REPOSITORY}" --out-dir .
 
-      # v2.5.12: the single downloaded-asset byte gate, shared with the
-      # operator's draft pre-publish flow. Re-checks the metadata contract
-      # in-process (release-assets-verify.mjs, strict published URL mode),
-      # local presence and size, the SHA256SUMS.txt contract, the zip
-      # checksum (node:crypto) and the shared python zip-safety verifier —
-      # every failure class with its own exit code (2-8, 10-14), always
-      # BEFORE extraction or deploy.
       - name: Verify downloaded release assets
         env:
           RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
@@ -190,21 +152,12 @@ jobs:
             --tag "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --mode published \
             > downloaded-assets.json
 
-      # Release-to-source provenance binding: the checked-out tree IS the
-      # resolved annotated tag (verified above), so a fresh deterministic
-      # build + asset generation from it must reproduce the downloaded
-      # release zip byte-for-byte. A zip that is well-formed, safely
-      # packaged and checksum-consistent but was NOT produced from the
-      # tagged source fails here — before extraction or deployment.
+      # A valid ZIP and checksum do not prove that the ZIP came from this tag.
       - name: Rebuild release zip from the tagged source
         env:
           RELEASE_TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          # package.json version is the single release-naming source
-          # (check:release-contract); assert it matches the deployed tag so
-          # the rebuilt asset name cannot silently diverge from the
-          # downloaded one.
           pkg_version="$(jq -r '.version' package.json)"
           if [ "v${pkg_version}" != "${RELEASE_TAG}" ]; then
             echo "::error::package.json version (v${pkg_version}) does not match the deployed tag (${RELEASE_TAG})"
@@ -214,43 +167,31 @@ jobs:
           npm run release:prepare-assets -- --force
 
       - name: Compare rebuilt zip with the release zip
-        env:
-          VERSION: ${{ steps.resolve.outputs.tag }}
         run: |
+          set -euo pipefail
+          zip_name="$(jq -er '.zip.name' downloaded-assets.json)"
           node scripts/verify-release-rebuild.mjs \
-            --expected "pmbus-calculator-${VERSION}-web.zip" \
-            --actual "release-output/pmbus-calculator-${VERSION}-web.zip" \
+            --expected "$zip_name" \
+            --actual "release-output/$zip_name" \
             > rebuilt-release-zip.json
 
-      # All preparable deploy preconditions live BEFORE actions/deploy-pages:
-      # if any of them fails, the previous published site stays untouched.
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      # Local release smoke proves the clean Release baseline: the rebuilt
-      # dist is byte-bound to the downloaded release zip above and contains
-      # neither analytics nor Pages-only UI. The separate overlay smoke below
-      # checks the final Pages payload before anything is published.
+      # Smoke-test the rebuilt Release before preparing the Pages-specific site.
       - name: Run local release smoke
         id: release-smoke
         run: npm run test:e2e:release
 
       - name: Extract release assets to _site
-        env:
-          VERSION: ${{ steps.resolve.outputs.tag }}
         run: |
           set -euo pipefail
+          zip_name="$(jq -er '.zip.name' downloaded-assets.json)"
           rm -rf _site
           mkdir -p _site
-          unzip -q "pmbus-calculator-${VERSION}-web.zip" -d _site
+          unzip -q "$zip_name" -d _site
 
-      # Final _site = verified byte-identical Release baseline + deterministic
-      # verified Pages-only overlay. Only this staging tree may be modified;
-      # both downloaded and rebuilt Release ZIPs remain immutable inputs.
-      # The workflow references and passes the github-pages Environment Secret
-      # only in these two step environments, never to Vite/build/release
-      # packaging or command-line arguments. Environment access is job-scoped.
-      # Missing/invalid inputs fail before configure, upload or deployment.
+      # Pass the site token only to the steps that change and verify _site.
       - name: Apply Pages-only overlay
         env:
           CLOUDFLARE_WEB_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_WEB_ANALYTICS_TOKEN }}
@@ -277,16 +218,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
 
-      # Full-manifest entity gate on the LIVE site: after deploy, enumerate
-      # EVERY file from FINAL overlayed _site, including the changed index.html
-      # and same-origin pages-overlay.css, and GET each real relative URL
-      # from the deployment origin. Each entity must land same-origin with
-      # HTTP 200, identity encoding and byte-equal length+SHA-256; a missing
-      # file, 200 HTML fallback, cross-origin redirect or stale edge inside
-      # the manifest fails here even if the first screen renders. No file
-      # count / asset name / root path is hard-coded — the manifest is the
-      # _site tree itself. The unique-run cache-busting token is the GitHub
-      # run id, never stored in the repo.
+      # Compare every deployed file against the final upload, including Pages-only changes.
       - name: Verify deployed Pages entities
         env:
           DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
@@ -302,10 +234,7 @@ jobs:
           DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
         run: npm run test:e2e:deployment
 
-      # Third-party service acceptance is a separate post-deploy failure domain.
-      # Reuse this GitHub-hosted runner and the exact tag checkout. A failure
-      # means Pages deployed but rollout acceptance failed; never roll back or
-      # mutate an immutable Release to conceal it. The CLI owns a <=45s budget.
+      # Failure here means Pages deployed and third-party acceptance failed.
       - name: Real Cloudflare Analytics acceptance
         id: live-analytics
         env:

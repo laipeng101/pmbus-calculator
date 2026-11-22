@@ -76,9 +76,9 @@ function buildL16BlockVM(
     case 'reserved-or-invalid':
       return {
         status: semantics.status,
-        title: `VOUT_MODE ${byteHex} 无有效解释合同`,
+        title: `VOUT_MODE ${byteHex} 的参数无效`,
         detailLines: [
-          `按 Part II §8.3 Table 2，${formatName} 模式的参数位必须为 00000b；当前字节为保留/非法配置（原因：${semantics.reason}），无任何输出电压解释合同。本页不生成 word。`,
+          `${formatName} 格式的参数位必须为 00000b（PMBus Part II §8.3 表 2）。请检查器件的 VOUT_MODE 字节。`,
         ],
       }
   }
@@ -180,7 +180,7 @@ export function resolveL16NonlinearWarnings(state: AppState): WarningVM[] {
     {
       id: 'l16-vout-mode-nonlinear',
       level: 'warning',
-      text: `当前共享 VOUT_MODE ${formatByteHex(state.voutMode.byte)} 为 ${analysis.formatName}；输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），LINEAR16 页不隐式替换字节。显式应用计算器 LINEAR 示例 0x18（absolute、N=-8）后才恢复计算。0x18 是本计算器的示例值，不是 PMBus 规范默认值，也不代表真实器件一定接受 VOUT_MODE 写入。`,
+      text: `VOUT_MODE ${formatByteHex(state.voutMode.byte)} 使用 ${analysis.formatName} 格式，无法按 LINEAR16 换算。`,
     },
   ]
   // The offset-command prohibition is a spec-level error (§13.3/§13.4:

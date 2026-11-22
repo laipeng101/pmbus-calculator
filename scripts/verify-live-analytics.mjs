@@ -16,7 +16,7 @@ import {
   isAllowedPagesRequest,
   parseCsp,
 } from './pages-network-policy.mjs'
-import { isPlainSemver, stableTag } from './release-artifact-contract.mjs'
+import { isStableReleaseVersion } from './release-artifact-contract.mjs'
 
 export const DEPLOYMENT_URL = 'https://laipeng101.github.io/pmbus-calculator/'
 export const TOTAL_BUDGET_MS = 45_000
@@ -59,7 +59,7 @@ export function parseInputs(env, version, argv = []) {
   if (
     argv.length !== 0 ||
     env.DEPLOYMENT_URL !== DEPLOYMENT_URL ||
-    !/^v[1-9][0-9]*\.[0-9]+\.[0-9]+$/.test(tag) ||
+    !isStableReleaseVersion(version) ||
     (env.EXPECTED_RELEASE_TAG !== undefined && env.EXPECTED_RELEASE_TAG !== tag)
   ) {
     throw new AnalyticsError('CONFIGURATION_ERROR')
@@ -177,7 +177,7 @@ export function readLiveDom({ beaconUrl, repositoryUrl, repositoryName }) {
 
 /** @param {ReturnType<typeof readLiveDom>} facts @param {string} expectedTag */
 export function validateLiveDom(facts, expectedTag) {
-  if (!isPlainSemver(facts.version) || stableTag(facts.version) !== expectedTag) {
+  if (!isStableReleaseVersion(facts.version) || `v${facts.version}` !== expectedTag) {
     throw new AnalyticsError('VERSION_MISMATCH')
   }
   let validCsp = false

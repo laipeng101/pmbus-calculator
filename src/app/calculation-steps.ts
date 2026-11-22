@@ -112,8 +112,6 @@ function buildL11Steps(state: AppState): CalculationStepVM[] {
  */
 function buildL16Steps(state: AppState): CalculationStepVM[] {
   const facts = deriveL16Semantics(state)
-  const a = facts.analysis
-  const hex = `0x${a.byte.toString(16).toUpperCase().padStart(2, '0')}`
 
   // Fail closed on a non-LINEAR shared byte (v2.5.2, Part II §8.4): the page
   // shows the actual byte and refuses to derive N / results / quantization
@@ -122,7 +120,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
     return [
       warningStep(
         'l16-nonlinear',
-        `共享 VOUT_MODE ${hex} 为 ${a.formatName}；输出电压相关命令的数据格式由当前 VOUT_MODE 决定（Part II §8.4），本页不隐式替换字节。显式应用计算器 LINEAR 示例 0x18（absolute、N=-8）后才恢复计算。`,
+        `输出电压命令按 VOUT_MODE 指定的格式解释。当前为 ${facts.analysis.formatName}（PMBus Part II §8.4）。`,
       ),
     ]
   }
@@ -133,7 +131,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
       return [
         warningStep(
           'l16-relative-nominal-missing',
-          '缺少 VOUT_COMMAND 标称参考值；已解出比值 R，但最终电压 X = V_NOM × R 不显示伪值。',
+          '已解出比值 R。输入 VOUT_COMMAND 标称电压 V_NOM 后，可计算电压 X = V_NOM × R。',
         ),
       ]
     }
@@ -145,7 +143,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
       return [
         warningStep(
           'l16-relative-range',
-          `V_NOM = ${formatPlainNumber(nominal)} 与比值 R 的乘积${note}；结果卡已显示 —，不伪造最终电压。`,
+          `V_NOM = ${formatPlainNumber(nominal)} 与比值 R 的乘积${note}。`,
         ),
       ]
     }

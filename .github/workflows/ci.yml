@@ -1,22 +1,5 @@
 name: CI
 
-# main is protected (ruleset "protect-main": PR required, required `check`
-# from GitHub Actions, strict up-to-date, no bypass, no force push, no
-# deletion). PR CI tests the merge ref by default, so the tested tree equals
-# the post-merge main tree and a second post-merge CI run would re-verify the
-# identical tree — the push trigger is therefore removed. workflow_dispatch
-# stays as the emergency/manual full-verification entry.
-#
-# Parallel verification layout:
-#   quality        — format, typecheck, lint, coverage, build, base contracts
-#   e2e            — Playwright install, visual regression, user flows, release + Pages-overlay smoke
-#   compatibility  — Node 22 typecheck + unit tests (Node runtime floor)
-#   browser-compat — Firefox + WebKit core smoke (browser compatibility floor;
-#                    a deliberately small cross-engine suite, not the full
-#                    semantic suite)
-#   check          — light aggregator (the branch-protection required check)
-#                    that records the checked revision and runs the full
-#                    PR base→head whitespace gate
 on:
   pull_request:
     branches: [main]
@@ -25,414 +8,125 @@ on:
 permissions:
   contents: read
 
-# Cost-aware CI cancellation: a new push to a PR cancels that PR's outdated
-# run. Different PRs never share a group. Manual workflow_dispatch runs group
-# by ref (never a PR number) and cancel-in-progress is PR-only, so a manual
-# run neither cancels nor is cancelled by PR runs.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'npm'
-
-      # Single source of truth for the light/full split: scripts/classify-ci-scope.mjs
-      # (fail closed — anything not proven light runs the full tier below).
-      # `!= 'false'` keeps the gate fail-closed if this step ever dies without
-      # writing outputs.
-      - name: Classify CI scope
-        id: scope
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: node scripts/classify-ci-scope.mjs --event "$EVENT_NAME" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Repository hygiene gate
-        run: npm run check:repo-hygiene
-
-      - name: Format check
-        run: npm run format:check
-
-      - name: Markdown math gate
-        run: npm run check:markdown-math
-
-      # v2.5.13: release-operator docs (docs/RELEASING.md) and the Pages
-      # workflow must keep matching the real verifier CLI. Deliberately NOT
-      # behind the full-tier condition: docs-only PRs are classified light,
-      # and this cheap offline contract is exactly the gate they need (the
-      # PR #74 lesson). scripts/ changes classify full anyway.
-      - name: Release docs command contract
-        run: npm run check:release-docs-commands
-
-      - name: Type check
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run typecheck
-
-      - name: Lint
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run lint
-
-      - name: Inline style gate
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run check:inline-style
-
-      - name: Native title help gate
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run check:no-title-help
-
-      - name: Specification manifest check
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run specs:check
-
-      - name: Release contract check
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run check:release-contract
-
-      - name: Canonical toolchain check
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run check:toolchain
-
-      - name: Unit tests with coverage
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run test:coverage
-
-      - name: Build
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run build
-
-      - name: Tailwind source scope gate
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run check:tailwind-scope
-
-      - name: Audit dependencies
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm audit --audit-level=high
-
-  e2e:
-    # Use the latest Ubuntu LTS supported by the locked Playwright version.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'npm'
-
-      - name: Classify CI scope
-        id: scope
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: node scripts/classify-ci-scope.mjs --event "$EVENT_NAME" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
-
-      # v2.6.1: every downstream e2e step is full-tier gated, so installing
-      # dependencies on light-only PRs wasted the job. The gate fails closed:
-      # full/mixed/unknown and workflow_dispatch still install and verify.
-      - name: Install dependencies
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm ci
-
-      - name: Install Playwright browsers
-        if: steps.scope.outputs.run_full != 'false'
-        run: npx playwright install --with-deps chromium
-
-      - name: Run Playwright visual regression
-        id: visual
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run test:e2e:visual
-
-      # v2.5.15: the desktop semantic suite and the mobile-contract suite are
-      # the primary acceptance targets and verify the PRODUCTION build
-      # (`vite preview` of the exact dist/ under the official Pages prefix).
-      # Build once here, before any suite; the release smoke consumes the same
-      # dist without rebuilding.
-      - name: Build for production E2E
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run build
-
-      - name: Run Playwright E2E
-        id: e2e
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run test:e2e
-
-      # v2.5.13: the explicit mobile-contract suite (Pixel 7 emulation) runs
-      # after the desktop suite on the same production dist; together they
-      # replace the old run-everything-twice desktop+mobile project
-      # duplication.
-      - name: Run Playwright mobile contract E2E
-        id: e2e_mobile
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run test:e2e:mobile
-
-      - name: Run production release smoke
-        id: release_smoke
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run test:e2e:release
-
-      # Local preparation uses a synthetic token and an isolated staging
-      # tree; PR/fork CI never needs the official github-pages secret.
-      # The clean production dist and Release baseline remain unchanged.
-      - name: Run local Pages-overlay contracts and smoke
-        id: pages_overlay_smoke
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run test:pages-overlay
-
-      - name: Upload Playwright visual report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure() &&
-          steps.scope.outputs.run_full != 'false' &&
-          steps.visual.outcome == 'failure'
-        with:
-          name: playwright-report-visual
-          path: tests/e2e/report-visual
-          retention-days: 7
-
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure() &&
-          steps.scope.outputs.run_full != 'false' &&
-          steps.e2e.outcome == 'failure'
-        with:
-          name: playwright-report
-          path: tests/e2e/report
-          retention-days: 7
-
-      - name: Upload Playwright mobile contract report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure() &&
-          steps.scope.outputs.run_full != 'false' &&
-          steps.e2e_mobile.outcome == 'failure'
-        with:
-          name: playwright-report-mobile
-          path: tests/e2e/report-mobile
-          retention-days: 7
-
-      - name: Upload Playwright release smoke report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure() &&
-          steps.scope.outputs.run_full != 'false' &&
-          steps.release_smoke.outcome == 'failure'
-        with:
-          name: playwright-report-release
-          path: tests/e2e/report-release
-          retention-days: 7
-
-      - name: Upload Playwright Pages-overlay smoke report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure() &&
-          steps.scope.outputs.run_full != 'false' &&
-          steps.pages_overlay_smoke.outcome == 'failure'
-        with:
-          name: playwright-report-pages-overlay
-          path: tests/e2e/report-pages-overlay
-          retention-days: 7
-
-  compatibility:
-    # Human-readable name distinguishes the Node runtime floor from the
-    # browser-compat job below; the job id stays `compatibility` so required
-    # check wiring and historical references are unaffected.
-    name: Node 22 compatibility (typecheck + unit)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      # engines deliberately supports the two maintained LTS lines (22 and
-      # 24). Primary verification runs on the canonical Node 24.19.0 from
-      # .node-version (quality/e2e jobs); this job reinstalls under the exact
-      # compatibility Node 22.20.0 and runs the real `tsc -b` typecheck plus
-      # the unit suite so the runtime floor stays continuously validated.
-      - name: Setup Node.js 22.20.0 (compatibility LTS)
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '22.20.0'
-          # The canonical runtime already restored the npm download cache, so
-          # the compatibility runtime must NOT establish a second cache;
-          # node_modules is never cached. package-manager-cache: false also
-          # disables setup-node v7's auto-detected npm cache, which probes
-          # with the bundled npm 10.9.3 and fails its devEngines fail-closed
-          # check (EBADDEVENGINES) -- the canonical npm 11.17.0 is activated
-          # in the next step, outside the repo.
-          package-manager-cache: false
-
-      - name: Classify CI scope
-        id: scope
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: node scripts/classify-ci-scope.mjs --event "$EVENT_NAME" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
-
-      # Both CI runtimes use the exact canonical npm 11.17.0 (Node 24.19.0
-      # ships it; the 22.20.0 runtime needs the explicit pin). `cd /tmp` keeps
-      # the install OUTSIDE the repo so the bundled npm 10.9.3 never reads the
-      # repo's devEngines while upgrading itself.
-      - name: Activate canonical npm 11.17.0 on compatibility runtime
-        if: steps.scope.outputs.run_full != 'false'
-        run: cd /tmp && npm install -g npm@11.17.0
-
-      - name: Typecheck and unit tests on compatibility LTS (Node 22.20.0)
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm ci && npm run typecheck && npm run test:run
-
-  browser-compat:
-    # Cross-engine core acceptance floor: a deliberately small Firefox +
-    # WebKit smoke over the same production dist and official Pages prefix
-    # (vite preview, fail-closed server rules). The deep semantic suites stay
-    # Chromium-only by design; this job proves the core user contracts on the
-    # other two engines without tripling the E2E matrix.
-    name: Browser compatibility (Firefox + WebKit core smoke)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      tier: ${{ steps.scope.outputs.tier }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 2
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: 'npm'
-
-      - name: Classify CI scope
-        id: scope
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: node scripts/classify-ci-scope.mjs --event "$EVENT_NAME" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
-
-      - name: Install dependencies
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm ci
-
-      # Official Playwright installation flow for the two cross-engine
-      # browsers; --with-deps installs the Ubuntu system libraries WebKit
-      # needs. No mirrors, no lockfile changes.
-      - name: Install Playwright Firefox and WebKit browsers
-        if: steps.scope.outputs.run_full != 'false'
-        run: npx playwright install --with-deps firefox webkit
-
-      - name: Build for production E2E
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run build
-
-      - name: Run cross-engine core smoke (Firefox + WebKit)
-        id: e2e_cross_engine
-        if: steps.scope.outputs.run_full != 'false'
-        run: npm run test:e2e:cross-engine
-
-      - name: Upload Playwright cross-engine report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure() &&
-          steps.scope.outputs.run_full != 'false' &&
-          steps.e2e_cross_engine.outcome == 'failure'
-        with:
-          name: playwright-report-cross-engine
-          path: tests/e2e/report-cross-engine
-          retention-days: 7
-
-  check:
-    # The aggregator is the branch-protection required check, so it must run
-    # (and fail closed) even when an upstream verification job fails, is
-    # cancelled, or is skipped. Without always(), GitHub would skip the whole
-    # job on upstream failure and treat the skipped required check as green.
-    if: ${{ always() }}
-    needs: [quality, e2e, compatibility, browser-compat]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      # Evidence for the no-second-CI model: record the exact commit and tree
-      # that this run verified. The final report compares this tree with the
-      # post-merge main tree instead of re-running a full CI.
       - name: Record checked revision
-        id: revision
         run: |
           set -euo pipefail
-          checked_sha="$(git rev-parse HEAD)"
-          checked_tree="$(git rev-parse 'HEAD^{tree}')"
-          for value in "$checked_sha" "$checked_tree"; do
-            if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "revision: not a 40-hex SHA: $value" >&2
-              exit 1
-            fi
-          done
-          {
-            echo "checked_sha=$checked_sha"
-            echo "checked_tree=$checked_tree"
-          } >> "$GITHUB_OUTPUT"
+          checked_sha=$(git rev-parse --verify HEAD)
+          checked_tree=$(git rev-parse --verify 'HEAD^{tree}')
           echo "revision: checked_sha=$checked_sha checked_tree=$checked_tree"
           {
-            echo "### Checked revision"
+            echo '### Checked revision'
             echo "- commit \`${checked_sha}\`"
             echo "- tree \`${checked_tree}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Require successful parallel verification results
-        env:
-          QUALITY_RESULT: ${{ needs.quality.result }}
-          E2E_RESULT: ${{ needs.e2e.result }}
-          COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
-          BROWSER_COMPAT_RESULT: ${{ needs.browser-compat.result }}
-        run: |
-          set -euo pipefail
-
-          echo "quality=${QUALITY_RESULT}"
-          echo "e2e=${E2E_RESULT}"
-          echo "compatibility=${COMPATIBILITY_RESULT}"
-          echo "browser-compat=${BROWSER_COMPAT_RESULT}"
-
-          for result in \
-            "$QUALITY_RESULT" \
-            "$E2E_RESULT" \
-            "$COMPATIBILITY_RESULT" \
-            "$BROWSER_COMPAT_RESULT"
-          do
-            if [[ "$result" != "success" ]]; then
-              echo "A required verification job did not succeed." >&2
-              exit 1
-            fi
-          done
-
-      - name: Check full PR diff for whitespace errors
+      - name: Check the PR merge diff for whitespace errors
         if: github.event_name == 'pull_request'
+        run: git diff --check HEAD^1 HEAD --
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+
+      - name: Classify CI scope
+        id: scope
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: node scripts/classify-ci-scope.mjs --event="$EVENT_NAME"
+
+      - run: npm ci --no-audit
+      - run: npm run verify:light
+      - run: npm run verify:quality
+        if: steps.scope.outputs.tier != 'light'
+      - run: npm audit --audit-level=high
+        if: steps.scope.outputs.tier == 'full'
+
+  browser:
+    needs: quality
+    if: needs.quality.outputs.tier == 'product' || needs.quality.outputs.tier == 'full'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+      - run: npm ci --no-audit
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run verify:browser
+      - run: npm run test:e2e:visual
+
+      - name: Upload Playwright reports on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-reports
+          path: tests/e2e/report*
+          retention-days: 7
+          if-no-files-found: ignore
+
+  compatibility:
+    needs: quality
+    if: needs.quality.outputs.tier == 'full'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.20.0'
+          # The bundled npm cannot read this repo's devEngines until upgraded.
+          package-manager-cache: false
+      - run: cd /tmp && npm install -g npm@11.17.0
+      - run: npm ci --no-audit
+      - run: npm run typecheck && npm run test:run
+
+  check:
+    # Required by protect-main. Skips are valid only for jobs outside the tier.
+    if: ${{ always() }}
+    needs: [quality, browser, compatibility]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require the results selected by the CI tier
+        env:
+          TIER: ${{ needs.quality.outputs.tier }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+          NODE22_RESULT: ${{ needs.compatibility.result }}
         run: |
           set -euo pipefail
-          git diff --check "$BASE_SHA" "$HEAD_SHA"
+          echo "tier=$TIER quality=$QUALITY_RESULT browser=$BROWSER_RESULT node22=$NODE22_RESULT"
+          case "$TIER" in
+            light|checks) expected_browser=skipped; expected_node22=skipped ;;
+            product) expected_browser=success; expected_node22=skipped ;;
+            full) expected_browser=success; expected_node22=success ;;
+            *) echo '::error::CI did not select a valid verification tier.'; exit 1 ;;
+          esac
+          if [[ "$QUALITY_RESULT" != success || "$BROWSER_RESULT" != "$expected_browser" ||
+                "$NODE22_RESULT" != "$expected_node22" ]]; then
+            echo '::error::The verification results do not match the selected tier.'
+            exit 1
+          fi
