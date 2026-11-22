@@ -1,1095 +1,172 @@
-import { execFileSync, spawnSync } from 'node:child_process'
-import crypto from 'node:crypto'
-import { readFileSync, realpathSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 
-const MANIFEST_PATH = 'document/specifications.json'
-const EXPECTED_DOCUMENT_COUNT = 7
+const exec = promisify(execFile)
+const officialHosts = new Set(['pmbusprod.wpenginepowered.com', 'www.smbus.org'])
 
-export const DEFAULT_CACHE_DIR = '.cache/specifications'
-export const DEFAULT_TIMEOUT_MS = 30_000
-export const MAX_REDIRECTS = 5
+/** @typedef {{ id: string, downloadUrl: string, fileName: string, bytes: number, sha256: string }} Specification */
 
-export const ALLOWED_LANDING_HOSTS = ['pmbus.org', 'www.smbus.org']
-export const ALLOWED_DOWNLOAD_HOSTS = ['pmbusprod.wpenginepowered.com', 'www.smbus.org']
-export const SUPPORTED_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
-
-/**
- * Structural response contract this script consumes. The built-in `fetch`
- * satisfies it; tests inject mocks of the same shape. Header lookups accept
- * both `Headers`-style `get()` and plain lowercase-key objects, mirroring
- * `getResponseHeader`.
- * @typedef {object} FetchResponseLike
- * @property {number} status
- * @property {boolean} [ok]
- * @property {string} [url]
- * @property {{ get?: (name: string) => (string | null) } | Record<string, unknown>} [headers]
- * @property {{ cancel?: () => Promise<void> } | null} [body]
- */
-
-/**
- * @typedef {(url: string, init?: { redirect?: string, signal?: AbortSignal }) => Promise<FetchResponseLike>} FetchLike
- */
-
-const HELP = `specifications.mjs — manage third-party PMBus/SMBus specification PDF provenance and cache
-
-Usage:
-  node scripts/specifications.mjs check
-  node scripts/specifications.mjs list
-  node scripts/specifications.mjs fetch --all
-  node scripts/specifications.mjs fetch --id <id>
-  node scripts/specifications.mjs verify-cache
-
-Commands:
-  check         Offline manifest/schema/git-index validation. No network access.
-  list          Print manifest entries without downloading anything.
-  fetch         Download only when --all or --id is explicitly given.
-                Files are written to the ignored .cache/specifications/ directory
-                after byte count and SHA-256 verification.
-  verify-cache  Offline verification of files already present in the cache.
-`
-
-/**
- * @param {string} importMetaUrl
- * @returns {string}
- */
-export function repoRootFromScript(importMetaUrl) {
-  return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..')
-}
-
-/**
- * @param {string} url
- * @param {string[]} allowlist
- * @returns {boolean}
- */
-function matchesHost(url, allowlist) {
-  try {
-    const parsed = new URL(url)
-    return parsed.protocol === 'https:' && allowlist.includes(parsed.host)
-  } catch {
-    return false
-  }
-}
-
-/**
- * @param {string} fileName
- * @returns {boolean}
- */
-export function isSafeFileName(fileName) {
-  if (typeof fileName !== 'string' || fileName.length === 0) return false
-  if (fileName === '.' || fileName === '..') return false
-  if (fileName !== path.basename(fileName)) return false
-  if (fileName.includes('\\') || fileName.includes('/')) return false
-  return true
-}
-
-/**
- * @param {*} value
- * @returns {boolean}
- */
-export function isValidSha256(value) {
-  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
-}
-
-/**
- * @param {*} value
- * @returns {boolean}
- */
-export function isValidBytes(value) {
-  return Number.isInteger(value) && value > 0
-}
-
-/**
- * @param {*} manifest
- * @param {{ expectedDocumentCount?: number, landingHosts?: string[], downloadHosts?: string[] }} [options]
- * @returns {{ ok: boolean, errors: string[], manifest: * }}
- */
-export function validateManifest(manifest, options = {}) {
-  const errors = []
-  const expectedDocumentCount = options.expectedDocumentCount ?? EXPECTED_DOCUMENT_COUNT
-  const landingHosts = options.landingHosts ?? ALLOWED_LANDING_HOSTS
-  const downloadHosts = options.downloadHosts ?? ALLOWED_DOWNLOAD_HOSTS
-
-  if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)) {
-    return { ok: false, errors: ['manifest must be a JSON object'], manifest }
+/** @param {string} repoRoot */
+export async function loadSpecifications(repoRoot) {
+  const manifestFile = path.join(repoRoot, 'document/specifications.json')
+  const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8'))
+  const documents = manifest?.documents
+  if (!Array.isArray(documents) || documents.length === 0) {
+    throw new Error('规范清单必须包含至少一份文档')
   }
 
-  if (manifest.schemaVersion !== 1) {
-    errors.push(`schemaVersion must be 1 (received ${String(manifest.schemaVersion)})`)
-  }
-
-  if (Array.isArray(manifest.documents) === false) {
-    errors.push('documents must be an array')
-    return { ok: false, errors, manifest }
-  }
-
-  if (manifest.documents.length !== expectedDocumentCount) {
-    errors.push(
-      `manifest must contain exactly ${expectedDocumentCount} specification records (received ${manifest.documents.length})`,
-    )
-  }
-
-  const ids = new Set()
+  /** @type {Map<string, Specification>} */
+  const entries = new Map()
   const fileNames = new Set()
-  const requiredStringFields = [
-    'id',
-    'title',
-    'revision',
-    'publishedDate',
-    'officialLandingPage',
-    'downloadUrl',
-    'fileName',
-    'rightsHolder',
-    'rightsNotice',
-    'redistributionStatus',
-  ]
-
-  for (const [index, document] of manifest.documents.entries()) {
-    const label = `documents[${index}]`
-    if (document === null || typeof document !== 'object' || Array.isArray(document)) {
-      errors.push(`${label} must be an object`)
-      continue
+  for (const entry of documents) {
+    if (typeof entry?.id !== 'string' || !/^[a-z0-9][a-z0-9.-]*$/.test(entry.id)) {
+      throw new Error('规范清单中的 ID 无效')
     }
 
-    for (const field of requiredStringFields) {
-      if (typeof document[field] !== 'string' || document[field].length === 0) {
-        errors.push(`${label}.${field} must be a non-empty string`)
-      }
+    const { id, downloadUrl, fileName, bytes, sha256 } = entry
+    if (entries.has(id)) throw new Error(`重复的规范 ID：${id}`)
+    if (typeof fileName !== 'string' || !/^[\w][\w .(),-]*\.pdf$/i.test(fileName)) {
+      throw new Error(`${id} 的 PDF 文件名无效`)
     }
+    if (fileNames.has(fileName.toLowerCase())) throw new Error(`重复的规范文件名：${fileName}`)
 
-    if (typeof document.id === 'string') {
-      if (ids.has(document.id)) errors.push(`duplicate id: ${document.id}`)
-      ids.add(document.id)
-    }
-
-    if (typeof document.fileName === 'string') {
-      if (fileNames.has(document.fileName)) errors.push(`duplicate fileName: ${document.fileName}`)
-      fileNames.add(document.fileName)
-      if (isSafeFileName(document.fileName) === false) {
-        errors.push(`${label}.fileName contains a path escape or is not a plain file name`)
-      }
-    }
-
-    if (isValidBytes(document.bytes) === false) {
-      errors.push(`${label}.bytes must be a positive integer`)
-    }
-
-    if (isValidSha256(document.sha256) === false) {
-      errors.push(`${label}.sha256 must be 64 lowercase hexadecimal characters`)
-    }
-
-    if (matchesHost(document.officialLandingPage, landingHosts) === false) {
-      errors.push(`${label}.officialLandingPage must be an HTTPS URL on an allowed landing host`)
-    }
-
-    if (matchesHost(document.downloadUrl, downloadHosts) === false) {
-      errors.push(`${label}.downloadUrl must be an HTTPS URL on an allowed download host`)
-    }
-
-    if (document.redistributionStatus !== 'not-established-by-project') {
-      errors.push(
-        `${label}.redistributionStatus must be the neutral value 'not-established-by-project' unless an official, citable license permits a different value`,
-      )
-    }
-  }
-
-  return { ok: errors.length === 0, errors, manifest }
-}
-
-/**
- * @param {*} document
- * @param {{ expectedDocumentCount?: number, landingHosts?: string[], downloadHosts?: string[] }} [options]
- * @returns {{ ok: boolean, errors: string[], manifest: * }}
- */
-export function validateDocument(document, options = {}) {
-  return validateManifest(
-    { schemaVersion: 1, documents: [document] },
-    { ...options, expectedDocumentCount: 1 },
-  )
-}
-
-/**
- * @param {*} manifest
- * @param {{ expectedDocumentCount?: number, landingHosts?: string[], downloadHosts?: string[] }} [options]
- * @returns {*}
- */
-export function assertValidManifest(manifest, options = {}) {
-  const validation = validateManifest(manifest, options)
-  if (validation.ok === false) {
-    throw new Error(`invalid specification manifest: ${validation.errors.join('; ')}`)
-  }
-  return validation.manifest
-}
-
-/**
- * @param {*} document
- * @param {{ expectedDocumentCount?: number, landingHosts?: string[], downloadHosts?: string[] }} [options]
- * @returns {*}
- */
-export function assertValidDocument(document, options = {}) {
-  const validation = validateDocument(document, options)
-  if (validation.ok === false) {
-    throw new Error(`invalid specification document: ${validation.errors.join('; ')}`)
-  }
-  return document
-}
-
-/**
- * @param {number} timeoutMs
- * @returns {number}
- */
-export function assertValidTimeoutMs(timeoutMs) {
-  if (Number.isSafeInteger(timeoutMs) === false || timeoutMs <= 0) {
-    throw new Error(`timeoutMs must be a positive safe integer: ${timeoutMs}`)
-  }
-  return timeoutMs
-}
-
-/**
- * @param {string} repoRoot
- * @returns {Promise<*>}
- */
-export async function loadManifest(repoRoot) {
-  const manifestPath = path.join(repoRoot, MANIFEST_PATH)
-  let text
-  try {
-    text = await fs.readFile(manifestPath, 'utf8')
-  } catch (/** @type {*} */ error) {
-    throw new Error(`failed to read manifest at ${manifestPath}: ${error.message ?? error}`)
-  }
-
-  let manifest
-  try {
-    manifest = JSON.parse(text)
-  } catch (/** @type {*} */ error) {
-    throw new Error(`failed to parse manifest at ${manifestPath}: ${error.message ?? error}`)
-  }
-
-  assertValidManifest(manifest)
-  return manifest
-}
-
-/**
- * @param {string} repoRoot
- * @returns {string[]}
- */
-export function gitTrackedPdfs(repoRoot) {
-  const output = execFileSync('git', ['-C', repoRoot, 'ls-files', '-z', '--', '*.pdf'], {
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  })
-  return output.split('\0').filter(Boolean)
-}
-
-/**
- * @param {{ repoRoot?: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} [options]
- */
-export function checkSpecifications({ repoRoot, log = console.log, error = console.error } = {}) {
-  /** @type {{ manifest: *, manifestOk: boolean, trackedPdfs: string[], ok: boolean, errors: string[] }} */
-  const result = {
-    manifest: null,
-    manifestOk: false,
-    trackedPdfs: [],
-    ok: false,
-    errors: [],
-  }
-
-  try {
-    result.manifest = JSON.parse(
-      readFileSync(path.join(/** @type {string} */ (repoRoot), MANIFEST_PATH), 'utf8'),
-    )
-    const validation = validateManifest(result.manifest)
-    result.manifestOk = validation.ok
-    result.errors.push(...validation.errors)
-  } catch (/** @type {*} */ caught) {
-    result.errors.push(/** @type {*} */ (caught).message ?? caught)
-  }
-
-  try {
-    result.trackedPdfs = gitTrackedPdfs(/** @type {string} */ (repoRoot))
-  } catch (/** @type {*} */ caught) {
-    result.errors.push(
-      `failed to inspect tracked PDFs: ${/** @type {*} */ (caught).message ?? caught}`,
-    )
-  }
-
-  if (result.trackedPdfs.length > 0) {
-    result.errors.push(
-      `tracked PDFs are not allowed; use scripts/specifications.mjs fetch to download specifications into ${DEFAULT_CACHE_DIR}: ${result.trackedPdfs.join(', ')}`,
-    )
-  }
-
-  result.ok = result.manifestOk && result.trackedPdfs.length === 0 && result.errors.length === 0
-
-  if (result.ok) {
-    log('specs:check OK')
-    log(`specs:check manifest entries: ${/** @type {*} */ (result.manifest).documents.length}`)
-    log('specs:check tracked PDFs: 0')
-  } else {
-    for (const message of result.errors) error(`specs:check error: ${message}`)
-    error('specs:check FAILED')
-  }
-
-  return result
-}
-
-/**
- * @param {any} manifest
- * @param {{ log?: (...data: any[]) => void }} [options]
- */
-export function listSpecifications(manifest, { log = console.log } = {}) {
-  assertValidManifest(manifest)
-  for (const document of manifest.documents) {
-    log(
-      [
-        document.id,
-        `rev ${document.revision}`,
-        document.officialLandingPage,
-        document.downloadUrl,
-        `${document.bytes} bytes`,
-        document.sha256.slice(0, 12),
-      ].join('\t'),
-    )
-  }
-  return manifest.documents
-}
-
-/**
- * @param {string[]} args
- * @returns {{ all: boolean, ids: string[] }}
- */
-export function parseFetchArgs(args) {
-  const all = args.includes('--all')
-  /** @type {string[]} */
-  const ids = []
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]
-    if (arg === '--all') continue
-    if (arg === '--id') {
-      const value = args[index + 1]
-      if (value === undefined || value.startsWith('--')) {
-        throw new Error('fetch --id requires a document id')
-      }
-      ids.push(value)
-      index += 1
-      continue
-    }
-    throw new Error(`unknown fetch option: ${arg}`)
-  }
-  return { all, ids }
-}
-
-/**
- * @param {*} manifest
- * @param {{ all: boolean, ids: string[] }} options
- * @returns {Array<*>}
- */
-function selectDocuments(manifest, { all, ids }) {
-  if (all === false && ids.length === 0) {
-    throw new Error('fetch requires --all or --id <id>')
-  }
-  if (all) return manifest.documents
-  const byId = new Map(
-    manifest.documents.map((/** @type {*} */ document) => [document.id, document]),
-  )
-  /** @type {Array<*>} */
-  const selected = []
-  for (const id of ids) {
-    const document = byId.get(id)
-    if (document === undefined) throw new Error(`unknown specification id: ${id}`)
-    selected.push(document)
-  }
-  return selected
-}
-
-/**
- * @param {string} target
- * @param {string} description
- * @returns {Promise<string>}
- */
-async function realpathOrThrow(target, description) {
-  try {
-    return await fs.realpath(target)
-  } catch (/** @type {*} */ error) {
-    throw new Error(
-      `failed to resolve ${description} ${target}: ${/** @type {*} */ (error).message ?? error}`,
-    )
-  }
-}
-
-/**
- * @param {string} repoRoot
- * @param {string} absoluteTarget
- * @returns {Promise<void>}
- */
-async function rejectSymlinkSegments(repoRoot, absoluteTarget) {
-  const segments = path.relative(repoRoot, absoluteTarget).split(path.sep)
-  let current = repoRoot
-  for (const segment of segments) {
-    if (segment.length === 0) continue
-    current = path.join(current, segment)
-    let stat = null
-    try {
-      stat = await fs.lstat(current)
-    } catch {
-      stat = null
-    }
-    if (stat !== null && stat.isSymbolicLink()) {
-      throw new Error(`refusing symlink in cache path: ${current}`)
-    }
-  }
-}
-
-/**
- * @param {string} repoRoot
- * @param {string} [cacheDir]
- */
-export async function resolveVerifiedCacheDir(repoRoot, cacheDir) {
-  const realRoot = await realpathOrThrow(/** @type {string} */ (repoRoot), 'repository root')
-  const absolute = path.resolve(realRoot, /** @type {string} */ (cacheDir))
-  const relative = path.relative(realRoot, absolute)
-  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error(`cache directory escapes repository root: ${cacheDir}`)
-  }
-  await rejectSymlinkSegments(realRoot, absolute)
-  return { realRoot, absoluteCacheDir: absolute }
-}
-
-/**
- * @param {string} repoRoot
- * @param {string} cacheDir
- * @returns {boolean}
- */
-export function isCachePathIgnored(repoRoot, cacheDir) {
-  const probe = spawnSync('git', ['-C', repoRoot, 'check-ignore', '-q', '--', cacheDir], {
-    encoding: 'utf8',
-  })
-  return probe.status === 0
-}
-
-/**
- * @param {string} repoRoot
- * @param {string} cacheDir
- * @returns {Promise<void>}
- */
-async function ensureCacheIsIgnored(repoRoot, cacheDir) {
-  if (isCachePathIgnored(repoRoot, cacheDir) === false) {
-    throw new Error(`cache directory must be git-ignored before downloading: ${cacheDir}`)
-  }
-}
-
-/**
- * @param {string} filePath
- * @returns {Promise<{ filePath: string, bytes: number, sha256: string } | null>}
- */
-async function existingFileState(filePath) {
-  let stat = null
-  try {
-    stat = await fs.lstat(filePath)
-  } catch (/** @type {*} */ error) {
-    if (/** @type {*} */ (error)?.code === 'ENOENT') return null
-    throw error
-  }
-  if (stat.isSymbolicLink()) throw new Error(`cache path is a symbolic link: ${filePath}`)
-  if (stat.isFile() === false) throw new Error(`cache path is not a regular file: ${filePath}`)
-  const bytes = stat.size
-  const sha256 = await sha256File(filePath)
-  return { filePath, bytes, sha256 }
-}
-
-/**
- * @param {string} filePath
- * @returns {Promise<string>}
- */
-export async function sha256File(filePath) {
-  const hash = crypto.createHash('sha256')
-  const handle = await fs.open(filePath, 'r')
-  try {
-    const buffer = Buffer.alloc(1024 * 1024)
-    while (true) {
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null)
-      if (bytesRead <= 0) break
-      hash.update(buffer.subarray(0, bytesRead))
-    }
-  } finally {
-    await handle.close()
-  }
-  return hash.digest('hex')
-}
-
-/**
- * @param {Buffer} buffer
- * @returns {string}
- */
-export function sha256Buffer(buffer) {
-  return crypto.createHash('sha256').update(buffer).digest('hex')
-}
-
-/**
- * @param {string} targetPath
- * @returns {string}
- */
-function makeTempPath(targetPath) {
-  return path.join(
-    path.dirname(targetPath),
-    `.${path.basename(targetPath)}.tmp-${process.pid}-${crypto.randomUUID()}`,
-  )
-}
-
-/**
- * @param {*} response
- * @param {string} name
- * @returns {string | undefined}
- */
-function getResponseHeader(response, name) {
-  const headers = response.headers
-  if (headers && typeof headers.get === 'function') {
-    const value = headers.get(name)
-    return value === null ? undefined : value
-  }
-  if (headers && typeof headers === 'object') {
-    return headers[name.toLowerCase()] ?? headers[name]
-  }
-  return undefined
-}
-
-/**
- * @param {*} response
- * @returns {Promise<void>}
- */
-async function cancelResponseBody(response) {
-  try {
-    if (response.body && typeof response.body.cancel === 'function') {
-      await response.body.cancel()
-    }
-  } catch {
-    // best-effort cleanup; never mask the original redirect/validation error
-  }
-}
-
-/**
- * @param {AbortSignal} signal
- * @returns {Error}
- */
-function abortErrorFor(signal) {
-  if (signal && signal.reason instanceof Error) return signal.reason
-  return new Error('aborted')
-}
-
-/**
- * @param {Promise<*>} promise
- * @param {AbortSignal} signal
- * @returns {Promise<*>}
- */
-async function raceWithSignal(promise, signal) {
-  if (signal?.aborted) throw abortErrorFor(signal)
-  return await new Promise((resolve, reject) => {
-    const onAbort = () => reject(abortErrorFor(signal))
-    signal?.addEventListener('abort', onAbort, { once: true })
-    Promise.resolve(promise).then(
-      (value) => {
-        signal?.removeEventListener('abort', onAbort)
-        resolve(value)
-      },
-      (error) => {
-        signal?.removeEventListener('abort', onAbort)
-        reject(error)
-      },
-    )
-  })
-}
-
-/**
- * @param {ReadableStreamDefaultReader<Uint8Array>} reader
- * @param {AbortSignal} signal
- * @returns {Promise<{ value?: Uint8Array, done: boolean }>}
- */
-async function readChunkWithSignal(reader, signal) {
-  if (signal?.aborted) throw abortErrorFor(signal)
-  return await new Promise((resolve, reject) => {
-    const onAbort = () => {
-      reader.cancel().catch(() => {})
-      reject(abortErrorFor(signal))
-    }
-    signal?.addEventListener('abort', onAbort, { once: true })
-    reader.read().then(
-      (/** @type {*} */ result) => {
-        signal?.removeEventListener('abort', onAbort)
-        resolve(result)
-      },
-      (error) => {
-        signal?.removeEventListener('abort', onAbort)
-        reject(error)
-      },
-    )
-  })
-}
-
-/**
- * @param {{ write: (buffer: Buffer, offset: number, length: number, position: null) => Promise<{ bytesWritten: number }>, close?: () => Promise<void> }} handle
- * @param {Buffer} buffer
- * @param {AbortSignal | undefined} signal
- * @returns {Promise<void>}
- */
-export async function writeAll(handle, buffer, signal) {
-  let offset = 0
-  while (offset < buffer.byteLength) {
-    if (signal?.aborted) throw abortErrorFor(signal)
-    const { bytesWritten } = await handle.write(buffer, offset, buffer.byteLength - offset, null)
-    if (Number.isSafeInteger(bytesWritten) === false || bytesWritten <= 0) {
-      throw new Error(`invalid bytesWritten from FileHandle.write: ${bytesWritten}`)
-    }
-    if (bytesWritten > buffer.byteLength - offset) {
-      throw new Error(
-        `invalid bytesWritten ${bytesWritten} exceeds remaining buffer length ${buffer.byteLength - offset}`,
-      )
-    }
-    offset += bytesWritten
-  }
-}
-
-/**
- * @param {*} response
- * @param {string} targetPath
- * @param {*} document
- * @param {AbortSignal} signal
- * @returns {Promise<{ tempPath: string, bytes: number, sha256: string }>}
- */
-async function streamResponseToTempFile(response, targetPath, document, signal) {
-  if (response.body === null || response.body === undefined) {
-    throw new Error(`response body is missing for ${document.downloadUrl}`)
-  }
-  const reader = response.body.getReader?.()
-  if (reader === undefined) {
-    throw new Error(`response body is not a readable stream for ${document.downloadUrl}`)
-  }
-
-  const hash = crypto.createHash('sha256')
-  let bytes = 0
-  let handle = null
-  let tempPath = null
-
-  try {
-    tempPath = makeTempPath(targetPath)
-    handle = await fs.open(tempPath, 'wx')
-
-    while (true) {
-      const { done, value } = await readChunkWithSignal(reader, signal)
-      if (done) break
-      if (!value) continue
-      if (bytes + value.byteLength > document.bytes) {
-        await reader.cancel().catch(() => {})
-        throw new Error(
-          `byte count mismatch for ${document.id}: expected ${document.bytes}, received more than ${document.bytes}`,
-        )
-      }
-      await writeAll(handle, /** @type {Buffer} */ (value), signal)
-      bytes += value.byteLength
-      hash.update(/** @type {Buffer} */ (value))
-    }
-
-    await handle.close()
-    handle = null
-
-    if (bytes !== document.bytes) {
-      throw new Error(
-        `byte count mismatch for ${document.id}: expected ${document.bytes}, received ${bytes}`,
-      )
-    }
-
-    const sha256 = hash.digest('hex')
-    if (sha256 !== document.sha256) {
-      throw new Error(
-        `sha256 mismatch for ${document.id}: expected ${document.sha256}, received ${sha256}`,
-      )
-    }
-
-    return { tempPath, bytes, sha256 }
-  } catch (error) {
-    if (handle !== null) await handle.close().catch(() => {})
-    if (tempPath !== null) await fs.rm(tempPath, { force: true }).catch(() => {})
-    await reader.cancel().catch(() => {})
-    throw error
-  }
-}
-
-/**
- * @param {string} url
- * @param {{ fetchImpl?: FetchLike, signal?: AbortSignal, downloadHosts?: string[] }} [options]
- * @returns {Promise<FetchResponseLike>}
- */
-export async function fetchWithRedirects(
-  url,
-  {
-    fetchImpl = /** @type {FetchLike} */ (fetch),
-    signal,
-    downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
-  } = {},
-) {
-  let currentUrl = url
-  const seen = new Set()
-
-  for (let redirects = 0; ; redirects += 1) {
-    if (signal?.aborted) throw abortErrorFor(signal)
-    if (redirects > MAX_REDIRECTS) {
-      throw new Error(`too many redirects (${redirects}) for ${url}`)
-    }
-    if (matchesHost(currentUrl, downloadHosts) === false) {
-      throw new Error(`redirect target host is not allowed: ${currentUrl}`)
-    }
-    if (seen.has(currentUrl)) {
-      throw new Error(`redirect loop detected at ${currentUrl}`)
-    }
-    seen.add(currentUrl)
-
-    const response = await raceWithSignal(
-      fetchImpl(currentUrl, { redirect: 'manual', signal }),
-      /** @type {AbortSignal} */ (signal),
-    )
-
+    const url = typeof downloadUrl === 'string' ? URL.parse(downloadUrl) : null
     if (
-      response === null ||
-      response === undefined ||
-      Number.isInteger(response.status) === false
+      !url ||
+      url.protocol !== 'https:' ||
+      !officialHosts.has(url.host) ||
+      url.username ||
+      url.password
     ) {
-      throw new Error(`fetch transport returned an invalid response for ${currentUrl}`)
+      throw new Error(`${id} 需要官方 HTTPS 下载地址`)
+    }
+    if (!Number.isSafeInteger(bytes) || bytes <= 0) throw new Error(`${id} 的文件大小无效`)
+    if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256)) {
+      throw new Error(`${id} 的 SHA-256 无效`)
     }
 
-    const status = response.status
-    if (status < 200 || status > 599) {
-      throw new Error(`invalid HTTP status ${status} for ${currentUrl}`)
-    }
-
-    if (SUPPORTED_REDIRECT_STATUSES.has(status)) {
-      const location = getResponseHeader(response, 'location')
-      if (location === undefined || location.length === 0) {
-        throw new Error(`redirect response missing Location for ${currentUrl}`)
-      }
-      let nextUrl
-      try {
-        nextUrl = new URL(location, currentUrl).toString()
-      } catch {
-        throw new Error(`invalid redirect Location for ${currentUrl}: ${location}`)
-      }
-      await cancelResponseBody(response)
-      currentUrl = nextUrl
-      continue
-    }
-
-    if (status >= 200 && status < 300) {
-      const finalUrl = response.url || currentUrl
-      if (matchesHost(finalUrl, downloadHosts) === false) {
-        throw new Error(`final response URL host is not allowed: ${finalUrl}`)
-      }
-      return response
-    }
-
-    throw new Error(`unsupported HTTP status ${status} for ${currentUrl}`)
+    entries.set(id, { id, downloadUrl: url.href, fileName, bytes, sha256 })
+    fileNames.add(fileName.toLowerCase())
   }
+  return entries
 }
 
 /**
- * @param {{ repoRoot: string, document: any, cacheDir?: string, fetchImpl?: FetchLike, timeoutMs?: number, log?: (...data: any[]) => void, downloadHosts?: string[] }} [options]
+ * 使用 curl 读取系统的 HTTPS 代理设置。当前官方 URL 均直接提供 PDF，
+ * 不自动跟随跳转，以免从清单以外的站点获取规范。
+ * @param {Specification} entry
  */
-export async function fetchOneDocument(
-  {
-    repoRoot,
-    document,
-    cacheDir,
-    fetchImpl = /** @type {FetchLike} */ (fetch),
-    timeoutMs = DEFAULT_TIMEOUT_MS,
-    log = console.log,
-    downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
-  } = /** @type {{ repoRoot: string, document: any, cacheDir?: string, fetchImpl?: FetchLike, timeoutMs?: number, log?: (...data: any[]) => void, downloadHosts?: string[] }} */ ({}),
-) {
-  assertValidDocument(document, { downloadHosts })
-  assertValidTimeoutMs(timeoutMs)
-  if (typeof repoRoot !== 'string' || repoRoot.length === 0) {
-    throw new Error(`repoRoot must be a non-empty path: ${repoRoot}`)
-  }
+async function downloadPdf({ id, downloadUrl, bytes }) {
+  const { stdout } = await exec(
+    'curl',
+    [
+      '--disable',
+      '--fail',
+      '--silent',
+      '--show-error',
+      '--globoff',
+      '--proto',
+      '=https',
+      '--max-time',
+      '30',
+      '--max-filesize',
+      String(bytes),
+      '--write-out',
+      '%{http_code}',
+      '--',
+      downloadUrl,
+    ],
+    { encoding: 'buffer', maxBuffer: bytes + 3 },
+  ).catch((error) => {
+    if (error.code === 'ENOENT') throw new Error('下载规范需要 curl。请安装 curl 后重试。')
+    const details =
+      error.stderr?.toString().split('\n', 1)[0].trim() ||
+      `curl 退出状态 ${error.code ?? error.signal}`
+    throw new Error(`下载 ${id} 失败。${details}`)
+  })
+  const status = stdout.subarray(-3).toString('ascii')
+  if (status !== '200') throw new Error(`下载 ${id} 失败。官方地址返回 HTTP ${status}。`)
+  return stdout.subarray(0, -3)
+}
 
-  const { realRoot, absoluteCacheDir } = await resolveVerifiedCacheDir(repoRoot, cacheDir)
-  await fs.mkdir(absoluteCacheDir, { recursive: true })
-
-  const realCacheDir = await realpathOrThrow(absoluteCacheDir, 'cache directory')
-  const realCacheRelative = path.relative(realRoot, realCacheDir)
-  if (
-    realCacheRelative === '' ||
-    realCacheRelative.startsWith('..') ||
-    path.isAbsolute(realCacheRelative)
-  ) {
-    throw new Error(`cache directory resolves outside repository root: ${realCacheDir}`)
-  }
-
-  const targetPath = path.join(realCacheDir, document.fileName)
-  if (path.dirname(targetPath) !== realCacheDir) {
-    throw new Error(`fileName escapes cache directory: ${document.fileName}`)
-  }
-
-  const existing = await existingFileState(targetPath)
-  if (existing && existing.bytes === document.bytes && existing.sha256 === document.sha256) {
-    log(`specs:fetch skip (already valid): ${targetPath}`)
-    return {
-      id: document.id,
-      status: 'skip',
-      sourceUrl: document.downloadUrl,
-      targetPath,
-      bytes: existing.bytes,
-      sha256: existing.sha256,
-    }
-  }
-  if (existing) {
-    log(
-      `specs:fetch cache file exists but is invalid (bytes=${existing.bytes}, sha256=${existing.sha256.slice(0, 12)}); replacing from official source`,
-    )
-  }
-
-  const controller = new AbortController()
-  let timedOut = false
-  const timer = setTimeout(() => {
-    timedOut = true
-    controller.abort(new Error(`timed out after ${timeoutMs}ms for ${document.id}`))
-  }, timeoutMs)
-
-  let tempPath = null
+/** @param {string} filePath */
+async function fileStat(filePath) {
   try {
-    const response = await fetchWithRedirects(document.downloadUrl, {
-      fetchImpl,
-      signal: controller.signal,
-      downloadHosts,
-    })
-    const streamed = await streamResponseToTempFile(
-      response,
-      targetPath,
-      document,
-      controller.signal,
-    )
-    tempPath = streamed.tempPath
-    if (controller.signal.aborted) {
-      throw new Error(`timed out after ${timeoutMs}ms for ${document.id}`)
-    }
-    clearTimeout(timer)
-    await fs.rename(tempPath, targetPath)
-    tempPath = null
-
-    log(`specs:fetch OK: ${document.downloadUrl} -> ${targetPath}`)
-    log(`specs:fetch verified: ${streamed.bytes} bytes, sha256=${streamed.sha256}`)
-    return {
-      id: document.id,
-      status: 'downloaded',
-      sourceUrl: document.downloadUrl,
-      targetPath,
-      bytes: streamed.bytes,
-      sha256: streamed.sha256,
-    }
+    return await fs.lstat(filePath)
   } catch (error) {
-    if (tempPath !== null) {
-      await fs.rm(tempPath, { force: true }).catch(() => {})
-    }
-    if (timedOut || controller.signal.aborted) {
-      throw new Error(
-        `timed out after ${timeoutMs}ms for ${document.id}: ${/** @type {*} */ (error)?.message ?? error}`,
-      )
-    }
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
     throw error
+  }
+}
+
+/** @param {Buffer} contents */
+function checksum(contents) {
+  return createHash('sha256').update(contents).digest('hex')
+}
+
+/**
+ * @param {string} repoRoot
+ * @param {string} id
+ * @param {(entry: Specification) => Promise<Buffer>} [download]
+ */
+export async function fetchSpecification(repoRoot, id, download = downloadPdf) {
+  const entries = await loadSpecifications(repoRoot)
+  const entry = entries.get(id)
+  if (!entry) throw new Error(`未找到规范 ${id}。可用 ID：${[...entries.keys()].join('、')}`)
+
+  let cache = repoRoot
+  for (const segment of ['.cache', 'specifications']) {
+    cache = path.join(cache, segment)
+    await fs.mkdir(cache, { recursive: true })
+    if (!(await fs.lstat(cache)).isDirectory()) {
+      throw new Error(`规范缓存必须是普通目录：${cache}`)
+    }
+  }
+
+  const target = path.join(cache, entry.fileName)
+  const existing = await fileStat(target)
+  if (existing && !existing.isFile()) throw new Error(`规范缓存必须是普通文件：${target}`)
+  if (existing?.size === entry.bytes && checksum(await fs.readFile(target)) === entry.sha256) {
+    return target
+  }
+
+  const contents = await download(entry)
+  if (contents.length !== entry.bytes) throw new Error(`下载的文件大小与清单不符：${entry.id}`)
+  if (checksum(contents) !== entry.sha256) throw new Error(`下载的 SHA-256 与清单不符：${entry.id}`)
+
+  // 在同一文件系统中写完再替换，下载或写入中断时保留原缓存。
+  const tempDir = await fs.mkdtemp(path.join(cache, '.download-'))
+  try {
+    const tempFile = path.join(tempDir, entry.fileName)
+    await fs.writeFile(tempFile, contents)
+    await fs.rename(tempFile, target)
   } finally {
-    clearTimeout(timer)
+    await fs.rm(tempDir, { recursive: true, force: true })
   }
+  return target
 }
 
-/**
- * @param {{ repoRoot: string, manifest: any, all?: boolean, ids?: string[], cacheDir?: string, fetchImpl?: FetchLike, timeoutMs?: number, log?: (...data: any[]) => void, downloadHosts?: string[] }} [options]
- */
-export async function fetchSpecifications(
-  {
-    repoRoot,
-    manifest,
-    all = false,
-    ids = [],
-    cacheDir = DEFAULT_CACHE_DIR,
-    fetchImpl = /** @type {FetchLike} */ (fetch),
-    timeoutMs = DEFAULT_TIMEOUT_MS,
-    log = console.log,
-    downloadHosts = ALLOWED_DOWNLOAD_HOSTS,
-  } = /** @type {{ repoRoot: string, manifest: any, all?: boolean, ids?: string[], cacheDir?: string, fetchImpl?: FetchLike, timeoutMs?: number, log?: (...data: any[]) => void, downloadHosts?: string[] }} */ ({}),
-) {
-  assertValidManifest(manifest, { downloadHosts })
-  assertValidTimeoutMs(timeoutMs)
-
-  if (all === false && ids.length === 0) {
-    throw new Error('fetch requires --all or --id <id>')
-  }
-
-  const selected = selectDocuments(manifest, { all, ids })
-  const { realRoot, absoluteCacheDir } = await resolveVerifiedCacheDir(repoRoot, cacheDir)
-  await ensureCacheIsIgnored(repoRoot, cacheDir)
-  await fs.mkdir(absoluteCacheDir, { recursive: true })
-
-  const realCacheDir = await realpathOrThrow(absoluteCacheDir, 'cache directory')
-  const realCacheRelative = path.relative(realRoot, realCacheDir)
-  if (
-    realCacheRelative === '' ||
-    realCacheRelative.startsWith('..') ||
-    path.isAbsolute(realCacheRelative)
-  ) {
-    throw new Error(`cache directory resolves outside repository root: ${realCacheDir}`)
-  }
-
-  const results = []
-  for (const document of selected) {
-    results.push(
-      await fetchOneDocument({
-        repoRoot,
-        document,
-        cacheDir: realCacheDir,
-        fetchImpl,
-        timeoutMs,
-        log,
-        downloadHosts,
-      }),
-    )
-  }
-  return results
-}
-
-/**
- * @param {{ repoRoot: string, manifest: any, cacheDir?: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} [options]
- */
-export async function verifyCache(
-  {
-    repoRoot,
-    manifest,
-    cacheDir = DEFAULT_CACHE_DIR,
-    log = console.log,
-    error = console.error,
-  } = /** @type {{ repoRoot: string, manifest: any, cacheDir?: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} */ ({}),
-) {
-  assertValidManifest(manifest)
-
-  const { absoluteCacheDir } = await resolveVerifiedCacheDir(repoRoot, cacheDir)
-  const results = []
-  let failed = false
-
-  for (const document of manifest.documents) {
-    const targetPath = path.join(absoluteCacheDir, document.fileName)
-    if (path.dirname(targetPath) !== absoluteCacheDir) {
-      throw new Error(`fileName escapes cache directory: ${document.fileName}`)
-    }
-    const state = await existingFileState(targetPath)
-    if (state === null) {
-      failed = true
-      error(`specs:verify-cache MISSING: ${targetPath}`)
-      results.push({ id: document.id, ok: false, targetPath, error: 'missing' })
-      continue
-    }
-    if (state.bytes !== document.bytes) {
-      failed = true
-      error(
-        `specs:verify-cache BYTE MISMATCH: ${targetPath} (expected ${document.bytes}, received ${state.bytes})`,
-      )
-      results.push({ id: document.id, ok: false, targetPath, error: 'byte-count-mismatch' })
-      continue
-    }
-    if (state.sha256 !== document.sha256) {
-      failed = true
-      error(
-        `specs:verify-cache HASH MISMATCH: ${targetPath} (expected ${document.sha256}, received ${state.sha256})`,
-      )
-      results.push({ id: document.id, ok: false, targetPath, error: 'sha256-mismatch' })
-      continue
-    }
-    log(`specs:verify-cache OK: ${targetPath}`)
-    results.push({ id: document.id, ok: true, targetPath })
-  }
-
-  if (failed) {
-    error('specs:verify-cache FAILED')
+/** @param {string[]} args */
+async function main(args) {
+  const repoRoot = fileURLToPath(new URL('../', import.meta.url))
+  const [command, option, id] = args
+  if (command === 'check' && args.length === 1) {
+    const entries = await loadSpecifications(repoRoot)
+    console.log(`已校验 ${entries.size} 份规范的下载地址和清单字段`)
+  } else if (command === 'fetch' && option === '--id' && id && args.length === 3) {
+    console.log(await fetchSpecification(repoRoot, id))
   } else {
-    log('specs:verify-cache OK')
+    throw new Error('用法：npm run specs:check 或 npm run specs:fetch -- --id <id>')
   }
-  return { ok: failed === false, results }
 }
 
-async function main() {
-  const args = process.argv.slice(2)
-  if (args.includes('--help') || args.includes('-h') || args.length === 0) {
-    process.stdout.write(HELP)
-    process.exitCode = args.length === 0 ? 2 : 0
-    return
-  }
-
-  const [command, ...commandArgs] = args
-  const repoRoot = repoRootFromScript(import.meta.url)
-
-  if (command === 'check') {
-    if (commandArgs.length > 0) {
-      process.stderr.write(`unknown option(s): ${commandArgs.join(' ')}\n`)
-      process.exitCode = 2
-      return
-    }
-    const result = checkSpecifications({ repoRoot })
-    process.exitCode = result.ok ? 0 : 1
-    return
-  }
-
-  if (command === 'list') {
-    if (commandArgs.length > 0) {
-      process.stderr.write(`unknown option(s): ${commandArgs.join(' ')}\n`)
-      process.exitCode = 2
-      return
-    }
-    try {
-      const manifest = await loadManifest(repoRoot)
-      listSpecifications(manifest)
-    } catch (/** @type {*} */ caught) {
-      process.stderr.write(`specs:list failed: ${/** @type {*} */ (caught).message ?? caught}\n`)
-      process.exitCode = 1
-    }
-    return
-  }
-
-  if (command === 'fetch') {
-    try {
-      const { all, ids } = parseFetchArgs(commandArgs)
-      const manifest = await loadManifest(repoRoot)
-      await fetchSpecifications({ repoRoot, manifest, all, ids })
-    } catch (/** @type {*} */ caught) {
-      process.stderr.write(`specs:fetch failed: ${/** @type {*} */ (caught).message ?? caught}\n`)
-      process.exitCode = 1
-    }
-    return
-  }
-
-  if (command === 'verify-cache') {
-    if (commandArgs.length > 0) {
-      process.stderr.write(`unknown option(s): ${commandArgs.join(' ')}\n`)
-      process.exitCode = 2
-      return
-    }
-    try {
-      const manifest = await loadManifest(repoRoot)
-      const result = await verifyCache({ repoRoot, manifest })
-      process.exitCode = result.ok ? 0 : 1
-    } catch (/** @type {*} */ caught) {
-      process.stderr.write(
-        `specs:verify-cache failed: ${/** @type {*} */ (caught).message ?? caught}\n`,
-      )
-      process.exitCode = 1
-    }
-    return
-  }
-
-  process.stderr.write(`unknown command: ${command}\n\n${HELP}`)
-  process.exitCode = 2
-}
-
-const isDirectRun =
-  typeof process.argv[1] === 'string' &&
-  process.argv[1].length > 0 &&
-  realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])
-
-if (isDirectRun) {
-  main()
+if (import.meta.main) {
+  main(process.argv.slice(2)).catch((error) => {
+    console.error(error.message)
+    process.exitCode = 1
+  })
 }

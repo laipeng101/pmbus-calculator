@@ -20,11 +20,16 @@ if [[ "$security_options" != *'"name=rootless"'* ]]; then
   user_args=(--user "$(id -u):$(id -g)")
 fi
 
+# Keep dependency optimization and bundled Vite configs off the host filesystem.
+mkdir -p -- node_modules/.vite node_modules/.vite-temp
+
 # Extract the reports as the caller, including when the cloud Docker daemon
 # runs as a different UID. Keep stdout reserved for the archive.
-rm -rf -- tests/e2e/output-visual tests/e2e/report-visual tests/e2e/e2e-results-visual.json
+rm -rf -- test-results/visual playwright-report/visual
 docker run --rm --init --platform linux/amd64 --network none --shm-size 1g \
   "${user_args[@]}" \
+  --tmpfs /work/node_modules/.vite:mode=1777 \
+  --tmpfs /work/node_modules/.vite-temp:mode=1777 \
   --mount "type=bind,source=$PWD,target=/work" \
   --mount "type=bind,source=$node_root,target=/opt/pmbus-node,readonly" \
   --workdir /work \
@@ -39,4 +44,4 @@ docker run --rm --init --platform linux/amd64 --network none --shm-size 1g \
     node node_modules/@playwright/test/cli.js test --config playwright.visual.config.ts "$@" >&2 || status=$?
     tar -C "$PMBUS_VISUAL_ARTIFACTS" -cf - .
     exit "$status"
-  ' bash "$@" | tar --no-same-owner --no-overwrite-dir -xf - -C tests/e2e
+  ' bash "$@" | tar --no-same-owner --no-overwrite-dir -xf -

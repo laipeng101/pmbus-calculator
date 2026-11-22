@@ -1,17 +1,2 @@
-node_modules/
-dist/
-build/
-out/
-_site/
-coverage/
-tests/e2e/output/
-tests/e2e/output-*/
-tests/e2e/report/
-tests/e2e/report-*/
-playwright-report/
-test-results/
 package-lock.json
 pmbus-calculator.html
-.claude/
-.playwright-mcp/
-.dsh/

@@ -395,16 +395,14 @@ describe('toCalculatorViewModel', () => {
     expect(vm.valueText).toBe('—')
     expect(vm.steps.some((s) => s.id === 'l16-relative-range')).toBe(true)
     expect(vm.steps.some((s) => s.plainText.includes('Infinity'))).toBe(false)
-    expect(vm.formulaText).toContain('计算结果超出 JavaScript Number 可表示范围')
+    expect(vm.formulaText).toContain('计算结果太大，超出可表示范围')
     expect(vm.formulaText).toContain('1e+308')
     expect(vm.formulaText).not.toContain('Infinity')
     expect(vm.warnings.some((w) => w.id === 'l16-relative-overflow' && w.level === 'warning')).toBe(
       true,
     )
     expect(vm.physicalValueCopy?.available).toBe(false)
-    expect(vm.physicalValueCopy?.reason).toContain('Number')
-    // The nominal and ratio stay visible on the first-screen equation.
-    expect(vm.formulaText).toContain('1e+308')
+    expect(vm.physicalValueCopy?.reason).toContain('超出可表示范围')
   })
 
   test('relative ULINEAR16 derivation underflow is diagnosed, not shown as exact zero (v2.5.9)', () => {
@@ -468,7 +466,7 @@ describe('toCalculatorViewModel', () => {
     const zeroRatio = vm.warnings.find((w) => w.id === 'l16-relative-zero-ratio')
     expect(zeroRatio?.level).toBe('warning')
     expect(zeroRatio?.text).toContain('§8.5.2')
-    expect(zeroRatio?.text).toContain('非符合性')
+    expect(zeroRatio?.text).toContain('要求相对值大于 0')
     expect(vm.warnings.some((w) => w.id === 'l16-relative-underflow')).toBe(false)
     expect(vm.warnings.some((w) => w.id === 'l16-relative-overflow')).toBe(false)
     expect(vm.physicalValueCopy).toBeUndefined()
@@ -680,7 +678,7 @@ describe('toCalculatorViewModel', () => {
       const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x98 } }))
       expect(vm.voutModePage?.structureLegal).toBe(true)
       expect(vm.voutModePage?.calculable).toBe(false)
-      expect(vm.voutModePage?.statusText).toBe('相对 LINEAR（需参考值）')
+      expect(vm.voutModePage?.statusText).toBe('相对 LINEAR')
     })
 
     test('v2.5.5: 0x3E/0x3F are structure-legal, not calculable, and need external data', () => {
@@ -729,7 +727,7 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
-  describe('v2.5.4 VOUT_MODE 状态/警告/说明/步骤的 Half↔DIRECT 对比矩阵', () => {
+  describe('v2.5.4 VOUT_MODE 状态、警告和说明的 Half↔DIRECT 对比矩阵', () => {
     // IEEE Half is standard binary16 (Part II §7.6/§8.4.4): no user-visible
     // surface may claim a device profile. DIRECT keeps the m/b/R requirement
     // (§7.4); relative bytes keep the nominal-reference wording (§8.5.2).
@@ -742,35 +740,28 @@ describe('toCalculatorViewModel', () => {
       const explanationCopy = (page?.explanations ?? [])
         .map((e) => `${e.title} ${e.detail}`)
         .join('\n')
-      const stepCopy = vm.steps.map((s) => s.plainText).join('\n')
       const warningCopy = vm.warnings.map((w) => w.text).join('\n')
-      return { vm, page, explanationCopy, stepCopy, warningCopy }
+      return { vm, page, explanationCopy, warningCopy }
     }
 
     test('0x60 绝对 Half：状态=标准 binary16；所有表面无 Profile/系数/器件资料语义，无参考值要求', () => {
-      const { page, explanationCopy, stepCopy, warningCopy } = voutModePageSurfaces(0x60)
+      const { page, explanationCopy, warningCopy } = voutModePageSurfaces(0x60)
       expect(page?.statusText).toBe('IEEE Half（标准 binary16）')
       expect(page?.structureLegal).toBe(true)
-      const everySurface = [page?.statusText ?? '', explanationCopy, stepCopy, warningCopy].join(
-        '\n',
-      )
+      const everySurface = [page?.statusText ?? '', explanationCopy, warningCopy].join('\n')
       for (const banned of HALF_BANNED) {
         expect(everySurface, 'unexpected copy: ' + banned).not.toContain(banned)
       }
       expect(everySurface).not.toContain('标称参考值')
       expect(warningCopy).toContain('标准 IEEE 754 binary16')
       expect(warningCopy).toContain('§7.6')
-      expect(explanationCopy).toContain('标准 IEEE 754 binary16')
-      expect(stepCopy).toContain('标准 IEEE 754 binary16')
-      expect(stepCopy).toContain('HALF 模式页')
+      expect(explanationCopy).toContain('HALF 模式页')
     })
 
     test('0xE0 相对 Half：需 VOUT_COMMAND 标称参考值（§8.5.2），但仍无 Profile/系数语义', () => {
-      const { page, explanationCopy, stepCopy, warningCopy } = voutModePageSurfaces(0xe0)
+      const { page, explanationCopy, warningCopy } = voutModePageSurfaces(0xe0)
       expect(page?.statusText).toBe('相对 IEEE Half（需参考值）')
-      const everySurface = [page?.statusText ?? '', explanationCopy, stepCopy, warningCopy].join(
-        '\n',
-      )
+      const everySurface = [page?.statusText ?? '', explanationCopy, warningCopy].join('\n')
       for (const banned of HALF_BANNED) {
         expect(everySurface, 'unexpected copy: ' + banned).not.toContain(banned)
       }
@@ -778,7 +769,6 @@ describe('toCalculatorViewModel', () => {
       // nominal-reference wording, not just the concatenation.
       expect(warningCopy).toContain('标称参考值')
       expect(explanationCopy).toContain('标称参考值')
-      expect(stepCopy).toContain('标称参考值')
       expect(warningCopy).toContain('§8.5.2')
     })
 
@@ -791,7 +781,6 @@ describe('toCalculatorViewModel', () => {
       for (const surface of [
         absolute.page?.statusText ?? '',
         absolute.explanationCopy,
-        absolute.stepCopy,
         absolute.warningCopy,
       ]) {
         expect(surface, '0x40 must not need a nominal reference').not.toContain('标称参考值')
@@ -801,14 +790,12 @@ describe('toCalculatorViewModel', () => {
       expect(relative.page?.statusText).toBe('相对 DIRECT（需系数与参考值）')
       // v2.5.5: the InfoPanel warning ITSELF states both the m/b/R
       // coefficients and the VOUT_COMMAND nominal reference (§8.5.2);
-      // explanations and steps each carry both too.
+      // the details explain both requirements.
       expect(relative.warningCopy).toContain('m/b/R')
       expect(relative.warningCopy).toContain('标称参考值')
       expect(relative.warningCopy).toContain('§8.5.2')
       expect(relative.explanationCopy).toContain('m/b/R')
       expect(relative.explanationCopy).toContain('标称参考值')
-      expect(relative.stepCopy).toContain('m/b/R')
-      expect(relative.stepCopy).toContain('标称参考值')
     })
 
     test('0x61/0xE1 参数非法：保持 error 级与 00000b 约束，不落入任何格式要求分支', () => {

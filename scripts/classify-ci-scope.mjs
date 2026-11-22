@@ -13,17 +13,28 @@ const docs = new Set([
   '.github/pull_request_template.md',
 ])
 
-/** @param {string[]} paths */
-export function isDocumentationOnly(paths) {
+/** @param {string} file */
+function isDocumentation(file) {
   return (
-    paths.length > 0 &&
-    paths.every(
-      (file) =>
-        docs.has(file) ||
-        /^docs\/[^\u0000-\u001f\u007f]+\.md$/.test(file) ||
-        /^\.github\/ISSUE_TEMPLATE\/[^/\u0000-\u001f\u007f]+\.(?:md|ya?ml)$/.test(file),
-    )
+    docs.has(file) ||
+    /^docs\/[^\u0000-\u001f\u007f]+\.md$/.test(file) ||
+    /^\.github\/ISSUE_TEMPLATE\/[^/\u0000-\u001f\u007f]+\.(?:md|ya?ml)$/.test(file)
   )
+}
+
+/** @param {string[]} paths */
+export function classifyChanges(paths) {
+  if (paths.length === 0) return 'browser'
+  const code = paths.filter((file) => !isDocumentation(file))
+  if (code.length === 0) return 'docs'
+  if (
+    code.every((file) =>
+      /^(?:src\/|tests\/(?!e2e\/))[^\u0000-\u001f\u007f]+\.test\.tsx?$/.test(file),
+    )
+  ) {
+    return 'unit'
+  }
+  return 'browser'
 }
 
 if (import.meta.main) {
@@ -37,9 +48,9 @@ if (import.meta.main) {
     'HEAD',
     '--',
   ])
-  const docsOnly = isDocumentationOnly(changed.toString().split('\0').filter(Boolean))
-  console.log(`Documentation only: ${docsOnly}`)
+  const scope = classifyChanges(changed.toString().split('\0').filter(Boolean))
+  console.log(`CI scope: ${scope}`)
   if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(process.env.GITHUB_OUTPUT, `docs_only=${docsOnly}\n`)
+    appendFileSync(process.env.GITHUB_OUTPUT, `scope=${scope}\n`)
   }
 }

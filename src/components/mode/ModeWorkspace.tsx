@@ -16,6 +16,7 @@ import ControlTooltip from '../help/ControlTooltip'
 import { MODE_PANEL_ID, modeTabId } from './modeTabs'
 import { LockIcon, UnlockIcon } from '../icons/Icon'
 import MathFormula from '../math/MathFormula'
+import InfoPanel from '../result/InfoPanel'
 import { getBitRegions } from '../../app/bit-regions'
 
 function formatSignedRange(value: number): string {
@@ -262,12 +263,15 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
         )}
 
         {mode === 'VOUT_MODE' && vm.voutModePage && (
-          <VoutModeComposer
-            state={state}
-            info={vm.voutModePage}
-            byte={state.voutMode.byte}
-            dispatch={dispatch}
-          />
+          <div className="space-y-3">
+            <VoutModeComposer
+              state={state}
+              info={vm.voutModePage}
+              byte={state.voutMode.byte}
+              dispatch={dispatch}
+            />
+            <InfoPanel warnings={vm.warnings} />
+          </div>
         )}
 
         {mode === 'DIRECT' && (

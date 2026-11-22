@@ -4,7 +4,7 @@
  *
  * `classifyFloatText` is the single classification source for physical-value
  * drafts; the components and the reducer must consume it instead of keeping
- * their own rule sets (UI_CONVENTIONS §8).  `parseFloatSafe` and
+ * their own rule sets (UI_CONVENTIONS.md).  `parseFloatSafe` and
  * `isTransitionalFloatText` remain as thin, behavior-stable wrappers.
  *
  * Magnitude contract (v2.5.8, no silent clipping): a syntactically complete

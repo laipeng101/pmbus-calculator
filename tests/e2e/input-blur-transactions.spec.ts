@@ -9,7 +9,7 @@ import { appUrl } from './helpers/app-url'
  *
  * - 当前 focus 会话内没有任何真实 onChange 时，blur/Enter 必须严格 no-op：
  *   不派发 commit、不改写 raw/参数、不清除 provenance（quantization panel）、
- *   不清除仍然存在的字段错误（DOMAIN_MODEL §6.1 / UI_CONVENTIONS §8）；
+ *   不清除仍然存在的字段错误（DOMAIN_MODEL §6.1 / UI_CONVENTIONS.md 的输入编辑）；
  * - dirty 依据真实编辑事务，不以解析数值相等判断；
  * - 显式清空后 blur、显式重输相同值、非法文本修复都是真实事务，仍按既有
  *   合同提交。同值重输的真实性由真实键盘事务（选中全部 → 删除 → 逐键

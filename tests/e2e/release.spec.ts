@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { test, expect } from '@playwright/test'
 import { expectProductionCsp } from './helpers/pages-contract'
-import { RELEASE_CSP } from './helpers/pages-network-policy'
+import { RELEASE_CSP } from '../../scripts/pages-network-policy.mjs'
 
 const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
   version: string

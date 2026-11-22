@@ -97,7 +97,9 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
     const card = blockCard(page)
     await expect(card).toContainText('VID 格式')
     await expect(card).toContainText('此 VID 代码类型没有可用的电压映射')
-    await expect(page.getByRole('alert').filter({ hasText: 'VID code 00h' }).first()).toBeAttached()
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'VID 代码类型 00h 未使用' }),
+    ).toBeVisible()
   })
 
   test('0x3E + ULINEAR16: manufacturer-specific VID is legal, mapping from device data', async ({
@@ -126,7 +128,8 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
       const card = blockCard(page)
       await expect(card).toContainText(hex === '40' ? 'DIRECT 格式' : 'IEEE Half 格式')
       if (hex === '40') {
-        await expect(card).toContainText('m、b、R 系数后，在 DIRECT 页换算')
+        await expect(card).toContainText('m、b、R 系数')
+        await expect(card).toContainText('16 位有符号数可在 DIRECT 页换算')
       } else {
         await expect(card).toContainText('切换到 HALF 页')
       }

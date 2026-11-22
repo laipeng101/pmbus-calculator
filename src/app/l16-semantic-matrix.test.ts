@@ -83,7 +83,7 @@ describe('L16 semantic matrix — relative ULINEAR16 (byte 0x83, N=3)', () => {
   test('case 3: missing nominal → ratio only, result —, missing-reference warning', () => {
     const vm = toCalculatorViewModel(make({ voutMode: { byte: 0x83 }, raw: 0x0002 }))
     expect(vm.valueText).toBe('—')
-    expect(vm.formulaText).toBe('R=2 × 2^3=16（需要 VOUT_COMMAND nominal）')
+    expect(vm.formulaText).toBe('R=2 × 2^3=16（请填写 VOUT_COMMAND 标称参考值）')
     expect(vm.steps.find((s) => s.id === 'l16-relative-nominal-missing')?.kind).toBe('warning')
     expect(vm.steps.find((s) => s.id === 'result')).toBeUndefined()
     expect(vm.physicalValueCopy?.available).toBe(false)
@@ -144,11 +144,11 @@ describe('L16 semantic matrix — relative ULINEAR16 (byte 0x83, N=3)', () => {
     )
     expect(vm.valueText).toBe('—')
     expect(vm.formulaText).toBe(
-      'R=2 × 2^3=16（1600%）; X=1e+308×R=—（计算结果超出 JavaScript Number 可表示范围）',
+      'R=2 × 2^3=16（1600%）; X=1e+308×R=—（计算结果太大，超出可表示范围）',
     )
     expect(vm.warnings.find((w) => w.id === 'l16-relative-overflow')?.level).toBe('warning')
     expect(vm.physicalValueCopy?.available).toBe(false)
-    expect(vm.physicalValueCopy?.reason).toContain('计算结果超出 JavaScript Number 可表示范围')
+    expect(vm.physicalValueCopy?.reason).toContain('计算结果太大，超出可表示范围')
   })
 
   test('case 8: nonzero-factor underflow → — everywhere, warning, copy disabled', () => {
@@ -160,9 +160,7 @@ describe('L16 semantic matrix — relative ULINEAR16 (byte 0x83, N=3)', () => {
       }),
     )
     expect(vm.valueText).toBe('—')
-    expect(vm.formulaText).toContain(
-      '计算下溢：两个非零有限数相乘的结果被 Number 舍入为 0，不是数学上的精确零',
-    )
+    expect(vm.formulaText).toContain('计算下溢：非零结果太小，按计算精度会舍入为 0')
     expect(vm.warnings.find((w) => w.id === 'l16-relative-underflow')?.level).toBe('warning')
     expect(vm.physicalValueCopy?.available).toBe(false)
     expect(vm.physicalValueCopy?.reason).toContain('计算下溢')

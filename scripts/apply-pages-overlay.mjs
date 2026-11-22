@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 import fs from 'node:fs'
 import path from 'node:path'
+import { CLOUDFLARE_BEACON_URL, PAGES_CSP, formatCsp } from './pages-network-policy.mjs'
 import { verifyPagesAssetReferences } from './verify-pages-asset-references.mjs'
 import {
-  BEACON_URL,
   CSS_NAME,
-  PAGES_CSP,
   REPOSITORY_LINK,
   assertNoOverlayContamination,
   deploymentToken,
@@ -34,9 +33,7 @@ export function applyPagesOverlay(site, options = {}) {
   // Hex validation above excludes HTML metacharacters; JSON serialization
   // makes the only beacon option explicit. No calculator events or inputs.
   const data = JSON.stringify({ token })
-  const policy = Object.entries(PAGES_CSP)
-    .map(([name, value]) => `${name} ${value}`)
-    .join('; ')
+  const policy = formatCsp(PAGES_CSP)
   const replacements = [
     {
       start: csp.start,
@@ -51,7 +48,7 @@ export function applyPagesOverlay(site, options = {}) {
     {
       start: body.closeStart,
       end: body.closeStart,
-      text: `  ${REPOSITORY_LINK}\n    <!-- Cloudflare Web Analytics -->\n    <script type="module" src="${BEACON_URL}" data-cf-beacon='${data}'></script>\n    <!-- End Cloudflare Web Analytics -->\n  `,
+      text: `  ${REPOSITORY_LINK}\n    <!-- Cloudflare Web Analytics -->\n    <script type="module" src="${CLOUDFLARE_BEACON_URL}" data-cf-beacon='${data}'></script>\n    <!-- End Cloudflare Web Analytics -->\n  `,
     },
   ].sort((a, b) => b.start - a.start)
   let result = html

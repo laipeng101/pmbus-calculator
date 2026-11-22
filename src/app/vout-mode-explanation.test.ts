@@ -69,7 +69,7 @@ describe('M39 VOUT_MODE explanation model (Chinese-primary)', () => {
 
   it('VID not-used explanation uses the Chinese 未使用 label', () => {
     const ex = buildVoutModeExplanations(analyzeVoutMode(0x20))
-    expect(ex.find((e) => e.id === 'vid-not-used')?.title).toBe('VID code 00h：未使用')
+    expect(ex.find((e) => e.id === 'vid-not-used')?.title).toBe('VID 代码类型 00h：未使用')
   })
 })
 

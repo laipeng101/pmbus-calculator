@@ -6,10 +6,11 @@ interface Props {
 }
 
 export default function WorkspaceLayout({ primary, secondary }: Props) {
+  const hasSecondary = secondary != null
   return (
-    <div className="workspace-layout">
+    <div className={hasSecondary ? 'workspace-layout workspace-layout-split' : 'workspace-layout'}>
       <div className="primary-panel">{primary}</div>
-      <div className="secondary-panel">{secondary}</div>
+      {hasSecondary && <div className="secondary-panel">{secondary}</div>}
     </div>
   )
 }

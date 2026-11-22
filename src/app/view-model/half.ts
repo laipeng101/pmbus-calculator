@@ -15,6 +15,5 @@ export function resolveHalfValueText(raw: number): string {
  * notice; it can never go stale because it is never stored in state.
  */
 export function resolveHalfSpecial(raw: number): HalfSpecialSemantics | undefined {
-  const semantics = resolveHalfSpecialSemantics(PMBusMath.decodeHalf(raw).value)
-  return semantics.presentable ? semantics : undefined
+  return resolveHalfSpecialSemantics(PMBusMath.decodeHalf(raw).value)
 }

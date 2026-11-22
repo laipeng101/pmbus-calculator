@@ -7,7 +7,7 @@ import {
   PAGES_REPOSITORY_URL,
   isAllowedPagesRequest,
   parseCsp,
-} from './pages-network-policy'
+} from '../../../scripts/pages-network-policy.mjs'
 
 export async function stubCloudflare(page: Page): Promise<void> {
   // Only the two audited destinations are stubbed. An unexpected destination

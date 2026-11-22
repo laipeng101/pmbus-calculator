@@ -19,6 +19,8 @@
  *   disambiguates them (the two N entries: LINEAR11 word vs VOUT_MODE).
  */
 
+import { HALF_SPECIAL_SPEC_REF } from './half-special-semantics'
+
 export type TermId =
   | 'pmbus'
   | 'smbus'
@@ -96,8 +98,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     id: 'smbus',
     token: 'SMBus',
     name: '系统管理总线',
-    detail:
-      'PMBus 所基于的系统管理总线；PMBus word 在线上默认低字节在前、高位在前（Part II §7.6 对浮点数据明示，其余 word 类型由 SMBus/PMBus 传输规则规定）。',
+    detail: 'PMBus 使用的系统管理总线。标准 SMBus Word 事务先传低字节，每个字节先传最高位。',
     source: 'smbus',
     scope: '总线与规范',
   },
@@ -106,7 +107,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     token: 'VOUT_MODE',
     name: '输出电压格式配置字节',
     detail:
-      '1 字节配置（Part II §8.3 Table 2）：bit7 选择绝对/相对语义，bits[6:5] 选择格式（LINEAR/VID/DIRECT/IEEE Half），bits[4:0] 是格式参数；DIRECT 与 IEEE Half 的参数必须为 00000b。设备可能固定该字节并拒绝写入，编辑字节不代表真实器件接受写入。',
+      '用于指定输出电压数据的格式。第 7 位选择绝对值或相对值，第 6、5 位选择格式，低 5 位是对应参数。DIRECT 和 IEEE Half 的参数须为 0。请按器件资料填写配置字节。',
     source: 'pmbus-spec',
     specRef: 'Part II §8.3 Table 2',
     scope: 'VOUT_MODE 字节',
@@ -349,10 +350,10 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     token: 'NaN / ±Infinity',
     name: '浮点特殊值',
     detail:
-      'IEEE 754 特殊值的 PMBus 设备操作语义（Part II §7.6.2）：设备读回主机写入的值必须返回相同编码；收到 NaN 按 invalid data 处理（§10.8），设备也可用 NaN 表示值不可用；+Inf/−Inf 分别表示正/负满量程与测量通道相应方向饱和。这是协议语义，不代表本计算器发生了通信。',
+      'HALF 支持输入或解出 NaN、正无穷和负无穷。出现这些值时，输入框下方会分别说明写入设备和设备返回时的含义。',
     source: 'pmbus-spec',
-    specRef: 'Part II §7.6.2',
-    scope: 'HALF 特殊值操作语义',
+    specRef: HALF_SPECIAL_SPEC_REF,
+    scope: 'HALF 特殊值',
   },
   'twos-complement': {
     id: 'twos-complement',
@@ -395,7 +396,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     token: 'LE',
     name: '低字节在前',
     detail:
-      '低字节在前（least significant byte first）：SMBus/PMBus word 事务在线上的传输顺序——SMBus 3.0 §6.5.4 写事务明示 word 数据 low byte first，§6.5.5 读事务图中 Data Byte Low 在前，PMBus Part I §5.6.3.2.4 确认 DS=0 默认按 SMBus 标准（最低有效字节在前）。本工具的 Wire Bytes 显示/复制即该顺序；它不改变 Raw Word 的数值。',
+      '标准 SMBus Word 事务先传低字节。对照这类总线抓包时请选 Wire Bytes，例如 0x1234 显示为 34 12。',
     source: 'smbus',
     specRef: 'SMBus 3.0 §6.5.4/§6.5.5',
     scope: '字节序（线上顺序）',
@@ -403,9 +404,8 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
   be: {
     id: 'be',
     token: 'BE',
-    name: 'MSB-first 表示',
-    detail:
-      '高字节在前（MSB-first / 大端）字节序列表示：与线上顺序相反的另一种 serialization 表示，仅用于显示与对照，不是 SMBus/PMBus word 的合法线上顺序，也不会改写 Raw Word。',
+    name: '高字节在前',
+    detail: '按高字节到低字节的顺序显示和复制。例如 0x1234 显示为 12 34。',
     source: 'project',
     scope: '字节序（MSB-first 表示）',
   },

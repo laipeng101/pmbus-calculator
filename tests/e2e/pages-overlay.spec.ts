@@ -5,7 +5,7 @@ import {
   observePagesResources,
   stubCloudflare,
 } from './helpers/pages-contract'
-import { CLOUDFLARE_RUM_URL, PAGES_REPOSITORY_NAME } from './helpers/pages-network-policy'
+import { CLOUDFLARE_RUM_URL, PAGES_REPOSITORY_NAME } from '../../scripts/pages-network-policy.mjs'
 
 const calculatorTargets = [
   '#root button',

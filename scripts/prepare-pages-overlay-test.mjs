@@ -4,12 +4,12 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { PAGES_REPOSITORY } from './pages-network-policy.mjs'
 import { extractReleaseZip, generateAssets } from './prepare-release-assets.mjs'
 import { applyPagesOverlay } from './apply-pages-overlay.mjs'
 import { verifyPagesOverlay } from './verify-pages-overlay.mjs'
 import {
   DEFAULT_ROOT,
-  REPOSITORY,
   TOKEN_ENV,
   CSS_NAME,
   isMain,
@@ -41,7 +41,7 @@ export function preparePagesOverlayTest(repoRoot = DEFAULT_ROOT) {
       fs.rmSync(site, { recursive: true })
     }
     extractReleaseZip(zip, site)
-    const env = { GITHUB_REPOSITORY: REPOSITORY, [TOKEN_ENV]: '0'.repeat(32) }
+    const env = { GITHUB_REPOSITORY: PAGES_REPOSITORY, [TOKEN_ENV]: '0'.repeat(32) }
     applyPagesOverlay('_site', { repoRoot: root, env })
     const verified = verifyPagesOverlay('_site', { repoRoot: root, env })
     requireContract(

@@ -7,15 +7,15 @@ import tseslint from 'typescript-eslint'
 export default tseslint.config(
   {
     ignores: [
-      'dist',
-      'build',
-      'out',
-      '_site',
-      'coverage',
-      'tests/e2e/output*/**',
-      'tests/e2e/report*/**',
-      'playwright-report',
-      'test-results',
+      'dist/',
+      'build/',
+      'out/',
+      '_site/',
+      'coverage/',
+      'playwright-report/',
+      'test-results/',
+      'tests/e2e/output*/',
+      'tests/e2e/report*/',
     ],
   },
   {
@@ -33,6 +33,22 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    files: ['src/**/*.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'JSXAttribute[name.name="style"]',
+          message: 'Use classes or data attributes for component styles.',
+        },
+        {
+          selector: 'JSXAttribute[name.name="title"]',
+          message: 'Use ControlTooltip for interactive help.',
+        },
+      ],
     },
   },
 )

@@ -1,379 +1,92 @@
-import { execFileSync, spawnSync } from 'node:child_process'
-import { realpathSync } from 'node:fs'
-import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-export const MiB = 1024 * 1024
-
-/**
- * @param {string} importMetaUrl
- * @returns {string}
- */
-export function repoRootFromScript(importMetaUrl) {
-  return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..')
-}
-
-/**
- * @param {string} p
- * @param {string} dir
- * @returns {boolean}
- */
-function matchesDirOrUnder(p, dir) {
-  return p === dir || p.startsWith(`${dir}/`)
-}
-
-/**
- * @param {string} p
- * @param {string} parent
- * @param {string} base
- * @returns {boolean}
- */
-function matchesDirVariant(p, parent, base) {
-  const prefix = `${parent}/${base}`
-  if (p === prefix || p.startsWith(`${prefix}/`)) return true
-  return new RegExp(`^${parent}/${base}-[^/]+/`).test(p)
-}
-
-/**
- * @param {string} p
- * @returns {boolean}
- */
-export function isSnapshotAllowlisted(p) {
-  return /^tests\/e2e\/visual\.spec\.ts-snapshots\/[^/]+\.(png|webp)$/.test(p)
-}
-
-/**
- * @param {string} p
- * @returns {boolean}
- */
-export function isLegacyHtml(p) {
-  return p === 'pmbus-calculator.html'
-}
-
-/**
- * @param {string[]} files
- * @returns {{ snapshots: string[], legacyFallbacks: string[] }}
- */
-export function classifyPolicyAllowlist(files) {
-  const snapshots = []
-  const legacyFallbacks = []
-  for (const file of files) {
-    if (isSnapshotAllowlisted(file)) snapshots.push(file)
-    else if (isLegacyHtml(file)) legacyFallbacks.push(file)
-  }
-  return { snapshots, legacyFallbacks }
-}
-
-/** @type {{ id: string, description: string, match: (p: string) => boolean, fix: string }[]} */
-const REJECT_RULES = [
-  {
-    id: 'generated-pages-site',
-    description: 'tracked Pages staging output _site/',
-    match: (p) => matchesDirOrUnder(p, '_site'),
-    fix: 'Remove from tracking; Pages-only deployment inputs belong in the ignored staging tree, never in source or Release assets.',
-  },
-  {
-    id: 'generated-dist',
-    description: 'tracked build output dist/',
-    match: (p) => matchesDirOrUnder(p, 'dist'),
-    fix: 'Remove from tracking and keep dist/ ignored in .gitignore; use GitHub Releases for distributable ZIPs.',
-  },
-  {
-    id: 'generated-build',
-    description: 'tracked build output build/',
-    match: (p) => matchesDirOrUnder(p, 'build'),
-    fix: 'Remove from tracking and keep build/ ignored in .gitignore.',
-  },
-  {
-    id: 'generated-out',
-    description: 'tracked build output out/',
-    match: (p) => matchesDirOrUnder(p, 'out'),
-    fix: 'Remove from tracking and keep out/ ignored in .gitignore.',
-  },
-  {
-    id: 'generated-coverage',
-    description: 'tracked coverage output',
-    match: (p) => matchesDirOrUnder(p, 'coverage'),
-    fix: 'Remove from tracking; publish coverage as CI artifact/log, not Git.',
-  },
-  {
-    id: 'generated-node_modules',
-    description: 'tracked node_modules',
-    match: (p) => matchesDirOrUnder(p, 'node_modules'),
-    fix: 'Remove from tracking; install dependencies with npm ci in CI/local.',
-  },
-  {
-    id: 'generated-playwright-report',
-    description: 'tracked Playwright report',
-    match: (p) => matchesDirOrUnder(p, 'playwright-report'),
-    fix: 'Remove from tracking; upload as CI artifact with short retention.',
-  },
-  {
-    id: 'generated-test-results',
-    description: 'tracked Playwright test-results',
-    match: (p) => matchesDirOrUnder(p, 'test-results'),
-    fix: 'Remove from tracking; upload as CI artifact with short retention.',
-  },
-  {
-    id: 'e2e-output',
-    description: 'tracked tests/e2e/output/ or tests/e2e/output-*/ output directory',
-    match: (p) => matchesDirVariant(p, 'tests/e2e', 'output'),
-    fix: 'Remove from tracking; e2e output dirs are temporary and ignored in .gitignore.',
-  },
-  {
-    id: 'e2e-report',
-    description: 'tracked tests/e2e/report/ or tests/e2e/report-*/ report directory',
-    match: (p) => matchesDirVariant(p, 'tests/e2e', 'report'),
-    fix: 'Remove from tracking; e2e HTML reports are CI artifacts, not source.',
-  },
-  {
-    id: 'e2e-results-json',
-    description: 'tracked Playwright JSON reporter output tests/e2e/e2e-results*.json',
-    match: (p) => /^tests\/e2e\/e2e-results.*\.json$/.test(p),
-    fix: 'Remove from tracking; e2e-results*.json files are generated reporter artifacts (v2.5.14) and ignored in .gitignore.',
-  },
-  {
-    id: 'os-ds-store',
-    description: 'tracked macOS .DS_Store',
-    match: (p) => p === '.DS_Store' || p.endsWith('/.DS_Store'),
-    fix: 'Remove from tracking and keep .DS_Store ignored.',
-  },
-  {
-    id: 'os-thumbs-db',
-    description: 'tracked Windows Thumbs.db',
-    match: (p) => p === 'Thumbs.db' || p.endsWith('/Thumbs.db'),
-    fix: 'Remove from tracking and keep Thumbs.db ignored.',
-  },
-  {
-    id: 'log-file',
-    description: 'tracked *.log',
-    match: (p) => /\.log$/.test(p),
-    fix: 'Remove from tracking; logs are transient and ignored in .gitignore.',
-  },
-  {
-    id: 'lcov-file',
-    description: 'tracked *.lcov',
-    match: (p) => /\.lcov$/.test(p),
-    fix: 'Remove from tracking; LCOV belongs in CI artifacts.',
-  },
-  {
-    id: 'zip-archive',
-    description: 'tracked *.zip',
-    match: (p) => /\.zip$/.test(p),
-    fix: 'Remove from tracking; release ZIPs and DSH session ZIPs belong in GitHub Releases or temporary artifacts.',
-  },
-  {
-    id: 'tgz-archive',
-    description: 'tracked *.tgz',
-    match: (p) => /\.tgz$/.test(p),
-    fix: 'Remove from tracking; archives are generated artifacts.',
-  },
-  {
-    id: 'tar-archive',
-    description: 'tracked *.tar',
-    match: (p) => /\.tar$/.test(p),
-    fix: 'Remove from tracking; archives are generated artifacts.',
-  },
-  {
-    id: 'tar-gz-archive',
-    description: 'tracked *.tar.gz',
-    match: (p) => /\.tar\.gz$/.test(p),
-    fix: 'Remove from tracking; archives are generated artifacts.',
-  },
-  {
-    id: 'source-map',
-    description: 'tracked source map (*.map)',
-    match: (p) => /\.map$/.test(p),
-    fix: 'Remove from tracking; source maps are generated build output.',
-  },
-  {
-    id: 'dsh-jsonl',
-    description: 'tracked DSH/agent session JSONL',
-    match: (p) => /\.jsonl$/.test(p),
-    fix: 'Remove from tracking; agent session/compact logs live outside Git.',
-  },
-  {
-    id: 'screenshot-actual',
-    description: 'tracked Playwright *-actual.png',
-    match: (p) => /-actual\.png$/.test(p),
-    fix: 'Remove from tracking; actual screenshots are temporary test output.',
-  },
-  {
-    id: 'screenshot-diff',
-    description: 'tracked Playwright *-diff.png',
-    match: (p) => /-diff\.png$/.test(p),
-    fix: 'Remove from tracking; diff screenshots are temporary test output.',
-  },
-  {
-    id: 'screenshot-failed',
-    description: 'tracked Playwright *-failed.png',
-    match: (p) => /-failed\.png$/.test(p),
-    fix: 'Remove from tracking; failed screenshots are temporary test output.',
-  },
-  {
-    id: 'release-evidence-png',
-    description: 'tracked docs/archive/release-evidence/**/*.png process screenshot',
-    match: (p) => /^docs\/archive\/release-evidence\/.*\.png$/.test(p),
-    fix: 'Remove from tracking; historical release evidence remains available from the tag/commit history.',
-  },
-  {
-    id: 'tracked-pdf',
-    description: 'tracked PDF file',
-    match: (p) => /\.pdf$/.test(p),
-    fix: 'Do not track PDFs in the current tree. Record provenance in document/specifications.json and fetch PDFs on demand into the ignored .cache/specifications/ directory.',
-  },
-]
+const MiB = 1024 * 1024
 
 /**
  * @param {string} repoRoot
- * @returns {string[]}
+ * @param {string[]} args
+ * @param {string} [input]
  */
-export function gitLsFiles(repoRoot) {
-  const output = execFileSync('git', ['-C', repoRoot, 'ls-files', '-z'], {
+function git(repoRoot, args, input) {
+  return execFileSync('git', ['-C', repoRoot, ...args], {
     encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  })
-  return output.split('\0').filter(Boolean)
-}
-
-/**
- * @param {string} repoRoot
- * @returns {Map<string, number>}
- */
-export function gitIndexSizes(repoRoot) {
-  const staged = execFileSync('git', ['-C', repoRoot, 'ls-files', '-s', '-z'], {
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  })
-  const objectByPath = new Map()
-  for (const entry of staged.split('\0')) {
-    if (entry.length === 0) continue
-    const tab = entry.indexOf('\t')
-    const meta = tab >= 0 ? entry.slice(0, tab) : entry
-    const filePath = tab >= 0 ? entry.slice(tab + 1) : entry
-    const fields = meta.trim().split(/\s+/)
-    const object = fields[1]
-    if (object) objectByPath.set(filePath, object)
-  }
-
-  if (objectByPath.size === 0) return new Map()
-
-  const input = `${[...objectByPath.values()].join('\n')}\n`
-  const batch = spawnSync('git', ['-C', repoRoot, 'cat-file', '--batch-check'], {
     input,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
   })
-  if (batch.error) throw batch.error
-  if (batch.status !== 0) {
-    throw new Error(`git cat-file --batch-check failed: ${batch.stderr}`)
-  }
+}
 
-  const objectSizes = new Map()
-  for (const line of batch.stdout.split('\n')) {
-    const [object, , sizeText] = line.split(' ')
-    if (object && sizeText !== undefined) {
-      const size = Number(sizeText)
-      objectSizes.set(object, Number.isFinite(size) ? size : 0)
-    }
-  }
+/** @param {string} repoRoot */
+export function inspectIndex(repoRoot) {
+  const ignored = git(repoRoot, [
+    'ls-files',
+    '--cached',
+    '--ignored',
+    '--exclude-from=.gitignore',
+    '-z',
+  ])
+    .split('\0')
+    .filter(Boolean)
 
+  const files = git(repoRoot, ['ls-files', '--stage', '-z'])
+    .split('\0')
+    .filter(Boolean)
+    .map((entry) => {
+      const separator = entry.indexOf('\t')
+      const [mode, object, stage] = entry.slice(0, separator).split(' ')
+      const path = entry.slice(separator + 1)
+
+      if (stage !== '0') throw new Error(`resolve the index conflict at ${JSON.stringify(path)}`)
+      // Submodule entries reference commits, so there is no file blob to measure.
+      return { path, object: mode === '160000' ? undefined : object }
+    })
+
+  const objects = [...new Set(files.flatMap(({ object }) => (object ? [object] : [])))]
   const sizes = new Map()
-  for (const [filePath, object] of objectByPath) {
-    sizes.set(filePath, objectSizes.get(object) ?? 0)
+  if (objects.length) {
+    const output = git(
+      repoRoot,
+      ['cat-file', '--batch-check=%(objectsize)'],
+      `${objects.join('\n')}\n`,
+    ).split('\n')
+    objects.forEach((object, index) => {
+      const size = Number.parseInt(output[index], 10)
+      if (!/^\d+$/.test(output[index])) throw new Error(`cannot read indexed blob ${object}`)
+      sizes.set(object, size)
+    })
   }
-  return sizes
+
+  let totalSize = 0
+  const oversized = []
+  for (const { path, object } of files) {
+    const size = object === undefined ? 0 : sizes.get(object)
+    totalSize += size
+    if (size > MiB) oversized.push({ path, size })
+  }
+
+  return { paths: files.map(({ path }) => path), ignored, oversized, totalSize }
 }
 
-/**
- * @param {{ repoRoot: string, log?: (...data: any[]) => void, error?: (...data: any[]) => void }} [options]
- */
-export function checkRepoHygiene(
-  { repoRoot, log = console.log, error = console.error } = /** @type {any} */ ({}),
-) {
-  const files = gitLsFiles(/** @type {string} */ (repoRoot))
-  const sizes = gitIndexSizes(/** @type {string} */ (repoRoot))
-
-  const rejected = []
-  const policyAllowlisted = classifyPolicyAllowlist(files)
-
-  for (const file of files) {
-    for (const rule of REJECT_RULES) {
-      if (rule.match(file)) {
-        rejected.push({ file, ruleId: rule.id, description: rule.description, fix: rule.fix })
-        break
-      }
-    }
-
-    const size = sizes.get(file) ?? 0
-    if (size > MiB) {
-      const sizeMiB = (size / MiB).toFixed(2)
-      rejected.push({
-        file,
-        ruleId: 'large-file',
-        description: `tracked file exceeds 1 MiB (${sizeMiB} MiB)`,
-        fix: 'Move the generated binary to GitHub Releases/CI artifacts. The >1 MiB gate is unconditional (no exceptions); the policy classification below is a statistic, not an exemption.',
-      })
-    }
-  }
-
-  const totalSize = [...sizes.values()].reduce((sum, size) => sum + size, 0)
-  const policyAllowlistedCount =
-    policyAllowlisted.snapshots.length + policyAllowlisted.legacyFallbacks.length
-
-  if (rejected.length > 0) {
-    error(`repo-hygiene: rejected ${rejected.length} tracked path(s)`)
-    for (const item of rejected) {
-      error(`REJECTED ${item.file}`)
-      error(`  rule: ${item.ruleId} (${item.description})`)
-      error(`  fix : ${item.fix}`)
-    }
-  }
-
-  log(`repo-hygiene: scanned ${files.length} tracked path(s) via git ls-files`)
-  log(
-    `repo-hygiene: policy-classified (informational statistic, NOT a size exemption): ` +
-      `${policyAllowlistedCount} ` +
-      `(snapshots: ${policyAllowlisted.snapshots.length}, ` +
-      `legacy fallbacks: ${policyAllowlisted.legacyFallbacks.length})`,
-  )
-  log(
-    `repo-hygiene: tracked tree size (sum of tracked path blob sizes, not Git pack size): ` +
-      `${totalSize} bytes (${(totalSize / MiB).toFixed(2)} MiB)`,
-  )
-
-  if (rejected.length > 0) {
-    error(`repo-hygiene: FAILED with ${rejected.length} rejected path(s)`)
-  } else {
-    log('repo-hygiene: OK')
-  }
-
-  return { files, rejected, policyAllowlisted, policyAllowlistedCount, totalSize }
-}
-
-function main() {
-  const args = process.argv.slice(2)
-  if (args.includes('--help') || args.includes('-h')) {
-    process.stdout.write(
-      'check-repo-hygiene.mjs — gate tracked repository files\n\nUsage:\n  node scripts/check-repo-hygiene.mjs\n',
+if (import.meta.main) {
+  try {
+    const { paths, ignored, oversized, totalSize } = inspectIndex(
+      fileURLToPath(new URL('..', import.meta.url)),
     )
-    process.exit(0)
+    for (const path of ignored) {
+      console.error(`REJECTED ${JSON.stringify(path)}: tracked path matches .gitignore`)
+    }
+    for (const { path, size } of oversized) {
+      console.error(`REJECTED ${JSON.stringify(path)}: indexed file exceeds 1 MiB (${size} bytes)`)
+    }
+    const snapshots = paths.filter((path) => path.startsWith('tests/e2e/visual.spec.ts-snapshots/'))
+    const legacy = paths.includes('pmbus-calculator.html') ? 1 : 0
+    console.log(
+      `repo-hygiene: ${paths.length} indexed paths (${snapshots.length} visual snapshots, ${legacy} legacy HTML), ${totalSize} bytes (${(totalSize / MiB).toFixed(2)} MiB)`,
+    )
+    const failed = ignored.length > 0 || oversized.length > 0
+    console.log(failed ? 'repo-hygiene: FAILED' : 'repo-hygiene: OK')
+    process.exitCode = failed ? 1 : 0
+  } catch (error) {
+    console.error(`repo-hygiene: ${error instanceof Error ? error.message : String(error)}`)
+    process.exitCode = 1
   }
-  if (args.length > 0) {
-    process.stderr.write(`unknown option(s): ${args.join(' ')}\n`)
-    process.exit(2)
-  }
-
-  const repoRoot = repoRootFromScript(import.meta.url)
-  const result = checkRepoHygiene({ repoRoot })
-  process.exitCode = result.rejected.length > 0 ? 1 : 0
-}
-
-const isDirectRun =
-  typeof process.argv[1] === 'string' &&
-  process.argv[1].length > 0 &&
-  realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])
-
-if (isDirectRun) {
-  main()
 }

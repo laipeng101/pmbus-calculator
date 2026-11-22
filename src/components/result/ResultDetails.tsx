@@ -36,55 +36,51 @@ export default function ResultDetails({ vm, copyPrefs, onTogglePrefix, onToggleS
       <div className="space-y-3">
         <CalculationSteps steps={vm.steps} />
 
-        {vm.mode !== 'VOUT_MODE' && (
-          <>
-            {/* Canonical Raw Word */}
-            <div className="min-w-0">
-              <div className="mb-1 text-xs color-text-muted">
-                原始数据字（
-                <TechnicalTerm termId="raw-word" />）
-              </div>
-              {/* Read-only canonical Raw Word display: deliberately the muted
+        {/* Canonical Raw Word */}
+        <div className="min-w-0">
+          <div className="mb-1 text-xs color-text-muted">
+            原始数据字（
+            <TechnicalTerm termId="raw-word" />）
+          </div>
+          {/* Read-only canonical Raw Word display: deliberately the muted
                   display surface, never the editable .input-field pair. */}
-              <div className="panel-surface-muted font-mono rounded-lg px-4 py-2 text-lg font-semibold">
-                {vm.rawHex}
-              </div>
+          <div className="panel-surface-muted font-mono rounded-lg px-4 py-2 text-lg font-semibold">
+            {vm.rawHex}
+          </div>
+        </div>
+
+        {/* Byte sequences: SMBus/PMBus wire order + MSB-first representation */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="min-w-0">
+            <div className="mb-1 text-xs color-text-muted">
+              SMBus / PMBus Wire Bytes（低字节在前，
+              <TechnicalTerm termId="le" />）
             </div>
-
-            {/* Byte sequences: SMBus/PMBus wire order + MSB-first representation */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="min-w-0">
-                <div className="mb-1 text-xs color-text-muted">
-                  SMBus / PMBus Wire Bytes（低字节在前，
-                  <TechnicalTerm termId="le" />）
-                </div>
-                <div className="panel-surface-muted font-mono rounded-lg px-3 py-2 text-sm font-medium">
-                  {vm.wireBytes}
-                </div>
-              </div>
-              <div className="min-w-0">
-                <div className="mb-1 text-xs color-text-muted">
-                  MSB-first 字节（高字节在前，
-                  <TechnicalTerm termId="be" />）
-                </div>
-                <div className="panel-surface-muted font-mono rounded-lg px-3 py-2 text-sm font-medium">
-                  {vm.msbFirstBytes}
-                </div>
-              </div>
+            <div className="panel-surface-muted font-mono rounded-lg px-3 py-2 text-sm font-medium">
+              {vm.wireBytes}
             </div>
+          </div>
+          <div className="min-w-0">
+            <div className="mb-1 text-xs color-text-muted">
+              MSB-first 字节（高字节在前，
+              <TechnicalTerm termId="be" />）
+            </div>
+            <div className="panel-surface-muted font-mono rounded-lg px-3 py-2 text-sm font-medium">
+              {vm.msbFirstBytes}
+            </div>
+          </div>
+        </div>
 
-            {/* Quantization error (L11/L16/DIRECT/HALF) */}
-            <ErrorDelta vm={vm} />
+        {/* Quantization error (L11/L16/DIRECT/HALF) */}
+        <ErrorDelta vm={vm} />
 
-            {/* Copy Tools */}
-            <CopyToolbar
-              vm={vm}
-              copyPrefs={copyPrefs}
-              onTogglePrefix={onTogglePrefix}
-              onToggleSpace={onToggleSpace}
-            />
-          </>
-        )}
+        {/* Copy Tools */}
+        <CopyToolbar
+          vm={vm}
+          copyPrefs={copyPrefs}
+          onTogglePrefix={onTogglePrefix}
+          onToggleSpace={onToggleSpace}
+        />
 
         <InfoPanel warnings={vm.warnings} />
       </div>

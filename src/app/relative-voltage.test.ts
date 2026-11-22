@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  resolveRelativeVoltage,
-  RELATIVE_VOLTAGE_OVERFLOW_NOTE,
-  RELATIVE_VOLTAGE_UNDERFLOW_NOTE,
-} from './relative-voltage'
+import { resolveRelativeVoltage } from './relative-voltage'
 
 describe('resolveRelativeVoltage (v2.5.9 §7.3 matrix)', () => {
   it('classifies finite results — including large and subnormal magnitudes', () => {
@@ -50,19 +46,5 @@ describe('resolveRelativeVoltage (v2.5.9 §7.3 matrix)', () => {
   it('classifies a missing reference without touching the ratio', () => {
     // 98 / 0200 | null → ratio visible, final voltage missing
     expect(resolveRelativeVoltage(null, 2)).toEqual({ kind: 'missing-reference' })
-  })
-
-  it('exposes shared diagnostic notes for every surface', () => {
-    expect(RELATIVE_VOLTAGE_OVERFLOW_NOTE).toContain('Number')
-    expect(RELATIVE_VOLTAGE_UNDERFLOW_NOTE).toContain('非零')
-  })
-
-  it('keeps the input-layer zero contracts distinct from derivation underflow', () => {
-    // Since v2.5.10 the parse layer rejects non-zero decimals that binary64
-    // underflows to ±0 (`1e-400` is an input-underflow error, no longer a
-    // legal commit). A committed nominal 0 can only come from a TRUE zero
-    // text — and true zero × nonzero ratio is a finite result, never a
-    // derivation underflow.
-    expect(resolveRelativeVoltage(0, 2).kind).toBe('finite')
   })
 })

@@ -20,8 +20,8 @@ Cloudflare Analytics 在正式站点用真实请求检查。失败会在作业�
 
 ## Pages 专用内容
 
-源码链接、样式和 Cloudflare Web Analytics 只在准备部署的 `_site/` 中注入。Analytics 仅统计页面访问。
+源码链接、样式和 Cloudflare Web Analytics 只在准备部署的 `_site/` 中注入。分析脚本随页面加载，计算器不会向它传入输入、计算结果或操作事件。
 
-修改这些内容时，构建后运行 `npm run test:pages-overlay`，用测试用的 Analytics token 验证页面、CSP 和外部请求。
+修改这些内容时，构建后运行 `npm run test:pages-overlay`，用模拟的 Analytics token 验证页面、CSP 和外部请求。
 
 在仓库 **Settings → Pages** 将来源设为 **GitHub Actions**。在 **Settings → Environments → github-pages** 允许 `main` 部署，并设置环境密钥 `CLOUDFLARE_WEB_ANALYTICS_TOKEN`。它使用官方站点的 Cloudflare Web Analytics site token。缺失或格式错误会在公开 Release 和部署前停止。

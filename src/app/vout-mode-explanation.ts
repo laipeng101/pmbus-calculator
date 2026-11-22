@@ -25,19 +25,8 @@ function explanation(
 }
 
 /**
- * Chinese-primary, structured VOUT_MODE explanation source.
- *
- * This is presentation data with a stable machine id, severity and spec
- * reference. Components render the single Chinese title/detail and never
- * decide what a byte means themselves. Canonical English tokens (LINEAR, VID,
- * VOUT_COMMAND …) are kept verbatim and explained by the glossary term layer,
- * never by an inline English translation paragraph.
- *
- * v2.5.5: the format-requirement verdict (needs coefficients / VID profile /
- * nominal reference; structurally legal; standard binary16) comes ONLY from
- * the shared `resolveVoutModeRequirement` discriminator — branches below
- * switch on `req.id`, never on `format` numbers or status strings. Field
- * details (N, VID code, parameter) still come from the analysis.
+ * 「说明」用规范出处解释配置的含义和下一步操作。是否需要额外数据由
+ * resolveVoutModeRequirement 判断，指数与 VID 代码直接取自字节解析。
  */
 export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanation[] {
   const out: VoutModeExplanation[] = []
@@ -47,8 +36,8 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
     explanation(
       'ar-command-scope',
       'info',
-      'bit7：绝对值 / 相对值',
-      'bit7 只决定 §8.5 所列 8 个输出电压相关命令（VOUT_MARGIN_HIGH/LOW、VOUT_OV/UV_FAULT/WARN_LIMIT、POWER_GOOD_ON/OFF）的绝对/相对语义；VOUT_COMMAND 本身是标称参考。',
+      '第 7 位：绝对值或相对值',
+      '第 7 位决定 VOUT_MARGIN_HIGH/LOW、VOUT_OV/UV_FAULT/WARN_LIMIT、POWER_GOOD_ON/OFF 采用绝对电压还是比值。VOUT_COMMAND 提供标称电压。',
       'Part II §8.5',
     ),
   )
@@ -60,9 +49,9 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
         'linear-exponent',
         'info',
         'LINEAR：N = ' + n,
-        'bits[4:0] 是 5 位二补码指数 N（−16～15），当前 N=' +
-          n +
-          '，缩放因子 2^N。ULINEAR16 为 X = Y_u × 2^N V；SLINEAR16 offset 为 X_offset = Y_s × 2^N V。',
+        `第 4 至 0 位给出二补码指数 N（−16～15）。ULINEAR16 用 Y_u × 2^N 换算，SLINEAR16 用 Y_s × 2^N 换算电压偏移。${
+          req.id === 'linear-absolute' ? '可用 LINEAR16 换算绝对电压。' : ''
+        }`,
         'Part II §8.3 / §8.4.1',
       ),
     )
@@ -72,7 +61,7 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
           'relative-linear-ratio',
           'warning',
           '相对 LINEAR：比值为正',
-          '此字节结构合法。相对模式下 payload 与 VOUT_COMMAND 同格式，解出无量纲正比例 R = Y_u × 2^N；最终电压 X = V_NOM × R。ratio=0 时规范要求相对值为正，标记为非符合性。',
+          '按与 VOUT_COMMAND 相同的格式解码数据字，得到比值 R = Y_u × 2^N。比值必须大于 0。使用 LINEAR16 并提供 VOUT_COMMAND 标称参考值 V_NOM，即可计算电压 X = V_NOM × R。',
           'Part II §8.5.2',
         ),
       )
@@ -83,8 +72,8 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
         explanation(
           'relative-vid-invalid',
           'error',
-          '相对 VID 非法',
-          'bit7=1 与 VID 格式不能组合（Part II §8.5.3：相对不适用于 VID）。这是非法组合，不是相对 LINEAR。',
+          'VID 不能使用相对值',
+          'VID 只支持绝对值。请将第 7 位设为 0，或按器件手册选择其他格式。',
           'Part II §8.5.3',
         ),
       )
@@ -95,8 +84,8 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
           explanation(
             'vid-not-used',
             'warning',
-            'VID code ' + codeHex + 'h：未使用',
-            'VID Code Type 00h 表示未使用；不构成有效 VID profile。',
+            'VID 代码类型 ' + codeHex + 'h：未使用',
+            '请核对器件手册中的 VOUT_MODE 设置。',
             'Part II §8.4.2 Table 3',
           ),
         )
@@ -105,8 +94,8 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
           explanation(
             'vid-profile-required',
             'warning',
-            'VID code ' + codeHex + 'h：制造商自定义（结构合法，需器件资料）',
-            '1Eh/1Fh 是 Part II §8.4.2 Table 3 明列的 PMBus 器件制造商专用 code：字节结构合法，但码表与电压映射必须来自器件资料；本计算器不猜测，当前不可换算。',
+            'VID 代码类型 ' + codeHex + 'h：制造商自定义',
+            '这是规范允许的配置。请查阅器件手册中的 VID 码表，查找数据字对应的电压。',
             'Part II §8.4.2 Table 3',
           ),
         )
@@ -116,12 +105,10 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
           explanation(
             'vid-reserved-listed',
             'warning',
-            'VID code ' + codeHex + 'h：保留（Table 3 明列）',
+            'VID 代码类型 ' + codeHex + 'h：保留（表 3 明列）',
             reason
-              ? '该 VID Code Type 是 Part II §8.4.2 Table 3 明列的保留值（' +
-                  reason +
-                  '）；不得当作有通用电压映射的 profile。'
-              : '该 VID Code Type 是 Part II §8.4.2 Table 3 明列的保留值；不得当作有通用电压映射的 profile。',
+              ? `${reason}。当前配置无法换算电压，请核对器件的 VOUT_MODE。`
+              : '当前配置无法换算电压，请核对器件的 VOUT_MODE。',
             'Part II §8.4.2 Table 3',
           ),
         )
@@ -130,8 +117,8 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
           explanation(
             'vid-reserved-unlisted',
             'warning',
-            'VID code ' + codeHex + 'h：保留（Table 3 未列出）',
-            'Table 3 未列出该 VID Code Type；规范将未列出类型保留供未来使用，不得当作有通用电压映射的 profile。',
+            'VID 代码类型 ' + codeHex + 'h：保留（表 3 未列出）',
+            '规范将未列出的类型保留供未来使用。当前配置无法换算电压，请核对器件的 VOUT_MODE。',
             'Part II §8.4.2 Table 3',
           ),
         )
@@ -144,7 +131,7 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
         'nonlinear-param-invalid',
         'error',
         a.formatName + ' 参数必须为 0',
-        'DIRECT / IEEE Half 的 bits[4:0] 必须为 00000b；非零参数是非法结构。',
+        'DIRECT 和 IEEE Half 要求第 4 至 0 位为 00000b。请核对器件的格式和参数位。',
         'Part II §8.3 Table 2',
       ),
     )
@@ -154,10 +141,10 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
       explanation(
         'direct-profile-required',
         'warning',
-        'DIRECT：结构合法，需要器件 m/b/R 系数',
+        'DIRECT：换算需要器件系数',
         req.requiresNominalReference
-          ? '相对 DIRECT 且参数为 0 的字节结构合法；word ↔ 物理量需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料），最终电压还需 VOUT_COMMAND 标称参考值，相对值必须为正（§8.5.2）。本计算器不内置任何系数。'
-          : 'DIRECT 参数为 0 的字节结构合法；word ↔ 物理量需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）。本计算器不内置任何系数。',
+          ? '从 COEFFICIENTS 或器件手册取得 m/b/R 系数，按器件规定的数据格式换算出比值。相对值必须为正，乘以 VOUT_COMMAND 标称参考值可得到电压（§8.5.2）。'
+          : '从 COEFFICIENTS 或器件手册取得 m/b/R 系数，再按器件规定的数据格式换算。',
         'Part II §7.4 / §8.4.3',
       ),
     )
@@ -168,10 +155,10 @@ export function buildVoutModeExplanations(a: VoutModeAnalysis): VoutModeExplanat
       explanation(
         'half-standard-format',
         'warning',
-        'IEEE Half：标准 binary16，本页只配置格式字节',
+        'IEEE Half：标准 binary16',
         req.requiresNominalReference
-          ? '相对 Half 且参数为 0 的字节结构合法；payload 是标准 IEEE 754 binary16（bit15 符号、bits[14:10] 指数、bits[9:0] 尾数），换算不需要任何器件系数。相对阈值要得到最终电压还需 VOUT_COMMAND 标称参考值，相对值必须为正（§8.5.2）。'
-          : 'Half 参数为 0 的字节结构合法；payload 是标准 IEEE 754 binary16（bit15 符号、bits[14:10] 指数、bits[9:0] 尾数），word ↔ 数值换算不需要任何器件系数。HALF 模式页可完成该换算。',
+          ? '在 HALF 模式页按标准 IEEE 754 binary16 解码出比值。相对值必须为正，乘以 VOUT_COMMAND 标称参考值可得到电压（§8.5.2）。'
+          : '可在 HALF 模式页按标准 IEEE 754 binary16 换算。第 15 位是符号，第 14 至 10 位是指数，第 9 至 0 位是尾数。',
         'Part II §7.6 / §8.4.4',
       ),
     )

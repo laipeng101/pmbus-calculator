@@ -8,7 +8,7 @@ import { useRef } from 'react'
  * alternate textual forms like `1.0` vs `1` would all misreport). An
  * untouched focus/blur (no onChange at all) must be a strict no-op: it must
  * not call onCommit, rewrite raw or parameters, clear provenance, or drop a
- * still-visible field error (DOMAIN_MODEL §6.1 / UI_CONVENTIONS §8).
+ * still-visible field error (DOMAIN_MODEL §6.1 / UI_CONVENTIONS.md).
  */
 
 export interface EditTransaction {

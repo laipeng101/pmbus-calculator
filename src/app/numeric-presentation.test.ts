@@ -232,7 +232,7 @@ describe('plain-number presentation — cross-surface characterization', () => {
     const vm = toCalculatorViewModel(overflow!.s)
     const formula = getFormulaPresentation(overflow!.s, vm.valueText)
     expect(vm.valueText).toBe('—')
-    expect(formula.plainText).toContain('=—（计算结果超出 JavaScript Number 可表示范围）')
+    expect(formula.plainText).toContain('=—（计算结果太大，超出可表示范围）')
   })
 
   it('formats the quantization error with the same plain-number policy as the result', () => {

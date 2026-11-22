@@ -5,7 +5,7 @@ import type { VoutModeAnalysis } from '../legacy/vout-mode'
  * §7.2 / §7.4 / §7.6 / §8.3 Table 2 / §8.4.2 / §8.4.3 / §8.4.4 / §8.5.2).
  *
  * Single semantic source for the standalone VOUT_MODE page's status text,
- * InfoPanel warnings, explanations and calculation steps — no surface may
+ * InfoPanel warnings and explanations — no surface may
  * re-derive spec conclusions from `format` numbers or shared booleans.
  *
  * Key distinction (v2.5.4): DIRECT (bits[6:5] = 10b) needs device-specific
