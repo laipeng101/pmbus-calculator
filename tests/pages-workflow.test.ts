@@ -381,7 +381,7 @@ describe('pages.yml hosted real Analytics rollout acceptance', () => {
   it('runs exactly once in the existing GitHub-hosted deploy job after every deployment gate', () => {
     const jobs = [...workflow.matchAll(/^ {2}([\w-]+):\n/gm)].map((match) => match[1])
     expect(jobs.slice(jobs.indexOf('deploy'))).toEqual(['deploy'])
-    expect(workflow).toMatch(/^ {4}runs-on: ubuntu-latest$/m)
+    expect(workflow).toMatch(/^ {4}runs-on: ubuntu-24\.04(?:\s+#.*)?$/m)
     expect(workflow).toMatch(/^ {4}timeout-minutes: 20$/m)
     const step = findStepByName('Real Cloudflare Analytics acceptance')
     expect(step).toMatch(/^ {8}run: node scripts\/verify-live-analytics\.mjs$/m)
