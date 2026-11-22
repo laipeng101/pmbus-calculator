@@ -239,9 +239,9 @@ describe('formula presentation model', () => {
 describe('relative ULINEAR16 equation diagnostics', () => {
   it('without a nominal shows the ratio only, never a stale voltage (v2.5.8)', () => {
     const f = formula(state({ mode: 'L16', raw: 0x0100, voutMode: { byte: 0x98 } }))
-    expect(f.equationPlainText).toBe('R=256 × 2^-8=1（需要 VOUT_COMMAND nominal）')
+    expect(f.equationPlainText).toBe('R=256 × 2^-8=1（请填写 VOUT_COMMAND 标称参考值）')
     expect(f.equationPlainText).not.toMatch(/X=/)
-    expect(f.equationLatex).toContain('\\text{需要 } V_{NOM}')
+    expect(f.equationLatex).toContain('\\text{请填写标称参考值 } V_{NOM}')
 
     const withNominal = state({
       mode: 'L16',
@@ -261,7 +261,7 @@ describe('relative ULINEAR16 equation diagnostics', () => {
         l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
       }),
     )
-    expect(f.equationPlainText).toContain('=—（计算结果超出 JavaScript Number 可表示范围）')
+    expect(f.equationPlainText).toContain('=—（计算结果太大，超出可表示范围）')
     expect(f.equationPlainText).not.toContain('Infinity')
     expect(f.equationLatex).toContain('= \\text{—}')
   })

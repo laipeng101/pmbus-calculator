@@ -31,11 +31,10 @@ export type RelativeVoltageResult =
   | { kind: 'underflow' }
 
 /** Shared diagnostic text for the overflow card / formula / steps / warning. */
-export const RELATIVE_VOLTAGE_OVERFLOW_NOTE = '计算结果超出 JavaScript Number 可表示范围'
+export const RELATIVE_VOLTAGE_OVERFLOW_NOTE = '计算结果太大，超出可表示范围'
 
 /** Shared diagnostic text for the underflow card / formula / steps / warning. */
-export const RELATIVE_VOLTAGE_UNDERFLOW_NOTE =
-  '计算下溢：两个非零有限数相乘的结果被 Number 舍入为 0，不是数学上的精确零'
+export const RELATIVE_VOLTAGE_UNDERFLOW_NOTE = '计算下溢：非零结果太小，按计算精度会舍入为 0'
 
 export function resolveRelativeVoltage(
   nominal: number | null,

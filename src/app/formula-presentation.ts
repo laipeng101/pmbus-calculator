@@ -152,8 +152,8 @@ export function getFormulaPresentation(
         const relativeSymbolicLatex = 'R = Y_u \\times 2^N;\\ X = V_{NOM} \\times R'
         const relativeSymbolicPlain = 'R = Y_u × 2^N; X = V_NOM × R'
         if (nominal == null) {
-          const plainText = `R=${state.raw} × 2^${n}=${ratioText}（需要 VOUT_COMMAND nominal）`
-          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${ratioLatex}\\ \\left(\\text{需要 } V_{NOM}\\right)`
+          const plainText = `R=${state.raw} × 2^${n}=${ratioText}（请填写 VOUT_COMMAND 标称参考值）`
+          const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${ratioLatex}\\ \\left(\\text{请填写标称参考值 } V_{NOM}\\right)`
           return {
             plainText,
             latex,

@@ -36,7 +36,7 @@ async function expectWrappedInContainer(locator: Locator) {
   expect(box!.height).toBeGreaterThanOrEqual(metrics.lineHeight * 1.8)
 }
 
-test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2.5.14）', () => {
+test.describe('390 px 触摸交互与格式换算', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(appUrl())
@@ -229,7 +229,7 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
   })
 })
 
-test.describe('移动端合同：被拒编辑的触摸失焦（v2.5.14，390）', () => {
+test.describe('390 px 拒绝无效输入后触摸切换焦点', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(appUrl())
@@ -291,7 +291,7 @@ test.describe('移动端合同：被拒编辑的触摸失焦（v2.5.14，390）'
   })
 })
 
-test.describe('移动端合同：360 错误文案换行（v2.5.13/v2.5.14）', () => {
+test.describe('360 px 错误提示换行', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 800 })
     await page.goto(appUrl())

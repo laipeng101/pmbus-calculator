@@ -3,10 +3,29 @@ import {
   CLOUDFLARE_BEACON_URL,
   CLOUDFLARE_RUM_URL,
   isAllowedPagesRequest,
+  isSafePagesPath,
   parseCsp,
-} from './e2e/helpers/pages-network-policy'
+} from '../scripts/pages-network-policy.mjs'
 
 const deployment = 'https://laipeng101.github.io/pmbus-calculator/'
+
+it('rejects paths that can be confused with a different resource or origin', () => {
+  for (const name of [
+    '',
+    '../x',
+    'a/./b',
+    'a//b',
+    'a\\b',
+    'a?b',
+    'a#b',
+    '%2e%2e/x',
+    'file:/x',
+    'app\u0000.js',
+  ]) {
+    expect(isSafePagesPath(name)).toBe(false)
+  }
+  expect(isSafePagesPath('assets/font 1.woff2')).toBe(true)
+})
 
 describe('Pages smoke exact external request allowlist', () => {
   it.each(['document', 'script', 'stylesheet', 'font', 'image', 'fetch', 'xhr'])(

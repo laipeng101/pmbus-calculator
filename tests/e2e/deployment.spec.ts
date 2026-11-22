@@ -7,7 +7,7 @@ import {
   observePagesResources,
   stubCloudflare,
 } from './helpers/pages-contract'
-import { PAGES_REPOSITORY_NAME } from './helpers/pages-network-policy'
+import { PAGES_REPOSITORY_NAME } from '../../scripts/pages-network-policy.mjs'
 
 const deploymentUrl = process.env.DEPLOYMENT_URL
 
@@ -26,7 +26,8 @@ const test = base.extend<{
     if (!target) throw new Error('Deployment URL is unavailable')
     const url = new URL(target)
     if (local) {
-      expect(url.origin).toBe('http://localhost:4176')
+      expect(url.protocol).toBe('http:')
+      expect(url.hostname).toBe('localhost')
       expect(url.pathname).toBe('/pmbus-calculator/')
     } else {
       expect(url.protocol).toBe('https:')

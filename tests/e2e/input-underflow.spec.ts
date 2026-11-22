@@ -236,14 +236,11 @@ test.describe('输入下溢：非零十进制不得静默提交为 ±0（v2.5.10
     await nominalInput(page).fill('5e-324')
     await expect(resultValue(page)).toHaveText('1e-323')
 
-    // Ratio 2^-16 makes the product leave the double range: the DERIVATION
-    // underflow diagnostic (v2.5.9) reports it on the visible InfoPanel —
-    // a different error source from the input-underflow error above.
+    // A smaller positive ratio underflows the computed voltage, independently
+    // of the nominal input validation above.
     await hexInput(page).fill('0001')
     await expect(resultValue(page)).toHaveText('—')
-    await expect(
-      page.locator('[role="alert"]').filter({ hasText: '计算下溢：两个非零有限数相乘' }),
-    ).toBeVisible()
+    await expect(page.getByRole('alert').filter({ hasText: '计算下溢' })).toBeVisible()
     await expect(physicalCopyButton(page)).toBeDisabled()
     await expect(page.locator('#physical-value-copy-reason')).toBeVisible()
 

@@ -4,6 +4,7 @@ import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { formatCsp, RELEASE_CSP } from './scripts/pages-network-policy.mjs'
 
 /**
  * Inject a production CSP meta tag into the build only. It restricts runtime
@@ -16,16 +17,7 @@ function productionCspPlugin(): Plugin {
     name: 'inject-production-csp',
     apply: 'build',
     transformIndexHtml(html) {
-      const csp = [
-        "default-src 'self'",
-        "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data:",
-        "font-src 'self' data:",
-        "object-src 'none'",
-        "base-uri 'self'",
-        "form-action 'self'",
-      ].join('; ')
+      const csp = formatCsp(RELEASE_CSP)
       return html.replace(
         '<meta charset="UTF-8" />',
         `<meta charset="UTF-8" />\n    <meta http-equiv="Content-Security-Policy" content="${csp}" />`,

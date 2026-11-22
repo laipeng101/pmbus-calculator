@@ -98,12 +98,14 @@ function App() {
           <WorkspaceLayout
             primary={<ModeWorkspace mode={state.mode} state={state} vm={vm} dispatch={dispatch} />}
             secondary={
-              <ResultDetails
-                vm={vm}
-                copyPrefs={state.copy}
-                onTogglePrefix={() => dispatch({ type: 'copy/toggle-prefix' })}
-                onToggleSpace={() => dispatch({ type: 'copy/toggle-space' })}
-              />
+              state.mode === 'VOUT_MODE' ? null : (
+                <ResultDetails
+                  vm={vm}
+                  copyPrefs={state.copy}
+                  onTogglePrefix={() => dispatch({ type: 'copy/toggle-prefix' })}
+                  onToggleSpace={() => dispatch({ type: 'copy/toggle-space' })}
+                />
+              )
             }
           />
 

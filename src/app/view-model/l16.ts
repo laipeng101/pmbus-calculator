@@ -55,7 +55,7 @@ function buildL16BlockVM(
         status: semantics.status,
         title: `VOUT_MODE ${byteHex} 为 DIRECT 格式`,
         detail:
-          '从 COEFFICIENTS 或器件数据手册取得 m、b、R 系数后，在 DIRECT 页换算原始数据字（Part II §7.4、§8.4.3）。',
+          '请从 COEFFICIENTS 或器件手册取得 m、b、R 系数，并核对命令的数据格式（Part II §7.4、§8.4.3）。16 位有符号数可在 DIRECT 页换算。',
       }
     case 'half-unsupported-in-l16':
       return {
@@ -188,30 +188,26 @@ export function resolveL16RelativeDiagnostics(state: AppState): WarningVM[] {
   if (state.mode !== 'L16') return []
   const { interpretation } = deriveL16Semantics(state)
   if (interpretation.kind !== 'relative-ratio') return []
-  if (interpretation.finalVoltage.kind === 'overflow') {
+  const { finalVoltage, ratio } = interpretation
+  if (finalVoltage.kind === 'overflow' || finalVoltage.kind === 'underflow') {
+    const note =
+      finalVoltage.kind === 'overflow'
+        ? RELATIVE_VOLTAGE_OVERFLOW_NOTE
+        : RELATIVE_VOLTAGE_UNDERFLOW_NOTE
     return [
       {
-        id: 'l16-relative-overflow',
+        id: `l16-relative-${finalVoltage.kind}`,
         level: 'warning',
-        text: `${RELATIVE_VOLTAGE_OVERFLOW_NOTE}；最终电压显示为 —，标称值与比值仍按输入显示，Raw Word / Wire 字节复制不受影响。`,
+        text: `${note}。仍可查看标称值和比值，也可以复制原始数据字或传输字节。`,
       },
     ]
   }
-  if (interpretation.finalVoltage.kind === 'underflow') {
-    return [
-      {
-        id: 'l16-relative-underflow',
-        level: 'warning',
-        text: `${RELATIVE_VOLTAGE_UNDERFLOW_NOTE}；最终电压显示为 —，标称值与比值仍按输入显示，Raw Word / Wire 字节复制不受影响。`,
-      },
-    ]
-  }
-  if (interpretation.ratio === 0) {
+  if (ratio === 0) {
     return [
       {
         id: 'l16-relative-zero-ratio',
         level: 'warning',
-        text: `当前 relative ULINEAR16 解码比值 R = 0（raw ${formatByteHex(state.raw)}，Y_u = 0）；Part II §8.5.2 要求相对值恒为正，该提交标记为非符合性。R = 0 是数学精确结果，不是派生下溢或饱和。`,
+        text: '原始数据字解出的比值 R = 0。PMBus 要求相对值大于 0（Part II §8.5.2）。请核对原始数据字。',
       },
     ]
   }

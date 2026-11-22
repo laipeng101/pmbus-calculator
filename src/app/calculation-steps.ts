@@ -15,8 +15,6 @@
  */
 import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
-import { analyzeVoutMode } from '../legacy/vout-mode'
-import { resolveVoutModeRequirement } from './vout-mode-requirements'
 import { deriveL16Semantics } from './l16-derivation'
 import { computeQuantizationOutcome } from './quantization-error'
 import type { QuantizationOutcome } from './quantization-error'
@@ -131,7 +129,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
       return [
         warningStep(
           'l16-relative-nominal-missing',
-          '已解出比值 R。输入 VOUT_COMMAND 标称电压 V_NOM 后，可计算电压 X = V_NOM × R。',
+          '已解出比值 R。请填写 VOUT_COMMAND 标称参考值 V_NOM，再计算电压 X = V_NOM × R。',
         ),
       ]
     }
@@ -143,7 +141,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
       return [
         warningStep(
           'l16-relative-range',
-          `V_NOM = ${formatPlainNumber(nominal)} 与比值 R 的乘积${note}。`,
+          `用标称电压 ${formatPlainNumber(nominal)} V 乘以比值 R。${note}。`,
         ),
       ]
     }
@@ -264,104 +262,6 @@ function buildHalfSteps(state: AppState): CalculationStepVM[] {
 }
 
 /**
- * VOUT_MODE keeps only its requirement/validity guidance. The field split, bit
- * parse and decoded classification live in the result workspace config rows
- * and must never be repeated here.
- */
-function buildVoutModeSteps(state: AppState): CalculationStepVM[] {
-  const a = analyzeVoutMode(state.voutMode.byte)
-  // v2.5.5: the requirement verdict comes only from the shared discriminator;
-  // branches select on the requirement id, never on format numbers or status
-  // strings.
-  const req = resolveVoutModeRequirement(a)
-
-  switch (req.id) {
-    case 'linear-absolute':
-      return [
-        warningStep('vout-mode-absolute-note', '结构合法；绝对 LINEAR 可在 L16 页计算绝对电压。'),
-      ]
-    case 'linear-relative':
-      return [
-        warningStep(
-          'vout-mode-relative-note',
-          '结构合法；相对 LINEAR 需 VOUT_COMMAND 标称参考值才能计算最终电压。',
-        ),
-      ]
-    case 'direct-absolute':
-      return [
-        warningStep(
-          'vout-mode-direct',
-          'DIRECT 参数为 0，结构合法；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能计算（Part II §7.4）。',
-        ),
-      ]
-    case 'direct-relative':
-      return [
-        warningStep(
-          'vout-mode-direct',
-          'DIRECT 参数为 0，结构合法；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能计算（Part II §7.4），最终电压还需 VOUT_COMMAND 标称参考值（§8.5.2）。',
-        ),
-      ]
-    case 'half-absolute':
-      // IEEE Half is standard binary16 (Part II §7.6/§8.4.4): no device
-      // coefficients; the HALF page already performs the conversion.
-      return [
-        warningStep(
-          'vout-mode-half',
-          'IEEE Half 参数为 0，结构合法；word 是标准 IEEE 754 binary16，可在 HALF 模式页换算，不需要器件系数（Part II §7.6 / §8.4.4）。',
-        ),
-      ]
-    case 'half-relative':
-      return [
-        warningStep(
-          'vout-mode-half',
-          'IEEE Half 参数为 0，结构合法；payload 是标准 IEEE 754 binary16，换算不需要器件系数，相对阈值还需 VOUT_COMMAND 标称参考值才能得到最终电压（Part II §8.5.2）。',
-        ),
-      ]
-    case 'vid-not-used':
-      return [
-        warningStep(
-          'vout-mode-vid-not-used',
-          `${a.vidCode?.label ?? 'VID code 00h'}；不构成有效 VID profile，不能当作有效配置使用（Part II §8.4.2 Table 3）。`,
-        ),
-      ]
-    case 'vid-reserved-listed':
-      return [
-        warningStep(
-          'vout-mode-vid-reserved',
-          `${a.vidCode?.label ?? 'VID code 保留'}；该 code 是 Part II §8.4.2 Table 3 明列的保留值${a.vidCode?.reservedReason ? `（${a.vidCode.reservedReason}）` : ''}，不得当作有通用电压映射的 profile。`,
-        ),
-      ]
-    case 'vid-reserved-unlisted':
-      return [
-        warningStep(
-          'vout-mode-vid-reserved',
-          `${a.vidCode?.label ?? 'VID code 保留'}；Table 3 未列出该 code，保留供未来使用，不得当作有通用电压映射的 profile（Part II §8.4.2 Table 3）。`,
-        ),
-      ]
-    case 'vid-profile-required':
-      // Table-3-listed manufacturer-specific VID: structurally legal but not
-      // calculable here — its own branch, never the invalid one.
-      return [
-        warningStep(
-          'vout-mode-vid-profile',
-          `${a.vidCode?.label ?? 'VID code 制造商自定义'}；结构合法（Part II §8.4.2 Table 3 明列），但码表与电压映射必须来自器件资料，当前计算器不可换算。`,
-        ),
-      ]
-    case 'vid-relative-invalid':
-      return [warningStep('vout-mode-invalid-combination', '相对 + VID 非法组合（§8.5.3）。')]
-    case 'direct-or-half-param-invalid':
-      return [
-        warningStep(
-          'vout-mode-param-invalid',
-          `${a.formatName} 参数必须为 00000b（§8.3 Table 2）。`,
-        ),
-      ]
-    case 'invalid-input':
-      return [warningStep('vout-mode-invalid-input', '无效 VOUT_MODE 输入。')]
-  }
-}
-
-/**
  * Append the format-encoding quantization intermediate for every mode whose
  * physical value came from an explicit encoding request (L11 included — same
  * provenance contract as the shared readout panel).
@@ -397,7 +297,6 @@ export function buildCalculationSteps(state: AppState): CalculationStepVM[] {
       case 'HALF':
         return buildHalfSteps(state)
       case 'VOUT_MODE':
-        return buildVoutModeSteps(state)
       default:
         return []
     }

@@ -1,10 +1,19 @@
-// Shared by deterministic browser smoke and hosted real Analytics acceptance.
-// This module is never imported by the application or the ordinary build.
+// Build and deployment policy shared with the browser checks.
 export const CLOUDFLARE_BEACON_URL = 'https://static.cloudflareinsights.com/beacon.min.js'
 export const CLOUDFLARE_RUM_URL = 'https://cloudflareinsights.com/cdn-cgi/rum'
 export const CLOUDFLARE_RUM_ORIGIN = new URL(CLOUDFLARE_RUM_URL).origin
-export const PAGES_REPOSITORY_URL = 'https://github.com/laipeng101/pmbus-calculator'
+export const PAGES_REPOSITORY = 'laipeng101/pmbus-calculator'
+export const PAGES_REPOSITORY_URL = `https://github.com/${PAGES_REPOSITORY}`
 export const PAGES_REPOSITORY_NAME = '在 GitHub 查看项目源码'
+
+/** @param {string} relative */
+export function isSafePagesPath(relative) {
+  return (
+    !/[\\%?#\x00-\x1f\x7f]/.test(relative) &&
+    !/^[a-z][a-z0-9+.-]*:/i.test(relative) &&
+    relative.split('/').every((part) => part !== '' && part !== '.' && part !== '..')
+  )
+}
 
 export const RELEASE_CSP = {
   'default-src': ["'self'"],
@@ -21,6 +30,13 @@ export const PAGES_CSP = {
   ...RELEASE_CSP,
   'script-src': ["'self'", CLOUDFLARE_BEACON_URL],
   'connect-src': ["'self'", CLOUDFLARE_RUM_ORIGIN],
+}
+
+/** @param {Record<string, string[]>} directives */
+export function formatCsp(directives) {
+  return Object.entries(directives)
+    .map(([name, sources]) => [name, ...sources].join(' '))
+    .join('; ')
 }
 
 /** @param {string} content @returns {Record<string, string[]>} */

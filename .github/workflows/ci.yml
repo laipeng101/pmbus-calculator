@@ -31,26 +31,26 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
-      - name: Detect documentation-only changes
+      - name: Select PR checks
         id: scope
         if: github.event_name == 'pull_request'
         run: node scripts/classify-ci-scope.mjs
 
       - run: npm ci --no-audit
       - run: npm run verify:light
-        if: steps.scope.outputs.docs_only == 'true'
+        if: steps.scope.outputs.scope == 'docs'
       - run: npm run verify
-        if: steps.scope.outputs.docs_only != 'true'
+        if: steps.scope.outputs.scope != 'docs'
       - run: npx playwright install --with-deps --only-shell chromium
-        if: steps.scope.outputs.docs_only != 'true'
+        if: steps.scope.outputs.scope != 'docs' && steps.scope.outputs.scope != 'unit'
       - run: npm run verify:browser
-        if: steps.scope.outputs.docs_only != 'true'
+        if: steps.scope.outputs.scope != 'docs' && steps.scope.outputs.scope != 'unit'
 
       - name: Upload Playwright reports on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-reports-${{ github.run_attempt }}
-          path: tests/e2e/report*
+          path: playwright-report/app
           retention-days: 7
           if-no-files-found: ignore

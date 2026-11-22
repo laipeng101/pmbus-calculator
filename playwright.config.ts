@@ -1,47 +1,51 @@
 import { defineConfig, devices } from '@playwright/test'
+import { browserDefaults, desktop, preview } from './playwright.shared'
 
-// 用项目站点的路径前缀测试已构建的 dist。
-const APP_BASE_PATH = '/pmbus-calculator'
-const PORT = 4173
-process.env.E2E_APP_BASE_PATH = APP_BASE_PATH
+const appPath = '/pmbus-calculator'
+const server = preview(4173, `${appPath}/`)
+const mobile = '**/mobile-contract.spec.ts'
+const crossEngine = '**/cross-engine-core.spec.ts'
+process.env.E2E_APP_BASE_PATH = appPath
 
-export default defineConfig({
-  testDir: './tests/e2e',
-  testIgnore: [
-    '**/release.spec.ts',
-    '**/visual.spec.ts',
-    '**/deployment.spec.ts',
-    '**/pages-overlay.spec.ts',
-    '**/mobile-contract.spec.ts',
-  ],
-  outputDir: './tests/e2e/output',
+export default defineConfig(browserDefaults('app'), {
   fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 2 : undefined,
-  reporter: [
-    ['list'],
-    ['html', { outputFolder: './tests/e2e/report', open: 'never' }],
-    ['json', { outputFile: './tests/e2e/e2e-results.json' }],
-  ],
-  use: {
-    baseURL: `http://localhost:${PORT}`,
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
-  },
+  use: { baseURL: 'http://localhost:4173' },
+  webServer: server,
   projects: [
     {
       name: 'chromium-desktop',
+      testIgnore: [
+        mobile,
+        '**/release.spec.ts',
+        '**/visual.spec.ts',
+        '**/deployment.spec.ts',
+        '**/pages-overlay.spec.ts',
+      ],
+      use: { ...devices['Desktop Chrome'], ...desktop },
+    },
+    {
+      name: 'chromium-mobile-contract',
+      testMatch: mobile,
+      workers: process.env.CI ? 1 : undefined,
+      use: devices['Pixel 7'],
+    },
+    {
+      name: 'firefox-core',
+      testMatch: crossEngine,
+      workers: process.env.CI ? 1 : undefined,
       use: {
-        ...devices['Desktop Chrome'],
-        viewport: { width: 1440, height: 900 },
+        ...devices['Desktop Firefox'],
+        ...desktop,
+        // Firefox's test preference enables async clipboard reads without grantPermissions.
+        launchOptions: { firefoxUserPrefs: { 'dom.events.testing.asyncClipboard': true } },
       },
     },
+    {
+      name: 'webkit-core',
+      testMatch: crossEngine,
+      workers: process.env.CI ? 1 : undefined,
+      use: { ...devices['Desktop Safari'], ...desktop },
+    },
   ],
-  webServer: {
-    command: `npm run preview -- --port ${PORT} --strictPort --base ${APP_BASE_PATH}/`,
-    url: `http://localhost:${PORT}${APP_BASE_PATH}/`,
-    reuseExistingServer: false,
-    timeout: 10_000,
-  },
 })

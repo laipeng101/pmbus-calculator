@@ -70,13 +70,13 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
 
     // 警告（InfoPanel）携带共享诊断
     const alerts = page.locator('section[aria-label="提示信息"]')
-    await expect(alerts.getByText(/计算结果超出 JavaScript Number 可表示范围/)).toHaveCount(1)
+    await expect(alerts.getByText(/计算结果太大，超出可表示范围/)).toHaveCount(1)
 
     // 计算步骤只保留首屏没有的补充诊断：区间失败说明；标称值仍在首屏字段。
     await page.locator('[data-testid="calculation-steps-summary"]').click()
     const steps = page.locator('[data-testid="calculation-steps"]')
-    await expect(steps).toContainText('V_NOM = 1e+308 与比值 R 的乘积')
-    await expect(steps).toContainText('计算结果超出 JavaScript Number 可表示范围')
+    await expect(steps).toContainText('用标称电压 1e+308 V 乘以比值 R')
+    await expect(steps).toContainText('计算结果太大，超出可表示范围')
     await expect(steps).not.toContainText('Infinity')
 
     // 物理值复制禁用且有可访问原因；Hex/LE/BE 复制仍可用
@@ -120,10 +120,10 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     // 数学结果保持精确 0 —— 不伪造饱和或错误结果。
     await expect(resultValue(page)).toHaveText('0')
     const alerts = page.locator('section[aria-label="提示信息"]')
-    await expect(alerts.getByText(/要求相对值恒为正/)).toHaveCount(1)
+    await expect(alerts.getByText(/要求相对值大于 0/)).toHaveCount(1)
     await expect(alerts.getByText(/§8\.5\.2/)).toHaveCount(1)
     await expect(alerts.getByText(/计算下溢/)).toHaveCount(0)
-    await expect(alerts.getByText(/超出 JavaScript Number 可表示范围/)).toHaveCount(0)
+    await expect(alerts.getByText(/超出可表示范围/)).toHaveCount(0)
     await expect(physicalCopyButton(page)).toBeEnabled()
   })
 
@@ -134,18 +134,16 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     await expect(physicalCopyButton(page)).toBeEnabled()
     // ratio ≠ 0：不是 R=0 非符合性状态。
     await expect(
-      page.locator('section[aria-label="提示信息"]').getByText(/要求相对值恒为正/),
+      page.locator('section[aria-label="提示信息"]').getByText(/要求相对值大于 0/),
     ).toHaveCount(0)
   })
 
   test('缺参考值：98/0200 nominal 空 → 比值可见、结果 —（既有行为）', async ({ page }) => {
     await setupRelative(page, '0200')
     await expect(resultValue(page)).toHaveText('—')
-    // 缺参考值的 InfoPanel 提示保持既有文案：比值可解、最终电压缺失
+    // 缺参考值时提示如何把比值换算成电压
     await expect(
-      page
-        .locator('section[aria-label="提示信息"]')
-        .getByText(/需要 VOUT_COMMAND 标称参考值才能计算最终电压/),
+      page.locator('section[aria-label="提示信息"]').getByText(/请填写 VOUT_COMMAND 标称参考值/),
     ).toHaveCount(1)
     // 缺参考值时没有可复制的最终电压，不能把占位符当作物理值复制。
     await expect(physicalCopyButton(page)).toBeDisabled()
@@ -203,7 +201,7 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     for (const width of [390, 360]) {
       await page.setViewportSize({ width, height: 844 })
       await expect(
-        page.locator('section[aria-label="提示信息"]').getByText(/计算结果超出/),
+        page.locator('section[aria-label="提示信息"]').getByText('超出可表示范围'),
       ).toHaveCount(1)
       await expectNoBodyHorizontalOverflow(page)
     }

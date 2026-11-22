@@ -2,16 +2,27 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { expect, it } from 'vitest'
-import { isDocumentationOnly } from '../scripts/classify-ci-scope.mjs'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { classifyChanges } from '../scripts/classify-ci-scope.mjs'
+
+// A caller's hook or alternate index must not affect the fixture repository.
+beforeEach(() => {
+  for (const name of Object.keys(process.env)) {
+    if (name.startsWith('GIT_')) vi.stubEnv(name, undefined)
+  }
+})
+afterEach(() => vi.unstubAllEnvs())
 
 it('limits the lightweight PR check to repository documentation', () => {
   expect(
-    isDocumentationOnly(['README.md', 'docs/adr/design.md', '.github/ISSUE_TEMPLATE/bug.yml']),
-  ).toBe(true)
+    classifyChanges(['README.md', 'docs/adr/design.md', '.github/ISSUE_TEMPLATE/bug.yml']),
+  ).toBe('docs')
 
   for (const file of [
     'package-lock.json',
+    'tests/e2e/new-test.test.ts',
+    'tests/fixtures/helpers.ts',
+    'src/app/state.ts',
     '.github/workflows/release.yml',
     'src/styles/tokens.css',
     'src/README.md',
@@ -19,9 +30,10 @@ it('limits the lightweight PR check to repository documentation', () => {
     'docs/notes\n.md',
     'document/specifications.json',
   ]) {
-    expect(isDocumentationOnly(['CONTRIBUTING.md', file]), file).toBe(false)
+    expect(classifyChanges(['CONTRIBUTING.md', file]), file).toBe('browser')
   }
-  expect(isDocumentationOnly([])).toBe(false)
+  expect(classifyChanges(['README.md', 'src/app/state.test.ts', 'tests/pec.test.ts'])).toBe('unit')
+  expect(classifyChanges([])).toBe('browser')
 })
 
 it('checks the merged diff and keeps both sides of a rename in scope', () => {
@@ -61,11 +73,11 @@ it('checks the merged diff and keeps both sides of a rename in scope', () => {
     writeFileSync(join(cwd, 'package.json'), '{}')
     commit()
     git('merge', '-q', '--no-ff', '--no-edit', 'guide')
-    expect(check()).toContain('Documentation only: true')
+    expect(check()).toContain('CI scope: docs')
 
     git('mv', 'calculator.ts', 'CONTRIBUTING.md')
     commit()
-    expect(check()).toContain('Documentation only: false')
+    expect(check()).toContain('CI scope: browser')
   } finally {
     rmSync(cwd, { recursive: true, force: true })
   }

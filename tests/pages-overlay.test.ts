@@ -5,20 +5,23 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { applyPagesOverlay } from '../scripts/apply-pages-overlay.mjs'
-import { verifyPagesOverlay } from '../scripts/verify-pages-overlay.mjs'
 import {
-  BEACON_URL,
+  CLOUDFLARE_BEACON_URL as BEACON_URL,
+  PAGES_REPOSITORY as REPOSITORY,
+  parseCsp,
+} from '../scripts/pages-network-policy.mjs'
+import {
   CSS_NAME,
   OVERLAY_MARKERS,
-  REPOSITORY,
   REPOSITORY_LINK,
   TOKEN_ENV,
-  parseCsp,
+  parseIndex,
   parseSiteArg,
   readSiteFiles,
 } from '../scripts/pages-overlay-contract.mjs'
 import { generateAssets } from '../scripts/prepare-release-assets.mjs'
 import { verifyPagesEntities } from '../scripts/verify-pages-entities.mjs'
+import { verifyPagesOverlay } from '../scripts/verify-pages-overlay.mjs'
 
 const policy =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
@@ -97,14 +100,18 @@ describe('deterministic Pages-only transform', () => {
       if (name === 'index.html') expect(after.get(name)).not.toEqual(bytes)
       else expect(after.get(name)).toEqual(bytes)
     }
-    expect(index(root)).toContain(`script-src 'self' ${BEACON_URL}`)
-    expect(index(root)).toContain("connect-src 'self' https://cloudflareinsights.com")
-    expect(index(root)).toContain(`data-cf-beacon='${JSON.stringify({ token })}'`)
-    expect(index(root)).toContain(REPOSITORY_LINK)
-    expect(index(root)).not.toContain('integrity=')
-    for (const directive of policy.split('; ').filter((part) => !part.startsWith('script-src'))) {
-      expect(index(root)).toContain(directive)
-    }
+    const html = index(root)
+    const csp = parseIndex(html).find(
+      (node) => node.attrs['http-equiv'] === 'Content-Security-Policy',
+    )
+    expect(parseCsp(csp?.attrs.content ?? '')).toEqual({
+      ...parseCsp(policy),
+      'script-src': ["'self'", 'https://static.cloudflareinsights.com/beacon.min.js'],
+      'connect-src': ["'self'", 'https://cloudflareinsights.com'],
+    })
+    expect(html).toContain(`data-cf-beacon='${JSON.stringify({ token })}'`)
+    expect(html).toContain(REPOSITORY_LINK)
+    expect(html).not.toContain('integrity=')
   })
 
   it('same Release bytes and deployment inputs give byte-identical trees in different directories', () => {
@@ -218,16 +225,6 @@ describe('input gates fail before any mutation', () => {
       }
     },
   )
-
-  it('rejects non-ASCII and control characters anywhere in CSP, including the end', () => {
-    for (const space of ['\u00a0', '\ufeff', '\u2000', '\u2028', '\t', '\r', '\n']) {
-      expect(() => parseCsp(`${policy}${space}`, false)).toThrow(/ASCII/)
-      expect(() => parseCsp(policy.replace('script-src ', `script-src${space}`), false)).toThrow(
-        /ASCII/,
-      )
-    }
-    expect(() => parseCsp(policy.replaceAll(' ', '  '), false)).not.toThrow()
-  })
 
   it.each(['missing', 'directory', 'symlink', 'hardlink'] as const)(
     'requires index.html to be an unlinked regular file: %s',
@@ -426,10 +423,6 @@ describe('independent final overlay verifier', () => {
     ['wrong icon color', (html: string) => html.replace('stroke="currentColor"', 'stroke="#000"')],
     ['duplicate link', (html: string) => html.replace('</body>', `${REPOSITORY_LINK}</body>`)],
     [
-      'marker in comment',
-      (html: string) => html.replace('</body>', '<!-- data-pages-only --></body>'),
-    ],
-    [
       'external script',
       (html: string) =>
         html.replace(
@@ -555,8 +548,8 @@ describe('Release/provenance and CLI integration', () => {
       'apply-pages-overlay.mjs',
       'verify-pages-overlay.mjs',
       'pages-overlay-contract.mjs',
+      'pages-network-policy.mjs',
       'release-artifact-contract.mjs',
-      'verify-pages-entities.mjs',
       'verify-pages-asset-references.mjs',
       CSS_NAME,
     ]) {

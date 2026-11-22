@@ -1,6 +1,6 @@
-import { analyzeVoutMode } from '../../legacy/vout-mode'
+import { analyzeVoutMode, type VoutModeAnalysis } from '../../legacy/vout-mode'
 import { buildVoutModeExplanations, SLINEAR16_OFFSET_BIT7_NOTE } from '../vout-mode-explanation'
-import { resolveVoutModeRequirement } from '../vout-mode-requirements'
+import { resolveVoutModeRequirement, type VoutModeRequirement } from '../vout-mode-requirements'
 import type { AppState } from '../state'
 import type { VoutModeInfoVM, VoutModeBitVM, VoutModeNibbleVM, WarningVM } from './types'
 import { byteDigits, formatByteHex } from './format'
@@ -12,14 +12,12 @@ import { byteDigits, formatByteHex } from './format'
  * a device profile (§7.6 / §8.4.4); a relative byte keeps the nominal
  * reference wording (§8.5.2).
  */
-function voutModeStatusText(byte: number): string {
-  const a = analyzeVoutMode(byte)
-  const req = resolveVoutModeRequirement(a)
+function voutModeStatusText(a: VoutModeAnalysis, req: VoutModeRequirement): string {
   switch (req.id) {
     case 'linear-absolute':
       return '绝对 LINEAR'
     case 'linear-relative':
-      return '相对 LINEAR（需参考值）'
+      return '相对 LINEAR'
     case 'direct-absolute':
       return '绝对 DIRECT（需 m/b/R 系数）'
     case 'direct-relative':
@@ -33,18 +31,17 @@ function voutModeStatusText(byte: number): string {
     case 'direct-or-half-param-invalid':
       return a.formatName + ' 参数必须为 0（§8.3 Table 2）'
     case 'vid-not-used':
-      return 'VID code 00h — 未使用'
+      return 'VID 代码类型 00h 未使用'
     case 'vid-reserved-listed': {
       // Table 3 provenance text comes from the classifier single source; a
       // listed-reserved code must never be described as unlisted (v2.5.6).
-      const a = analyzeVoutMode(byte)
       const reason = a.vidCode?.reservedReason
-      return reason ? `VID code 保留（Table 3 明列，${reason}）` : 'VID code 保留（Table 3 明列）'
+      return reason ? `VID 代码类型保留（表 3 明列，${reason}）` : 'VID 代码类型保留（表 3 明列）'
     }
     case 'vid-reserved-unlisted':
-      return 'VID code 保留（Table 3 未列出，保留供未来使用）'
+      return 'VID 代码类型保留（表 3 未列出）'
     case 'vid-profile-required':
-      return 'VID code 制造商自定义（需器件资料）'
+      return 'VID 代码类型由制造商定义（需器件资料）'
     case 'invalid-input':
       return '无效 VOUT_MODE'
   }
@@ -112,7 +109,7 @@ export function buildVoutModeVM(byte: number, source?: 'linked' | 'non-linear'):
     domainStatus: a.status,
     reason: a.reason,
     ...(a.vidCode ? { vidCodeKind: a.vidCode.kind } : {}),
-    statusText: voutModeStatusText(byte),
+    statusText: voutModeStatusText(a, req),
     binary: (byte & 0xff).toString(2).padStart(8, '0'),
     structureLegal: req.structureLegal,
     requiresExternalData: req.requiresDeviceCoefficients || req.requiresVidProfile,
@@ -132,33 +129,24 @@ export function buildVoutModeVM(byte: number, source?: 'linked' | 'non-linear'):
 export function resolveVoutModeByteWarnings(state: AppState, byte: number): WarningVM[] {
   const a = analyzeVoutMode(byte)
   const hex = formatByteHex(byte)
-  const signedOffset = state.mode === 'L16' && state.l16.payloadKind === 'slinear16-offset'
-
-  if (a.format === 0 && a.isRelative) {
-    // The nominal-reference note describes relative ULINEAR16 ratio
-    // semantics only; the signed offset payload (§13.3/§13.4) ignores
-    // bit7 and computes without a nominal.
-    return [
-      {
-        id: 'vout-mode-relative',
-        level: 'info',
-        text: signedOffset
-          ? SLINEAR16_OFFSET_BIT7_NOTE
-          : `VOUT_MODE ${hex} 为相对 LINEAR；需要 VOUT_COMMAND 标称参考值才能计算最终电压。`,
-      },
-    ]
-  }
-
-  // v2.5.5: every remaining branch is selected by the shared requirement
-  // discriminator — no surface re-derives spec conclusions from format
-  // numbers or status strings. Field details (hex, code) still come from
-  // the analysis.
   const req = resolveVoutModeRequirement(a)
   switch (req.id) {
-    // Relative LINEAR (incl. the SLINEAR16-offset nuance) is handled
-    // above; absolute LINEAR and non-byte inputs carry no warning.
+    case 'linear-relative': {
+      const signedOffset = state.mode === 'L16' && state.l16.payloadKind === 'slinear16-offset'
+      if (state.mode === 'L16' && !signedOffset && state.l16.nominalVout !== null) return []
+      return [
+        {
+          id: 'vout-mode-relative',
+          level: 'info',
+          text: signedOffset
+            ? SLINEAR16_OFFSET_BIT7_NOTE
+            : state.mode === 'L16'
+              ? '请填写 VOUT_COMMAND 标称参考值，将比值换算成电压。'
+              : '可在 LINEAR16 页用 VOUT_COMMAND 标称参考值将比值换算成电压。',
+        },
+      ]
+    }
     case 'linear-absolute':
-    case 'linear-relative':
     case 'invalid-input':
       return []
     case 'direct-absolute':
@@ -167,7 +155,7 @@ export function resolveVoutModeByteWarnings(state: AppState, byte: number): Warn
         {
           id: 'vout-mode-direct-profile',
           level: 'warning',
-          text: `VOUT_MODE ${hex} 为 DIRECT 格式；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能换算 word ↔ 物理值（Part II §7.4）。`,
+          text: '请从 COEFFICIENTS 或器件手册取得 m/b/R 系数，再进行换算（Part II §7.4）。',
         },
       ]
     case 'direct-relative':
@@ -177,7 +165,7 @@ export function resolveVoutModeByteWarnings(state: AppState, byte: number): Warn
         {
           id: 'vout-mode-direct-profile',
           level: 'warning',
-          text: `VOUT_MODE ${hex} 为相对 DIRECT 格式；需要器件 m/b/R 系数（来自 COEFFICIENTS 或器件资料）才能换算 word ↔ 物理值（Part II §7.4），相对阈值还需要 VOUT_COMMAND 标称参考值才能得到最终电压，且相对值必须为正（§8.5.2）。`,
+          text: '请用器件 m/b/R 系数换算出比值（Part II §7.4），再乘以 VOUT_COMMAND 标称参考值计算电压。相对值必须为正（§8.5.2）。',
         },
       ]
     case 'half-absolute':
@@ -188,7 +176,7 @@ export function resolveVoutModeByteWarnings(state: AppState, byte: number): Warn
         {
           id: 'vout-mode-half-standard',
           level: 'warning',
-          text: `VOUT_MODE ${hex} 为 IEEE Half 格式；payload 是标准 IEEE 754 binary16（Part II §7.6 / §8.4.4），word ↔ 数值换算不依赖器件数值，可在 HALF 模式页换算。`,
+          text: '可在 HALF 模式页按标准 IEEE 754 binary16 换算数据字（Part II §7.6 / §8.4.4）。',
         },
       ]
     case 'half-relative':
@@ -196,7 +184,7 @@ export function resolveVoutModeByteWarnings(state: AppState, byte: number): Warn
         {
           id: 'vout-mode-half-standard',
           level: 'warning',
-          text: `VOUT_MODE ${hex} 为相对 IEEE Half 格式；payload 是标准 IEEE 754 binary16（Part II §7.6 / §8.4.4），word ↔ 数值换算不依赖器件数值，但相对阈值需要 VOUT_COMMAND 标称参考值才能得到最终电压，且相对值必须为正（§8.5.2）。`,
+          text: '可在 HALF 模式页解码出比值，再乘以 VOUT_COMMAND 标称参考值计算电压。相对值必须为正（Part II §8.5.2）。',
         },
       ]
     case 'vid-relative-invalid':
@@ -204,7 +192,7 @@ export function resolveVoutModeByteWarnings(state: AppState, byte: number): Warn
         {
           id: 'vout-mode-invalid-combination',
           level: 'error',
-          text: `VOUT_MODE ${hex} 为相对 + VID 非法组合（Part II §8.5.3：相对值不适用于 VID）。`,
+          text: `VOUT_MODE ${hex} 的绝对/相对设置与格式冲突。VID 只支持绝对值（Part II §8.5.3）。`,
         },
       ]
     case 'direct-or-half-param-invalid':
@@ -220,7 +208,7 @@ export function resolveVoutModeByteWarnings(state: AppState, byte: number): Warn
         {
           id: 'vout-mode-vid-not-used',
           level: 'warning',
-          text: `VOUT_MODE ${hex} 的 VID code 00h 为未使用，不构成有效 VID profile。`,
+          text: `VOUT_MODE ${hex} 的 VID 代码类型 00h 未使用。请核对器件资料中的设置。`,
         },
       ]
     case 'vid-reserved-listed': {
@@ -234,8 +222,8 @@ export function resolveVoutModeByteWarnings(state: AppState, byte: number): Warn
           id: 'vout-mode-vid-reserved',
           level: 'warning',
           text: reason
-            ? `VOUT_MODE ${hex} 的 VID code ${codeHex}h 为保留值（Part II §8.4.2 Table 3 明列，${reason}）。`
-            : `VOUT_MODE ${hex} 的 VID code ${codeHex}h 为保留值（Part II §8.4.2 Table 3 明列）。`,
+            ? `VOUT_MODE ${hex} 的 VID 代码类型 ${codeHex}h 为保留值（Part II §8.4.2 表 3 明列，${reason}）。`
+            : `VOUT_MODE ${hex} 的 VID 代码类型 ${codeHex}h 为保留值（Part II §8.4.2 表 3 明列）。`,
         },
       ]
     }
@@ -245,7 +233,7 @@ export function resolveVoutModeByteWarnings(state: AppState, byte: number): Warn
         {
           id: 'vout-mode-vid-reserved',
           level: 'warning',
-          text: `VOUT_MODE ${hex} 的 VID code ${codeHex}h 为保留值（Part II §8.4.2 Table 3 未列出，保留供未来使用）。`,
+          text: `VOUT_MODE ${hex} 的 VID 代码类型 ${codeHex}h 未在 Part II §8.4.2 表 3 列出，保留供未来使用。`,
         },
       ]
     }
@@ -254,7 +242,7 @@ export function resolveVoutModeByteWarnings(state: AppState, byte: number): Warn
         {
           id: 'vout-mode-vid-profile',
           level: 'warning',
-          text: `VOUT_MODE ${hex} 的 VID code 为制造商自定义（Part II §8.4.2 Table 3 明列，结构合法）；需要器件资料确定电压映射，当前计算器不可换算。`,
+          text: `VOUT_MODE ${hex} 使用制造商自定义的 VID 代码类型。请查器件资料中的 VID 码表，确定数据字对应的电压。`,
         },
       ]
   }

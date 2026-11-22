@@ -4,46 +4,34 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
 import { validateZipEntry } from './release-artifact-contract.mjs'
-import { isSafeRelativePath } from './verify-pages-entities.mjs'
+import {
+  CLOUDFLARE_BEACON_URL,
+  CLOUDFLARE_RUM_ORIGIN,
+  PAGES_REPOSITORY as REPOSITORY,
+  PAGES_REPOSITORY_URL,
+  PAGES_REPOSITORY_NAME,
+  RELEASE_CSP,
+  PAGES_CSP,
+  isSafePagesPath,
+  parseCsp,
+} from './pages-network-policy.mjs'
 
-export const REPOSITORY = 'laipeng101/pmbus-calculator'
-export const REPOSITORY_URL = `https://github.com/${REPOSITORY}`
-export const BEACON_URL = 'https://static.cloudflareinsights.com/beacon.min.js'
-export const RUM_ORIGIN = 'https://cloudflareinsights.com'
 export const TOKEN_ENV = 'CLOUDFLARE_WEB_ANALYTICS_TOKEN'
 export const CSS_NAME = 'pages-overlay.css'
-export const REPOSITORY_LABEL = '在 GitHub 查看项目源码'
 export const DEFAULT_ROOT = fileURLToPath(new URL('../', import.meta.url))
 const HTML_SPACE = /^[\t\n\f\r ]*$/
 export const OVERLAY_MARKERS = Object.freeze([
   'data-cf-beacon',
-  'static.cloudflareinsights.com',
-  'cloudflareinsights.com',
+  new URL(CLOUDFLARE_BEACON_URL).hostname,
+  new URL(CLOUDFLARE_RUM_ORIGIN).hostname,
   'data-pages-only',
   CSS_NAME,
 ])
 
-// This is an expectation of Vite's existing Release CSP, not its source.
-// Keeping it here makes CSP drift fail before any Pages mutation.
-export const RELEASE_CSP = Object.freeze({
-  'default-src': "'self'",
-  'script-src': "'self'",
-  'style-src': "'self' 'unsafe-inline'",
-  'img-src': "'self' data:",
-  'font-src': "'self' data:",
-  'object-src': "'none'",
-  'base-uri': "'self'",
-  'form-action': "'self'",
-})
-export const PAGES_CSP = Object.freeze({
-  ...RELEASE_CSP,
-  'script-src': `'self' ${BEACON_URL}`,
-  'connect-src': `'self' ${RUM_ORIGIN}`,
-})
-
 // Original source-code glyph: no trademark artwork, package or network icon.
-export const REPOSITORY_LINK = `<a data-pages-only="repository-link" href="${REPOSITORY_URL}" target="_blank" rel="noopener noreferrer" aria-label="${REPOSITORY_LABEL}">
+export const REPOSITORY_LINK = `<a data-pages-only="repository-link" href="${PAGES_REPOSITORY_URL}" target="_blank" rel="noopener noreferrer" aria-label="${PAGES_REPOSITORY_NAME}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
         <path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18" />
       </svg>
@@ -115,7 +103,7 @@ export function readSiteFiles(dir) {
         )
         const relative = path.relative(dir, full).split(path.sep).join('/')
         requireContract(
-          validateZipEntry(relative).ok && isSafeRelativePath(relative) && !relative.includes('%'),
+          validateZipEntry(relative).ok && isSafePagesPath(relative),
           'Site tree contains an unsafe resource path for live entity verification',
         )
         files.set(relative, fs.readFileSync(full))
@@ -150,28 +138,6 @@ export function assertNoOverlayContamination(files, pages = false) {
       'Release baseline contains Pages-only content (or overlay was already applied)',
     )
   }
-}
-
-/** @param {string} content @param {boolean} pages */
-export function parseCsp(content, pages) {
-  requireContract(!/[^\x20-\x7e]/.test(content), 'CSP must use the audited ASCII grammar')
-  const expected = pages ? PAGES_CSP : RELEASE_CSP
-  /** @type {Map<string, string>} */
-  const directives = new Map()
-  for (const part of content.split(';')) {
-    const words = part.trim().split(/ +/)
-    const name = words.shift() ?? ''
-    requireContract(
-      name.length > 0 && !directives.has(name),
-      'CSP has an empty or duplicate directive',
-    )
-    directives.set(name, words.join(' '))
-  }
-  requireContract(directives.size === Object.keys(expected).length, 'CSP directive shape changed')
-  for (const [name, sources] of Object.entries(expected)) {
-    requireContract(directives.get(name) === sources, `CSP has unexpected sources for ${name}`)
-  }
-  return directives
 }
 
 /** This parser deliberately accepts only the generated static index grammar,
@@ -332,7 +298,10 @@ export function verifyIndex(html, files, token) {
   )
   requireContract(policies.length === 1, 'Expected exactly one production CSP meta')
   const csp = policies[0]
-  parseCsp(csp.attrs.content ?? '', pages)
+  requireContract(
+    isDeepStrictEqual(parseCsp(csp.attrs.content ?? ''), pages ? PAGES_CSP : RELEASE_CSP),
+    'Unexpected CSP directives or sources',
+  )
   let appScripts = 0
   let appStyles = 0
   let beacons = 0
@@ -365,7 +334,7 @@ export function verifyIndex(html, files, token) {
         node.start > csp.end && attrs.type === 'module' && node.text.trim() === '',
         'Scripts must be external modules after CSP',
       )
-      if (pages && attrs.src === BEACON_URL) {
+      if (pages && attrs.src === CLOUDFLARE_BEACON_URL) {
         attributes(node, ['type', 'src', 'data-cf-beacon'])
         requireContract(
           parent === body && attrs['data-cf-beacon'] === JSON.stringify({ token }),
@@ -422,18 +391,6 @@ export function verifyIndex(html, files, token) {
       beacons === 1 && overlayStyles === 1,
       'Expected exactly one beacon and Pages stylesheet',
     )
-    for (const [marker, count] of [
-      ['data-cf-beacon', 1],
-      ['data-pages-only', 1],
-      [CSS_NAME, 1],
-      ['static.cloudflareinsights.com', 2],
-      ['cloudflareinsights.com', 3],
-    ]) {
-      requireContract(
-        html.toLowerCase().split(String(marker)).length - 1 === count,
-        'Duplicate or unexpected Pages overlay marker',
-      )
-    }
   }
   return { csp, head, body }
 }

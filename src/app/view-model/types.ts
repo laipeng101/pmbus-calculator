@@ -156,7 +156,7 @@ export interface VoutModeInfoVM {
   nibbles: VoutModeNibbleVM[]
 }
 
-/** Stable four-slot result-context contract (UI_CONVENTIONS §2). */
+/** Stable four-slot result-context contract (see UI_CONVENTIONS.md). */
 export type ResultContextSlotKey = 'raw' | 'format' | 'parameters' | 'context'
 
 /** One structured parameter pair so each symbol keeps its own glossary term. */

@@ -143,7 +143,7 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
   test('v2.6.7 术语行触发器点击目标 ≥24×24px：三 viewport 几何、两两不重叠、无裁切', async ({
     page,
   }) => {
-    // UI_CONVENTIONS §10 合同：点击目标至少 24×24px。全局 .term-trigger 是
+    // UI_CONVENTIONS.md 的交互目标尺寸：点击目标至少 24×24px。全局 .term-trigger 是
     // inline 零 padding，单字符术语（N）在 flex 术语行中宽度仅 ~11.5px；
     // 本用例把该行 scoped hitbox 合同锁定为几何断言（红→绿修复证明）。
     // 本测试在同一 context 内多次 goto：persistence 会恢复上次 mode，导致

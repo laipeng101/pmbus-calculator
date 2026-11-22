@@ -38,7 +38,7 @@ function params(
 }
 
 /**
- * Stable four-slot result context (UI_CONVENTIONS §16): raw identity, active
+ * Stable four-slot result context (see UI_CONVENTIONS.md): raw identity, active
  * format, active parameters and context/source/direction. Every mode returns
  * exactly these four logical slots in this order so switching tabs never
  * reflows the semantic anchors. Values come from the same canonical

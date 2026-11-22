@@ -1,64 +1,13 @@
-# Specification documents
+# 获取 PMBus 和 SMBus 规范
 
-This directory tracks specification **provenance**, not the specification PDFs
-themselves.
-
-## Why PDFs are no longer tracked
-
-The project previously tracked four PMBus/SMBus PDFs in `document/`. The current
-repository policy is conservative: this source tree keeps official source URLs,
-metadata, and SHA-256 checksums, but does not redistribute third-party
-specification PDFs. The historical files remain in old commits/tags; this task
-does not rewrite history.
-
-## Product scope and revision baseline
-
-The product is a **PMBus numeric-format calculator** (LINEAR11 / VOUT-LINEAR16 /
-DIRECT / IEEE 754 binary16 bidirectional conversion), not a PMBus/SMBus
-controller or a conformance implementation.
-
-- `validatedReference`: PMBus 1.3 / 1.3.1 public archive and SMBus 3.0.
-- `currentPublishedRevision`: PMBus 1.5 (per the official PMBus site), noted for
-  awareness only.
-- `productScope`: numeric-format subset only.
-- `fullRevisionCompliance`: not claimed — bus transport, command execution,
-  device profiles, PMBus 1.5 security extensions and Part IV are out of scope.
-
-PMBus 1.5 is not evaluated as the domain baseline and the manifest is not
-rewritten to a 1.5 baseline without a full revision-diff audit.
-
-## Official landing pages
-
-- PMBus Specification Archives: https://pmbus.org/specification-archives/
-- PMBus Current Specifications: https://pmbus.org/current-specifications/
-- SMBus Specifications: https://www.smbus.org/specs/
-
-## Manifest
-
-[`document/specifications.json`](specifications.json) is the single
-machine-readable source of truth for official URLs, byte counts, and SHA-256
-checksums. Do not duplicate or override those values in other files.
-
-## Usage
+先按[领域规则](../docs/DOMAIN_MODEL.md)确定所需的版本和章节，再从[清单](specifications.json)找到对应的 ID。清单记录官方 HTTPS 下载地址、文件大小和 SHA-256。
 
 ```bash
-npm run specs:list          # list manifest entries without downloading
-npm run specs:fetch -- --all
-npm run specs:fetch -- --id pmbus-1.3-part-ii
-npm run specs:verify-cache  # offline verification of cached files
+npm run specs:fetch -- --id pmbus-1.3.1-part-ii
 ```
 
-- `fetch` writes to `.cache/specifications/` after verifying byte count and
-  SHA-256 against the manifest.
-- The cache directory is git-ignored and must **never** be committed.
-- `npm run clean` removes the cache. Re-fetch only when needed.
+下载需要 curl。命令会打印 `.cache/specifications/` 中的文件路径。已有文件通过大小和 SHA-256 校验时会直接复用。下载失败或校验不符时保留原文件。
 
-## Working with specifications
+维护清单时，用 [PMBus 规范档案](https://pmbus.org/specification-archives/)或 [SMBus 规范列表](https://www.smbus.org/specs/)核对来源，并运行 `npm run specs:check` 离线校验清单字段。在代码、测试或评审中引用规范时，注明版本、分册和章节。
 
-- Fetch only the document you actually need for the task; prefer `--id` over
-  `--all`.
-- When citing the specification, record the revision, part, and section/page
-  used.
-- If an official URL or download stops working, fail the task and update
-  `document/specifications.json` after re-confirming the official landing page.
-  Do not silently substitute third-party mirrors.
+PDF 保留在本地缓存中。分发边界见[第三方规范声明](../THIRD_PARTY_NOTICES.md)。

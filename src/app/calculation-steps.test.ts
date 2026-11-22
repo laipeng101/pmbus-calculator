@@ -83,7 +83,7 @@ describe('buildCalculationSteps — diagnostics-only contract', () => {
       }),
     )
     expect(ids(overflow)).toEqual(['l16-relative-range'])
-    expect(overflow[0]?.plainText).toContain('计算结果超出 JavaScript Number 可表示范围')
+    expect(overflow[0]?.plainText).toContain('计算结果太大，超出可表示范围')
     expect(overflow.some((s) => s.plainText.includes('Infinity'))).toBe(false)
 
     const underflow = buildCalculationSteps(
@@ -193,9 +193,8 @@ describe('buildCalculationSteps — quantization-error step (shared provenance)'
     ).toBe(false)
   })
 
-  it('never appends quantization steps on the VOUT_MODE byte calculator', () => {
-    const steps = buildCalculationSteps(state({ mode: 'VOUT_MODE' }))
-    expect(steps.some((s) => s.id.endsWith('-quantization'))).toBe(false)
+  it('VOUT_MODE 字节配置没有额外的计算步骤', () => {
+    expect(buildCalculationSteps(state({ mode: 'VOUT_MODE' }))).toEqual([])
   })
 })
 
@@ -244,64 +243,5 @@ describe('buildCalculationSteps — DIRECT exact request transaction (v2.5.12)',
     expect(steps.some((s) => s.id === 'direct-request')).toBe(false)
     expect(steps.some((s) => s.id === 'direct-exact-represented')).toBe(false)
     expect(steps.some((s) => s.id === 'direct-exact-delta')).toBe(false)
-  })
-})
-
-describe('buildCalculationSteps — VOUT_MODE page DIRECT/Half requirement split (v2.5.4)', () => {
-  const HALF_BANNED = ['需器件资料', '器件 Profile', 'm/b/R', 'DIRECT 系数', '设备数据']
-
-  function voutModeSteps(byte: number) {
-    return buildCalculationSteps(state({ mode: 'VOUT_MODE', voutMode: { byte } }))
-  }
-
-  it('0x60/0xE0 step copy states standard binary16 and never claims device numbers', () => {
-    for (const byte of [0x60, 0xe0]) {
-      const steps = voutModeSteps(byte)
-      const tag = '0x' + byte.toString(16)
-      const step = steps.find((s) => s.id === 'vout-mode-half')
-      expect(step, tag).toBeDefined()
-      const copy = steps.map((s) => s.plainText).join('\n')
-      expect(copy).toContain('标准 IEEE 754 binary16')
-      for (const banned of HALF_BANNED) {
-        expect(copy, tag + ' unexpected copy: ' + banned).not.toContain(banned)
-      }
-    }
-    const absolute = voutModeSteps(0x60)
-      .map((s) => s.plainText)
-      .join('\n')
-    expect(absolute).toContain('HALF 模式页')
-    expect(absolute).not.toContain('标称参考值')
-    const relative = voutModeSteps(0xe0)
-      .map((s) => s.plainText)
-      .join('\n')
-    expect(relative).toContain('标称参考值')
-    expect(relative).toContain('§8.5.2')
-  })
-
-  it('0x40/0xC0 step copy keeps the device m/b/R requirement', () => {
-    for (const byte of [0x40, 0xc0]) {
-      const steps = voutModeSteps(byte)
-      expect(
-        steps.some((s) => s.id === 'vout-mode-direct'),
-        '0x' + byte.toString(16),
-      ).toBe(true)
-      const copy = steps.map((s) => s.plainText).join('\n')
-      expect(copy).toContain('m/b/R')
-      expect(copy).toContain('器件')
-    }
-    expect(voutModeSteps(0x40).some((s) => s.plainText.includes('标称参考值'))).toBe(false)
-    expect(voutModeSteps(0xc0).some((s) => s.plainText.includes('标称参考值'))).toBe(true)
-  })
-
-  it('0x61/0xE1 keep the invalid-parameter step without any format requirement branch', () => {
-    for (const byte of [0x61, 0xe1]) {
-      const steps = voutModeSteps(byte)
-      expect(steps.some((s) => s.id === 'vout-mode-half')).toBe(false)
-      expect(steps.some((s) => s.id === 'vout-mode-direct')).toBe(false)
-      expect(
-        steps.some((s) => s.plainText.includes('00000b')),
-        '0x' + byte.toString(16),
-      ).toBe(true)
-    }
   })
 })

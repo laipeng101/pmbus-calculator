@@ -14,7 +14,7 @@ PMBus Calculator 是在浏览器中运行的静态计算器。从要改的入口
 | Pages 部署、访问统计               | [部署指南](docs/DEPLOYING.md)                                                  |
 | 旧版单文件兼容性                   | [兼容性说明](docs/LEGACY_COMPATIBILITY.md)                                     |
 
-需要了解设计取舍时，查相关[架构决策](docs/adr/)。变更历史查 Git、PR 或 GitHub Releases。核对外部规范时，按[规范获取说明](document/README.md#working-with-specifications)下载需要的文件，读取相关章节。
+需要了解设计取舍时，查相关[架构决策](docs/adr/)。变更历史查 Git、PR 或 GitHub Releases。核对外部规范时，按[规范获取说明](document/README.md)下载需要的文件，读取相关章节。
 
 ## 代码约束
 
