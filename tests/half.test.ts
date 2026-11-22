@@ -55,6 +55,7 @@ describe('HALF golden encode cases (tie-to-even and boundaries)', () => {
     { name: 'tie-to-even 1 + 3×2^-11 -> 0x3C02', value: 1 + 3 * Math.pow(2, -11), raw: 0x3c02 },
     { name: 'subnormal half-ulp tie-to-even -> 0x0000', value: Math.pow(2, -25), raw: 0x0000 },
     { name: 'subnormal 1.5 ulp tie-to-even -> 0x0002', value: 3 * Math.pow(2, -25), raw: 0x0002 },
+    { name: 'subnormal tie carries to normal -> 0x0400', value: 1023.5 * 2 ** -24, raw: 0x0400 },
   ] as const
 
   for (const c of cases) {

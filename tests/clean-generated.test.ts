@@ -229,15 +229,6 @@ describe('cleanGenerated', () => {
       fs.readFile(path.join(outside, 'e2e', 'output', 'actual.png'), 'utf8'),
     ).resolves.toBe('shot')
   })
-
-  it('exposes the current generated-target allowlist', () => {
-    expect(GENERATED_TARGETS).toContain('release-output')
-    expect(GENERATED_TARGETS).toContain('.release-staging')
-    // No lock/journal/backup transaction artifacts remain as clean targets.
-    expect(GENERATED_TARGETS).not.toContain('.release-staging.lock')
-    expect(GENERATED_TARGETS).not.toContain('.release-staging.transaction.json')
-    expect(GENERATED_TARGETS.some((t) => t.startsWith('release-output.backup-'))).toBe(false)
-  })
 })
 
 describe('cleanGenerated — generated-artifact lifecycle (v2.5.14)', () => {

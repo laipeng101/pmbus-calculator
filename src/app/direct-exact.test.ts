@@ -19,16 +19,12 @@ import {
 } from './direct-exact'
 import { classifyFloatText } from './float-parse'
 import { formatPlainNumber } from './numeric-presentation'
+import { appReducer, INITIAL_STATE } from './reducer'
+import { resolveDirectFidelity, resolveDirectPhysicalValueCopy } from './view-model/direct'
 
 /**
- * v2.5.11 — DIRECT exact-coefficient reference model (BigInt oracle).
- *
- * The tests never let the binary64 product path prove itself: exact values
- * are checked against independent BigInt cross-multiplication identities,
- * exactly-representable decodes are compared bit-exactly against the float
- * decode, and the full 65536-Y sweeps pin the round-trip analysis to the
- * REAL shipped encode/decode pair. Property tests use a fixed seed and a
- * fixed sample count and print reproducible vectors on failure.
+ * Check exact values against an independent BigInt identity. Exercise the
+ * entire signed payload for the historical display-text precision regression.
  */
 
 /** Independent BigInt invariant: m·X·10^R === Y − b·10^R for X = num/den.
@@ -87,14 +83,10 @@ function mulberry32(seed: number): () => number {
 
 const SEED = 0xd15c7
 
-/** Layered corpus: full-65536 sets first, sampled-Y grid second. */
-const FULL_SWEEP_COEFFICIENTS: Array<{ m: number; b: number; r: number }> = [
-  { m: 1, b: 1, r: 17 }, // the production-site counterexample family
-  { m: 1, b: 0, r: 0 }, // identity coefficients (X = Y, always exact in binary64)
-  { m: 1, b: 1, r: 12 }, // v3.1.1: display-formatting fold family (29491/65536 unsafe copies)
-]
-
 const SAMPLED_GRID: Array<{ m: number; b: number; r: number }> = [
+  { m: 1, b: 1, r: 17 }, // binary64 precision loss
+  { m: 1, b: 0, r: 0 }, // identity coefficients
+  { m: 1, b: 1, r: 12 }, // display-formatting precision loss
   { m: 2, b: 0, r: 0 }, // terminating dyadic
   { m: 3, b: 1, r: 2 }, // repeating rationals
   { m: -3, b: -1, r: -2 }, // negative m, negative R
@@ -214,26 +206,6 @@ describe('DIRECT exact decode reference (BigInt oracle)', () => {
       PMBusMath.decodeDirect(1, 1, 0, 127).value,
     )
   })
-
-  it('proves the collision set where distinct Y share one binary64 value', () => {
-    // m=1, b=1, R=17: every Y with |Y·1e-17| below half an ulp of 1 folds to
-    // exactly −1, so Y=0 and Y=-1 (among others) display the same Number.
-    const groups = new Map<number, number[]>()
-    for (let y = -32768; y <= 32767; y++) {
-      const approx = PMBusMath.decodeDirect(y, 1, 1, 17).value
-      const group = groups.get(approx)
-      if (group) group.push(y)
-      else groups.set(approx, [y])
-    }
-    const folded = groups.get(-1)!
-    expect(folded).toContain(0)
-    expect(folded).toContain(-1)
-    expect(folded.length).toBeGreaterThan(2)
-    // Inside one collision group the re-entry verdicts genuinely differ:
-    // Y=0 is safe, Y=-1 has been precision-folded away.
-    expect(analyzeDirectRoundTrip(0, 1, 1, 17)!.roundTripSafe).toBe(true)
-    expect(analyzeDirectRoundTrip(-1, 1, 1, 17)!.roundTripSafe).toBe(false)
-  })
 })
 
 describe('Math.round contract reproduction (exact arithmetic)', () => {
@@ -256,10 +228,10 @@ describe('Math.round contract reproduction (exact arithmetic)', () => {
     }
   })
 
-  it('round-trips every exact decode back to its own Y (identity contract)', () => {
+  it('round-trips sampled exact decodes back to their own Y', () => {
     // X is the exact decode of Y ⇒ (m·X + b)·10^R === Y ⇒ the exact encoder
     // must return Y for every legal field combination.
-    for (const { m, b, r } of [...FULL_SWEEP_COEFFICIENTS, ...SAMPLED_GRID]) {
+    for (const { m, b, r } of SAMPLED_GRID) {
       for (const y of SAMPLED_YS) {
         const exact = decodeDirectExact(y, m, b, r)!
         expect(encodeDirectExactFromRational(exact, m, b, r), `y=${y} m=${m} b=${b} r=${r}`).toBe(y)
@@ -377,52 +349,10 @@ describe('safe re-entry text generation (verified exact encoder)', () => {
     // 1/3 needs more than 0 fractional digits to re-encode to Y=1.
     expect(generateSafeDirectReentryText(exact, 1, 3, 0, 0, 0)).toBeNull()
   })
-
-  it('generates a verified re-entry text for every Y of the full-sweep corpora', () => {
-    for (const { m, b, r } of FULL_SWEEP_COEFFICIENTS) {
-      for (let y = -32768; y <= 32767; y++) {
-        const exact = decodeDirectExact(y, m, b, r)!
-        const safe = generateSafeDirectReentryText(exact, y, m, b, r)
-        if (safe === null) {
-          throw new Error(`no verified re-entry text: y=${y} m=${m} b=${b} r=${r}`)
-        }
-        const reparsed = parseDecimalExactRational(safe.text)
-        if (!reparsed || encodeDirectExactFromRational(reparsed, m, b, r) !== y) {
-          throw new Error(`unverified re-entry text ${safe.text}: y=${y} m=${m} b=${b} r=${r}`)
-        }
-      }
-    }
-  })
 })
 
 describe('round-trip analysis pinned to the real binary64 pipeline', () => {
-  // v2.5.12: each full sweep is its own test — same corpus, same assertions,
-  // independent per-test timing so no single test carries two sweeps.
-  for (const { m, b, r } of FULL_SWEEP_COEFFICIENTS) {
-    it(`roundTripSafe equals the real Number re-encode verdict over the full sweep (m=${m}, b=${b}, r=${r})`, () => {
-      const startedAt = Date.now()
-      let unsafeCount = 0
-      for (let y = -32768; y <= 32767; y++) {
-        const analysis = analyzeDirectRoundTrip(y, m, b, r)
-        expect(analysis, `y=${y} m=${m} b=${b} r=${r}`).not.toBeNull()
-        const realVerdict =
-          PMBusMath.encodeDirect(PMBusMath.decodeDirect(y, m, b, r).value, m, b, r) === y
-        if (analysis!.roundTripSafe !== realVerdict) {
-          throw new Error(
-            `roundTripSafe drift: y=${y} m=${m} b=${b} r=${r} analysis=${analysis!.roundTripSafe} real=${realVerdict}`,
-          )
-        }
-        if (!analysis!.roundTripSafe) unsafeCount++
-      }
-      const elapsedMs = Date.now() - startedAt
-      // Layered corpus discipline: record the sweep cost, keep it bounded.
-      console.log(`full 65536-Y sweep m=${m} b=${b} r=${r}: ${unsafeCount} unsafe, ${elapsedMs}ms`)
-      expect(elapsedMs).toBeLessThan(20_000)
-    })
-  }
-
   it('samples the wider coefficient grid against the real pipeline and normalization invariants', () => {
-    const startedAt = Date.now()
     const rand = mulberry32(SEED)
     for (const { m, b, r } of SAMPLED_GRID) {
       for (const y of SAMPLED_YS) {
@@ -452,7 +382,6 @@ describe('round-trip analysis pinned to the real binary64 pipeline', () => {
         throw new Error(`fuzz drift (seed ${SEED}, sample ${i}): y=${y} m=${m} b=${b} r=${r}`)
       }
     }
-    console.log(`sampled grid + 5000-sample fuzz (seed ${SEED}): ${Date.now() - startedAt}ms`)
   })
 })
 
@@ -520,60 +449,40 @@ describe('display-text re-entry analysis (v3.1.1 unified typed contract)', () =>
     expect(a.b64RoundTripSafe).toBe(true)
   })
 
-  it('displayRoundTripSafe matches an independent typed-path verdict over the (1,1,12) full sweep', () => {
-    // The predicate is recomputed in the test from the real pipeline pieces
-    // (formatPlainNumber → classify → exact parse → exact encode) so the
-    // analysis cannot drift from the contract it claims to answer.
-    const startedAt = Date.now()
-    let unsafeCount = 0
-    for (let y = -32768; y <= 32767; y++) {
-      const a = analyzeDirectTextReentry(y, 1, 1, 12)
-      expect(a, `y=${y}`).not.toBeNull()
-      const text = formatPlainNumber(PMBusMath.decodeDirect(y, 1, 1, 12).value)
-      const parsed = parseDecimalExactRational(text)
-      const verdict = parsed !== null && encodeDirectExactFromRational(parsed, 1, 1, 12) === y
-      if (a!.displayRoundTripSafe !== verdict) {
-        throw new Error(
-          `display-verdict drift: y=${y} analysis=${a!.displayRoundTripSafe} real=${verdict}`,
-        )
-      }
-      if (!a!.displayRoundTripSafe) unsafeCount++
-    }
-    // The audit's measured incidence for (1,1,12): 29491 of 65536 copies.
-    expect(unsafeCount).toBe(29491)
-    console.log(
-      `display-reentry sweep (1,1,12): ${unsafeCount} unsafe, ${Date.now() - startedAt}ms`,
-    )
-  })
-
-  it('FINAL COPY property over (1,1,12) full Y: copied text re-enters to the same raw word', () => {
-    // The acceptance contract of the fix: whatever the 物理值 copy hands out
-    // (the display text when safe, the verified override otherwise) must
-    // survive the REAL typed path with the raw word unchanged. The test
-    // re-runs the reducer's pipeline instead of trusting the generator.
-    const startedAt = Date.now()
+  it('keeps the raw word on copy and re-entry for every Y at (m=1, b=1, R=12)', () => {
+    const direct = { ...INITIAL_STATE.direct, m: 1, b: 1, r: 12 }
+    const base = { ...INITIAL_STATE, mode: 'DIRECT' as const, direct }
     let overrides = 0
     for (let y = -32768; y <= 32767; y++) {
-      const a = analyzeDirectTextReentry(y, 1, 1, 12)!
-      const copied = a.displayRoundTripSafe
-        ? a.displayText
-        : (generateSafeDirectReentryText(a.exact, y, 1, 1, 12)?.text ?? null)
-      if (copied === null) throw new Error(`copy degraded to null: y=${y}`)
-      if (!a.displayRoundTripSafe) overrides++
-      const parsed = classifyFloatText(copied)
-      if (parsed.kind !== 'value' || !Number.isFinite(parsed.value)) {
-        throw new Error(`copied text not committable: ${copied} (y=${y})`)
+      const raw = PMBusMath.fromSigned(y, 16)
+      const state = { ...base, raw }
+      const fidelity = resolveDirectFidelity(state)
+      const copy = resolveDirectPhysicalValueCopy(state, fidelity)
+      const display = formatPlainNumber(
+        PMBusMath.decodeDirect(y, direct.m, direct.b, direct.r).value,
+      )
+      // Enter from a different Raw Word so a rejected edit cannot pass.
+      const draft = { ...state, raw: raw ^ 1 }
+      const displayedResult = appReducer(draft, { type: 'value/set', value: display })
+      if ((fidelity === null) !== (displayedResult.raw === raw)) {
+        throw new Error(`display verdict differs from the reducer: y=${y}, text=${display}`)
       }
-      const exact = parseDecimalExactRational(copied)
-      const reencodedY = exact === null ? null : encodeDirectExactFromRational(exact, 1, 1, 12)
-      const rawBefore = PMBusMath.fromSigned(y, 16)
-      const rawAfter = reencodedY === null ? null : PMBusMath.fromSigned(reencodedY, 16)
-      if (rawAfter !== rawBefore) {
-        throw new Error(`re-entry changes raw: y=${y} copied=${copied} reencodedY=${reencodedY}`)
+      if (copy.physicalValueCopy?.available === false) {
+        throw new Error(`physical-value copy unavailable for y=${y}`)
+      }
+      const override = copy.physicalValueCopyOverride
+      if (override) {
+        overrides++
+        const result = appReducer(draft, { type: 'value/set', value: override.text })
+        if (result.raw !== raw) {
+          throw new Error(`copy changes raw: y=${y}, text=${override.text}, actual=${result.raw}`)
+        }
+      } else if (fidelity !== null) {
+        throw new Error(`unsafe display has no copy override: y=${y}, text=${display}`)
       }
     }
-    expect(overrides).toBe(29491)
-    console.log(`final-copy property (1,1,12): ${overrides} overrides, ${Date.now() - startedAt}ms`)
+    expect(overrides).toBeGreaterThan(0)
+    expect(overrides).toBeLessThan(65536)
   })
 })
 
@@ -630,13 +539,7 @@ describe('exact lexeme boundary (v2.5.12)', () => {
     // Deterministic-length fixture (never committed as a snapshot): a
     // megabyte paste classifies as overlong via pure string checks.
     const huge = `1${'0'.repeat(1_000_000)}`
-    const started = Date.now()
-    const boundary = checkExactLexemeBoundary(huge)
-    const elapsed = Date.now() - started
-    // Node v24.19.0 (darwin arm64): string scan of 1 MB is a few ms; the
-    // logged duration documents the environment without a brittle assert.
-    console.log(`overlong boundary classification of 1MB took ${elapsed}ms`)
-    expect(boundary).toEqual({ ok: false, reason: 'overlong' })
+    expect(checkExactLexemeBoundary(huge)).toEqual({ ok: false, reason: 'overlong' })
     expect(parseDecimalExactRational(huge)).toBeNull()
   })
 

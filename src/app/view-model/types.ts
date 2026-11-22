@@ -18,12 +18,12 @@ export type L16BlockedStatus = Exclude<L16FormatSemantics['status'], 'linear-sup
  * Fail-closed card content for a shared VOUT_MODE byte the L16 page cannot
  * interpret with LINEAR16 semantics. `status` is machine-checkable and
  * exhaustively switches over the payload contract (§8.4 / §8.4.2 / §8.5.3 /
- * §13.3 / §13.4); title/detailLines carry the spec-accurate reason.
+ * §13.3 / §13.4); title and detail explain the reason to the user.
  */
 export interface L16BlockVM {
   status: L16BlockedStatus
   title: string
-  detailLines: readonly string[]
+  detail: string
 }
 
 /** L16 payload-context contract: UI entry decided by payload, not byte status. */
@@ -284,7 +284,6 @@ export interface CalculatorViewModel {
   deltaNote?: string
   warnings: WarningVM[]
   bitGroups: BitGroupVM[]
-  commandNote?: string
   nRangeText?: string
   /**
    * Present ONLY when the result has no copyable physical value, including

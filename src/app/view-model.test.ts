@@ -7,7 +7,6 @@ import type { AppState } from './state'
 const BASE: AppState = {
   mode: 'L11',
   raw: 0,
-  commandKey: null,
   voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   valueRequest: null,
@@ -157,7 +156,7 @@ describe('toCalculatorViewModel', () => {
       }
     })
 
-    test('VID 0x20 + ULINEAR16：VID 合法但缺 profile（v2.5.3），绝不宣称输出电压命令总体禁止 VID', () => {
+    test('未使用的 VID 代码 00h 无法换算电压', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x20 } }))
       expect(vm.voutModeInfo?.source).toBe('non-linear')
       expect(vm.voutModeInfo?.domainStatus).toBe('not-used')
@@ -166,14 +165,7 @@ describe('toCalculatorViewModel', () => {
       // prohibition.
       expect(vm.l16Payload?.blocked?.status).toBe('vid-profile-required')
       expect(vm.l16Payload?.blocked?.title).toContain('VID 格式')
-      const copy = [
-        vm.l16Payload?.blocked?.title,
-        ...(vm.l16Payload?.blocked?.detailLines ?? []),
-      ].join('\n')
-      expect(copy).toContain('不是被禁止的数据格式')
-      expect(copy).toContain('§8.4.2')
-      expect(copy).not.toContain('输出电压相关命令禁止')
-      expect(copy).not.toContain('禁止使用 VID')
+      expect(vm.l16Payload?.blocked?.detail).toContain('没有可用的电压映射')
       // Fail-closed numerics unchanged: no input, no range, no quantization.
       expect(vm.l16Payload?.physicalInputAvailable).toBe(false)
       expect(vm.nRangeText).toBeUndefined()
@@ -185,16 +177,7 @@ describe('toCalculatorViewModel', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x3e } }))
       expect(vm.l16Payload?.blocked?.status).toBe('vid-profile-required')
       expect(vm.l16Payload?.blocked?.title).toContain('1Eh — 制造商自定义（需器件资料）')
-      const copy = [
-        vm.l16Payload?.blocked?.title,
-        ...(vm.l16Payload?.blocked?.detailLines ?? []),
-      ].join('\n')
-      expect(copy).toContain('器件资料')
-      // Manufacturer-specific codes are legal — they must not be called
-      // reserved or prohibited anywhere in the card copy.
-      expect(copy).not.toContain('保留')
-      expect(copy).not.toContain('输出电压相关命令禁止')
-      expect(copy).not.toContain('该命令组合被禁止')
+      expect(vm.l16Payload?.blocked?.detail).toContain('器件资料中的 VID 码表')
     })
 
     test.each([
@@ -211,16 +194,9 @@ describe('toCalculatorViewModel', () => {
           }),
         )
         expect(vm.l16Payload?.blocked?.status).toBe('vid-offset-prohibited')
-        const copy = [
-          vm.l16Payload?.blocked?.title,
-          ...(vm.l16Payload?.blocked?.detailLines ?? []),
-        ].join('\n')
+        const copy = vm.l16Payload?.blocked?.detail
         expect(copy).toContain('§13.3 / §13.4')
         expect(copy).toContain('VOUT_TRIM / VOUT_CAL_OFFSET')
-        // Prohibition scope is limited to the two offset commands; VID itself
-        // stays a legal format per §8.4.2 — never claim a global ban.
-        expect(copy).toContain('禁止范围仅限这两条二补码偏移命令')
-        expect(copy).not.toContain('输出电压相关命令禁止使用 VID')
         // Spec-level violation announces an error-level warning.
         expect(
           vm.warnings.some(
@@ -243,11 +219,7 @@ describe('toCalculatorViewModel', () => {
           }),
         )
         expect(vm.l16Payload?.blocked?.status).toBe('vid-relative-invalid')
-        const copy = [
-          vm.l16Payload?.blocked?.title,
-          ...(vm.l16Payload?.blocked?.detailLines ?? []),
-        ].join('\n')
-        expect(copy).toContain('§8.5.3')
+        expect(vm.l16Payload?.blocked?.detail).toContain('§8.5.3')
         expect(
           vm.warnings.some((w) => w.id === 'vout-mode-invalid-combination' && w.level === 'error'),
         ).toBe(true)
@@ -256,27 +228,19 @@ describe('toCalculatorViewModel', () => {
       },
     )
 
-    test('DIRECT 0x40 / IEEE Half 0x60：合法格式但本页无 profile，fail-closed 不猜 N', () => {
+    test('DIRECT 0x40 和 IEEE Half 0x60 提示切换到对应的换算页', () => {
       const direct = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x40 } }))
       expect(direct.l16Payload?.blocked?.status).toBe('direct-profile-required')
-      const directCopy = [
-        direct.l16Payload?.blocked?.title,
-        ...(direct.l16Payload?.blocked?.detailLines ?? []),
-      ].join('\n')
-      expect(directCopy).toContain('DIRECT')
-      expect(directCopy).toContain('m / b / R')
+      const directCopy = direct.l16Payload?.blocked?.detail
+      expect(directCopy).toContain('在 DIRECT 页换算')
+      expect(directCopy).toContain('m、b、R')
       expect(directCopy).toContain('§7.4')
-      expect(directCopy).not.toContain('被禁止')
 
       const half = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x60 } }))
       expect(half.l16Payload?.blocked?.status).toBe('half-unsupported-in-l16')
-      const halfCopy = [
-        half.l16Payload?.blocked?.title,
-        ...(half.l16Payload?.blocked?.detailLines ?? []),
-      ].join('\n')
-      expect(halfCopy).toContain('IEEE Half 是合法的输出电压数据格式')
+      const halfCopy = half.l16Payload?.blocked?.detail
+      expect(halfCopy).toContain('切换到 HALF 页')
       expect(halfCopy).toContain('§8.4.4')
-      expect(halfCopy).not.toContain('被禁止')
 
       // Same contract for the signed-offset payload interpretation.
       const directOffset = toCalculatorViewModel(
@@ -293,7 +257,7 @@ describe('toCalculatorViewModel', () => {
       for (const byte of [0x41, 0x61]) {
         const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
         expect(vm.l16Payload?.blocked?.status).toBe('reserved-or-invalid')
-        expect(vm.l16Payload?.blocked?.detailLines.join('')).toContain('00000b')
+        expect(vm.l16Payload?.blocked?.detail).toContain('00000b')
         expect(
           vm.warnings.some((w) => w.id === 'vout-mode-invalid-parameter' && w.level === 'error'),
           `0x${byte.toString(16)}`,
@@ -1167,16 +1131,9 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
-  describe('C macro text', () => {
-    test('no command uses RAW_VALUE', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0x000c }))
-      expect(vm.cMacroText).toBe('#define RAW_VALUE 0x000C /* Y=12 × 2^0 */')
-    })
-
-    test('selected command uses sanitized command name', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0x000c, commandKey: 'VOUT_COMMAND' }))
-      expect(vm.cMacroText).toBe('#define VOUT_COMMAND 0x000C /* Y=12 × 2^0 */')
-    })
+  test('C macro copies the raw word and its formula as RAW_VALUE', () => {
+    const vm = toCalculatorViewModel(make({ raw: 0x000c }))
+    expect(vm.cMacroText).toBe('#define RAW_VALUE 0x000C /* Y=12 × 2^0 */')
   })
 
   describe('DIRECT error visibility (inline-only, no InfoPanel duplication)', () => {
@@ -1217,66 +1174,27 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
-  describe('command note', () => {
-    test('null commandKey has no note', () => {
-      const vm = toCalculatorViewModel(BASE)
-      expect(vm.commandNote).toBeUndefined()
-    })
-
-    test('STATUS_WORD provides note', () => {
-      const vm = toCalculatorViewModel(make({ commandKey: 'STATUS_WORD' }))
-      expect(vm.commandNote).toBeTruthy()
-    })
-  })
-
   describe('warnings', () => {
     test('default L11 state has no Y=0 info warning', () => {
       const vm = toCalculatorViewModel(BASE)
       expect(vm.warnings).toHaveLength(0)
     })
 
-    test('Y=1023/-1024 boundary codes are not flagged as overflow', () => {
-      // N=15, Y=1023 -> 0x7FFF ; N=15, Y=-1024 -> 0xFFFF
-      expect(toCalculatorViewModel(make({ raw: 0x7fff })).warnings).toHaveLength(0)
-      expect(toCalculatorViewModel(make({ raw: 0xffff })).warnings).toHaveLength(0)
-    })
+    test('auto-N saturation warns just outside the global L11 range', () => {
+      for (const [raw, endpoint, outside] of [
+        [0x7bff, PMBusMath.maxLinear11(), 1],
+        [0x7c00, PMBusMath.minLinear11(), -1],
+      ]) {
+        const atEndpoint = toCalculatorViewModel(
+          make({ raw, l11: { ...BASE.l11, valueInput: endpoint } }),
+        )
+        expect(atEndpoint.warnings).toHaveLength(0)
 
-    test('L11 saturation warning appears only when the requested value is out of range', () => {
-      const inRange = toCalculatorViewModel(
-        make({ raw: 0x7fff, l11: { ...BASE.l11, valueInput: PMBusMath.maxLinear11() } }),
-      )
-      expect(inRange.warnings.some((w) => w.id === 'l11-saturation')).toBe(false)
-
-      const saturated = toCalculatorViewModel(
-        make({ raw: 0x7fff, l11: { ...BASE.l11, valueInput: PMBusMath.maxLinear11() + 1 } }),
-      )
-      expect(saturated.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
-
-      const negative = toCalculatorViewModel(
-        make({ raw: 0xffff, l11: { ...BASE.l11, valueInput: PMBusMath.minLinear11() - 1 } }),
-      )
-      expect(negative.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
-    })
-
-    test('autoN=true 用全格式全局可表示范围判断饱和', () => {
-      // autoN 编码器在全局极值（N=15）饱和；全局范围内不报警。
-      const auto = { ...BASE.l11, autoN: true, valueInput: PMBusMath.maxLinear11() }
-      expect(
-        toCalculatorViewModel(make({ raw: 0x7fff, l11: auto })).warnings.some(
-          (w) => w.id === 'l11-saturation',
-        ),
-      ).toBe(false)
-      // 全局范围之外才报警（即使该值对某个锁定 N 仍在 Y 范围内）。
-      const overGlobal = {
-        ...BASE.l11,
-        autoN: true,
-        valueInput: PMBusMath.maxLinear11() + 1,
+        const saturated = toCalculatorViewModel(
+          make({ raw, l11: { ...BASE.l11, valueInput: endpoint + outside } }),
+        )
+        expect(saturated.warnings.some((warning) => warning.id === 'l11-saturation')).toBe(true)
       }
-      expect(
-        toCalculatorViewModel(make({ raw: 0x7fff, l11: overGlobal })).warnings.some(
-          (w) => w.id === 'l11-saturation',
-        ),
-      ).toBe(true)
     })
 
     test('autoN=false 按锁定 N 的 Y=-1024..1023 范围判断饱和', () => {

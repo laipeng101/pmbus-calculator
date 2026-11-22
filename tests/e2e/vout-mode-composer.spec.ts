@@ -210,19 +210,20 @@ test.describe('M38 standalone VOUT_MODE calculator', () => {
     await expect(page.locator(CANONICAL)).toContainText('0x60')
   })
 
-  test('Normalize 只修正非法组合/参数，不破坏合法位', async ({ page }) => {
+  test('修正配置字节只更改无效的组合或参数', async ({ page }) => {
     await settle(page)
     await switchToVoutMode(page)
     const hex = page.locator('#vout-mode-input')
 
     await hex.fill('E1')
     await hex.press('Tab')
-    await page.getByRole('button', { name: /规范化/ }).click()
+    const repair = page.getByRole('button', { name: '修正配置字节' })
+    await repair.click()
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0xE0')
 
     await hex.fill('A0')
     await hex.press('Tab')
-    await page.getByRole('button', { name: /规范化/ }).click()
+    await repair.click()
     await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x20')
   })
 

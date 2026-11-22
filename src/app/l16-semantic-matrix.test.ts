@@ -25,7 +25,6 @@ import type { AppState } from './state'
 const BASE: AppState = {
   mode: 'L16',
   raw: 0x0c00,
-  commandKey: null,
   voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   valueRequest: null,
@@ -236,7 +235,7 @@ describe('L16 semantic matrix — non-LINEAR shared bytes fail closed (§8.4)', 
 
   test('case 14: profile requirement is reported without fabricating device data', () => {
     const vm = toCalculatorViewModel(make({ voutMode: { byte: 0x3e } }))
-    expect(vm.l16Payload?.blocked?.detailLines.join('\n')).toContain('器件资料')
+    expect(vm.l16Payload?.blocked?.detail).toContain('器件资料中的 VID 码表')
     expect(vm.l16Payload?.requiresNominalReference).toBe(false)
   })
 })

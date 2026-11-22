@@ -230,9 +230,9 @@ export const CONTROL_HELP: ControlHelpRegistry = {
     render: () => formatHelp('vout-format-half'),
   },
   'vout-normalize': {
-    name: '规范化',
+    name: '修正配置字节',
     render: () =>
-      '按当前选中的语义（bit7、格式、参数）把 VOUT_MODE 字节重写为规范形式：DIRECT/IEEE Half 的参数位清为 00000b，非法组合按位域规则修正。',
+      '按所选格式修正 VOUT_MODE 字节。VID 切换为绝对值，DIRECT 和 IEEE Half 的参数位清为 00000b。',
   },
   'vout-apply-example': {
     name: '应用计算器 LINEAR 示例',
@@ -240,23 +240,21 @@ export const CONTROL_HELP: ControlHelpRegistry = {
   },
   'vout-explanations-toggle': {
     name: 'VOUT_MODE 说明折叠',
-    render: ({ count }) =>
-      `展开/收起当前字节的规范说明（共 ${count} 条）。说明为只读内容，不改变任何状态。`,
+    render: ({ count }) => `展开或收起当前配置字节的 ${count} 条说明。`,
   },
   'copy-raw-word': {
     name: 'Raw Word 复制',
     render: ({ prefixed }) =>
-      `复制 canonical Raw Word 的 Hex 文本（始终是未交换的 16 位数值，与 Raw Word 输入框、位网格一致）。当前${prefixed ? '带 0x 前缀' : '不带 0x 前缀'}；字节顺序偏好不影响该复制。`,
+      `复制当前数据字的 4 位十六进制文本，${prefixed ? '带 0x 前缀' : '不带 0x 前缀'}。对照总线抓包时请复制 Wire 字节。`,
   },
   'copy-wire-bytes': {
     name: 'Wire 字节复制',
     render: () =>
-      '复制 SMBus / PMBus Wire Bytes（低字节在前）：SMBus 3.0 §6.5.4/§6.5.5 规定 word 数据按低字节在前传输。这是序列化表示，不改变 Raw Word。',
+      '按 SMBus / PMBus 的传输顺序复制，低字节在前。可与总线抓包对照（SMBus 3.0 §6.5.4、§6.5.5）。',
   },
   'copy-msb-first-bytes': {
     name: 'MSB-first 字节复制',
-    render: () =>
-      '复制 MSB-first 字节（高字节在前）。这是另一种字节序列表示，仅用于显示/对照，不是 SMBus/PMBus word 的线上顺序。',
+    render: () => '按 MSB-first 顺序复制，高字节在前。可与以大端字节序显示的数据对照。',
   },
   'copy-physical': {
     name: '物理值复制',
@@ -270,8 +268,7 @@ export const CONTROL_HELP: ControlHelpRegistry = {
   },
   'copy-c-macro': {
     name: 'C 代码复制',
-    render: () =>
-      '复制项目生成的 C 宏定义文本（#define 形式，值为未交换的 raw word）。C 宏是本计算器的输出格式，不是 PMBus 协议内容。',
+    render: () => '将 Raw Word 复制为 C 语言的 #define 宏，可粘贴到代码中。',
   },
   'copy-pref-prefix': {
     name: '0x 前缀偏好',
@@ -289,13 +286,11 @@ export const CONTROL_HELP: ControlHelpRegistry = {
   },
   'steps-toggle': {
     name: '计算过程折叠',
-    render: ({ count }) =>
-      `展开/收起计算过程（共 ${count} 步）。步骤为只读推导展示，不改变任何状态。`,
+    render: ({ count }) => `展开或收起计算过程（${count} 步）。`,
   },
   'command-ref-toggle': {
     name: '命令参考折叠',
-    render: ({ count }) =>
-      `展开/收起只读命令参考表（${count} 条命令）。参考面板无副作用：查看命令不会改变模式、raw 或结果。`,
+    render: ({ count }) => `展开或收起命令参考（${count} 条）。可查看命令码、事务类型和数据格式。`,
   },
   'debug-toggle': {
     name: '调试面板开关',

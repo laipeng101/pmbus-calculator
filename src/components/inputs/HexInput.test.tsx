@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 // HexInput 步进器组件合同（v3.1.0）。
 //
 // 锁定 +1/-1 步进的核心语义：范围由 maxDigits 推导（16 位 0x0000..0xFFFF、

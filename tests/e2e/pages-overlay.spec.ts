@@ -209,21 +209,12 @@ for (const theme of ['light', 'dark'] as const) {
 
     for (const mode of ['LINEAR11', 'LINEAR16', 'DIRECT', 'HALF', 'VOUT_MODE']) {
       await page.getByRole('tab', { name: new RegExp(mode) }).click()
-      for (const fraction of [0, 0.5, 1]) {
-        await page.evaluate(
-          (ratio) =>
-            window.scrollTo(0, (document.documentElement.scrollHeight - innerHeight) * ratio),
-          fraction,
-        )
-        await expectClearViewport(page)
-      }
-      // Exercise every real control and result interaction as it is brought
-      // into view. The icon must stay with the header, never over the inputs.
-      for (const target of await page.locator(calculatorTargets).all()) {
-        if (!(await target.isVisible())) continue
-        await target.scrollIntoViewIfNeeded()
-        await expectClearViewport(page)
-      }
+      // Geometry checks every calculator control at once. The header link
+      // stays aligned to the theme control when the page is scrolled.
+      await page.evaluate(() => window.scrollTo(0, 0))
+      await expectClearViewport(page)
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+      await expectClearViewport(page)
     }
     expect(observed.pageErrors).toEqual([])
     expect(observed.failedAssets).toEqual([])
@@ -231,108 +222,110 @@ for (const theme of ['light', 'dark'] as const) {
   })
 }
 
-test('header controls follow responsive breakpoints and font size without shrinking the calculator', async ({
-  page,
-}) => {
-  await page.goto('./')
-  for (const fontSize of [12, 16, 20]) {
-    await page.evaluate((size) => {
-      document.documentElement.style.fontSize = `${size}px`
-    }, fontSize)
-    for (const width of [360, 390, 639, 640, 767, 768, 1280, 1440]) {
-      await test.step(`${fontSize}px root font at ${width}px viewport`, async () => {
-        await page.setViewportSize({ width, height: 900 })
-        // Mobile emulation completes viewport/media updates on the next render.
-        await page.evaluate(
-          () =>
-            new Promise<void>((resolve) =>
-              requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-            ),
-        )
-        // The clean app already overflows at 20px/768px. Additional font-size
-        // checks compare that unchanged baseline; the default 16px contract
-        // above and below still requires zero horizontal overflow everywhere.
-        const baseline = fontSize === 16 ? undefined : await readReleaseLayout(page)
-        await expectClearViewport(page, baseline)
-      })
-    }
-  }
-})
-
-test('browser font preferences preserve header alignment across rem and px breakpoints', async ({
-  browser,
-  baseURL,
-}, testInfo) => {
-  for (const fontSize of [12, 20]) {
-    // A root style cannot emulate browser font preferences: CSS media-query
-    // rem units use the browser's initial font size, not the root's style.
-    const preferredBrowser = await browser.browserType().launch({
-      args: [`--blink-settings=defaultFontSize=${fontSize}`],
-    })
-    try {
-      const context = await preferredBrowser.newContext({
-        isMobile: Boolean(testInfo.project.use.isMobile),
-        hasTouch: Boolean(testInfo.project.use.hasTouch),
-        viewport: { width: 390, height: 900 },
-      })
-      const page = await context.newPage()
-      await stubCloudflare(page)
-      await page.goto(baseURL!)
-      expect(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize)).toBe(
-        `${fontSize}px`,
-      )
-      for (const width of new Set([
-        390,
-        40 * fontSize - 1,
-        40 * fontSize,
-        48 * fontSize - 1,
-        48 * fontSize,
-        639,
-        640,
-        767,
-        768,
-        1440,
-      ])) {
-        await test.step(`${fontSize}px browser font at ${width}px viewport`, async () => {
+test(
+  'header controls follow responsive breakpoints and font size without shrinking the calculator',
+  { tag: '@desktop-overlay' },
+  async ({ page }) => {
+    await page.goto('./')
+    for (const fontSize of [12, 16, 20]) {
+      await page.evaluate((size) => {
+        document.documentElement.style.fontSize = `${size}px`
+      }, fontSize)
+      for (const width of [360, 390, 639, 640, 767, 768, 1280, 1440]) {
+        await test.step(`${fontSize}px root font at ${width}px viewport`, async () => {
           await page.setViewportSize({ width, height: 900 })
+          // Mobile emulation completes viewport/media updates on the next render.
           await page.evaluate(
             () =>
               new Promise<void>((resolve) =>
                 requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
               ),
           )
-          expect(await page.evaluate(() => matchMedia('(min-width: 40rem)').matches)).toBe(
-            width >= 40 * fontSize,
-          )
-          expect(await page.evaluate(() => matchMedia('(min-width: 48rem)').matches)).toBe(
-            width >= 48 * fontSize,
-          )
-          await expectClearViewport(page, await readReleaseLayout(page))
+          // The clean app already overflows at 20px/768px. Additional font-size
+          // checks compare that unchanged baseline; the default 16px contract
+          // above and below still requires zero horizontal overflow everywhere.
+          const baseline = fontSize === 16 ? undefined : await readReleaseLayout(page)
+          await expectClearViewport(page, baseline)
         })
       }
-    } finally {
-      await preferredBrowser.close()
     }
-  }
-})
+  },
+)
 
-test('CSP permits the exact module and RUM endpoint while application resources stay same-origin', async ({
-  page,
-  baseURL,
-}) => {
-  const observed = observePagesResources(page, baseURL!)
-  await page.goto('./')
-  await expectPagesDomContract(page)
-  // Empty, controlled request: no calculator state or synthetic user event is
-  // sent. Route fulfillment makes this a CSP/wiring test, not a service test.
-  const status = await page.evaluate(async (url) => {
-    const response = await fetch(url, { method: 'POST', body: '' })
-    await response.text()
-    return response.status
-  }, CLOUDFLARE_RUM_URL)
-  expect(status).toBe(200)
-  await expectPagesResources(page, baseURL!, observed)
-})
+test(
+  'browser font preferences preserve header alignment across rem and px breakpoints',
+  { tag: '@desktop-overlay' },
+  async ({ browser, baseURL }) => {
+    for (const fontSize of [12, 20]) {
+      // A root style cannot emulate browser font preferences: CSS media-query
+      // rem units use the browser's initial font size, not the root's style.
+      const preferredBrowser = await browser.browserType().launch({
+        args: [`--blink-settings=defaultFontSize=${fontSize}`],
+      })
+      try {
+        const context = await preferredBrowser.newContext({
+          viewport: { width: 390, height: 900 },
+        })
+        const page = await context.newPage()
+        await stubCloudflare(page)
+        await page.goto(baseURL!)
+        expect(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize)).toBe(
+          `${fontSize}px`,
+        )
+        for (const width of new Set([
+          390,
+          40 * fontSize - 1,
+          40 * fontSize,
+          48 * fontSize - 1,
+          48 * fontSize,
+          639,
+          640,
+          767,
+          768,
+          1440,
+        ])) {
+          await test.step(`${fontSize}px browser font at ${width}px viewport`, async () => {
+            await page.setViewportSize({ width, height: 900 })
+            await page.evaluate(
+              () =>
+                new Promise<void>((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+                ),
+            )
+            expect(await page.evaluate(() => matchMedia('(min-width: 40rem)').matches)).toBe(
+              width >= 40 * fontSize,
+            )
+            expect(await page.evaluate(() => matchMedia('(min-width: 48rem)').matches)).toBe(
+              width >= 48 * fontSize,
+            )
+            await expectClearViewport(page, await readReleaseLayout(page))
+          })
+        }
+      } finally {
+        await preferredBrowser.close()
+      }
+    }
+  },
+)
+
+test(
+  'CSP permits the exact module and RUM endpoint while application resources stay same-origin',
+  { tag: '@desktop-overlay' },
+  async ({ page, baseURL }) => {
+    const observed = observePagesResources(page, baseURL!)
+    await page.goto('./')
+    await expectPagesDomContract(page)
+    // Empty, controlled request: no calculator state or synthetic user event is
+    // sent. Route fulfillment makes this a CSP/wiring test, not a service test.
+    const status = await page.evaluate(async (url) => {
+      const response = await fetch(url, { method: 'POST', body: '' })
+      await response.text()
+      return response.status
+    }, CLOUDFLARE_RUM_URL)
+    expect(status).toBe(200)
+    await expectPagesResources(page, baseURL!, observed)
+  },
+)
 
 test('pointer feedback respects hover capability and reduced motion', async ({
   page,

@@ -8,18 +8,9 @@ import ControlTooltip from '../help/ControlTooltip'
 import TechnicalTerm from '../term/TechnicalTerm'
 import { ChevronDownIcon, ChevronUpIcon } from '../icons/Icon'
 
-/**
- * Read-only PMBus command reference.
- *
- * Deliberately has NO selection state and NO side effects: choosing a command
- * cannot reliably derive the payload format (device datasheet or VOUT_MODE
- * decides), so this panel only displays command code, transactions, data type,
- * units, encoding-rule source, spec section and the metadata note. It never
- * switches mode, injects parameters, or rewrites raw.
- */
 export default function CommandReference() {
   const [open, setOpen] = useState(false)
-  const commands = Object.values(COMMAND_METADATA)
+  const commands = Object.entries(COMMAND_METADATA)
 
   return (
     <section aria-label="命令参考" data-testid="command-reference" className="px-4 py-2 sm:px-0">
@@ -44,10 +35,8 @@ export default function CommandReference() {
       {open && (
         <div className="command-ref-table-shell mt-2 overflow-x-auto rounded-lg">
           <p className="command-ref-hint px-3 pt-2 text-xs">
-            纯计算器不依赖命令选择：命令选择不能可靠推导数据格式——器件数据手册或{' '}
-            <TechnicalTerm termId="vout-mode" />
-            决定格式。此面板只显示命令码、事务、数据类型、单位、格式来源与说明，不参与模式切换、
-            参数注入或结果计算。
+            换算前，请按表中的格式来源查阅器件数据手册或确认 <TechnicalTerm termId="vout-mode" />
+            的值。
           </p>
 
           <table className="w-full min-w-[880px] text-left text-xs">
@@ -66,14 +55,9 @@ export default function CommandReference() {
               </tr>
             </thead>
             <tbody>
-              {commands.map((cmd) => (
-                <tr
-                  key={cmd.key}
-                  data-command-key={cmd.key}
-                  data-command-note={cmd.note ?? ''}
-                  className="command-ref-row"
-                >
-                  <td className="px-3 py-2 font-medium">{cmd.label}</td>
+              {commands.map(([name, cmd]) => (
+                <tr key={name} className="command-ref-row">
+                  <td className="px-3 py-2 font-medium">{name}</td>
                   <td className="px-3 py-2 font-mono">
                     0x{cmd.cmd.toString(16).toUpperCase().padStart(2, '0')}
                   </td>
@@ -83,12 +67,12 @@ export default function CommandReference() {
                       ? '数值'
                       : cmd.valueType === 'status'
                         ? '状态位'
-                        : 'Block 块'}
+                        : '数据块'}
                   </td>
                   <td className="px-3 py-2">{cmd.units}</td>
                   <td className="px-3 py-2">{describeEncodingRule(cmd.encodingRule)}</td>
                   <td className="px-3 py-2">{cmd.spec}</td>
-                  <td className="command-ref-note px-3 py-2">{cmd.note ? cmd.note : '—'}</td>
+                  <td className="command-ref-note px-3 py-2">{cmd.note ?? '—'}</td>
                 </tr>
               ))}
             </tbody>

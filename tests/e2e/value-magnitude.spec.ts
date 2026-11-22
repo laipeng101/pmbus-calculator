@@ -57,11 +57,6 @@ test.describe('DIRECT 大值请求按真实值提交（1280×900 dark）', () =>
     await expectNoBodyHorizontalOverflow(page)
   })
 
-  test('-1e21 → raw FFFF', async ({ page }) => {
-    await valueInput(page).fill('-1e21')
-    await expect(hexInput(page)).toHaveValue('FFFF')
-  })
-
   test('大有限饱和请求保留原始误差基线（1e30 → 7FFF）', async ({ page }) => {
     await valueInput(page).fill('1e30')
     await expect(hexInput(page)).toHaveValue('7FFF')

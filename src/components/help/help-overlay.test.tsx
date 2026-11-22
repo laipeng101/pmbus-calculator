@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 // jsdom unit contract for the app-level help overlay coordination (v2.6.1).
 //
 // Locks the unmount half of the single-open contract that only the provider

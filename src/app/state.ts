@@ -40,7 +40,6 @@ export interface AppState {
    * sequences).
    */
   raw: number
-  commandKey: string | null
 
   /**
    * Shared VOUT_MODE data byte (0..255) — the single source of truth for both
@@ -114,7 +113,6 @@ export interface AppState {
 export const INITIAL_STATE: AppState = {
   mode: 'L11',
   raw: 0,
-  commandKey: null,
 
   voutMode: {
     byte: CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE,

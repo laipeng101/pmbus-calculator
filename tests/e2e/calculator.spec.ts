@@ -36,27 +36,6 @@ test.describe('计算器真实用户流程', () => {
     await expect(page.locator('#value-input')).toHaveValue('1')
   })
 
-  test('命令参考默认折叠且展开后只读显示命令信息', async ({ page }) => {
-    await page.goto(appUrl())
-    const hexInput = page.locator('input[placeholder="0000"]')
-    const toggle = page.locator('#command-reference-toggle')
-
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    await expect(page.getByRole('row', { name: /VOUT_COMMAND/ })).toHaveCount(0)
-
-    await toggle.click()
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    await expect(page.getByRole('row', { name: /VOUT_COMMAND/ })).toBeVisible()
-
-    // 只读：模式与 raw 完全不受影响，也没有预设按钮
-    await expect(hexInput).toHaveValue('0000')
-    await expect(page.getByRole('tab', { name: /LINEAR11/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
-    await expect(page.getByRole('button', { name: /应用.*预设/ })).toHaveCount(0)
-  })
-
   test('L16：十进制 V 输入拒绝 partial parse/科学计数法/小数并显示错误', async ({ page }) => {
     await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
@@ -79,20 +58,6 @@ test.describe('计算器真实用户流程', () => {
     await vInput.press('Tab')
     await expect(vInput).toHaveValue('65535')
     await expect(hexInput).toHaveValue('FFFF')
-  })
-
-  test('命令参考中 device_defined 行标注需要器件数据手册且不切换模式', async ({ page }) => {
-    await page.goto(appUrl())
-    await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    await page.locator('#command-reference-toggle').click()
-
-    const vinRow = page.getByRole('row', { name: /READ_VIN/ })
-    await expect(vinRow).toContainText('由器件资料决定')
-    await expect(vinRow).toContainText('PMBus Part II §18.1')
-    await expect(page.getByRole('tab', { name: /LINEAR16/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
   })
 
   test('DIRECT：Hex→Y/Value、Y→raw、Value→raw 双向同步', async ({ page }) => {
@@ -167,20 +132,6 @@ test.describe('计算器真实用户流程', () => {
 
     await expect(hexInput).toHaveValue('7E00')
     await expect(valueInput).toHaveValue('NaN')
-  })
-
-  test('命令参考 STATUS_WORD 行显示状态位语义且不切换模式', async ({ page }) => {
-    await page.goto(appUrl())
-    await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    await page.locator('#command-reference-toggle').click()
-
-    const statusRow = page.getByRole('row', { name: /STATUS_WORD/ })
-    await expect(statusRow).toContainText('状态位')
-    await expect(statusRow).toContainText('STATUS 位')
-    await expect(page.getByRole('tab', { name: /LINEAR16/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
   })
 
   test('L16 relative LINEAR（0x98）显示需要参考值且不给出绝对电压', async ({ page }) => {

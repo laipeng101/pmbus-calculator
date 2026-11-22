@@ -209,7 +209,7 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     const rawCopy = page.getByRole('button', { name: 'Raw Word Hex' })
     await rawCopy.hover()
     await expect(page.getByTestId('control-tooltip-copy-raw-word')).toContainText(
-      'canonical Raw Word',
+      '复制当前数据字的 4 位十六进制文本',
     )
 
     const wireCopy = page.getByRole('button', { name: 'Wire 字节' })

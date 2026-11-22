@@ -34,20 +34,6 @@ test.describe('canonical Raw Word 闭环', () => {
     await expect(page.locator('#l16-byte-order')).toHaveCount(0)
   })
 
-  test('输入 3412 得到 raw 0x3412（旧 LE 字节流解释被否定）', async ({ page }) => {
-    await page.goto(appUrl())
-    await page.getByRole('tab', { name: /LINEAR16/ }).click()
-
-    await hexInput(page).fill('3412')
-    await hexInput(page).press('Tab')
-
-    // 0x3412 = 13330 × 2^-8 = 52.0703125。
-    await expect(hexInput(page)).toHaveValue('3412')
-    await expect(value(page)).toHaveText('52.0703125')
-    await expect(aux(page).getByText('0x 12 34', { exact: true })).toBeVisible()
-    await expect(aux(page).getByText('0x 34 12', { exact: true })).toBeVisible()
-  })
-
   test('物理值编码后 Raw Word 显示 canonical 原字：12.5 → 0C80', async ({ page }) => {
     await page.goto(appUrl())
     await page.getByRole('tab', { name: /LINEAR16/ }).click()

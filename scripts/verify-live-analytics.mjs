@@ -16,7 +16,7 @@ import {
   isAllowedPagesRequest,
   parseCsp,
 } from './pages-network-policy.mjs'
-import { isStableReleaseVersion } from './release-artifact-contract.mjs'
+import { isStableReleaseTag, isStableReleaseVersion } from './release-artifact-contract.mjs'
 
 export const DEPLOYMENT_URL = 'https://laipeng101.github.io/pmbus-calculator/'
 export const TOTAL_BUDGET_MS = 45_000
@@ -55,13 +55,8 @@ export class AnalyticsError extends Error {
 
 /** @param {NodeJS.ProcessEnv} env @param {string} version @param {string[]} [argv] */
 export function parseInputs(env, version, argv = []) {
-  const tag = `v${version}`
-  if (
-    argv.length !== 0 ||
-    env.DEPLOYMENT_URL !== DEPLOYMENT_URL ||
-    !isStableReleaseVersion(version) ||
-    (env.EXPECTED_RELEASE_TAG !== undefined && env.EXPECTED_RELEASE_TAG !== tag)
-  ) {
+  const tag = env.EXPECTED_RELEASE_TAG ?? `v${version}`
+  if (argv.length !== 0 || env.DEPLOYMENT_URL !== DEPLOYMENT_URL || !isStableReleaseTag(tag)) {
     throw new AnalyticsError('CONFIGURATION_ERROR')
   }
   return { deploymentUrl: DEPLOYMENT_URL, expectedTag: tag }
@@ -122,11 +117,11 @@ export function readLiveDom({ beaconUrl, repositoryUrl, repositoryName }) {
   const links = [...document.querySelectorAll('[data-pages-only="repository-link"]')]
   const link = links[0]
   const badges = [...document.querySelectorAll('[data-testid="version-badge"]')]
-  // The badge renders exactly "App vX.Y.Z". Require one badge whose whole
-  // trimmed text is a single canonical version token, so a missing, malformed
-  // or ambiguous badge fails closed instead of matching a version anywhere.
+  // Older releases display the same version without the "App " prefix.
   const badgeMatch =
-    badges.length === 1 ? /^App v(\d+\.\d+\.\d+)$/.exec((badges[0].textContent ?? '').trim()) : null
+    badges.length === 1
+      ? /^(?:App )?v(\d+\.\d+\.\d+)$/.exec((badges[0].textContent ?? '').trim())
+      : null
   const version = badgeMatch ? badgeMatch[1] : ''
   const sources = [
     ...document.querySelectorAll(

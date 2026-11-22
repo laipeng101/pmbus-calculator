@@ -233,16 +233,19 @@ describe('findBestLinear11 — strictly nearest code (v2.5.10)', () => {
     })
 
     it('saturates at both global extremes with the boundary delta', () => {
-      const max = PMBusMath.maxLinear11()
-      const bestMax = PMBusMath.findBestLinear11(max)
-      expect(bestMax.n).toBe(15)
-      expect(bestMax.y).toBe(1023)
-      expect(bestMax.delta).toBe(0)
-      const min = PMBusMath.minLinear11()
-      const bestMin = PMBusMath.findBestLinear11(min)
-      expect(bestMin.n).toBe(15)
-      expect(bestMin.y).toBe(-1024)
-      expect(bestMin.delta).toBe(0)
+      for (const [limit, raw, outside] of [
+        [PMBusMath.maxLinear11(), 0x7bff, 100_000_000],
+        [PMBusMath.minLinear11(), 0x7c00, -100_000_000],
+      ]) {
+        const atLimit = PMBusMath.findBestLinear11(limit)
+        expect(rawOf(atLimit)).toBe(raw)
+        expect(atLimit.delta).toBe(0)
+
+        const saturated = PMBusMath.findBestLinear11(outside)
+        expect(rawOf(saturated)).toBe(raw)
+        expect(saturated.value).toBe(limit)
+        expect(saturated.delta).toBe(outside - limit)
+      }
     })
 
     it('never returns the zero code for the smallest non-zero magnitudes', () => {

@@ -1,7 +1,5 @@
 import { useMemo } from 'react'
 import { PMBusMath } from '../../legacy/pmbus-math'
-import { getCommandConfig } from '../../legacy/command-metadata'
-import { buildCMacro } from '../copy-utils'
 import { getFormulaPresentation } from '../formula-presentation'
 import { buildCalculationSteps } from '../calculation-steps'
 import type { AppState } from '../state'
@@ -93,7 +91,8 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
   const formula = getFormulaPresentation(state, valueText)
   const formulaText = formula.plainText
 
-  const rawHex = state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(raw)
+  const rawWordHex = formatRawHex(raw)
+  const rawHex = state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : rawWordHex
   const rawHexDigits =
     state.mode === 'VOUT_MODE'
       ? byteDigits(state.voutMode.byte)
@@ -117,7 +116,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     }),
     rawHex,
     rawHexDigits,
-    rawWordHex: state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : formatRawHex(raw),
+    rawWordHex: rawHex,
     wireBytes: formatBytes(le, {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
@@ -126,7 +125,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
     }),
-    cMacroText: buildCMacro(state.commandKey, formatRawHex(raw), formulaText),
+    cMacroText: `#define RAW_VALUE ${rawWordHex} /* ${formulaText} */`,
     formulaText,
     formulaLatex: formula.latex,
     formulaSymbolicLatex: formula.symbolicLatex,
@@ -142,7 +141,6 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     warnings: buildWarnings(state, directFidelity),
     bitGroups: buildBitGroups(raw),
     directY: state.mode === 'DIRECT' ? PMBusMath.toSigned(raw, 16) : undefined,
-    commandNote: getCommandConfig(state.commandKey)?.note,
     nRangeText,
     l16Payload,
     physicalValueCopy,

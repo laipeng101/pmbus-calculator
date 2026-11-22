@@ -385,7 +385,9 @@ test.describe('M39 术语气泡（可访问点击解释）', () => {
     // Raw Word 化迁移到 composer，本页（L11）上的通用触发器是 raw-word）。
     const rawWord = page.getByTestId('term-trigger-raw-word').first()
     await rawWord.click()
-    await expect(page.locator('[data-testid="term-popover-raw-word"]').first()).toBeVisible()
+    const popover = page.getByTestId('term-popover-raw-word')
+    await expect(popover).toBeVisible()
+    await expect(popover).toContainText('对照总线抓包时，请使用低字节在前的 Wire 字节。')
     await expect(page.locator('[data-testid^="term-popover-"]')).toHaveCount(1)
 
     // Escape 恢复到当前有效触发器。

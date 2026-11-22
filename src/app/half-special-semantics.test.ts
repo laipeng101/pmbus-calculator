@@ -8,7 +8,6 @@ import type { AppState } from './state'
 const BASE: AppState = {
   mode: 'HALF',
   raw: 0,
-  commandKey: null,
   voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   valueRequest: null,

@@ -2,11 +2,42 @@ import { describe, it, expect } from 'vitest'
 import { PMBusMath } from '../src/legacy/pmbus-math'
 import { appReducer, INITIAL_STATE } from '../src/app/reducer'
 import { toCalculatorViewModel } from '../src/app/view-model'
-import {
-  L11_DECODE_CASES,
-  L11_ROUNDTRIP_CASES,
-  L11_BOUNDARY_CODES,
-} from './fixtures/linear11-cases'
+
+const L11_DECODE_CASES = [
+  { name: 'zero', raw: 0x0000, expected: { n: 0, y: 0, value: 0 } },
+  { name: 'positive Y=1 N=0', raw: 0x0001, expected: { n: 0, y: 1, value: 1 } },
+  { name: 'positive Y=1 N=1', raw: 0x0801, expected: { n: 1, y: 1, value: 2 } },
+  { name: 'positive Y=1 N=-1', raw: 0xf801, expected: { n: -1, y: 1, value: 0.5 } },
+  { name: 'max positive Y', raw: 0x03ff, expected: { n: 0, y: 1023, value: 1023 } },
+  { name: 'max negative Y', raw: 0x0400, expected: { n: 0, y: -1024, value: -1024 } },
+  { name: 'max N=15', raw: 0x7801, expected: { n: 15, y: 1, value: 32768 } },
+  { name: 'min N=-16', raw: 0x8001, expected: { n: -16, y: 1, value: 1 / 65536 } },
+  { name: 'negative value', raw: 0xfffe, expected: { n: -1, y: -2, value: -1 } },
+]
+
+const L11_ROUNDTRIP_CASES = [
+  { name: 'integer 1', inputValue: 1, expectedRaw: 0x0001, expectedDelta: 0 },
+  { name: 'integer 2', inputValue: 2, expectedRaw: 0x0002, expectedDelta: 0 },
+  { name: 'integer 10', inputValue: 10, expectedRaw: 0x000a, expectedDelta: 0 },
+  { name: 'fraction 0.5', inputValue: 0.5, expectedRaw: 0xf801, expectedDelta: 0 },
+  { name: 'fraction 0.25', inputValue: 0.25, expectedRaw: 0xf001, expectedDelta: 0 },
+  { name: 'large 1000', inputValue: 1000, expectedRaw: 0x03e8, expectedDelta: 0 },
+  { name: 'negative -1', inputValue: -1, expectedRaw: 0x07ff, expectedDelta: 0 },
+  { name: 'negative -10', inputValue: -10, expectedRaw: 0x07f6, expectedDelta: 0 },
+  { name: 'zero', inputValue: 0, expectedRaw: 0x0000, expectedDelta: 0 },
+  {
+    name: 'positive boundary tie prefers N=0',
+    inputValue: 1023.5,
+    expectedRaw: 0x03ff,
+    expectedDelta: 0.5,
+  },
+  {
+    name: 'negative boundary tie prefers N=0',
+    inputValue: -1025,
+    expectedRaw: 0x0400,
+    expectedDelta: -1,
+  },
+]
 
 describe('L11 golden decode cases', () => {
   for (const c of L11_DECODE_CASES) {
@@ -46,43 +77,4 @@ describe('L11 value -> raw roundtrip (auto-N)', () => {
       expect(vm.deltaText).toBe(expectedText)
     })
   }
-})
-
-describe('L11 boundary codes and saturation', () => {
-  for (const c of L11_BOUNDARY_CODES) {
-    it(`${c.name} is a legal boundary code, never an overflow marker`, () => {
-      const vm = toCalculatorViewModel({
-        ...INITIAL_STATE,
-        raw: c.raw,
-      })
-      expect(vm.warnings.find((w) => w.id.startsWith('special-'))).toBeUndefined()
-      expect(vm.warnings.some((w) => w.id === 'l11-saturation')).toBe(false)
-    })
-  }
-
-  it('saturation warning appears only when the requested physical value is out of range', () => {
-    const max = PMBusMath.maxLinear11()
-    const min = PMBusMath.minLinear11()
-
-    const atMax = toCalculatorViewModel({
-      ...INITIAL_STATE,
-      raw: 0x7fff,
-      l11: { ...INITIAL_STATE.l11, valueInput: max },
-    })
-    expect(atMax.warnings.some((w) => w.id === 'l11-saturation')).toBe(false)
-
-    const over = toCalculatorViewModel({
-      ...INITIAL_STATE,
-      raw: 0x7fff,
-      l11: { ...INITIAL_STATE.l11, valueInput: max + 1 },
-    })
-    expect(over.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
-
-    const under = toCalculatorViewModel({
-      ...INITIAL_STATE,
-      raw: 0xffff,
-      l11: { ...INITIAL_STATE.l11, valueInput: min - 1 },
-    })
-    expect(under.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
-  })
 })

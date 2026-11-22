@@ -17,13 +17,5 @@
     "allowJs": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": [
-    "tests",
-    "playwright.config.ts",
-    "playwright.release.config.ts",
-    "playwright.visual.config.ts",
-    "playwright.deployment.config.ts",
-    "playwright.cross-engine.config.ts",
-    "playwright.pages-overlay.config.ts"
-  ]
+  "include": ["tests/**/*.ts", "tests/**/*.tsx", "playwright*.config.ts"]
 }

@@ -11,6 +11,9 @@ export interface VoutModeExplanation {
   specRef: string
 }
 
+export const SLINEAR16_OFFSET_BIT7_NOTE =
+  'SLINEAR16 表示有符号电压偏移。第 7 位不参与偏移量的计算，也无需标称电压。'
+
 function explanation(
   id: string,
   severity: VoutModeExplanation['severity'],

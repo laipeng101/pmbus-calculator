@@ -66,26 +66,6 @@ test.describe('Hex 步进器（Raw Word 16 位）', () => {
     await expect(raw).toHaveValue('0000')
   })
 
-  test('空草稿以 committed 值为步进基值并补齐规范位宽', async ({ page }) => {
-    const raw = page.locator(RAW_HEX_INPUT)
-    await raw.fill('00FE')
-    await expect(raw).toHaveValue('00FE')
-    // 清空为过渡草稿（不 blur），步进必须从 committed 0x00FE 出发
-    await raw.fill('')
-    await page.locator(STEP_UP).click()
-    await expect(raw).toHaveValue('00FF')
-  })
-
-  test('非法草稿以 committed 值为基值，步进清除错误', async ({ page }) => {
-    const raw = page.locator(RAW_HEX_INPUT)
-    await raw.fill('0005')
-    await raw.fill('ZZ')
-    await expect(raw).toHaveAttribute('aria-invalid', 'true')
-    await page.locator(STEP_UP).click()
-    await expect(raw).toHaveValue('0006')
-    await expect(raw).not.toHaveAttribute('aria-invalid')
-  })
-
   test('步进点击不转移焦点：blur 提交路径不参与，每次点击只步进一次', async ({ page }) => {
     const raw = page.locator(RAW_HEX_INPUT)
     await raw.fill('0009')

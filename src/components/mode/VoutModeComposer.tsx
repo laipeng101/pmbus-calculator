@@ -19,6 +19,7 @@ import {
   l16FormatBitDisabledHint,
 } from '../../app/vout-mode-formats'
 import { getBitRegions } from '../../app/bit-regions'
+import { SLINEAR16_OFFSET_BIT7_NOTE } from '../../app/vout-mode-explanation'
 import BitFieldGrid from '../bits/BitFieldGrid'
 import BitMappingPanel from '../bits/BitMappingPanel'
 import VoutModeExplanations from './VoutModeExplanations'
@@ -270,7 +271,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
         <div className="vout-term-row" data-testid="vout-term-row">
           <span className="text-xs color-text-muted">配置字节：</span>
           <TechnicalTerm termId="vout-mode" />
-          <span className="text-xs color-text-muted">bit 7（绝对或相对）</span>
+          <span className="text-xs color-text-muted">第 7 位</span>
           <TechnicalTerm termId="abs-rel" />
           {info.format === 0 && (
             <>
@@ -339,12 +340,12 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
           )}
           {info.isRelative && (
             <p className="vout-param-note text-xs">
-              {state.l16.payloadKind === 'slinear16-offset' ? (
-                'bit7 相对值仅作用于 §8.5 相对阈值命令；当前 SLINEAR16 offset 是有符号命令 payload（§13.3/§13.4），bit7 不参与其数学，无需标称参考值。'
+              {embedded && state.l16.payloadKind === 'slinear16-offset' ? (
+                SLINEAR16_OFFSET_BIT7_NOTE
               ) : (
                 <>
-                  相对 LINEAR：payload 与 <TechnicalTerm termId="vout-command" />
-                  同格式，解出比值 R；最终电压需要 VOUT_COMMAND 标称参考值。
+                  相对 LINEAR 先从原始数据字算出比值 R，再乘以{' '}
+                  <TechnicalTerm termId="vout-command" /> 的标称电压，得到实际电压。
                 </>
               )}
             </p>
@@ -449,7 +450,7 @@ export default function VoutModeComposer({ state, info, byte, dispatch, embedded
               onClick={() => dispatch({ type: 'vout-mode/normalize' })}
               className="vout-normalize min-h-9 rounded-md px-3 py-1.5 text-xs font-semibold"
             >
-              规范化
+              修正配置字节
             </button>
           )}
         </ControlTooltip>

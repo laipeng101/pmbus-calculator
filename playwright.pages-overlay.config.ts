@@ -35,6 +35,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-mobile-pages-overlay',
+      grepInvert: /@desktop-overlay/,
       testMatch: '**/pages-overlay.spec.ts',
       use: {
         ...devices['Pixel 7'],

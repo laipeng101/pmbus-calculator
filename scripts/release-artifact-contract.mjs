@@ -1,6 +1,8 @@
 // Version, asset names and ZIP entry rules shared by generation and verification.
 
 const RELEASE_VERSION = /^[1-9][0-9]*\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/
+const ZIP_PREFIX = 'pmbus-calculator-'
+const ZIP_SUFFIX = '-web.zip'
 
 /** @param {unknown} version @returns {version is string} */
 export function isStableReleaseVersion(version) {
@@ -15,9 +17,18 @@ export function isStableReleaseTag(tag) {
 /** @param {string} tag - validated stable Git tag (for example, v1.2.3) */
 export function releaseAssetNames(tag) {
   return {
-    zipName: `pmbus-calculator-${tag}-web.zip`,
+    zipName: `${ZIP_PREFIX}${tag}${ZIP_SUFFIX}`,
     sumsName: 'SHA256SUMS.txt',
   }
+}
+
+/** @param {string} name */
+export function isReleaseZipName(name) {
+  return (
+    name.startsWith(ZIP_PREFIX) &&
+    name.endsWith(ZIP_SUFFIX) &&
+    isStableReleaseTag(name.slice(ZIP_PREFIX.length, -ZIP_SUFFIX.length))
+  )
 }
 
 /** Disposable per-run staging root, relative to the repository root. */
@@ -47,7 +58,7 @@ const WINDOWS_DRIVE = /^[A-Za-z]:/
 /**
  * Validate a single ZIP entry path from the dist/ directory.
  *
- * Keep the path rules aligned with both Python ZIP helpers.
+ * Keep the path rules aligned with the Python ZIP script.
  * - Non-empty.
  * - POSIX relative (no leading `/`, no `..` components, no `.` component).
  * - No Windows drive prefix (absolute or drive-relative).

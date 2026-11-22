@@ -27,6 +27,16 @@ async function setRaw(page: Page, hex: string) {
   await hexInput(page).press('Tab')
 }
 
+async function pasteCopiedValue(page: Page, startingRaw: string) {
+  // Change the Raw Word first so a paste that never commits cannot pass.
+  await setRaw(page, startingRaw)
+  await expect(hexInput(page)).toHaveValue(startingRaw)
+  await valueInput(page).click()
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.press('ControlOrMeta+v')
+  await valueInput(page).press('Enter')
+}
+
 async function expandSteps(page: Page) {
   const details = page.locator('[data-testid="calculation-steps-disclosure"]')
   const open = await details.evaluate((el) => (el as HTMLDetailsElement).open)
@@ -72,25 +82,22 @@ test.describe('DIRECT 精度保真（m=1,b=1,R=17 正式站反例，1280×900）
     await expect(page.getByTestId('calculation-steps')).toHaveCount(0)
   })
 
-  test('安全复制文本经真实剪贴板回录后 raw 仍为 FFFF', async ({ page }) => {
-    await setRaw(page, 'FFFF')
-    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
-    // 点击「物理值」复制按钮，读取剪贴板内容（必须是精确文本而非 -1）。
-    await page.getByRole('button', { name: '物理值' }).click()
-    const copied = await page.evaluate(() => navigator.clipboard.readText())
-    expect(copied).toBe('-1.00000000000000001')
+  test(
+    '复制 DIRECT 精确值后，从 0000 粘贴恢复 FFFF',
+    { tag: '@browser-smoke' },
+    async ({ page }) => {
+      await setRaw(page, 'FFFF')
+      await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+      await page.getByRole('button', { name: '物理值' }).click()
+      const copied = await page.evaluate(() => navigator.clipboard.readText())
+      expect(copied).toBe('-1.00000000000000001')
 
-    // 真实剪贴板粘贴回录：全选 → 粘贴 → Enter，raw 必须保持 FFFF。
-    // 提交后输入框回到折叠显示 -1（binary64 解码）——但 raw 与折叠告警
-    // 证明载荷回录到了原 Y，而不是旧 float 路径的 0000。
-    await valueInput(page).click()
-    await page.keyboard.press('ControlOrMeta+a')
-    await page.keyboard.press('ControlOrMeta+v')
-    await valueInput(page).press('Enter')
-    await expect(hexInput(page)).toHaveValue('FFFF')
-    await expect(valueInput(page)).toHaveValue('-1')
-    await expect(precisionWarning(page)).toBeVisible()
-  })
+      await pasteCopiedValue(page, '0000')
+      await expect(hexInput(page)).toHaveValue('FFFF')
+      await expect(valueInput(page)).toHaveValue('-1')
+      await expect(precisionWarning(page)).toBeVisible()
+    },
+  )
 
   test('显示值 -1 重新输入后编码为 0000，提交前有提示', async ({ page }) => {
     await setRaw(page, 'FFFF')
@@ -167,15 +174,9 @@ test.describe('DIRECT 循环小数与安全向量（1280×900）', () => {
     // 步骤声明循环小数没有有限精确十进制。
     await expandSteps(page)
     await expect(page.getByTestId('calculation-steps')).toContainText('循环小数，无有限精确十进制')
-    // 复制 → 真实回录 → raw 仍 8001。
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.getByRole('button', { name: '物理值' }).click()
-    const copied = await page.evaluate(() => navigator.clipboard.readText())
-    expect(copied).not.toBe('')
-    await valueInput(page).click()
-    await page.keyboard.press('ControlOrMeta+a')
-    await page.keyboard.press('ControlOrMeta+v')
-    await valueInput(page).press('Enter')
+    await pasteCopiedValue(page, '8000')
     await expect(hexInput(page)).toHaveValue('8001')
   })
 
@@ -256,15 +257,11 @@ test.describe('DIRECT 显示文本回录合同（v3.1.1 正式站反例，1280×
     await expandSteps(page)
     await expect(page.getByTestId('calculation-steps')).toContainText('-1.000000000001')
 
-    // 真实剪贴板：复制 → 粘贴 → Enter，raw 保持 FFFF。
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.getByRole('button', { name: '物理值' }).click()
     const copied = await page.evaluate(() => navigator.clipboard.readText())
     expect(copied).toBe('-1.000000000001')
-    await valueInput(page).click()
-    await page.keyboard.press('ControlOrMeta+a')
-    await page.keyboard.press('ControlOrMeta+v')
-    await valueInput(page).press('Enter')
+    await pasteCopiedValue(page, '0000')
     await expect(hexInput(page)).toHaveValue('FFFF')
   })
 
@@ -281,15 +278,11 @@ test.describe('DIRECT 显示文本回录合同（v3.1.1 正式站反例，1280×
     await expandSteps(page)
     await expect(page.getByTestId('calculation-steps')).toContainText('-1/3')
 
-    // 真实剪贴板：复制 → 粘贴 → Enter，raw 保持 0000。
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.getByRole('button', { name: '物理值' }).click()
     const copied = await page.evaluate(() => navigator.clipboard.readText())
     expect(copied).toBe('-0.33333333333333333')
-    await valueInput(page).click()
-    await page.keyboard.press('ControlOrMeta+a')
-    await page.keyboard.press('ControlOrMeta+v')
-    await valueInput(page).press('Enter')
+    await pasteCopiedValue(page, '0001')
     await expect(hexInput(page)).toHaveValue('0000')
   })
 
@@ -299,15 +292,11 @@ test.describe('DIRECT 显示文本回录合同（v3.1.1 正式站反例，1280×
     await expect(resultValue(page)).toHaveText('-0.999999999999')
     await expect(precisionWarning(page)).toHaveCount(0)
     await expect(copyNote(page)).toHaveCount(0)
-    // 复制显示文本 → 真实回录 → raw 不变。
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
     await page.getByRole('button', { name: '物理值' }).click()
     const copied = await page.evaluate(() => navigator.clipboard.readText())
     expect(copied).toBe('-0.999999999999')
-    await valueInput(page).click()
-    await page.keyboard.press('ControlOrMeta+a')
-    await page.keyboard.press('ControlOrMeta+v')
-    await valueInput(page).press('Enter')
+    await pasteCopiedValue(page, '0000')
     await expect(hexInput(page)).toHaveValue('0001')
   })
 
@@ -533,19 +522,6 @@ test.describe('DIRECT 精确十进制输入边界（v2.5.13）', () => {
       .locator('body')
       .evaluate((el) => ({ scrollWidth: el.scrollWidth, clientWidth: el.clientWidth }))
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
-  })
-
-  test('1e-400 下溢与 1e400 溢出合同不回归（超长检查不影响既有错误分类）', async ({ page }) => {
-    // fill = 单次 change 事件（回归检查与 value-magnitude.spec.ts 同模式；
-    // 逐字符输入会对每个合法前缀 live-commit，属于另一条合同的证明）。
-    await valueInput(page).fill('1e-400')
-    await valueInput(page).press('Tab')
-    await expect(page.getByText(/输入下溢/)).toBeVisible()
-    await expect(hexInput(page)).toHaveValue('0000')
-    await valueInput(page).fill('1e400')
-    await valueInput(page).press('Tab')
-    await expect(page.getByText(/数值超出可表示范围/)).toBeVisible()
-    await expect(hexInput(page)).toHaveValue('0000')
   })
 
   test('尾零补偿的合法科学计数法精确提交：raw 0001、无字段错误、量化 exact（v2.6.2）', async ({
