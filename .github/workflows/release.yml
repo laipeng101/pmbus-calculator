@@ -1,0 +1,143 @@
+name: Release and Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published tag to redeploy (leave empty to publish the current version)
+        required: false
+        type: string
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'laipeng101/pmbus-calculator' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04 # The locked Playwright version supports this image.
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      PAGES_ARTIFACT: github-pages-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --no-audit
+
+      - name: Resolve version and asset names
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync, readFileSync } from 'node:fs'
+          import { isStableReleaseTag, releaseAssetNames } from './scripts/release-artifact-contract.mjs'
+
+          const version = JSON.parse(readFileSync('package.json', 'utf8')).version
+          const tag = process.env.REQUESTED_TAG || `v${version}`
+          if (!isStableReleaseTag(tag)) throw new Error('Use a stable release tag such as v3.4.3')
+          const { zipName, sumsName } = releaseAssetNames(tag)
+          appendFileSync(process.env.GITHUB_ENV, `RELEASE_TAG=${tag}\nZIP_NAME=${zipName}\nSUMS_NAME=${sumsName}\n`)
+          console.log(`Using ${tag} from run ${process.env.GITHUB_SHA}`)
+          JS
+
+      - run: npx playwright install --with-deps --only-shell chromium
+
+      - name: Build and check new release
+        id: release_build
+        if: inputs.release_tag == ''
+        run: |
+          npm run check:release-contract
+          npm run build
+          npm run test:e2e:release
+          npm run release:prepare-assets
+
+      - name: Download and verify an existing release
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" |
+            jq -e --arg tag "$RELEASE_TAG" \
+              '.tag_name == $tag and .immutable == true and .draft == false and .prerelease == false' >/dev/null; then
+            echo "::error::$RELEASE_TAG must be a published, immutable stable release."
+            exit 1
+          fi
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir release-output \
+            --pattern "$ZIP_NAME" --pattern "$SUMS_NAME"
+          cd release-output
+          sha256sum "$ZIP_NAME" | cmp - "$SUMS_NAME"
+
+      - name: Prepare Pages from the release ZIP
+        env:
+          CLOUDFLARE_WEB_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_WEB_ANALYTICS_TOKEN }}
+        run: |
+          python3 scripts/release-zip.py extract "release-output/$ZIP_NAME" _site
+          node scripts/apply-pages-overlay.mjs --site _site
+          node scripts/verify-pages-overlay.mjs --site _site
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          name: ${{ env.PAGES_ARTIFACT }}
+          path: _site
+
+      - name: Publish GitHub Release
+        if: inputs.release_tag == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/publish-release.sh
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+        with:
+          artifact_name: ${{ env.PAGES_ARTIFACT }}
+
+      - name: Check the live site
+        id: live_check
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          node scripts/verify-pages-entities.mjs --site _site --base-url "$DEPLOYMENT_URL" \
+            --query "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          EXPECTED_RELEASE_TAG="$RELEASE_TAG" npm run test:e2e:deployment
+
+      - name: Check Cloudflare Analytics
+        continue-on-error: true
+        env:
+          DEPLOYMENT_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          if ! EXPECTED_RELEASE_TAG="$RELEASE_TAG" node scripts/verify-live-analytics.mjs; then
+            echo '::warning::Pages is live, but Cloudflare Analytics verification failed.'
+            echo 'Pages is live, but Cloudflare Analytics verification failed.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Upload Playwright reports on failure
+        if: failure() && (steps.release_build.outcome == 'failure' || steps.live_check.outcome == 'failure')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-browser-reports-${{ github.run_attempt }}
+          path: tests/e2e/report-*
+          retention-days: 7
+          if-no-files-found: ignore

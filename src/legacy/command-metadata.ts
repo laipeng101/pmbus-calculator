@@ -1,27 +1,4 @@
-/**
- * Command Metadata — single data source of truth for the read-only PMBus
- * command reference.
- *
- * UI components must read from here; never hardcode command lists in JSX.
- *
- * Domain model (see docs/DOMAIN_MODEL.md and docs/adr/0002):
- * - A **standard command definition** records what PMBus specifies:
- *   command code, SMBus transactions (write and/or read), data width, value type,
- *   units, spec section, and an `encodingRule` that tells the user how to
- *   resolve the payload format.
- * - A standard definition deliberately does NOT carry a calculator mode or
- *   pre-filled numeric parameters.  For commands marked `device_defined` the
- *   format is chosen by the device datasheet; for `follows_vout_mode` it is
- *   chosen by VOUT_MODE.  Claiming a fixed L11/L16 format for those commands
- *   would be a false specification.
- * - The command reference is read-only: selecting a command cannot reliably
- *   derive the payload format, so it never switches mode, injects parameters
- *   or rewrites raw.  project-demo presets were removed from the product
- *   surface (2026) — demo values must not be mistaken for standard defaults.
- */
-
-export type AppMode = 'L11' | 'L16' | 'DIRECT' | 'HALF'
-
+/** Standard PMBus definitions used by the read-only command reference. */
 export type CommandWriteTransactionType = 'send_byte' | 'write_byte' | 'write_word' | 'block_write'
 export type CommandReadTransactionType = 'read_byte' | 'read_word' | 'block_read'
 export type CommandTransactionType = CommandWriteTransactionType | CommandReadTransactionType
@@ -35,11 +12,6 @@ export interface CommandTransaction {
   dataBytes?: number
 }
 
-/**
- * A command can support a write transaction, a read transaction, or both.
- * The previous single `transactionType` field could not express that and is
- * intentionally removed.
- */
 export interface CommandTransactions {
   write?: CommandTransaction
   read?: CommandTransaction
@@ -56,15 +28,8 @@ export interface CommandDataBytesConflict {
   }
 }
 
-/**
- * Render a `CommandDataBytesConflict` as human-readable Chinese text.
- *
- * The numbers and sources are read from the conflict argument; nothing is
- * hardcoded here.  This keeps the metadata `note` and the command-reference
- * UI from drifting into two copies of the same READ_EIN explanation.
- */
-export function describeDataBytesConflict(conflict: CommandDataBytesConflict): string {
-  return `规范内部冲突：${conflict.detailedSection.source} 描述 ${conflict.detailedSection.value} 个数据字节；${conflict.appendixTable.source} 列为 ${conflict.appendixTable.value}。请以目标器件资料及适用规范修订为准。计算器不是 READ_EIN packet-length authority。`
+function describeDataBytesConflict(conflict: CommandDataBytesConflict): string {
+  return `规范给出的字节数不同。${conflict.detailedSection.source} 写为 ${conflict.detailedSection.value} 个数据字节，${conflict.appendixTable.source} 列为 ${conflict.appendixTable.value} 个。请按目标器件的数据手册和适用的规范版本核对。`
 }
 
 export type CommandValueType = 'scalar' | 'status' | 'block'
@@ -73,8 +38,6 @@ export type CommandValueType = 'scalar' | 'status' | 'block'
 export type CommandEncodingRule = 'follows_vout_mode' | 'device_defined' | 'status' | 'block'
 
 export interface CommandMeta {
-  key: string
-  label: string
   cmd: number
 
   /** Read/write SMBus transactions; both may be present for R/W commands. */
@@ -111,140 +74,103 @@ const WORD_READ: CommandTransaction = { type: 'read_word', dataBytes: 2 }
 
 export const COMMAND_METADATA: Record<string, CommandMeta> = {
   VOUT_COMMAND: {
-    key: 'VOUT_COMMAND',
-    label: 'VOUT_COMMAND',
     cmd: 0x21,
     transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'scalar',
     units: 'V',
     spec: 'PMBus Part II §13.2, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
-    note: 'VOUT_COMMAND 的数据格式跟随 VOUT_MODE；参考面板不自动应用任何参数。',
   },
   VOUT_OV_FAULT_LIMIT: {
-    key: 'VOUT_OV_FAULT_LIMIT',
-    label: 'VOUT_OV_FAULT_LIMIT',
     cmd: 0x40,
     transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'scalar',
     units: 'V',
     spec: 'PMBus Part II §15.2, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
-    note: 'VOUT_OV_FAULT_LIMIT 的数据格式跟随 VOUT_MODE；参考面板不自动应用任何参数。',
   },
   READ_VOUT: {
-    key: 'READ_VOUT',
-    label: 'READ_VOUT',
     cmd: 0x8b,
     transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: 'V',
     spec: 'PMBus Part II §18.4, Appendix I Table 31',
     encodingRule: 'follows_vout_mode',
-    note: 'READ_VOUT 的数据格式跟随 VOUT_MODE；参考面板不自动应用任何参数。',
   },
   READ_VIN: {
-    key: 'READ_VIN',
-    label: 'READ_VIN',
     cmd: 0x88,
     transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: 'V',
     spec: 'PMBus Part II §18.1, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'READ_VIN 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   READ_IOUT: {
-    key: 'READ_IOUT',
-    label: 'READ_IOUT',
     cmd: 0x8c,
     transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: 'A',
     spec: 'PMBus Part II §18.5, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'READ_IOUT 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   READ_TEMPERATURE_1: {
-    key: 'READ_TEMPERATURE_1',
-    label: 'READ_TEMPERATURE_1',
     cmd: 0x8d,
     transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: '°C',
     spec: 'PMBus Part II §18.6, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'READ_TEMPERATURE_1 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   VIN_OV_FAULT_LIMIT: {
-    key: 'VIN_OV_FAULT_LIMIT',
-    label: 'VIN_OV_FAULT_LIMIT',
     cmd: 0x55,
     transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'scalar',
     units: 'V',
     spec: 'PMBus Part II §15.23, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'VIN_OV_FAULT_LIMIT 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   OT_FAULT_LIMIT: {
-    key: 'OT_FAULT_LIMIT',
-    label: 'OT_FAULT_LIMIT',
     cmd: 0x4f,
     transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'scalar',
     units: '°C',
     spec: 'PMBus Part II §15.17, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'OT_FAULT_LIMIT 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   FAN_COMMAND_1: {
-    key: 'FAN_COMMAND_1',
-    label: 'FAN_COMMAND_1',
     cmd: 0x3b,
     transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'scalar',
-    units: 'RPM or duty cycle (FAN_CONFIG_1_2)',
+    units: 'RPM 或占空比（见 FAN_CONFIG_1_2）',
     spec: 'PMBus Part II §14.12, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'FAN_COMMAND_1 的数据格式由器件资料决定；单位依 FAN_CONFIG_1_2，可为 RPM 或 duty cycle。需要器件数据手册。参考面板不自动应用任何参数。',
   },
   READ_POUT: {
-    key: 'READ_POUT',
-    label: 'READ_POUT',
     cmd: 0x96,
     transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: 'W',
     spec: 'PMBus Part II §18.11, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'READ_POUT 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   READ_FAN_SPEED_1: {
-    key: 'READ_FAN_SPEED_1',
-    label: 'READ_FAN_SPEED_1',
     cmd: 0x90,
     transactions: { read: WORD_READ },
     valueType: 'scalar',
     units: 'RPM',
     spec: 'PMBus Part II §18.7, Appendix I Table 31',
     encodingRule: 'device_defined',
-    note: 'READ_FAN_SPEED_1 的数据格式由器件资料决定；需要器件数据手册。参考面板不自动应用任何参数。',
   },
   STATUS_WORD: {
-    key: 'STATUS_WORD',
-    label: 'STATUS_WORD',
     cmd: 0x79,
     transactions: { write: WORD_WRITE, read: WORD_READ },
     valueType: 'status',
-    units: 'bit field',
-    spec: 'PMBus Part II §17.2 Table 16, Appendix I Table 31',
+    units: '位',
+    spec: 'PMBus Part II §17.2 Table 16, §10.2.5, Appendix I Table 31',
     encodingRule: 'status',
-    note: 'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。通常为 Read Word；特殊写入仅用于清除 UNKNOWN 位（写 0x0100），其他状态位通过底层状态寄存器或 CLEAR_FAULTS 处理。计算器不为其分配 L11/L16/DIRECT/HALF 转换模式。',
+    note: '低字节与 STATUS_BYTE 相同。高字节汇总故障和警告，并含 PG_STATUS# 等状态。通常用 Read Word 读取。写入 0x0100 只清除 UNKNOWN 位。其他状态位按对应状态寄存器或 CLEAR_FAULTS 的规则处理。',
   },
   READ_EIN: {
-    key: 'READ_EIN',
-    label: 'READ_EIN',
     cmd: 0x86,
     transactions: { read: { type: 'block_read' } },
     valueType: 'block',
@@ -256,24 +182,16 @@ export const COMMAND_METADATA: Record<string, CommandMeta> = {
   },
 }
 
-export const COMMAND_KEYS = Object.keys(COMMAND_METADATA) as Array<keyof typeof COMMAND_METADATA>
-
-export function getCommandConfig(key: string | null): CommandMeta | null {
-  if (!key) return null
-  const cmd = COMMAND_METADATA[key as keyof typeof COMMAND_METADATA]
-  return (cmd as CommandMeta | undefined) ?? null
-}
-
 export function describeEncodingRule(rule: CommandEncodingRule): string {
   switch (rule) {
     case 'follows_vout_mode':
       return '跟随 VOUT_MODE'
     case 'device_defined':
-      return '由器件资料决定'
+      return '器件数据手册'
     case 'status':
-      return 'STATUS 位'
+      return '状态位'
     case 'block':
-      return 'BLOCK 块'
+      return '数据块'
   }
 }
 

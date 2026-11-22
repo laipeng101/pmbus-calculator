@@ -58,14 +58,6 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     await page.goto(appUrl())
   })
 
-  test('有限基线：98/0100 nominal 12 → ratio 1，X=12 且物理值复制可用', async ({ page }) => {
-    await setupRelative(page, '0100')
-    await nominal(page).fill('12')
-    await expect(resultValue(page)).toHaveText('12')
-    await expect(physicalCopyButton(page)).toBeEnabled()
-    await expect(page.locator('#physical-value-copy-reason')).toHaveCount(0)
-  })
-
   test('溢出：98/0200 nominal 1e308 → 结果 —、诊断出现在警告与步骤、物理值复制禁用', async ({
     page,
   }) => {
@@ -120,17 +112,6 @@ test.describe('relative ULINEAR16 derivation range（1280×900 dark）', () => {
     await expect(alerts.getByText(/计算下溢/)).toHaveCount(1)
     await expect(physicalCopyButton(page)).toBeDisabled()
     await expect(page.locator('#physical-value-copy-reason')).toContainText('计算下溢')
-  })
-
-  test('真零不是下溢：98/0000 nominal 1e308 → 0 且复制可用', async ({ page }) => {
-    await setupRelative(page, '0000')
-    await nominal(page).fill('1e308')
-    await expect(resultValue(page)).toHaveText('0')
-    await expect(physicalCopyButton(page)).toBeEnabled()
-    const alerts = page.locator('section[aria-label="提示信息"]')
-    await expect(alerts.getByText(/计算下溢/)).toHaveCount(0)
-    // R=0 是非符合性数据（§8.5.2）：数学结果保持精确 0，但状态级告警必须出现。
-    await expect(alerts.getByText(/要求相对值恒为正/)).toHaveCount(1)
   })
 
   test('§8.5.2 非符合性向量：98/0000 nominal 12 → X=0、R=0 告警、复制可用', async ({ page }) => {

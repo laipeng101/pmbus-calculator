@@ -98,12 +98,15 @@ afterEach(() => {
 })
 
 describe('live Analytics controlled input and safe diagnostics', () => {
-  it('requires the exact official HTTPS URL and binds the expected tag to the checkout', () => {
+  it('requires the official URL and can check a previous stable version during rollback', () => {
     expect(parseInputs({ DEPLOYMENT_URL }, '3.3.1')).toEqual(inputs)
-    expect(parseInputs({ DEPLOYMENT_URL, EXPECTED_RELEASE_TAG: 'v3.3.1' }, '3.3.1')).toEqual(inputs)
-    expect(() => parseInputs({ DEPLOYMENT_URL, EXPECTED_RELEASE_TAG: 'v3.3.0' }, '3.3.1')).toThrow(
-      'CONFIGURATION_ERROR',
-    )
+    expect(parseInputs({ DEPLOYMENT_URL, EXPECTED_RELEASE_TAG: 'v3.3.0' }, '3.3.1')).toEqual({
+      deploymentUrl: DEPLOYMENT_URL,
+      expectedTag: 'v3.3.0',
+    })
+    expect(() =>
+      parseInputs({ DEPLOYMENT_URL, EXPECTED_RELEASE_TAG: 'v3.3.0-rc.1' }, '3.3.1'),
+    ).toThrow('CONFIGURATION_ERROR')
     expect(() => parseInputs({ DEPLOYMENT_URL }, '3.3.1-rc.1')).toThrow('CONFIGURATION_ERROR')
     expect(() => parseInputs({ DEPLOYMENT_URL }, '3.3.1', ['--anything'])).toThrow(
       'CONFIGURATION_ERROR',
@@ -216,13 +219,13 @@ describe('production page facts without client token output', () => {
   it.each([
     ['App v3.3.1', '3.3.1'],
     ['  App v3.3.1  ', '3.3.1'],
+    ['v2.5.13', '2.5.13'],
   ])('parses the supported version badge %j', (text, expected) => {
     document.body.innerHTML = `<span data-testid="version-badge">${text}</span>`
     expect(readLiveDom(browserArguments).version).toBe(expected)
   })
 
   it.each([
-    'v3.3.1',
     'App 3.3.1',
     'App v3.3.1 v3.3.0',
     'App v3.3.1 (build v9.9.9)',

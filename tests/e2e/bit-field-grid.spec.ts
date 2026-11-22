@@ -146,29 +146,9 @@ test.describe('M39 共享位字段网格', () => {
     await expect(legend).not.toContainText('未按 LINEAR16 解释')
   })
 
-  // v2.5.11: 每个视口一个独立用例——断言集合不变，但单个用例的
-  // viewport×tab 循环从 6×5 缩到 1×5，冷启动负载下不再逼近 30s 临界路径。
-  for (const width of [360, 390, 430, 768, 1024, 1440]) {
-    test(`宽横截面 ${width}px：五个模式无横向溢出`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 900 })
-      await page.goto(appUrl())
-      await expect(page.getByTestId('result-panel')).toBeVisible()
-      for (const tab of [/LINEAR11/, /LINEAR16/, /DIRECT/, /HALF/, /VOUT_MODE/]) {
-        await page.getByRole('tab', { name: tab }).click()
-        const overflow = await page.evaluate(
-          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-        )
-        expect(overflow, width + 'px ' + String(tab)).toBe(true)
-      }
-    })
-  }
-
-  // v2.5.11: 同上按视口拆分；几何断言逐条保留。
-  for (const width of [360, 390, 768, 1024, 1440, 2048]) {
-    test(`位格落在宿主卡片内容盒内（v2.4.0 溢出回归，${width}px）`, async ({ page }) => {
-      // 页面级 scrollWidth 断言拦不住「居中网格在卡片内部溢出」：
-      // v2.4.0 的 16 位网格 auto 轨道（4×174px+gap=714px）曾在 618px 卡片两侧
-      // 对称溢出 48px 而 scrollWidth 不变。这里直接断言位格几何。
+  for (const width of [360, 390, 430, 768, 1024, 1440, 2048]) {
+    test(`${width}px：五种模式的位格留在卡片内，页面无横向溢出`, async ({ page }) => {
+      // 位格在卡片两侧对称溢出时，页面的 scrollWidth 可能不变。
       await page.setViewportSize({ width, height: 900 })
       await page.goto(appUrl())
       await expect(page.getByTestId('result-panel')).toBeVisible()
@@ -176,7 +156,8 @@ test.describe('M39 共享位字段网格', () => {
         await page.getByRole('tab', { name: tab }).click()
         await expect(page.locator('.bitfield').first()).toBeVisible()
         const violations = await page.evaluate(() => {
-          const out: string[] = []
+          const root = document.documentElement
+          const out = root.scrollWidth > root.clientWidth ? ['页面横向溢出'] : []
           for (const field of document.querySelectorAll('.bitfield')) {
             let card = field.parentElement
             while (card && getComputedStyle(card).borderRadius === '0px') {
@@ -213,30 +194,6 @@ test.describe('M39 共享位字段网格', () => {
       }
     })
   }
-
-  test('共享 token 可由 DOM/computed style 证明：16 位与 compact 单元使用同一 cell 类', async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto(appUrl())
-    await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    const result = await page.evaluate(() => {
-      const cells = document.querySelectorAll('.bitfield-cell')
-      if (cells.length === 0) throw new Error('no shared bit cells found')
-      let mono = 0
-      for (const cell of cells) {
-        const font = getComputedStyle(cell as Element).fontFamily
-        if (font.includes('mono')) mono++
-      }
-      const legacySelectors = document.querySelectorAll(
-        '.bit-cell, .vout-bit-cell, .vout-bit-btn',
-      ).length
-      return { total: cells.length, mono, legacySelectors }
-    })
-    expect(result.total).toBeGreaterThan(0)
-    expect(result.mono).toBe(result.total)
-    expect(result.legacySelectors, '旧分叉 CSS 类不得存在').toBe(0)
-  })
 })
 
 test.describe('v2.6.2 L16 bits[6:5] 禁用原因可见（overlay 外）', () => {

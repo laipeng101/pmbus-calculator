@@ -38,11 +38,6 @@ export interface VoutModeResult {
   description: string
 }
 
-export interface SpecialCheck {
-  type: 'overflow' | 'info'
-  msg: string
-}
-
 export interface BestLinear11Result {
   n: number
   y: number
@@ -308,18 +303,6 @@ export const PMBusMath = {
       description:
         'VOUT_MODE per PMBus Part II §8.3 (bit7=absolute/relative, bits6:5=mode, bits4:0=parameter)',
     }
-  },
-
-  /**
-   * Check special values (overflow, zero, etc.).
-   *
-   * Y=1023 and Y=-1024 are legal LINEAR11 boundary codes, not natural
-   * saturation markers.  Saturation is only reported by the view-model when a
-   * user-entered physical value falls outside the representable range and the
-   * encoder actually saturated; the raw code itself is never flagged here.
-   */
-  checkSpecial(_raw: number, _mode: string): SpecialCheck | null {
-    return null
   },
 
   /**

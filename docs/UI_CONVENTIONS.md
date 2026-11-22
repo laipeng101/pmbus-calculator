@@ -49,11 +49,7 @@
 - 在应用入口导入 `katex/dist/katex.min.css`，由 Vite 将字体打入 Release 资产。
 - Release / 自托管 production bundle 的 CSP 不增加外部运行时依赖；
   `vite.config.ts` 继续只定义严格 Release CSP。字体、CSS、应用 JS 必须来自同源。
-- 官方 GitHub Pages 可在 Release 完整性、tag fresh rebuild 逐字节比较与本地
-  Release smoke 全部通过后，仅对 `_site` 执行经审计的 Pages-only overlay：
-  `script-src` 只额外允许 `https://static.cloudflareinsights.com/beacon.min.js`，
-  `connect-src` 为 `'self' https://cloudflareinsights.com`；其他 directive 语义不变，
-  不允许 wildcard 或宽泛 `https:`。Pages-only CSS 仍为同源资源。
+- 官方 GitHub Pages 的额外资源及验证入口见[部署指南](DEPLOYING.md#pages-专用内容)。
 - KaTeX 输出同时包含 HTML 与 MathML；E2E 必须确认 DOM 中存在 `math` 元素且无 `.katex-error`。
 - 移动端长公式只允许公式容器局部横向滚动（`.math-scroll`），不得造成 body 横向溢出。
 - 结果主数值使用等宽 + `font-variant-numeric: tabular-nums`；按内容长度使用可预测字号档位，不省略、不换行、不 `transform: scale()`。
@@ -90,58 +86,30 @@
 - Playwright：四模式 KaTeX 容器与 MathML 存在；无 `.katex-error`；输入后公式同步更新；
   cursor / hover / active / focus-visible / disabled 状态；reduced-motion；360/390 无 body 横向滚动；
   light/dark 下公式与 focus ring 可读。
-- Release/Pages smoke：KaTeX CSS 与全部字体加载，资源为 Pages 同源。
-- Release smoke 必须证明没有 Cloudflare beacon、Cloudflare CSP 域、Pages-only
-  repository link 或 `pages-overlay.css`；Pages overlay smoke 则验证精确 CSP、
-  外部资源 allowlist 与新增控件。Cloudflare 网络可用性使用受控 route stub 隔离，
-  不以第三方网络成功代替本地 wiring、可访问性、几何与视觉证明。
+- 发布包和 Pages 的检查方法分别见[发布流程](RELEASING.md)和[部署指南](DEPLOYING.md)。
 
-## 7. 帮助浮层：术语气泡与控件说明（v2.6.0 起）
+## 7. 帮助浮层：术语气泡与控件说明
 
-全应用共有两类 portal 帮助浮层，共享同一套定位与「任一时刻至多一个帮助浮层」合同：
-**术语气泡**（`TechnicalTerm`，点击展开的概念解释，disclosure 语义）与
-**控件说明**（`ControlTooltip`，悬停/键盘焦点的操作提示，tooltip 语义）。命令参考
-仍是页内折叠表格，不是浮层。
+术语气泡（`TechnicalTerm`）解释术语，控件说明（`ControlTooltip`）提示如何操作。
 
 - 两类浮层都使用 `@floating-ui/react-dom`（flip/shift/size/autoUpdate 组合）并 portal
   渲染到 `document.body`；必须配置 `flip`、`shift`（viewport padding 8–12px）、`size`
   与 `autoUpdate`。打开时 resize、滚动、触发器靠近视口边缘都必须保持完整可见；可用
   高度不足时只让浮层内部滚动，不得滚动整个页面。
-- **全局单开**由 `HelpOverlayProvider`（`src/components/help/`）协调：术语气泡与控件
-  说明共享一个 active surface 状态（kind: `term` | `control`，实例级 key =
-  概念/帮助 id + `useId`）。打开任一浮层自动关闭另一个；状态不进入主 reducer（悬停
-  是高频瞬态 UI 状态，不持久化）。单一 document `pointerdown` 监听负责外点关闭，
-  单一 `keydown` 监听负责 Escape 关闭并把焦点恢复到触发器。
-- **术语气泡触发策略（click-only）**：只通过点击 / Enter / Space / 触屏 tap 切换；
-  不随悬停打开。触发器是 disclosure，ARIA 合同（v2.6.1 起以实现为准并受 E2E
-  守护）：collapsed 时携带 `aria-expanded="false"`；打开时切换为
-  `aria-expanded="true"` 并携带 `aria-controls` / `aria-describedby`（两者只在
-  打开时存在）。内容保持非交互说明；未来加入可点击内容必须升级为非模态 dialog。
-- **控件说明触发策略（hover + focus）**：fine pointer 悬停即显示；浮层可悬停、
-  可驻留——指针移入浮层或回到触发器都保持显示，指针离开两者后才关闭，离开触发器
-  后有 150ms 确定性宽限（WCAG 2.2 SC 1.4.13 Hoverable/Persistent/Dismissible，
-  v2.6.2 起；双门禁：`matchMedia('(hover: hover) and (pointer: fine)')` + 事件
-  `pointerType === 'mouse'`，触屏首 tap 永不被劫持）；键盘 `:focus-visible` 打开、
-  blur 或 Escape 关闭；click 原动作只执行一次，浮层不得拦截、延迟或二次触发。
-  浮层是 `role="tooltip"` + 触发器 `aria-describedby`（仅打开时），**没有**
-  `aria-expanded`——触发器不是 disclosure。
-- **禁用控件**：原生 `disabled` 不产生指针/焦点事件，其「为什么不可用」必须有
-  浮层之外的可见、键盘/触屏可达路径（VOUT_MODE 相对值在 VID 下的可见禁用原因
-  段落、L16 内嵌 bits[6:5] 的可见禁用原因行 v2.6.2）；可见原因经
-  `aria-describedby` 关联到禁用控件，tooltip 只是补充，不是唯一通道。
-- **单一数据源**：术语中文解释只在 `src/app/terminology.ts`；控件说明文案只在
-  `src/app/control-help.ts` 的 `CONTROL_HELP` registry（带类型的 per-id 参数模板）。
-  组件不得内联复制这些文案；新控件说明先扩 registry 再包 `ControlTooltip`。
+- `HelpOverlayProvider` 按触发器实例管理浮层。任一时刻只显示一个。点击外部关闭，Escape 关闭并恢复焦点。浮层状态只在页面内使用。
+- 术语气泡通过点击、触屏或 Enter / Space 展开。触发器用 `aria-expanded` 表示状态，打开时用 `aria-controls` 和 `aria-describedby` 关联内容。不要在气泡内放交互控件。
+- 控件说明在鼠标悬停或键盘 `:focus-visible` 时显示，指针可移入浮层阅读，离开触发器与浮层、失焦或按 Escape 后关闭（WCAG 2.2 SC 1.4.13）。触屏直接执行原操作。说明用 `role="tooltip"` 和 `aria-describedby` 关联。
+- 在浮层外显示禁用原因并用 `aria-describedby` 关联。原生 `disabled` 控件无法通过键盘聚焦。
 - 禁止在 tab、button、summary、option 等已有交互控件内部嵌套术语触发器；
   禁止把整段说明塞进原生 `title`（`npm run check:no-title-help` 门禁拒绝 `src/`
   下一切原生 title 属性，运行时回归在 control-tooltip E2E）。
 
-## 8. 输入编辑与错误合同（M21 起长期稳定）
+## 8. 输入编辑与错误提示
 
 - 整数语法统一为「可选正负号 + 十进制数字」；`src/app/int-parse.ts` 是 reducer 与
   所有整数输入组件的唯一解析来源，拒绝 `1e2`、`1.5`、`12abc`、`0x10`、仅正负号与
   unsafe integer。物理值解析统一走 `src/app/float-parse.ts`（`parseFloatSafe` +
-  过渡态分类），reducer 与组件不得各自维护规则。signed zero（v2.5.7，Part II §7.6）：
+  过渡态分类），reducer 与组件不得各自维护规则。有符号零（Part II §7.6）：
   `-0`、`-0.0`、`-.0`、`-.00`、`-0e3` 解析为真正的 `-0`（HALF 编码 `0x8000`），
   `0`、`+0`、`0.0`、`.0`、`+.0`、`0e3` 为 `+0`（`0x0000`）；裸 `.`/`+.`/`-.` 是
   编辑过渡态，blur 归一化保留符号（`.`/`+.` → `0`，`-.` → `-0`）。
@@ -156,7 +124,7 @@
 - 数值范围合同：L11 N/Y、DIRECT Y、L16 V 超范围 clamp；DIRECT m/b/R 超范围拒绝
   并保留最后有效值；`m ≠ 0`（m=0 为显式存储的非法状态）。HALF 接受
   NaN/±Infinity，其他模式拒绝非有限值。
-- **未编辑的 focus/blur 是严格 no-op（v2.5.6 起；v2.5.7 推广到全部共享输入）**：
+- **仅聚焦再离开输入框时不提交**：
   所有共享输入（物理值、raw Hex、整数/十进制编辑器、VOUT_MODE expert Hex 与 N、
   标称参考值）在当前 focus 会话内没有任何 `onChange` 编辑事务时，blur（含 Enter
   触发的 blur）不派发 commit、不改写 raw/参数/VOUT_MODE 字节、不伪造量化请求来源、
@@ -164,7 +132,7 @@
   文本修复）仍按既有合同提交；HALF 中显式重输 `NaN` 仍 canonical 化为 `0x7E00`
   并出现 special/warn provenance。dirty 状态依据真实编辑事务（共享 helper
   `src/app/input-transaction.ts`），不用解析数值比较。
-- **标称参考值可回到缺失状态（v2.5.8）**：relative ULINEAR16 的标称输入真实删除
+- **清空标称电压后停止计算实际电压**：相对 ULINEAR16 的标称输入删除
   全部内容后 blur/Enter 提交 `l16/clear-nominal-vout`（`nominalVout = null`）——
   字段保持空、最终电压显示 `—`、公式与计算步骤不再输出由旧标称推出的电压；
   `null` 与显式输入 `0` 是两个状态，清除不改 raw/VOUT_MODE/payload，
@@ -172,15 +140,15 @@
   最后有效 committed 值；非空过渡态（`1e`、`-` 等）blur 经共享
   `fixFloatTextOnBlur` 归一化后按其值提交（与物理值输入一致），不以静默恢复
   旧值掩盖未完成输入。其他数值输入的空串归零合同不变。
-- **解析层不做静默限幅（v2.5.8）**：物理值解析统一走共享分类
+- **解析层保留输入的有限数值**：物理值解析使用
   `classifyFloatText`（`src/app/float-parse.ts`，ValueInput / NominalVoutInput /
-  reducer 单一来源）。语法完整且可由 JavaScript Number 表示的有限值按真实值提交
-  （旧 ±1e20 clamp 移除），编码格式超范围由既有编码器的饱和/溢出读数呈现，
+  reducer 单一来源）。语法完整且可由 JavaScript Number 表示的有限值按真实值提交，
+  编码格式超范围由编码器的饱和或溢出读数呈现，
   provenance 保留真实提交的请求值；完整但溢出为 ±Infinity 的十进制文本（如
   `1e400`）在包括 HALF 在内的所有模式都是明确的数值范围错误——不提交、不生成
   新请求、保留旧 raw，且不得被误判为"尚未输完"的过渡态；HALF 显式字面量
   `NaN` / `±Infinity` 与十进制溢出文本是两类不同的输入。
-- **输入下溢不是零（v2.5.10）**：语法完整、十进制尾数含非零数字、但 `Number(text)`
+- **输入下溢时保留草稿和错误**：语法完整、十进制尾数含非零数字、但 `Number(text)`
   结果为 ±0 的文本（`1e-400`、`2e-324`）在 `classifyFloatText` 中分类为输入下溢
   （`underflow`），是明确的输入范围错误——不提交、不改写旧 raw / 请求 / 标称、
   不创建 provenance；blur/Enter 保留原始草稿与错误（共享 `resolveFloatTextOnBlur`
@@ -190,14 +158,14 @@
   `2^-25` 等「请求本身可表示、编码量化为零」的量化合同不变。输入下溢错误与
   relative L16 的派生下溢（`resolveRelativeVoltage`）是两类不同错误来源，文案、
   状态与测试不得混用。这是 JavaScript Number 的事实合同，不是 PMBus 规范要求。
-- **超长粘贴在进入草稿状态前拒绝（v2.5.13，仅 DIRECT 精确路径）**：原始文本
+- **DIRECT 在保存草稿前拒绝超长输入**：原始文本
   长度超过 `DIRECT_EXACT_MAX_LEXEME_LENGTH`（4096，含首尾空白的 raw 长度）时，
   `handleChange` 在写入 draft state 之前显示「输入过长，未提交」并整体拒绝该次
   编辑——受控输入保持上一个草稿内容（粘贴文本不驻留 React state）、不运行解析
   管线、不改 committed raw/请求/provenance；不使用 HTML `maxlength`（粘贴会被
   静默截断），由受控状态显式拒绝。reducer 侧共享同一 raw 长度度量
   （DOMAIN_MODEL §2.3），直接派发超长文本是严格 no-op。
-  **被拒候选的事务边界（v2.5.14）**：最近一次编辑候选被该门禁拒绝时，当前
+  最近一次编辑被拒绝时，当前
   focus 会话持有 rejected 标记（极小布尔状态，不保存超长文本）；blur/Enter
   是 commit 层 no-op——不派发 `value/set`、不改写 raw/参数/请求 provenance、
   不清除拒绝错误、不把受控输入里的旧短草稿当新候选提交。该状态不因重复
@@ -214,17 +182,9 @@
 - 命令参考按钮（`#command-reference-toggle`）必须有显式可访问名称
   （`aria-label`/文本），展开/收起用 `aria-expanded` 表达。
 
-## 9. 命令参考（只读，无副作用）
+## 9. 命令参考
 
-- 命令参考是默认折叠的只读面板：只显示命令码、事务、数据类型、单位、格式来源
-  与规范章节；不得提供选择器、搜索框或预设应用入口。
-- 选择/阅读任何命令不得改变 mode、raw、VOUT_MODE、DIRECT 系数或任何计算结果；
-  面板本身没有任何 selection state（不写 `command/set`）。
-- `command/apply-preset` 已从产品面移除；命令元数据不携带 preset。
-- 表格在窄 viewport 使用容器内横向滚动（`overflow-x-auto`），不得造成 body
-  横向溢出。
-- 回归矩阵在 `tests/e2e/command-reference.spec.ts`：默认折叠、13 条命令行、
-  只读无副作用、VOUT_MODE/模式不受影响、无预设入口、950×304 无溢出。
+命令参考默认折叠。展开和阅读表格不改变计算器的输入或结果。窄屏下横向滚动限于表格容器。字段、格式来源和规范条目见[领域规则](DOMAIN_MODEL.md#5-命令参考)。
 
 ## 10. 视觉系统与验收
 
@@ -240,7 +200,7 @@
   DIRECT 展示当前输入系数并要求核对器件数据手册，不宣称已选择器件 profile；
   VOUT_MODE 参数是配置数据，不渲染为物理值公式。
 - 表面最多三层：canvas / panel / panel-elevated；控件使用 control / control-hover / control-active。
-- **可编辑可供性（v3.1.0 起）**：真实可编辑控件（text/number/hex input、
+- **可编辑控件与只读内容**：可编辑控件（text/number/hex input、
   select）使用 `.input-field` 家族（`--color-input-bg` + `--color-input-border`
   语义 token 对）；只读展示/结果框使用 `.panel-surface-muted`（muted 底 +
   subtle 边框）。两族在静止态、亮/暗主题、无 hover（触屏）下即可区分；
@@ -249,7 +209,7 @@
   字段由 tokens.css 的 danger 边框 + ring 规则呈现错误态；带步进器的 Hex
   字段用 `.hex-field` shell（外层单一边界，内部输入与 `+1`/`−1` 按钮共享，
   `.hex-field-input` 无自身边框，焦点态由 `.hex-field:focus-within` 承载）。
-- **Hex 步进器合同（v3.1.0）**：只在语义上可步进的有界十六进制整数字段
+- **Hex 步进器**：只在有界十六进制整数字段
   启用（现仅 Raw Word 16 位与 VOUT_MODE 8 位）；范围由 `maxDigits` 推导，
   边界对应按钮真实 `disabled`、永不回绕；输出大写固定位宽补零；合法草稿
   从草稿值步进、空/非法草稿从 committed 值步进并清错；每次激活恰好一次
@@ -257,7 +217,7 @@
   `pointerdown`/`mousedown` preventDefault 保持输入框焦点、带字段上下文
   可访问名、可 Tab、Enter/Space 激活；不劫持输入框 ArrowUp/ArrowDown；
   目标尺寸 ≥24×24。方向合同：fine pointer 下 `+`/`−` 横向并排（shell 高度
-  与普通输入框一致，M36/M39 桌面布局预算不被推高）；coarse pointer 下
+  与普通输入框一致）；coarse pointer 下
   纵向堆叠便于拇指触达（步进区 ≥44px 宽、单按钮 ≥28px 高）；两种方向
   共享同一 shell 边界与内部分隔线。
 - 阴影只用于 elevated、sticky result 和 popup；删除全局 `filter: brightness` hover。
@@ -266,40 +226,23 @@
 - 圆角：控件约 8px，panel 12px，shell 16px；间距以 8px 为基准。
 - 图标为 `currentColor` SVG，`aria-hidden=true`，按钮有可访问文本或 `aria-label`。
 - 中文为 UI 主语言；PMBus、L11、L16、DIRECT、HALF、Hex、LE/BE 等技术缩写保留。
-- 视觉验收不能只凭 DOM 测试；必须包含关键 viewport 截图。
-- `visual snapshot` 是回归保护，不等同于设计质量批准；没有图像读取能力时，不得声称已“逐图目检”。
-- 没有图像读取能力时，必须把视觉要求转化为可执行的几何、对比度、换行、overflow、排列和 computed-style 断言；最终报告必须如实说明实际使用的验证方式。
-- visual regression 截图前等待 `document.fonts.ready`、KaTeX 完成和动画稳定。
+- 外观改动按[截图比对](#11-视觉基线治理)核对桌面和移动端受影响的场景。
 - reduced-motion 只关闭非必要动画，不得消除功能反馈；复制状态使用受控 timer（约 1.5–2s）。
 - KaTeX `htmlAndMathml` 已提供 MathML；外层不得用 `role="math"`/`aria-label` 覆盖；fallback 时再提供可访问名称。
 
 ## 11. 视觉基线治理
 
-- Playwright 基线是测试输入，随 Git 跟踪。actual/diff/failed 截图和 HTML report 存为临时输出。
-- `npm run test:e2e:visual` 使用 [脚本](../scripts/test-visual.sh)按摘要固定的 Ubuntu 24.04 amd64 镜像，锁定系统字体与 Chromium。本地和 PR CI 使用同一入口。
-- 先运行比对确认预期受影响的场景，再按需用 `npm run test:e2e:visual -- --update-snapshots=all` 更新基线。成对检查新旧图，核对更新集合与影响面，再运行比对。
-- 更新基线的 PR 附场景、每张变化原因及新增、修改、删除数量与字节变化。视觉重构需提供成对审查记录。更新时记录镜像摘要、Node、Playwright、Chromium 和 viewport。
-- 缺少图像输入时可以运行已有基线并验证几何、overflow、对比度或 computed style。基线更新需要具备图像输入的复核。
-- 不使用 snapshot 替代数值、行为、无障碍或几何断言；不为了减小仓库而使用有损压缩。
-- visual scene 中的 volatile metadata（例如由 package.json 注入的版本徽标）必须在截图前先断言真实值，
-  再规范化为明确的测试占位值；不 mask，且该规范化只存在于 E2E helper，不得进入 `src/` 或生产 bundle。
+- 运行 `npm run test:e2e:visual`。[脚本](../scripts/test-visual.sh)通过 Docker 固定 Linux x64 镜像及浏览器环境。
+- 检查受影响场景的新旧截图。确认是预期变化后，用 `npm run test:e2e:visual -- --grep '<场景名>' --update-snapshots=all` 更新相应基线，再运行比对。PR 说明有意调整的场景。
+- 基线随 Git 跟踪，比对结果是[临时生成物](REPOSITORY_HYGIENE.md)。数值、操作结果和无障碍行为用相应断言验证。
 
-## 12. 中文优先语言与术语气泡（M39 起）
+## 12. 中文界面与术语气泡
 
-- 中文是界面、按钮、状态、帮助、ARIA 与错误提示的主语言；同一按钮/标题/状态/解释
-  不得中英双写，中文正文后不得追加完整英文译文（解释列表、计算步骤同样适用）。
-- 英文仅保留行业不可替代的 canonical identifier：`PMBus`、`SMBus`、命令名、
-  `LINEAR/LINEAR11/LINEAR16/ULINEAR16/SLINEAR16`、`VID`、`DIRECT`、
-  `IEEE 754 binary16`、`Hex`、`LE/BE`、bit 编号与变量符号（X/Y/V/N/R/m/b）。
-  规范引用（`Part II §8.5`）可保留，叙述必须中文。
-- canonical token 的中文解释只维护在单一数据源 `src/app/terminology.ts`；组件不得
-  复制同一段中文定义。新增 token 时先扩 glossary，再在重点出现位置挂 `TechnicalTerm`。
-- 解释模型（`VoutModeExplanation` 等）输出中文主文案 + canonical token 引用，
-  不再维护并排英文字段；组件不得用 CSS 隐藏英文来伪装完成。
-- 回归矩阵：`tests/e2e/ui-language.spec.ts`（违禁双语/英文子串清单 + 显式 allowlist）、
-  `tests/e2e/terminology-popover.spec.ts`（点击/键盘/触屏/单开/防裁切/无嵌套交互）。
+- 用简体中文写状态、操作提示和无障碍名称。保留 `PMBus`、`VOUT_MODE`、`LINEAR16` 等标准名称、变量符号和规范出处。错误提示说明当前影响和可执行的下一步。
+- 在 [`src/app/terminology.ts`](../src/app/terminology.ts) 维护术语定义，在需要解释的位置使用 `TechnicalTerm`。控件操作提示维护在 [`src/app/control-help.ts`](../src/app/control-help.ts)。
+- 术语气泡和操作说明的交互见[帮助浮层](#7-帮助浮层术语气泡与控件说明)及对应的浏览器测试。
 
-## 13. 字体角色（M39 起）
+## 13. 字体用途
 
 | 角色 | 字体               | 用途                                             |
 | ---- | ------------------ | ------------------------------------------------ |
@@ -313,7 +256,7 @@
   合同测试在 `tests/e2e/math-interaction.spec.ts`（配置摘要无 `.katex`、无 serif 回退）。
 - 结果主数值保持等宽 + `font-variant-numeric: tabular-nums` 合同不变。
 
-## 14. 共享位字段网格（M39 起）
+## 14. 共享位字段网格
 
 - 16 位与 VOUT_MODE 8 位映射均默认展开，可通过具备 `aria-expanded` / `aria-controls`
   的按钮收起；隐藏位按钮不参与 Tab 顺序。两种面板分别记忆展开状态，16 位状态在
@@ -328,7 +271,7 @@
 - L16 的 bits[6:5] 固定 `00`：必须真正 `disabled`，ARIA 注明“格式位固定为 LINEAR”；
   禁用原因同时有浮层之外的可见行（`vout-bits65-disabled-reason`，linked 与非
   LINEAR 两种措辞来自 `src/app/vout-mode-formats.ts` 单一来源），并经
-  `aria-describedby` 关联到这两个位按钮（v2.6.2）。
+  `aria-describedby` 关联到这两个位按钮。
 - 位按钮可访问名形如“第 7 位，绝对值/相对值，当前为 0”（16 位无语义位保持
   “位 15: 0”既有合同），不得双语重复。
 - 几何/结构合同测试在 `tests/e2e/bit-field-grid.spec.ts`。
@@ -347,7 +290,7 @@
 - 零分母（requested = 0 / −0）的相对误差显示 `—`，不显示 0%。
 - 绝对误差格式化必须保证非零差值绝不渲染为文本零：`|x| ≥ 1e-6` 用固定 6 位小数，
   更小的非零值用自适应有效数字（如 `+2.98023223877e-8`）。
-- **DIRECT exact 呈现（v2.5.12）**：DIRECT 面板数值由精确有理数渲染
+- **DIRECT 精确值**：DIRECT 面板数值由精确有理数渲染
   （`formatExactDelta` / `formatExactPercent`，与计算步骤同一来源）——整数差值
   显示为整数（`+1`），极小/极大值用带符号科学计数法（`+1e-16`、`-1e-19`），带内
   终止小数精确展开，循环有理数回退到精确分数（`-1/6`）并在注记/步骤中给出
@@ -355,22 +298,12 @@
   `deltaNote` 在显示值无法完整呈现请求时保留「用户请求 <lexeme>；raw 精确表示
   <exact>」（长文本 `break-all` 换行，不产生横向溢出）；请求文本与显示值一致时
   保持静默（安全普通向量不出现噪音注记）。饱和态显示 `<delta>（已编码到边界值）`。
-- **DIRECT 精确 lexeme 长度边界（v2.5.12）**：`DIRECT_EXACT_MAX_LEXEME_LENGTH =
-4096`（证据与语义见 DOMAIN_MODEL §2.3，是交互资源边界而非 PMBus 限制）。
-  ValueInput 在 DIRECT 模式把超长草稿显示为明确的「输入过长，未提交」错误并保留
-  旧 raw / 旧请求；**禁止用 `maxLength` 属性实现**——浏览器对超长粘贴的静默截断
-  会把截断后的值当作新请求提交，违反「不静默截断」合同。分类错误（下溢/越界）
-  的既有文案与优先级不受影响；超长检查在分类之前做 O(1) 拒绝。
 - `deltaNote` 承载上下文附注（饱和、溢出、特殊值说明），以小字渲染在
   主值下方，不得挤占主值行或造成换行溢出。
 - 计算过程中的量化步骤（`<mode>-quantization` intermediate）与面板使用同一文案来源，
   label 为「格式编码量化误差（请求值 − 表示值）」。
-- L16 物理值输入与标称参考门槛由 **payload 上下文**（view-model `l16Payload`）决定，
-  不以字节级 VOUT_MODE status 为唯一条件（v2.5.1）：`SLINEAR16 offset` 在任意 LINEAR
-  字节（含 0x98 等 bit7=1）下保留物理值输入、signed 编码、范围与量化读数，且必须出现
-  「bit7 对本 payload 不参与数学」说明；`ULINEAR16` + relative 才显示标称参考输入、
-  relative 警示与阻断卡，阻断卡不得宣称 signed offset 页「需要 nominal」。
-- **relative ULINEAR16 的 R=0 非符合性告警（v2.6.4，Part II §8.5.2）**：提交的
+- LINEAR16 的输入可用性由 view-model 的 `l16Payload` 决定。使用 LINEAR 格式时，SLINEAR16 保留物理值输入并说明第 7 位不影响电压偏移。相对 ULINEAR16 显示标称电压输入和计算提示。格式规则见[领域规则](DOMAIN_MODEL.md#3-vout_mode)。
+- **相对 ULINEAR16 的 R=0 告警（Part II §8.5.2）**：提交的
   比值 `R = 0`（raw 0000）是规范意义上的非符合性数据——InfoPanel 输出 warning
   `l16-relative-zero-ratio`（单一来源 `deriveL16Semantics` 的同一 ratio 解码事实），
   文案区分两类真零：`nominal=0`（decode-only 真零，ratio≠0）与 signed offset
@@ -380,84 +313,25 @@
   溢出或下溢）。
 - 手动 `l16/set-slinear-y` 是 raw 变更：提交后面板隐藏（组件返回 null）、计算步骤
   不再包含量化 intermediate；非法/过渡输入不得改变 raw，也不得清除仍有效的请求。
-- 非 LINEAR 共享字节的 L16 页面 fail closed（v2.5.2，Part II §8.4）：无物理值输入、
-  无伪「可表示范围」、结果为 `—`、无量化面板与伪量化步骤；composer 显示实际字节与
-  `非 LINEAR` source 徽标。阻断卡文案必须消费 view-model 的 discriminated blocked
-  契约（`l16Payload.blocked.status`，v2.5.3），组件不得自行推导规范结论：
-  - 绝对 VID + 非偏移 payload（`vid-profile-required`）：VID 是 §8.4.2 支持的输出电压
-    数据格式，**禁止出现「输出电压相关命令禁止使用 VID」类全局禁令文案**；只能说
-    「合法但未选定 VID 表 / 产品 profile，无法换算 code ↔ 电压」，制造商自定义
-    code（raw 0x3E/0x3F）注明映射来自器件资料，不称保留或禁止；
-  - 绝对 VID + SLINEAR16 offset（`vid-offset-prohibited`）：按 §13.3/§13.4 说明两条
-    二补码偏移命令被禁止并声明不生成 word，同时声明**禁止范围仅限这两条命令**；
-    InfoPanel 出现 error 级 `vout-mode-vid-offset-prohibited` 提示；
-  - 相对 + VID（`vid-relative-invalid`）：按 §8.5.3 说明字节组合本身无效；
-  - DIRECT（`direct-profile-required`）：声明 word ↔ 物理量需要器件 m/b/R 系数
-    （§7.4/§8.4.3）、本页不猜测系数、不借用 LINEAR16 指数 N，且 DIRECT 是合法
-    输出电压数据格式；
-  - IEEE Half（`half-unsupported-in-l16`）：payload 是标准 IEEE 754 binary16
-    （§7.6/§8.4.4），本页只实现 LINEAR16 解释、不猜测 N；HALF 模式页可做该换算，
-    且 Half 是合法输出电压数据格式。**禁止出现「需要器件 profile / DIRECT 系数 /
-    设备数据」类表述**——Half 的换算不依赖任何器件数值；
-  - invalid-parameter / invalid-combination 提示保持 error 级。
-    恢复入口为「应用计算器 LINEAR 示例 0x18」，并在按钮附近提示用户核对器件设置。
-    用户点击后才写入示例值，恢复输入、范围和结果。[VOUT_MODE 领域规则](DOMAIN_MODEL.md#3-vout_mode)
-    说明示例值的含义和写入行为。相关交互测试见
-    `tests/e2e/l16-nonlinear-fail-closed.spec.ts`。
+- 共享字节不是 LINEAR 格式时，LINEAR16 页显示实际配置字节和「非 LINEAR」，隐藏物理值输入及量化读数，结果显示 `—`。提示由 `l16Payload.blocked` 提供，按[格式规则](DOMAIN_MODEL.md#3-vout_mode)交代原因和下一步。非法参数和组合用错误提示。应用计算器示例前提醒用户核对器件设置。相关场景见 [`l16-nonlinear-fail-closed.spec.ts`](../tests/e2e/l16-nonlinear-fail-closed.spec.ts)。
 - L16 物理值复制与结果可用性同源：非 LINEAR、缺少标称参考及派生溢出/下溢导致
   结果为 `—` 时，复制按钮必须禁用，并通过可见说明与 `aria-describedby` 给出原因。
   已提供的标称值 `0` 与缺失参考值不同；有限零值可正常复制。修改配置、补填/清除
   参考值或切换 payload 后实时重算，Raw Word / Wire 字节等复制不依赖物理值可用性。
-- 非 LINEAR 共享字节下，L16 的 16 位位域图例必须是中性 raw word 文案
-  （`RAW_WORD_NEUTRAL_LABEL = "raw word [15:0]（未按 LINEAR16 解释）"`，v2.5.3）：
-  `getBitRegions('L16', payloadKind, state.voutMode.byte)` 以实际共享字节为准，任何
-  VID/DIRECT/IEEE Half/非法参数状态都不得显示「数值 V [15:0]」或「有符号值 Y [15:0]」；
-  payload 下拉切换不得复活 V/Y 图例；LINEAR 字节（含 bit7=1）恢复 payload-specific
-  图例。ARIA 标签不含 V/Y 语义（bits 无 semantic 字段），复制路径不输出图例文字。
+- 位图图例经 `getBitRegions` 根据实际字节和数据解释类型选择。非 LINEAR 格式下只标为未经 LINEAR16 解释的原始数据，保留位号和位值。
 - **DIRECT 显示值与复制**。按[领域规则](DOMAIN_MODEL.md#23-direct)判断重新输入显示值后所得的 Y。
   若 Y 会变化，警告应区分浮点精度和显示位数两种原因，给出重新输入后得到的 Y，并指向「计算过程」中的精确分数或小数。
   量化误差按精确值计算，有此提示时采用至少警告级别，饱和仍显示为错误。
   「物理值」复制精确小数或经验证可以得到原 Raw Word 的近似值，说明关联到按钮的 `aria-describedby`。
   无法计算物理值或生成可重新输入的数值时，禁用该按钮并显示原因。
 
-## 16. 独立 VOUT_MODE 页面的 requirement 文案合同（v2.5.4 / v2.5.5）
+## 16. 独立 VOUT_MODE 页面的状态说明
 
-- 状态文本、InfoPanel 警告、说明列表与计算步骤的规范结论一律来自
-  `resolveVoutModeRequirement`（`src/app/vout-mode-requirements.ts`）；组件不得用
-  `format` 数字或散落布尔重新推导。v2.5.5 起 status/warnings/explanations/steps
-  四个表面全部 switch 在该判别式的 `req.id` 上（字段解析仍可读取
-  format/parameter），E2E helper 不再把所有表面拼接成单一字符串——逐表面独立断言。
-- DIRECT 字节（`0x40`/`0xC0` 等）：状态与警告必须继续要求器件 m/b/R 系数
-  （§7.4），relative 组合再叠加 VOUT_COMMAND 标称参考值与相对值必须为正（§8.5.2）；
-  `0xC0` 的
-  **InfoPanel 警告本身**必须同时包含 m/b/R 与标称参考值，不得靠其他表面拼出。
-- IEEE Half 字节（`0x60`/`0xE0` 等）：所有用户可见表面必须表述「标准
-  IEEE 754 binary16（§7.6 / §8.4.4），换算不依赖器件数值」，并指向 HALF 模式页；
-  **禁止出现「需器件资料」「器件 Profile」「m/b/R」「DIRECT 系数」等反向禁词**。
-  `0xE0` 额外表述需要标称参考值与相对值必须为正（§8.5.2），`0x60` 不出现该表述。
-- 参数非零（`0x61`/`0xE1` 等）保持「参数必须为 00000b（§8.3 Table 2）」error 级，
-  不进入任何格式要求分支。
-- **合法性与可计算性正交（v2.5.5）**：VID Code Type `1Eh`/`1Fh` 是 §8.4.2 Table 3
-  明列的制造商自定义 code——`structureLegal=true`、`requiresVidProfile=true`、
-  当前不可换算，呈现为「制造商自定义（需器件资料）」，**不得**复用代表非法结构的
-  alert 标志/class 或「保留/非法」文案；`00h`（未使用）与保留 code（Table 3 明列
-  保留与未列出保留，v2.5.6）仍是不可用配置。机器可测字段：`structureLegal`（结构
-  合法）、`requiresExternalData`（需器件数据 = m/b/R 或 VID 表）、`calculable`
-  （当前计算器可算，仅绝对 LINEAR）。
-- **VID Table 3 出处文案（v2.5.6）**：`01h..04h`（未来 Intel 处理器）、`10h..11h`
-  （未来 AMD 处理器）、`1Ch..1Dh`（留作未来使用）是 Table 3 **明列**的保留 code，
-  全部表面（status chip、InfoPanel、说明、计算步骤、结构化 VID code 下拉）必须
-  表述「Table 3 明列」与对应 family/reason，**绝不能含「未列出」**；`05h..0Fh`、
-  `12h..1Bh` 等其余 code 必须表述「Table 3 未列出，保留供未来使用」。出处判别与
-  reason 文本只来自 `classifyVidCode`（kind/family/reason/label）与
-  `resolveVoutModeRequirement`（`vid-reserved-listed` / `vid-reserved-unlisted`），
-  组件与 view-model 不得硬编码出处。结构合法性单一事实源是
-  `structureLegal`：旧 `VoutModeAnalysis.isLegal` 已删除（v2.5.6）。
-- E2E 反向禁词与逐表面合同在 `tests/e2e/vout-mode-half-matrix.spec.ts`；unit truth
-  table（含 0..255 结构合法/可计算/外部数据三维穷举分离）在
-  `src/app/vout-mode-requirements.test.ts`。
+- 状态、警告和说明使用 `resolveVoutModeRequirement` 的分类。[领域规则](DOMAIN_MODEL.md#3-vout_mode)记录各格式的计算条件和 VID 代码出处。
+- 警告本身说明需要的器件数据。相对 DIRECT 同时说明 m、b、R 系数和标称电压。制造商自定义 VID 提示需要器件资料，保持合法配置的显示样式。保留 VID 代码按规范说明是否列于表 3。
+- 修改时先核对 [`vout-mode-requirements.test.ts`](../src/app/vout-mode-requirements.test.ts) 的分类，再用 [`vout-mode-half-matrix.spec.ts`](../tests/e2e/vout-mode-half-matrix.spec.ts) 核对相关界面提示。
 
-## 17. HALF 特殊值 §7.6.2 操作语义卡（v2.5.5）
+## 17. HALF 特殊值 §7.6.2 操作提示
 
 - 单一来源：`resolveHalfSpecialSemantics`（`src/app/half-special-semantics.ts`），
   区分 `half-finite` / `half-nan` / `half-positive-infinity` /
@@ -477,28 +351,8 @@
   390/360 几何经 setViewportSize 断言；触摸差异风险由 mobile-contract 套件
   承担）覆盖 NaN/±Inf/有限、双路径、ARIA role、1280/390/360 无横向溢出。
 
-## 18. 官方 Pages 的源码仓库链接（v3.3.0）
+## 18. 官方 Pages 的源码仓库链接
 
-- 只由 Pages deployment overlay 在 `#root` 外注入语义化 `<a>`；普通 build、
-  React source 与 Release ZIP 不包含该控件。样式只在同源 `./pages-overlay.css`。
-- href 精确为 `https://github.com/laipeng101/pmbus-calculator`，marker 为
-  `data-pages-only="repository-link"`，可访问名称为“在 GitHub 查看项目源码”；
-  新窗口使用 `target="_blank" rel="noopener noreferrer"`。
-- 图标使用原创通用 repository/source-code SVG、`currentColor` 与
-  `aria-hidden="true"`；不得为此引入 CDN、外部字体/图片、GitHub trademark
-  asset 或第三方 icon package。
-- 控件位于页头主题按钮旁，点击目标 40–44px、圆角，使用现有 CSS custom
-  properties 保证 light/dark 可读；考虑 right safe-area inset。外部链接由
-  Pages-only CSS 绝对定位，与主题按钮顶部和高度对齐、间隔 8px，并随页头
-  滚动。只在页头预留一个按钮位置，不压缩计算器宽度或增加整页避让侧栏。
-  必须有清楚的 `focus-visible`，真实 Tab 可达；hover 仅在
-  `(hover: hover) and (pointer: fine)` 内，coarse pointer 保留 active/focus
-  反馈，遵守 reduced-motion 合同。
-- 页面顶部的 390px 与桌面 viewport 下 bounding box 完全位于 viewport、无
-  body 横向 overflow；滚动查看关键 calculator 控件和结果交互时不得被链接
-  遮挡。浏览器几何门禁覆盖 360/390/639/640/767/768/1280/1440px，验证页头
-  对齐、控件间距、主面板宽度与居中，并覆盖 12/16/20px 根字号；定位随既有
-  rem 间距缩放，防止 Release 页头变化导致 overlay 漂移。
-- Pages overlay smoke 要生成并实际检查桌面/390px、light/dark 关键截图；
-  几何、焦点、对比度断言与逐图检查共同构成验收。截图和报告按仓库卫生政策
-  存在临时输出，不为部署控件改写普通应用视觉基线。
+- 源码链接位于主题按钮旁，与按钮顶端对齐，点击区域为 40–44px。保留键盘焦点提示和触屏反馈。
+- 布局需适配桌面、窄屏和系统字号，并随页头滚动，避免遮挡主体控件或增加横向滚动。
+- 注入方式和专项检查见[部署指南](DEPLOYING.md#pages-专用内容)。

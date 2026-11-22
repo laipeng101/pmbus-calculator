@@ -1,5 +1,5 @@
 import { analyzeVoutMode } from '../../legacy/vout-mode'
-import { buildVoutModeExplanations } from '../vout-mode-explanation'
+import { buildVoutModeExplanations, SLINEAR16_OFFSET_BIT7_NOTE } from '../vout-mode-explanation'
 import { resolveVoutModeRequirement } from '../vout-mode-requirements'
 import type { AppState } from '../state'
 import type { VoutModeInfoVM, VoutModeBitVM, VoutModeNibbleVM, WarningVM } from './types'
@@ -143,7 +143,7 @@ export function resolveVoutModeByteWarnings(state: AppState, byte: number): Warn
         id: 'vout-mode-relative',
         level: 'info',
         text: signedOffset
-          ? `VOUT_MODE ${hex} 的 bit7 为相对值，但仅作用于 §8.5 相对阈值命令；当前 SLINEAR16 offset 是有符号命令 payload（§13.3/§13.4），bit7 不参与其数学，无需标称参考值。`
+          ? SLINEAR16_OFFSET_BIT7_NOTE
           : `VOUT_MODE ${hex} 为相对 LINEAR；需要 VOUT_COMMAND 标称参考值才能计算最终电压。`,
       },
     ]

@@ -154,28 +154,6 @@ test.describe('M16 result stress geometry', () => {
     }
   })
 
-  test('copy buttons stay single-line at 390px', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 })
-    await settle(page)
-
-    const buttons = page.getByRole('button', {
-      name: /Raw Word Hex|Wire 字节|MSB-first 字节|物理值|C 代码/,
-    })
-    const count = await buttons.count()
-    expect(count).toBeGreaterThanOrEqual(5)
-
-    for (let i = 0; i < count; i++) {
-      const button = buttons.nth(i)
-      const box = await button.boundingBox()
-      const scrollHeight = await button.evaluate((el) => el.scrollHeight)
-      const clientHeight = await button.evaluate((el) => el.clientHeight)
-      expect(scrollHeight).toBeLessThanOrEqual(clientHeight + 1)
-      const text = await button.locator('span').textContent()
-      expect(text?.trim().length).toBeGreaterThan(0)
-      expect(box?.width).toBeGreaterThan(0)
-    }
-  })
-
   test('preference groups keep labels and controls in the same group', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await settle(page)

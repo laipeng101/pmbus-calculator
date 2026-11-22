@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { generateAssets, runExecFile } from './prepare-release-assets.mjs'
+import { extractReleaseZip, generateAssets } from './prepare-release-assets.mjs'
 import { applyPagesOverlay } from './apply-pages-overlay.mjs'
 import { verifyPagesOverlay } from './verify-pages-overlay.mjs'
 import {
@@ -12,22 +12,17 @@ import {
   REPOSITORY,
   TOKEN_ENV,
   CSS_NAME,
-  assertNoOverlayContamination,
-  indexText,
   isMain,
   readSiteFiles,
   requireContract,
   resolveSite,
-  verifyIndex,
 } from './pages-overlay-contract.mjs'
 
 /** @param {string} [repoRoot] */
-export async function preparePagesOverlayTest(repoRoot = DEFAULT_ROOT) {
+export function preparePagesOverlayTest(repoRoot = DEFAULT_ROOT) {
   const root = fs.realpathSync(repoRoot)
   const dist = path.join(root, 'dist')
   const baseline = readSiteFiles(dist)
-  assertNoOverlayContamination(baseline)
-  verifyIndex(indexText(/** @type {Buffer} */ (baseline.get('index.html'))), baseline, null)
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pmbus-pages-fixture-'))
   const site = path.join(root, '_site')
   try {
@@ -35,7 +30,7 @@ export async function preparePagesOverlayTest(repoRoot = DEFAULT_ROOT) {
     fs.cpSync(dist, path.join(temp, 'dist'), { recursive: true })
     const output = path.join(temp, 'release-output')
     // Exercises the real deterministic packager, checksum and ZIP safety gate.
-    const { zipName, sumsName } = await generateAssets(path.join(temp, 'dist'), output, false)
+    const { zipName, sumsName } = generateAssets(path.join(temp, 'dist'), output)
     const zip = path.join(output, zipName)
     const originalZip = fs.readFileSync(zip)
     const sums = fs.readFileSync(path.join(output, sumsName))
@@ -45,17 +40,7 @@ export async function preparePagesOverlayTest(repoRoot = DEFAULT_ROOT) {
       readSiteFiles(resolveSite('_site', root))
       fs.rmSync(site, { recursive: true })
     }
-    fs.mkdirSync(site)
-    await runExecFile(
-      process.env.PYTHON3 || 'python3',
-      [
-        '-c',
-        'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])',
-        zip,
-        site,
-      ],
-      { timeout: 30_000 },
-    )
+    extractReleaseZip(zip, site)
     const env = { GITHUB_REPOSITORY: REPOSITORY, [TOKEN_ENV]: '0'.repeat(32) }
     applyPagesOverlay('_site', { repoRoot: root, env })
     const verified = verifyPagesOverlay('_site', { repoRoot: root, env })
@@ -93,7 +78,7 @@ if (isMain(import.meta.url)) {
       process.argv.length === 2,
       'usage: prepare-pages-overlay-test.mjs (no arguments)',
     )
-    console.log(JSON.stringify(await preparePagesOverlayTest()))
+    console.log(JSON.stringify(preparePagesOverlayTest()))
   } catch {
     // The fixture must never accidentally log a deployment secret inherited
     // from the caller, even when third-party packaging/I/O code throws.

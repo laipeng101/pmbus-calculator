@@ -73,13 +73,8 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
     // Prohibition named for exactly the two offset commands.
     const card = blockCard(page)
     await expect(card).toBeVisible()
-    await expect(card).toContainText('禁止')
     await expect(card).toContainText('§13.3 / §13.4')
-    await expect(card).toContainText('VOUT_TRIM / VOUT_CAL_OFFSET')
-    await expect(card).toContainText('禁止范围仅限这两条二补码偏移命令')
-    // And the over-broad v2.5.2 claim must be gone for good.
-    await expect(card).not.toContainText('输出电压相关命令禁止使用 VID')
-    await expect(card).not.toContainText('输出电压相关命令禁止使用')
+    await expect(card).toContainText('VID 格式下不能使用 VOUT_TRIM / VOUT_CAL_OFFSET')
     // Spec-level violation announces an error-level alert next to the card.
     const offsetAlert = page.getByRole('alert').filter({ hasText: '§13.3 / §13.4' }).first()
     await expect(offsetAlert).toBeAttached()
@@ -94,21 +89,14 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
     await expect(rawHex(page)).toHaveValue(/0000/i)
   })
 
-  test('0x20 + ULINEAR16: VID is legal but needs a selected table/profile', async ({ page }) => {
+  test('0x20 + ULINEAR16: unused VID code has no voltage mapping', async ({ page }) => {
     await settle(page)
     await enterL16(page, '20', 'ulinear16')
 
     await expectFailClosedBaseline(page)
     const card = blockCard(page)
     await expect(card).toContainText('VID 格式')
-    // Legal-format wording present…
-    await expect(card).toContainText('不是被禁止的数据格式')
-    await expect(card).toContainText('§8.4.2')
-    await expect(card).toContainText('未选定任何 VID 表或产品 profile')
-    // …the historical over-claim absent…
-    await expect(card).not.toContainText('输出电压相关命令禁止使用')
-    await expect(card).not.toContainText('该命令组合被禁止')
-    // …and the InfoPanel keeps calling code 00h what §8.4.2 Table 3 calls it.
+    await expect(card).toContainText('此 VID 代码类型没有可用的电压映射')
     await expect(page.getByRole('alert').filter({ hasText: 'VID code 00h' }).first()).toBeAttached()
   })
 
@@ -121,9 +109,7 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
     await expectFailClosedBaseline(page)
     const card = blockCard(page)
     await expect(card).toContainText('1Eh — 制造商自定义（需器件资料）')
-    await expect(card).toContainText('器件资料')
-    await expect(card).not.toContainText('输出电压相关命令禁止使用')
-    await expect(card).not.toContainText('保留')
+    await expect(card).toContainText('器件资料中的 VID 码表')
     // The §8.4.2 VID-code note agrees: manufacturer-defined mapping comes
     // from the product literature, and this byte is neither banned nor
     // called reserved.
@@ -140,11 +126,9 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
       const card = blockCard(page)
       await expect(card).toContainText(hex === '40' ? 'DIRECT 格式' : 'IEEE Half 格式')
       if (hex === '40') {
-        await expect(card).toContainText('m / b / R')
-        await expect(card).toContainText('不猜测系数')
+        await expect(card).toContainText('m、b、R 系数后，在 DIRECT 页换算')
       } else {
-        await expect(card).toContainText('本页只实现 LINEAR16 解释')
-        await expect(card).toContainText('HALF 模式页')
+        await expect(card).toContainText('切换到 HALF 页')
       }
       await expect(page.getByTestId('vout-mode-byte')).toHaveText(`0x${hex}`)
     }
@@ -175,9 +159,8 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
 
     await expectFailClosedBaseline(page)
     const card = blockCard(page)
-    await expect(card).toContainText('相对 + VID 非法组合')
+    await expect(card).toContainText('相对值和 VID 组合无效')
     await expect(card).toContainText('§8.5.3')
-    await expect(card).not.toContainText('输出电压相关命令禁止使用')
     // The existing byte-level error remains.
     const invalidCombination = page.getByRole('alert').filter({ hasText: '§8.5.3' }).first()
     await expect(invalidCombination).toBeAttached()
@@ -186,7 +169,7 @@ test.describe('L16 non-LINEAR VOUT_MODE fail-closed + VID scope (v2.5.3)', () =>
     // Switching payloads must not turn the invalid byte into a computable
     // signed-offset state either.
     await page.locator('#l16-payload-kind').selectOption('slinear16-offset')
-    await expect(blockCard(page)).toContainText('相对 + VID 非法组合')
+    await expect(blockCard(page)).toContainText('相对值和 VID 组合无效')
     await expect(page.locator('#value-input')).toHaveCount(0)
   })
 

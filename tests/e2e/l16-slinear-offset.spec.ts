@@ -72,9 +72,13 @@ test.describe('SLINEAR16 offset under relative VOUT_MODE (v2.5.1)', () => {
 
     // Formula/result are explicitly signed-offset; bit7 marked N/A.
     await expect(page.locator('[data-testid="result-value"]')).toContainText('0')
-    // The explanation lives in the explanation list (DOM-attached; may be
-    // visually collapsed on some viewports) - assert attached, not visible.
-    await expect(page.getByText('bit7 对本 payload').first()).toBeAttached()
+    await page.getByText(/^说明（\d+）$/).click()
+    await expect(page.getByText('第 7 位不影响电压偏移')).toBeVisible()
+
+    await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+    const note = page.locator('.vout-param-note')
+    await expect(note).toContainText('算出比值 R')
+    await expect(note).toContainText('VOUT_COMMAND')
   })
 
   test('3.3 encodes to 0x034D with the quantized warn readout', async ({ page }) => {

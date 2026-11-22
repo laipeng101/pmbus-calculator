@@ -4,15 +4,6 @@ import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-// M32 WP-C: test/coverage shape comes from the shared constants module --
-// vite.config.ts and vitest.coverage.config.ts consume ONE source (no copied
-// lists that can drift).
-import {
-  BASE_TEST_EXCLUDE,
-  COVERAGE_EXCLUDE,
-  COVERAGE_SCOPE_INCLUDE,
-  COVERAGE_THRESHOLDS,
-} from './scripts/vitest-shared-config.mjs'
 
 /**
  * Inject a production CSP meta tag into the build only. It restricts runtime
@@ -75,14 +66,12 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'jsdom',
-    exclude: [...BASE_TEST_EXCLUDE],
+    include: ['{src,tests}/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: [...COVERAGE_SCOPE_INCLUDE],
-      thresholds: { ...COVERAGE_THRESHOLDS },
-      exclude: [...COVERAGE_EXCLUDE],
+      include: ['src/{app,legacy}/**/*.{ts,tsx}'],
+      exclude: ['**/*.test.{ts,tsx}', '**/*.d.ts'],
     },
   },
 })

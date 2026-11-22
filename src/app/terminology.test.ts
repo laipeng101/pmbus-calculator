@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CANONICAL_TOKENS, GLOSSARY, GLOSSARY_TERM_IDS, getGlossaryTerm } from './terminology'
+import { GLOSSARY, GLOSSARY_TERM_IDS, getGlossaryTerm } from './terminology'
 import { CONTROL_HELP, CONTROL_HELP_IDS, controlHelpText } from './control-help'
 import { VOUT_MODE_FORMATS, voutModeFormatLabel, voutModeFormatTerm } from './vout-mode-formats'
 
@@ -65,14 +65,6 @@ describe('M39 terminology glossary (single source of truth)', () => {
     expect(GLOSSARY['linear11-exponent'].detail).toContain('bits[15:11]')
     expect(GLOSSARY['linear11-exponent'].detail).toContain('§7.3')
     expect(GLOSSARY.exponent.detail).toContain('VOUT_MODE bits[4:0] 的 5 位二补码值')
-  })
-
-  it('derives the canonical token allowlist from the glossary without drift', () => {
-    expect(CANONICAL_TOKENS).toEqual(glossaryTokens())
-    expect(CANONICAL_TOKENS).toContain('PMBus')
-    expect(CANONICAL_TOKENS).toContain('VOUT_MODE')
-    expect(CANONICAL_TOKENS).toContain('LINEAR')
-    expect(CANONICAL_TOKENS).toContain('IEEE 754 binary16')
   })
 
   it('resolves known ids and rejects unknown ids', () => {
@@ -188,12 +180,6 @@ describe('v2.6.0 control help registry (single source of truth)', () => {
     expect(linearHelp).toContain(GLOSSARY.linear.name)
     expect(controlHelpText('vout-format-half', undefined)).toContain(GLOSSARY.binary16.token)
   })
-
-  it('keeps the C-macro help a project-output statement, not protocol content', () => {
-    const text = controlHelpText('copy-c-macro', undefined)
-    expect(text).toContain('本计算器的输出格式')
-    expect(text).toContain('不是 PMBus 协议内容')
-  })
 })
 
 describe('VOUT_MODE format mapping (unified single source)', () => {
@@ -210,7 +196,3 @@ describe('VOUT_MODE format mapping (unified single source)', () => {
     }
   })
 })
-
-function glossaryTokens(): string[] {
-  return GLOSSARY_TERM_IDS.map((id) => GLOSSARY[id].token)
-}

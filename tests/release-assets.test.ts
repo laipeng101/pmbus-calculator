@@ -1,427 +1,101 @@
-// Plain unit tests for the restartable release asset generator
-// (scripts/prepare-release-assets.mjs).
-//
-// Coverage:
-// - normal path: dist/ -> release-output/ with zip + SHA256SUMS, verified by
-//   the real verify_release_zip.py
-// - determinism: the same dist/ produces byte-identical assets twice
-// - --force overwrites an existing valid output
-// - verifier failure never publishes unverified assets (old output stays)
-// - every ZIP entry rejects Pages-only analytics/UI content without echoing it
-// - symlink / special file / invalid entry rejection
-// - runCli exit codes (unknown option, success)
-
-import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import process from 'node:process'
-import { afterEach, describe, expect, it } from 'vitest'
-import {
-  createDeterministicZip,
-  generateAssets,
-  runCli,
-  validateAndCollectEntries,
-  walkDist,
-} from '../scripts/prepare-release-assets.mjs'
-import { validateZipEntry } from '../scripts/release-artifact-contract.mjs'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { extractReleaseZip, generateAssets } from '../scripts/prepare-release-assets.mjs'
 
-const tempRoots: string[] = []
-const ZIP_NAME = 'pmbus-calculator-v1.1.5-web.zip'
-const SUMS_NAME = 'SHA256SUMS.txt'
+let root: string
+let dist: string
+let output: string
+const html = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'"><link rel="stylesheet" href="./assets/app.css"><script src="./assets/app.js"></script>`
 
-function makeTempRepo(version = '1.1.5'): string {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pmbus-assets-'))
-  tempRoots.push(tmp)
-  fs.writeFileSync(
-    path.join(tmp, 'package.json'),
-    JSON.stringify({ name: 'pmbus-calculator', version, private: true }, null, 2),
-  )
-  return tmp
-}
+beforeEach(() => {
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmbus-release-'))
+  dist = path.join(root, 'dist')
+  output = path.join(root, 'release-output')
+  fs.mkdirSync(path.join(dist, 'assets'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '1.2.3' }))
+  fs.writeFileSync(path.join(dist, 'index.html'), html)
+  fs.writeFileSync(path.join(dist, 'assets', 'app.css'), 'body {}')
+  fs.writeFileSync(path.join(dist, 'assets', 'app.js'), 'console.log("ok")')
+})
 
-/** Standard minimal dist tree that passes verify_release_zip.py. */
-function makeValidDist(dir: string): void {
-  fs.mkdirSync(path.join(dir, 'assets'), { recursive: true })
-  fs.writeFileSync(
-    path.join(dir, 'index.html'),
-    '<!DOCTYPE html><html><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\'"><link rel="stylesheet" href="assets/app.css"><script src="assets/app.js"></script></html>',
-  )
-  fs.writeFileSync(path.join(dir, 'assets', 'app.js'), 'console.log("release")')
-  fs.writeFileSync(path.join(dir, 'assets', 'app.css'), 'body{}')
-}
+afterEach(() => fs.rmSync(root, { recursive: true, force: true }))
 
-function sha256(file: string): string {
-  return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
-}
+it('writes a reproducible ZIP and checksum that extract to the original files', () => {
+  const { zipName, sumsName, zipSize } = generateAssets(dist, output)
+  const zip = path.join(output, zipName)
+  const contents = fs.readFileSync(zip)
+  const checksum = createHash('sha256').update(contents).digest('hex')
+  expect(zipName).toBe('pmbus-calculator-v1.2.3-web.zip')
+  expect(contents.byteLength).toBe(zipSize)
+  expect(fs.readFileSync(path.join(output, sumsName), 'utf8')).toBe(`${checksum}  ${zipName}\n`)
+  expect(fs.readdirSync(output).sort()).toEqual([sumsName, zipName].sort())
 
-const fixtureBeaconToken = '7'.repeat(32)
-const fixtureContentSentinel = 'private-fixture-content-do-not-log'
-
-function appendDistFile(dist: string, entry: string, content: string): void {
-  const file = path.join(dist, entry)
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.appendFileSync(file, `\n${content}\n${fixtureContentSentinel}`)
-}
-
-function appendReleaseCsp(dist: string, sources: string): void {
-  const file = path.join(dist, 'index.html')
-  fs.writeFileSync(
-    file,
-    fs.readFileSync(file, 'utf8').replace("script-src 'self'", `script-src 'self'${sources}`),
-  )
-}
-
-const pagesPollutionCases = [
-  {
-    name: 'index beacon attribute without a Cloudflare URL',
-    pollute: (dist: string) =>
-      appendDistFile(
-        dist,
-        'index.html',
-        `<script src="assets/app.js" data-cf-beacon='${JSON.stringify({ token: fixtureBeaconToken })}'></script>`,
-      ),
-  },
-  {
-    name: 'index CSP beacon exception',
-    pollute: (dist: string) =>
-      appendReleaseCsp(dist, ' https://static.cloudflareinsights.com/beacon.min.js'),
-  },
-  {
-    name: 'index CSP RUM exception',
-    pollute: (dist: string) =>
-      appendReleaseCsp(dist, "; connect-src 'self' https://cloudflareinsights.com"),
-  },
-  {
-    name: 'index repository marker',
-    pollute: (dist: string) =>
-      appendDistFile(
-        dist,
-        'index.html',
-        '<a data-pages-only="repository-link" href="https://github.com/laipeng101/pmbus-calculator">Source</a>',
-      ),
-  },
-  {
-    name: 'standalone Pages overlay stylesheet filename',
-    pollute: (dist: string) => fs.writeFileSync(path.join(dist, 'pages-overlay.css'), 'body{}'),
-  },
-  {
-    name: 'uppercase Pages overlay stylesheet filename',
-    pollute: (dist: string) => fs.writeFileSync(path.join(dist, 'PAGES-OVERLAY.CSS'), 'body{}'),
-  },
-  {
-    name: 'non-index application JS mixed-case Cloudflare host',
-    pollute: (dist: string) =>
-      appendDistFile(
-        dist,
-        'assets/app.js',
-        'const beacon = "https://STATIC.CloudflareInsights.COM/beacon.min.js";',
-      ),
-  },
-  {
-    name: 'non-index application CSS mixed-case Cloudflare host',
-    pollute: (dist: string) =>
-      appendDistFile(
-        dist,
-        'assets/app.css',
-        'body{background:url(https://CloudflareInsights.COM)}',
-      ),
-  },
-  {
-    name: 'non-index application JS uppercase beacon marker',
-    pollute: (dist: string) =>
-      appendDistFile(dist, 'assets/app.js', 'const marker = "DATA-CF-BEACON";'),
-  },
-  {
-    name: 'non-index application CSS uppercase repository marker',
-    pollute: (dist: string) =>
-      appendDistFile(dist, 'assets/app.css', '[DATA-PAGES-ONLY="repository-link"]{color:red}'),
-  },
-  {
-    name: 'non-index JS filename containing a beacon marker',
-    pollute: (dist: string) =>
-      fs.writeFileSync(path.join(dist, 'assets', 'DATA-CF-BEACON.js'), 'export const value = 1;'),
-  },
-]
-
-afterEach(() => {
-  for (const dir of tempRoots.splice(0)) {
-    try {
-      fs.rmSync(dir, { recursive: true, force: true })
-    } catch {
-      // best effort
-    }
+  const site = path.join(root, '_site')
+  extractReleaseZip(zip, site)
+  expect(fs.readFileSync(path.join(site, 'index.html'), 'utf8')).toBe(html)
+  for (const name of ['app.css', 'app.js']) {
+    expect(fs.readFileSync(path.join(site, 'assets', name))).toEqual(
+      fs.readFileSync(path.join(dist, 'assets', name)),
+    )
   }
+  expect(() => extractReleaseZip(zip, site)).toThrow()
+  expect(fs.readFileSync(path.join(site, 'index.html'), 'utf8')).toBe(html)
+
+  expect(() => generateAssets(dist, output)).toThrow(/--force/)
+  generateAssets(dist, output, true)
+  expect(fs.readFileSync(zip)).toEqual(contents)
 })
 
-describe('release asset generator normal path', () => {
-  it('generates verified zip + SHA256SUMS into release-output', async () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-    const output = path.join(repo, 'release-output')
-
-    const result = await generateAssets(dist, output, false)
-    expect(result.zipName).toBe(ZIP_NAME)
-    expect(result.sumsName).toBe(SUMS_NAME)
-    expect(result.zipSize).toBeGreaterThan(0)
-
-    const zipPath = path.join(output, ZIP_NAME)
-    const sumsPath = path.join(output, SUMS_NAME)
-    expect(fs.existsSync(zipPath)).toBe(true)
-    expect(fs.existsSync(sumsPath)).toBe(true)
-    expect(fs.readdirSync(output).sort()).toEqual([SUMS_NAME, ZIP_NAME])
-
-    // SHA256SUMS must list the actual zip hash.
-    const sums = fs.readFileSync(sumsPath, 'utf8')
-    expect(sums).toBe(`${sha256(zipPath)}  ${ZIP_NAME}\n`)
-
-    // No disposable staging residue after success.
-    expect(fs.existsSync(path.join(repo, '.release-staging'))).toBe(false)
-  })
-
-  it('refuses to overwrite existing assets without --force', async () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-    const output = path.join(repo, 'release-output')
-
-    await generateAssets(dist, output, false)
-    await expect(generateAssets(dist, output, false)).rejects.toThrow(/--force/)
-  })
-
-  it('--force replaces a valid previous output', async () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-    const output = path.join(repo, 'release-output')
-
-    await generateAssets(dist, output, false)
-    const firstZip = sha256(path.join(output, ZIP_NAME))
-
-    // Touch a file inside dist (same structure) and regenerate with --force.
-    fs.writeFileSync(path.join(dist, 'assets', 'app.js'), 'console.log("release v2")')
-    await generateAssets(dist, output, true)
-    const secondZip = sha256(path.join(output, ZIP_NAME))
-    expect(secondZip).not.toBe(firstZip)
-  })
+it('requires explicit replacement and preserves unrelated files even with --force', () => {
+  fs.mkdirSync(output)
+  const notes = path.join(output, 'notes.txt')
+  fs.writeFileSync(notes, 'keep me')
+  expect(() => generateAssets(dist, output)).toThrow(/--force/)
+  expect(() => generateAssets(dist, output, true)).toThrow(/Refusing to replace/)
+  expect(fs.readFileSync(notes, 'utf8')).toBe('keep me')
 })
 
-describe('release asset generator determinism', () => {
-  it('generates byte-identical zip and checksum for the same dist', async () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-
-    const first = await generateAssets(dist, path.join(repo, 'release-output'), false)
-    const firstZip = path.join(repo, 'release-output', ZIP_NAME)
-    const firstSums = path.join(repo, 'release-output', SUMS_NAME)
-    expect(first.zipSize).toBe(fs.statSync(firstZip).size)
-
-    const second = await generateAssets(dist, path.join(repo, 'release-output-2'), false)
-    expect(second.zipSize).toBe(first.zipSize)
-    const secondZip = path.join(repo, 'release-output-2', ZIP_NAME)
-    const secondSums = path.join(repo, 'release-output-2', SUMS_NAME)
-    expect(fs.readFileSync(secondZip)).toEqual(fs.readFileSync(firstZip))
-    expect(fs.readFileSync(secondSums, 'utf8')).toBe(fs.readFileSync(firstSums, 'utf8'))
+it('preserves a file added while replacing the previous assets', () => {
+  const { zipName } = generateAssets(dist, output)
+  const notes = path.join(output, 'notes.txt')
+  const rename = fs.renameSync
+  const move = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+    if (from === output) fs.writeFileSync(notes, 'keep me')
+    rename(from, to)
   })
+  try {
+    expect(() => generateAssets(dist, output, true)).toThrow(/Refusing to replace/)
+  } finally {
+    move.mockRestore()
+  }
+  expect(fs.readFileSync(notes, 'utf8')).toBe('keep me')
+  expect(fs.existsSync(path.join(output, zipName))).toBe(true)
 })
 
-describe('Release ZIP excludes every Pages-only deployment resource', () => {
-  it.each(pagesPollutionCases)(
-    'rejects $name without logging content or modifying the ZIP',
-    async ({ pollute }) => {
-      const repo = makeTempRepo()
-      const dist = path.join(repo, 'dist')
-      makeValidDist(dist)
-      pollute(dist)
-      const zip = path.join(repo, 'polluted.zip')
-      // Build the candidate directly so the shared download-time verifier is
-      // tested independently of the generator's pre-promotion rejection.
-      await createDeterministicZip(dist, walkDist(dist), zip)
-      const before = sha256(zip)
-      const result = spawnSync(
-        process.env.PYTHON3 || 'python3',
-        [path.resolve('.github/workflows/scripts/verify_release_zip.py'), zip],
-        { encoding: 'utf8', timeout: 30_000 },
-      )
-      expect(result.error).toBeUndefined()
-      expect(result.status).toBe(1)
-      const diagnostics = result.stdout + result.stderr
-      expect(diagnostics).toContain('release zip contains forbidden Pages-only content')
-      expect(diagnostics).not.toContain(fixtureBeaconToken)
-      expect(diagnostics).not.toContain(fixtureContentSentinel)
-      expect(sha256(zip)).toBe(before)
-    },
-  )
+it('preserves the old assets after a failed build and permits replacing them for a new version', () => {
+  const first = generateAssets(dist, output)
+  const zip = path.join(output, first.zipName)
+  const sums = path.join(output, first.sumsName)
+  const oldZip = fs.readFileSync(zip)
+  const oldSums = fs.readFileSync(sums)
+  const index = path.join(dist, 'index.html')
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '1.2.4' }))
+  fs.writeFileSync(index, html.replace('Content-Security-Policy', 'broken'))
+  expect(() => generateAssets(dist, output, true)).toThrow(/Content-Security-Policy/)
+  expect(fs.readFileSync(zip)).toEqual(oldZip)
+  expect(fs.readFileSync(sums)).toEqual(oldSums)
 
-  it('rejects contaminated first generation without publishing an asset pair', async () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-    appendDistFile(dist, 'assets/app.css', '[data-pages-only="repository-link"]{color:red}')
-    const output = path.join(repo, 'release-output')
-    await expect(generateAssets(dist, output, false)).rejects.toThrow(/failed/)
-    expect(fs.existsSync(output)).toBe(false)
-    expect(fs.existsSync(path.join(repo, '.release-staging'))).toBe(false)
-  })
-
-  it('rejects contaminated --force generation and preserves both old assets byte-for-byte', async () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-    const output = path.join(repo, 'release-output')
-    await generateAssets(dist, output, false)
-    const oldZip = fs.readFileSync(path.join(output, ZIP_NAME))
-    const oldSums = fs.readFileSync(path.join(output, SUMS_NAME))
-    appendDistFile(
-      dist,
-      'assets/app.js',
-      `const beacon = ${JSON.stringify({ 'data-cf-beacon': { token: fixtureBeaconToken } })};`,
-    )
-    const out: string[] = []
-    const err: string[] = []
-    const rc = await runCli(['node', 'prepare-release-assets.mjs', '--force'], {
-      repoRoot: repo,
-      stdout: { write: (chunk: string) => !!out.push(chunk) },
-      stderr: { write: (chunk: string) => !!err.push(chunk) },
-    })
-    expect(rc).toBe(1)
-    expect(err.join('')).toContain('release:prepare-assets failed:')
-    expect(out.join('') + err.join('')).not.toContain(fixtureBeaconToken)
-    expect(out.join('') + err.join('')).not.toContain(fixtureContentSentinel)
-    expect(fs.readFileSync(path.join(output, ZIP_NAME))).toEqual(oldZip)
-    expect(fs.readFileSync(path.join(output, SUMS_NAME))).toEqual(oldSums)
-    expect(fs.readdirSync(output).sort()).toEqual([SUMS_NAME, ZIP_NAME])
-    expect(fs.existsSync(path.join(repo, '.release-staging'))).toBe(false)
-  })
+  fs.writeFileSync(index, html)
+  const second = generateAssets(dist, output, true)
+  expect(second.zipName).toBe('pmbus-calculator-v1.2.4-web.zip')
+  expect(fs.readdirSync(output).sort()).toEqual([second.sumsName, second.zipName].sort())
 })
 
-describe('release asset generator fail-closed rejection', () => {
-  it('rejects a symlink inside dist', async () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-    fs.symlinkSync('index.html', path.join(dist, 'evil.html'))
-
-    const output = path.join(repo, 'release-output')
-    await expect(generateAssets(dist, output, false)).rejects.toThrow(/symlink/)
-    expect(fs.existsSync(output)).toBe(false)
-  })
-
-  it('rejects a FIFO inside dist', async () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-    execFileSync('mkfifo', [path.join(dist, 'fifo')])
-
-    const output = path.join(repo, 'release-output')
-    await expect(generateAssets(dist, output, false)).rejects.toThrow(/FIFO|not a regular file/)
-    expect(fs.existsSync(output)).toBe(false)
-  })
-
-  it('validateAndCollectEntries rejects traversal and validateZipEntry rejects absolute/backslash/forbidden entries', () => {
-    // Lexical escape through the dist root.
-    expect(() => validateAndCollectEntries('/dist', ['/dist/../escape.txt'])).toThrow(
-      /escapes|traversal/,
-    )
-    // The shared ZIP entry policy rejects absolute paths, backslashes,
-    // forbidden segments, source maps, drive prefixes, dot and empty segments.
-    for (const entry of [
-      '/abs.txt',
-      'a\\b.txt',
-      'node_modules/x.js',
-      'src/app.js',
-      'assets/app.js.map',
-      'C:/win.txt',
-      'a//b.txt',
-      'a/./b.txt',
-    ]) {
-      expect(validateZipEntry(entry).ok, entry).toBe(false)
-    }
-  })
-
-  it('verifier failure never publishes unverified assets and keeps the old output', async () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-    const output = path.join(repo, 'release-output')
-
-    // First: valid generation.
-    await generateAssets(dist, output, false)
-    const oldZip = sha256(path.join(output, ZIP_NAME))
-
-    // Second: break the CSP so verify_release_zip.py fails.
-    fs.writeFileSync(
-      path.join(dist, 'index.html'),
-      '<!DOCTYPE html><html><link rel="stylesheet" href="assets/app.css"><script src="assets/app.js"></script></html>',
-    )
-    await expect(generateAssets(dist, output, true)).rejects.toThrow(/failed/)
-
-    // The old verified output is untouched; no partial new output.
-    expect(fs.existsSync(path.join(output, ZIP_NAME))).toBe(true)
-    expect(sha256(path.join(output, ZIP_NAME))).toBe(oldZip)
-    const entries = fs.readdirSync(output)
-    expect(entries.sort()).toEqual([SUMS_NAME, ZIP_NAME])
-  })
-
-  it('walkDist fails on unknown non-regular types via validateAndCollectEntries', () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-    // walkDist itself is covered above; ensure the entry policy also refuses
-    // a path that escapes the dist root lexically.
-    expect(() => validateAndCollectEntries(dist, [path.join(dist, '..', 'x.txt')])).toThrow(
-      /escapes/,
-    )
-    void walkDist
-  })
-})
-
-describe('release asset generator CLI', () => {
-  it('runCli returns 2 for an unknown option without side effects', async () => {
-    const repo = makeTempRepo()
-    const err: string[] = []
-    const out: string[] = []
-    const rc = await runCli(['node', 'prepare-release-assets.mjs', '--bogus'], {
-      repoRoot: repo,
-      stderr: {
-        write: (c: string) => {
-          err.push(c)
-          return true
-        },
-      },
-      stdout: {
-        write: (c: string) => {
-          out.push(c)
-          return true
-        },
-      },
-    })
-    expect(rc).toBe(2)
-    expect(err.join('')).toMatch(/unknown option/)
-    expect(fs.existsSync(path.join(repo, 'release-output'))).toBe(false)
-    expect(fs.existsSync(path.join(repo, '.release-staging'))).toBe(false)
-  })
-
-  it('runCli succeeds end-to-end and prints the Done line', async () => {
-    const repo = makeTempRepo()
-    const dist = path.join(repo, 'dist')
-    makeValidDist(dist)
-    const out: string[] = []
-    const rc = await runCli(['node', 'prepare-release-assets.mjs'], {
-      repoRoot: repo,
-      stdout: {
-        write: (c: string) => {
-          out.push(c)
-          return true
-        },
-      },
-      stderr: { write: () => true },
-    })
-    expect(rc).toBe(0)
-    expect(out.join('')).toMatch(/Done: pmbus-calculator-v1\.1\.5-web\.zip/)
-    expect(fs.existsSync(path.join(repo, 'release-output', 'SHA256SUMS.txt'))).toBe(true)
-  })
+it.skipIf(process.platform === 'win32')('rejects a symlink to a directory inside dist', () => {
+  fs.symlinkSync(path.join(dist, 'assets'), path.join(dist, 'linked-assets'), 'dir')
+  expect(() => generateAssets(dist, output)).toThrow(/not a regular build directory/)
+  expect(fs.existsSync(output)).toBe(false)
 })

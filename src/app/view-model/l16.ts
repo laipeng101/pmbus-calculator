@@ -10,6 +10,10 @@ import type { L16BlockVM, L16PayloadContextVM, VoutModeInfoVM, WarningVM } from 
 import { formatByteHex } from './format'
 import { formatPlainNumber } from '../numeric-presentation'
 import { buildVoutModeVM } from './vout-mode'
+import { SLINEAR16_OFFSET_BIT7_NOTE } from '../vout-mode-explanation'
+
+const VID_OFFSET_RESTRICTION =
+  'VID 格式下不能使用 VOUT_TRIM / VOUT_CAL_OFFSET（Part II §13.3 / §13.4）。'
 
 /**
  * Spec-accurate reason text per payload-contract status (v2.5.3). VID is
@@ -25,61 +29,45 @@ function buildL16BlockVM(
   switch (semantics.status) {
     case 'linear-supported':
       throw new Error('linear-supported states have no blocked card')
-    case 'vid-profile-required': {
-      const detailLines = [
-        'VID 是规范支持的输出电压数据格式（Part II §8.4.2），不是被禁止的数据格式。当前页面未选定任何 VID 表或产品 profile，无法在 VID 码与物理电压之间换算，也不允许借用 LINEAR16 指数 N 计算。',
-      ]
-      if (semantics.vidCodeKind === 'profile-required') {
-        detailLines.push(
-          `${byteHex} 的 VID code 为制造商自定义；码表与电压映射必须来自器件资料，本页不提供。`,
-        )
-      }
+    case 'vid-profile-required':
       return {
         status: semantics.status,
         title: `VOUT_MODE ${byteHex} 为 VID 格式（${semantics.vidCodeLabel}）`,
-        detailLines,
+        detail:
+          semantics.vidCodeKind === 'profile-required'
+            ? '请查器件资料中的 VID 码表，用原始数据字查找对应电压（Part II §8.4.2）。'
+            : '此 VID 代码类型没有可用的电压映射。请核对器件的 VOUT_MODE 字节（Part II §8.4.2）。',
       }
-    }
     case 'vid-offset-prohibited':
       return {
         status: semantics.status,
-        title: `VOUT_MODE ${byteHex} 为 VID 格式：二补码偏移命令被禁止`,
-        detailLines: [
-          '当前解释类型 SLINEAR16（二补码偏移）对应 VOUT_TRIM / VOUT_CAL_OFFSET 的命令语义；这两类命令在 VID 输出电压格式下被规范明确禁止（Part II §13.3 / §13.4），器件必须拒绝。该命令组合被禁止，本页不生成 word。',
-          '禁止范围仅限这两条二补码偏移命令：VID 本身对其他输出电压相关命令（如 VOUT_COMMAND）是合法数据格式（Part II §8.4.2）。',
-        ],
+        title: `VOUT_MODE ${byteHex} 为 VID 格式，无法换算电压偏移`,
+        detail: `${VID_OFFSET_RESTRICTION} 若器件使用 LINEAR 格式，请输入该器件的 VOUT_MODE 字节。`,
       }
     case 'vid-relative-invalid':
       return {
         status: semantics.status,
-        title: `VOUT_MODE ${byteHex} 为相对 + VID 非法组合`,
-        detailLines: [
-          '相对数据格式不适用于 VID（Part II §8.5.3），该 VOUT_MODE 字节组合本身无效。本页不生成 word，也不显示相对比值结果。',
-        ],
+        title: `VOUT_MODE ${byteHex} 的相对值和 VID 组合无效`,
+        detail: 'VID 只支持绝对值（Part II §8.5.3）。请核对器件的 VOUT_MODE 字节。',
       }
     case 'direct-profile-required':
       return {
         status: semantics.status,
         title: `VOUT_MODE ${byteHex} 为 DIRECT 格式`,
-        detailLines: [
-          'DIRECT 需要 m / b / R 系数（来自 COEFFICIENTS 或器件资料）才能建立 word 与物理量的映射（Part II §7.4 / §8.4.3）。LINEAR16 页未实现 DIRECT 输出电压解释：不猜测系数，也不借用 LINEAR16 指数 N。本页不生成 word。',
-        ],
+        detail:
+          '从 COEFFICIENTS 或器件数据手册取得 m、b、R 系数后，在 DIRECT 页换算原始数据字（Part II §7.4、§8.4.3）。',
       }
     case 'half-unsupported-in-l16':
       return {
         status: semantics.status,
         title: `VOUT_MODE ${byteHex} 为 ${formatName} 格式`,
-        detailLines: [
-          'IEEE Half 是合法的输出电压数据格式（Part II §8.4.4），但本页只实现 LINEAR16 解释：不做 Half 解码/编码，也不借用 LINEAR16 指数 N（HALF 模式页可做该格式的数学换算）。本页不生成 word。',
-        ],
+        detail: '请切换到 HALF 页，按 IEEE 754 binary16 换算原始数据字（Part II §8.4.4）。',
       }
     case 'reserved-or-invalid':
       return {
         status: semantics.status,
         title: `VOUT_MODE ${byteHex} 的参数无效`,
-        detailLines: [
-          `${formatName} 格式的参数位必须为 00000b（PMBus Part II §8.3 表 2）。请检查器件的 VOUT_MODE 字节。`,
-        ],
+        detail: `${formatName} 格式的参数位必须为 00000b（PMBus Part II §8.3 表 2）。请检查器件的 VOUT_MODE 字节。`,
       }
   }
 }
@@ -162,9 +150,8 @@ export function buildL16VoutModeInfo(state: AppState): VoutModeInfoVM {
     vm.explanations.unshift({
       id: 'slinear16-bit7-na',
       severity: 'info',
-      title: 'bit7 对本 payload 不适用',
-      detail:
-        'SLINEAR16 offset 使用 16 位二补码 payload，bit7 只作用于 §8.5 的 8 个输出电压相关命令，不参与 X_offset = Y_s × 2^N；选择 offset 语义不会把公式切成“有符号比例”。',
+      title: '第 7 位不影响电压偏移',
+      detail: SLINEAR16_OFFSET_BIT7_NOTE,
       specRef: 'Part II §13.3 / §13.4 / §8.5',
     })
   }
@@ -190,7 +177,7 @@ export function resolveL16NonlinearWarnings(state: AppState): WarningVM[] {
     warnings.push({
       id: 'vout-mode-vid-offset-prohibited',
       level: 'error',
-      text: `SLINEAR16 偏移 payload 对应 VOUT_TRIM / VOUT_CAL_OFFSET，这两类命令在 VID 输出电压格式下被规范禁止（Part II §13.3 / §13.4）；本页不生成 word。`,
+      text: VID_OFFSET_RESTRICTION,
     })
   }
   return warnings

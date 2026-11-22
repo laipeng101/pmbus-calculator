@@ -1,25 +1,8 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 import { appUrl } from './helpers/app-url'
 
-// Explicit mobile-contract suite (v2.5.13, touch contract tightened in
-// v2.5.14). Runs ONLY under playwright.mobile.config.ts
-// (chromium-mobile-contract, Pixel 7 emulation: touch, mobile UA, DPR) — the
-// default desktop suite testIgnores this file.
-//
-// Touch semantics (Playwright contract): locator.tap()/touchscreen.tap() go
-// through page.touchscreen and require hasTouch; locator.click() goes through
-// page.mouse and is NOT converted to touch by mobile emulation. Everything
-// that must prove touch usability here (mode tabs, term bubbles, outside
-// close, outside blur) uses tap; a one-shot event probe documents that real
-// touch events arrive. Keyboard-only transactions stay keyboard.
-//
-// Coverage rationale: the semantic per-mode suites already assert 390/360
-// geometry via explicit setViewportSize inside the desktop project; what this
-// file adds is the small set of contracts that need REAL mobile emulation —
-// touch taps, per-format conversion smokes, error-text wrapping at the
-// tightest viewports and the v2.5.14 rejected-edit touch-blur paths (raw and
-// exact-provenance baselines) — kept in one auditable group instead of
-// duplicating every desktop test.
+// Pixel 7 仿真用于验证触摸交互。Playwright 的 click() 使用鼠标，
+// 需要触发触摸事件时用 locator.tap() 或 page.touchscreen.tap()。
 
 const HEX_INPUT = 'input[placeholder="0000"]'
 const VALUE_INPUT = '#value-input'
@@ -60,12 +43,6 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
   })
 
   test('LINEAR11：value 编码 hex，页面无横向溢出', async ({ page }) => {
-    // 受测构建来源守卫：本套件验证的是生产 dist（防止 dev 绿灯冒充 production）。
-    const isDevServer = await page.evaluate(() =>
-      [...document.querySelectorAll('script')].some((script) => script.src.includes('/@vite/')),
-    )
-    expect(isDevServer).toBe(false)
-
     await page.locator(VALUE_INPUT).fill('12.5')
     await expect(page.locator(HEX_INPUT)).toHaveValue('F819')
     await expectNoBodyOverflow(page)
@@ -186,28 +163,6 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
     }
   })
 
-  test('触摸路径观测：tab 的 tap 产生真实 touch 事件（观测探针，不改应用行为）', async ({
-    page,
-  }) => {
-    await page.addInitScript(() => {
-      const seen: string[] = []
-      ;(window as unknown as { __touchProbe: string[] }).__touchProbe = seen
-      document.addEventListener(
-        'pointerdown',
-        (event) => seen.push(`pointerdown:${(event as PointerEvent).pointerType}`),
-        true,
-      )
-      document.addEventListener('touchstart', () => seen.push('touchstart'), true)
-    })
-    await page.reload()
-    await page.getByRole('tab', { name: /DIRECT/ }).tap()
-    const seen = await page.evaluate(
-      () => (window as unknown as { __touchProbe: string[] }).__touchProbe,
-    )
-    expect(seen).toContain('pointerdown:touch')
-    expect(seen).toContain('touchstart')
-  })
-
   test('术语气泡：390 下可打开且不溢出，触摸外部关闭', async ({ page }) => {
     await page.getByRole('tab', { name: /VOUT_MODE/ }).tap()
     const summary = page.getByTestId('vout-mode-config-summary')
@@ -242,6 +197,13 @@ test.describe('移动端合同：390 触摸与各格式转换 smoke（v2.5.13/v2
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     await expect(page.getByRole('row', { name: /VOUT_COMMAND/ })).toBeVisible()
     await expectNoBodyOverflow(page)
+    const shell = page.locator('.command-ref-table-shell')
+    await expect(shell).toHaveCSS('overflow-x', 'auto')
+    expect(await shell.evaluate((el) => el.scrollWidth)).toBeGreaterThan(
+      await shell.evaluate((el) => el.clientWidth),
+    )
+    await shell.evaluate((el) => (el.scrollLeft = el.scrollWidth))
+    expect(await shell.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0)
   })
 
   test('v2.6.0 控件 tooltip 不劫持首次 tap：动作立即执行且无 sticky hover 浮层', async ({

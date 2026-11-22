@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -54,7 +56,7 @@ describe('useEditTransaction', () => {
 
   afterAll(() => {
     if (root && container) {
-      root.unmount()
+      act(() => root?.unmount())
       container.remove()
     }
   })

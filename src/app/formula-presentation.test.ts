@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getFormulaPresentation } from './formula-presentation'
 import { toCalculatorViewModel } from './view-model'
-import { buildCMacro } from './copy-utils'
 import type { AppState } from './state'
 import { INITIAL_STATE } from './reducer'
 
@@ -80,6 +79,7 @@ describe('formula presentation model', () => {
     const f = formula(state({ mode: 'HALF', raw: 0x7e00 }))
     expect(f.plainText).toBe('HALF NaN (E=31,F=512)')
     expect(f.latex).toBe('X = \\text{NaN} \\quad (E=31,\\ F=512)')
+    expect(f.equationLatex).toBe('X = \\text{NaN}')
   })
 
   it('HALF zero decomposes sign and value for +0 and -0', () => {
@@ -102,47 +102,49 @@ describe('formula presentation model', () => {
     expect(subnormal.latex).toBe(
       'X = (-1)^{0} \\times 2^{-14} \\times \\frac{1}{2^{10}} = 5.96046447754e-8',
     )
-
-    const normal = formula(state({ mode: 'HALF', raw: 0x3c00 }))
-    expect(normal.plainText).toBe('HALF normal (-1)^{0}×2^(15-15)×(1+0/1024)=1')
-    expect(normal.latex).toBe(
-      'X = (-1)^{0} \\times 2^{15-15} \\times \\left(1 + \\frac{0}{2^{10}}\\right) = 1',
+    expect(subnormal.equationLatex).toMatch(
+      /2\^\{-14\}.*\\frac\{1\}\{2\^\{10\}\} = 5\.96046447754e-8$/,
     )
+
+    const normal = formula(state({ mode: 'HALF', raw: 0x7bff }))
+    expect(normal.plainText).toBe('HALF normal (-1)^{0}×2^(30-15)×(1+1023/1024)=65504')
+    expect(normal.latex).toBe(
+      'X = (-1)^{0} \\times 2^{30-15} \\times \\left(1 + \\frac{1023}{2^{10}}\\right) = 65504',
+    )
+    expect(normal.equationLatex).toContain('= 65504')
   })
 
   it('HALF infinities and NaN expose E/F fields', () => {
     const plusInf = formula(state({ mode: 'HALF', raw: 0x7c00 }))
     expect(plusInf.plainText).toBe('HALF +Infinity (E=31,F=0)')
     expect(plusInf.latex).toBe('X = (-1)^{0} \\times \\infty = +\\infty \\quad (E=31,\\ F=0)')
+    expect(plusInf.equationLatex).toContain('= +\\infty')
 
     const minusInf = formula(state({ mode: 'HALF', raw: 0xfc00 }))
     expect(minusInf.plainText).toBe('HALF -Infinity (E=31,F=0)')
     expect(minusInf.latex).toBe('X = (-1)^{1} \\times \\infty = -\\infty \\quad (E=31,\\ F=0)')
+    expect(minusInf.equationLatex).toContain('= -\\infty')
   })
 
   it('canonical equation is symbolic -> substitution -> final result', () => {
-    const l11 = formula(state({ mode: 'L11', raw: 0x3ce6 }))
-    expect(l11.equationPlainText).toBe('X = Y × 2^N = -794 × 2^7 = -101632')
-    expect(l11.equationLatex).toBe('X = Y \\times 2^N = -794 \\times 2^{7} = -101632')
+    const l11 = formula(state({ mode: 'L11', raw: 0xa3c1 }))
+    expect(l11.equationPlainText).toBe('X = Y × 2^N = 961 × 2^-12 = 0.234619140625')
+    expect(l11.equationLatex).toBe('X = Y \\times 2^N = 961 \\times 2^{-12} = 0.234619140625')
 
-    const l16 = formula(state({ mode: 'L16', raw: 0x3ce6, voutMode: { byte: 0x18 } }))
-    expect(l16.equationPlainText).toBe('X = V × 2^N = 15590 × 2^-8 = 60.8984375')
-    expect(l16.equationLatex).toBe('X = V \\times 2^N = 15590 \\times 2^{-8} = 60.8984375')
+    const l16 = formula(state({ mode: 'L16', raw: 0x8fc3, voutMode: { byte: 0x13 } }))
+    expect(l16.equationPlainText).toBe('X = V × 2^N = 36803 × 2^-13 = 4.49255371094')
+    expect(l16.equationLatex).toBe('X = V \\times 2^N = 36803 \\times 2^{-13} = 4.49255371094')
 
-    const directRow = formula(state({ mode: 'DIRECT', raw: 0x3ce6, direct: direct(1, 0, 0) }))
-    expect(directRow.equationPlainText).toBe(
-      'X = (1/m) × (Y × 10^(-R) − b) = (1/1)×(15590×10^0-0) = 15590',
-    )
+    const directRow = formula(state({ mode: 'DIRECT', raw: 0x8fc3, direct: direct(1, 0, 12) }))
+    expect(directRow.plainText).toBe('X=(1/1)×((-28733)×10^(-12)-0)')
     expect(directRow.equationLatex).toBe(
-      'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right) = \\frac{1}{1}\\left(15590 \\times 10^{0} - 0\\right) = 15590',
+      'X = \\frac{1}{m}\\left(Y \\times 10^{-R} - b\\right) = \\frac{1}{1}\\left((-28733) \\times 10^{-12} - 0\\right) = -2.8733e-8',
     )
 
-    const half = formula(state({ mode: 'HALF', raw: 0x3ce6 }))
-    expect(half.equationPlainText).toBe(
-      'X = (-1)^s × 2^(E−15) × (1 + F/1024) = (-1)^0 × 2^(15−15) × (1 + 230/1024) = 1.224609375',
-    )
+    const half = formula(state({ mode: 'HALF', raw: 0x8fc3 }))
+    expect(half.plainText).toBe('HALF normal (-1)^{1}×2^(3-15)×(1+963/1024)=-0.000473737716675')
     expect(half.equationLatex).toBe(
-      'X = (-1)^{\\textstyle s} \\times 2^{E-15} \\times \\left(1 + \\frac{F}{2^{10}}\\right) = (-1)^{\\textstyle 0} \\times 2^{15-15} \\times \\left(1 + \\frac{230}{2^{10}}\\right) = 1.224609375',
+      'X = (-1)^{\\textstyle s} \\times 2^{E-15} \\times \\left(1 + \\frac{F}{2^{10}}\\right) = (-1)^{\\textstyle 1} \\times 2^{3-15} \\times \\left(1 + \\frac{963}{2^{10}}\\right) = -0.000473737716675',
     )
   })
 
@@ -205,14 +207,11 @@ describe('formula presentation model', () => {
     expect(f.equationPlainText).not.toContain('N =')
   })
 
-  it('existing formulaText and C macro output remain compatible', () => {
+  it('keeps the L11 formula in plain text and LaTeX', () => {
     const s = state({ mode: 'L11', raw: 0x000c })
     const vm = toCalculatorViewModel(s)
     expect(vm.formulaText).toBe('Y=12 × 2^0')
     expect(vm.formulaLatex).toBe('X = Y \\times 2^N = 12 \\times 2^{0}')
-    expect(buildCMacro('VOUT_COMMAND', vm.rawWordHex, vm.formulaText)).toBe(
-      '#define VOUT_COMMAND 0x000C /* Y=12 × 2^0 */',
-    )
   })
 
   it('KaTeX templates only use the safe common subset', () => {

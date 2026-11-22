@@ -301,8 +301,8 @@ test.describe('v2.5.4 L16 page — IEEE Half block card never claims a profile',
       await expect(page.locator('#value-input')).toHaveCount(0)
       await expect(page.locator('[data-testid="result-value"]')).toContainText('—')
       const card = page.locator('.workspace-l16-block')
-      await expect(card).toContainText('IEEE Half 是合法的输出电压数据格式')
-      await expect(card).toContainText('HALF 模式页')
+      await expect(card).toContainText('切换到 HALF 页')
+      await expect(card).toContainText('IEEE 754 binary16')
       // The v2.5.3 L16 card was already correct — pin it against regression.
       expectNoHalfProfileCopy(await card.innerText(), `L16 block card 0x${hex}`)
 
@@ -354,11 +354,8 @@ test.describe('v2.5.5 VOUT_MODE legality — structural validity is separate fro
 
       // Normalize must not rewrite a legal manufacturer-specific byte.
       const before = await page.getByTestId('vout-mode-byte').innerText()
-      const normalize = page.getByRole('button', { name: /规范化|Normalize/ })
-      if ((await normalize.count()) > 0) {
-        await normalize.click()
-        await expect(page.getByTestId('vout-mode-byte')).toHaveText(before)
-      }
+      await page.getByRole('button', { name: '修正配置字节' }).click()
+      await expect(page.getByTestId('vout-mode-byte')).toHaveText(before)
     }
   })
 

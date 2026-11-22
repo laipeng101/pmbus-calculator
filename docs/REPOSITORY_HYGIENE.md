@@ -1,4 +1,4 @@
-# 仓库卫生
+# 文件跟踪与清理
 
 - 跟踪源码、配置、测试、锁文件、现行文档与产品实际引用的资源。按 [UI 约定](UI_CONVENTIONS.md#11-视觉基线治理)跟踪 Playwright 视觉基线，按[兼容性说明](LEGACY_COMPATIBILITY.md)保留旧版单文件。
 - 构建输出、覆盖率、测试报告、失败截图、调试记录与代理会话放在忽略目录或临时位置。CI 失败报告作为短期 Artifact。发行 ZIP 与校验和由 GitHub Releases 分发。
@@ -12,6 +12,6 @@ npm run clean -- --dry-run
 npm run clean
 ```
 
-清理命令只处理 [`scripts/clean-generated.mjs`](../scripts/clean-generated.mjs) 列出的可重建目标，其中包括规范缓存。先检查 dry-run，再按需清理。诊断所需报告和用户文件应保留。
+清理命令覆盖 [`scripts/clean-generated.mjs`](../scripts/clean-generated.mjs) 列出的生成目录，包括规范缓存。用 `--dry-run` 可以查看本次会删除的路径。
 
-修改 Playwright 输出路径时同步 Playwright 配置、[`.gitignore`](../.gitignore)、清理脚本及 [hygiene 门禁](../scripts/check-repo-hygiene.mjs)。一致性由 [产物路径测试](../tests/playwright-artifacts-consistency.test.ts)覆盖。
+修改 Playwright 输出路径时，同步检查 [`.gitignore`](../.gitignore)、清理脚本和[跟踪文件检查](../scripts/check-repo-hygiene.mjs)。

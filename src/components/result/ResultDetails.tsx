@@ -41,7 +41,7 @@ export default function ResultDetails({ vm, copyPrefs, onTogglePrefix, onToggleS
             {/* Canonical Raw Word */}
             <div className="min-w-0">
               <div className="mb-1 text-xs color-text-muted">
-                Raw Word（
+                原始数据字（
                 <TechnicalTerm termId="raw-word" />）
               </div>
               {/* Read-only canonical Raw Word display: deliberately the muted

@@ -4,19 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/**
- * Generated targets the cleaner may remove. release-output/ and the
- * disposable .release-staging/ staging root are build outputs: they can be
- * deleted and regenerated at any time (no lock, no journal, no recovery).
- *
- * Every Playwright config (default, mobile, release, deployment, visual)
- * writes an outputDir, an HTML report folder and a JSON reporter file under
- * tests/e2e/ — all listed here so local artifacts and the tracked tree stay
- * in sync (v2.5.14; the mobile suite and the reporter JSONs used to be
- * missing, so a dry run left them behind). JSON entries are single regular
- * files; the preflight still refuses anything that is not a file or a
- * directory.
- */
+/** Build, test, and local release output paths that the cleaner can remove. */
 export const GENERATED_TARGETS = [
   'dist',
   'build',
@@ -51,12 +39,7 @@ export const GENERATED_TARGETS = [
   '.release-staging',
 ]
 
-// Playwright JSON reporter artifacts are expected to be single regular files.
-// A directory at one of these paths is refused instead of recursively removed
-// (v2.5.14 masquerade guard). Targets of the default allowlist that are not
-// file targets are expected to be directories; a regular file at one of those
-// paths is refused as well. Custom target lists passed via options keep the
-// historical permissive behavior for both kinds.
+// Refuse to delete directories at paths reserved for JSON reports.
 export const GENERATED_FILE_TARGETS = new Set([
   'tests/e2e/e2e-results.json',
   'tests/e2e/e2e-results-mobile.json',

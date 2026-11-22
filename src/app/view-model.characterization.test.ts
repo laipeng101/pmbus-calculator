@@ -13,7 +13,6 @@ import type { AppState } from './state'
 const BASE: AppState = {
   mode: 'L11',
   raw: 0,
-  commandKey: null,
   voutMode: { byte: 0x18 },
   l11: { n: 0, y: 0, autoN: true, valueInput: null },
   valueRequest: null,
@@ -167,22 +166,6 @@ describe('HALF characterization', () => {
   })
 })
 
-describe('command reference characterization', () => {
-  test('follows_vout_mode command announces its format source as info', () => {
-    const vm = toCalculatorViewModel(make({ commandKey: 'VOUT_COMMAND' }))
-    expect(vm.commandNote).toContain('跟随 VOUT_MODE')
-    const ids = vm.warnings.filter((w) => w.id.startsWith('cmd-')).map((w) => `${w.id}:${w.level}`)
-    expect(ids).toEqual(['cmd-note:info', 'cmd-follows-vout-mode:info'])
-  })
-
-  test('device_defined command keeps the datasheet requirement as info', () => {
-    const vm = toCalculatorViewModel(make({ commandKey: 'READ_VIN' }))
-    expect(vm.commandNote).toContain('需要器件数据手册')
-    const ids = vm.warnings.filter((w) => w.id.startsWith('cmd-')).map((w) => `${w.id}:${w.level}`)
-    expect(ids).toEqual(['cmd-note:info', 'cmd-device-defined:info'])
-  })
-})
-
 describe('VOUT_MODE byte warning copy characterization', () => {
   test('vid-not-used code 00h warns without a VID profile', () => {
     const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x20 } }))
@@ -204,17 +187,6 @@ describe('VOUT_MODE byte warning copy characterization', () => {
     const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x25 } }))
     expect(vm.warnings.map((w) => `${w.id}:${w.level}`)).toEqual(['vout-mode-vid-reserved:warning'])
     expect(vm.warnings[0].text).toContain('Table 3 未列出')
-  })
-
-  test('command notes are appended after the byte-level warnings, in order', () => {
-    const vm = toCalculatorViewModel(
-      make({ mode: 'VOUT_MODE', voutMode: { byte: 0x20 }, commandKey: 'VOUT_COMMAND' }),
-    )
-    expect(vm.warnings.map((w) => w.id)).toEqual([
-      'vout-mode-vid-not-used',
-      'cmd-note',
-      'cmd-follows-vout-mode',
-    ])
   })
 })
 

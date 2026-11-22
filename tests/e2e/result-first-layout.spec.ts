@@ -235,19 +235,4 @@ test.describe('M36 disclosure 与命令参考', () => {
     await page.keyboard.press(' ')
     await expect(details).not.toHaveAttribute('open')
   })
-
-  test('命令参考默认折叠只显示按钮；展开后说明与 13 行表格可见', async ({ page }) => {
-    await settle(page)
-    const toggle = page.locator('#command-reference-toggle')
-    const hint = page.locator('.command-ref-hint')
-
-    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    await expect(hint).toHaveCount(0)
-    await expect(page.getByRole('row')).toHaveCount(0)
-
-    await toggle.click()
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    await expect(hint).toBeVisible()
-    await expect(page.getByRole('row')).toHaveCount(14)
-  })
 })

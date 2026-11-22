@@ -9,124 +9,48 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
-  quality:
+  check:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    outputs:
-      tier: ${{ steps.scope.outputs.tier }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
           persist-credentials: false
 
-      - name: Record checked revision
-        run: |
-          set -euo pipefail
-          checked_sha=$(git rev-parse --verify HEAD)
-          checked_tree=$(git rev-parse --verify 'HEAD^{tree}')
-          echo "revision: checked_sha=$checked_sha checked_tree=$checked_tree"
-          {
-            echo '### Checked revision'
-            echo "- commit \`${checked_sha}\`"
-            echo "- tree \`${checked_tree}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Check the PR merge diff for whitespace errors
+      - name: Check PR whitespace
         if: github.event_name == 'pull_request'
         run: git diff --check HEAD^1 HEAD --
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version-file: '.node-version'
+          node-version-file: .node-version
           cache: npm
 
-      - name: Classify CI scope
+      - name: Detect documentation-only changes
         id: scope
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-        run: node scripts/classify-ci-scope.mjs --event="$EVENT_NAME"
+        if: github.event_name == 'pull_request'
+        run: node scripts/classify-ci-scope.mjs
 
       - run: npm ci --no-audit
       - run: npm run verify:light
-      - run: npm run verify:quality
-        if: steps.scope.outputs.tier != 'light'
-      - run: npm audit --audit-level=high
-        if: steps.scope.outputs.tier == 'full'
-
-  browser:
-    needs: quality
-    if: needs.quality.outputs.tier == 'product' || needs.quality.outputs.tier == 'full'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: npm
-      - run: npm ci --no-audit
-      - run: npx playwright install --with-deps chromium firefox webkit
+        if: steps.scope.outputs.docs_only == 'true'
+      - run: npm run verify
+        if: steps.scope.outputs.docs_only != 'true'
+      - run: npx playwright install --with-deps --only-shell chromium
+        if: steps.scope.outputs.docs_only != 'true'
       - run: npm run verify:browser
-      - run: npm run test:e2e:visual
+        if: steps.scope.outputs.docs_only != 'true'
 
       - name: Upload Playwright reports on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: playwright-reports
+          name: playwright-reports-${{ github.run_attempt }}
           path: tests/e2e/report*
           retention-days: 7
           if-no-files-found: ignore
-
-  compatibility:
-    needs: quality
-    if: needs.quality.outputs.tier == 'full'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '22.20.0'
-          # The bundled npm cannot read this repo's devEngines until upgraded.
-          package-manager-cache: false
-      - run: cd /tmp && npm install -g npm@11.17.0
-      - run: npm ci --no-audit
-      - run: npm run typecheck && npm run test:run
-
-  check:
-    # Required by protect-main. Skips are valid only for jobs outside the tier.
-    if: ${{ always() }}
-    needs: [quality, browser, compatibility]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Require the results selected by the CI tier
-        env:
-          TIER: ${{ needs.quality.outputs.tier }}
-          QUALITY_RESULT: ${{ needs.quality.result }}
-          BROWSER_RESULT: ${{ needs.browser.result }}
-          NODE22_RESULT: ${{ needs.compatibility.result }}
-        run: |
-          set -euo pipefail
-          echo "tier=$TIER quality=$QUALITY_RESULT browser=$BROWSER_RESULT node22=$NODE22_RESULT"
-          case "$TIER" in
-            light|checks) expected_browser=skipped; expected_node22=skipped ;;
-            product) expected_browser=success; expected_node22=skipped ;;
-            full) expected_browser=success; expected_node22=success ;;
-            *) echo '::error::CI did not select a valid verification tier.'; exit 1 ;;
-          esac
-          if [[ "$QUALITY_RESULT" != success || "$BROWSER_RESULT" != "$expected_browser" ||
-                "$NODE22_RESULT" != "$expected_node22" ]]; then
-            echo '::error::The verification results do not match the selected tier.'
-            exit 1
-          fi

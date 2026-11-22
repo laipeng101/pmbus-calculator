@@ -1,5 +1,5 @@
 {
-  "description": "M29 WP-E: shared ZIP entry contract fixture. Every entry must produce an IDENTICAL verdict across the three layers: JS validateZipEntry (scripts/release-artifact-contract.mjs), scripts/_zip_helper.py, and .github/workflows/scripts/verify_release_zip.py. Windows drive absolute / drive-relative and UNC paths must be rejected by all three layers.",
+  "description": "Path rules shared by the ZIP reader and the Pages staging tree.",
   "legal": ["index.html", "assets/app.js", "assets/file with spaces.js", "资产/页面.js"],
   "illegal": [
     {

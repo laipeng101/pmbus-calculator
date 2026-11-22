@@ -102,19 +102,7 @@
   不变；消除的是「exact → binary64 → 回录」的不可逆精度折叠。m=0 时
   精确参照返回 invalid，不伪造有理数；lexeme 不是完整十进制时 reducer
   fail-closed（UI 路径经 `classifyFloatText` 不可达）。
-- **精确参照与文本回录事实单一来源（v2.5.11；v3.1.1 统一为显示文本合同）**：
-  `src/app/direct-exact.ts` 提供 §7.4 的精确解码有理数（分母恒正、约分）、
-  真实 binary64 管线的回程分析（诊断保留）与经验证的安全回录文本生成
-  （终止小数优先精确展开；循环有理数用有界经验证近似——候选串必须经
-  独立 parse + exact encode 回到原 Y，否则返回 null 触发安全降级，并以
-  `exact`/`approximate` kind 如实标注文本性质）。
-  v3.1.1 起保真谓词由 `analyzeDirectTextReentry` 单一回答：**显示文本**
-  （`formatPlainNumber` 对 binary64 解码的 canonical 呈现，与结果卡/输入框/
-  复制同源）经与 reducer 完全相同的 typed 合同（classify → 精确 parse →
-  精确 encode）回编是否回到当前 Y。binary64 管线回程只是诊断——它对显示
-  格式化折叠全盲（(1,1,12) 全族 0 触发而 29491/65536 复制不安全）。
-  该模块是 fidelity 判断的单一来源；组件与测试不得用浮点比较或 binary64
-  guard 自行推导回录安全。
+- `analyzeDirectTextReentry` 使用和 reducer 相同的十进制解析及精确编码，判断重新输入显示文本是否改变当前 `Y`。需要其他复制文本时，优先选择精确的有限小数，否则选择能编码回原值的近似小数。设计原因见 [ADR 0007](adr/0007-direct-text-reentry-contract.md)。
 - **重新输入显示值会改变编码时**，视图模型通过 `directFidelity` 提供精确有理数、有限十进制值（若有）、
   近似显示值、重新编码得到的 Y，以及经精确编码验证的复制文本。`lossKind` 区分浮点表示精度有限
   (`binary64-representation`，如 `m=1,b=1,R=17`) 和显示位数有限
@@ -306,26 +294,12 @@
   一并移除；持久化层不再读取 `pmbus-calculator:byteOrder` 键与旧 copy JSON 中的
   `endian` 字段，旧存储中的这些遗留值被显式忽略，不得污染新状态。
 
-## 5. 命令与 profile
+## 5. 命令参考
 
-- 命令字典唯一数据源：`src/legacy/command-metadata.ts`。
-- 标准命令定义声明：
-  - `cmd`：命令码
-  - `transactions`：可同时表达读/写事务，如 `{ write: { type: 'write_word', dataBytes: 2 }, read: { type: 'read_word', dataBytes: 2 } }`
-  - `valueType`：`scalar` | `status` | `block`
-  - `units`：物理单位或位字段标记；标准定义不固定 FAN_COMMAND_1 为 RPM（依 FAN_CONFIG_1_2）
-  - `spec`：规范章节（Part II 命令章节 + Appendix I Table 31）
-  - `encodingRule`：`follows_vout_mode` | `device_defined` | `status` | `block`
-- 命令参考面板是只读的：只显示命令码、事务、数据类型、单位、格式来源与规范章节；
-  选择命令不能可靠推导数据格式（器件数据手册或 VOUT_MODE 决定），因此参考面板不参与
-  模式切换、参数注入或结果计算，也不提供任何 preset 应用入口。
-- `command/set` 仅为状态层兼容保留，不得切换模式、加载参数或重编码 raw；
-  `command/apply-preset` 已从产品面移除。
-- DIRECT 系数必须以具体器件数据手册为准；没有真实来源时禁止内置虚构系数。
-- `STATUS_WORD` 是状态位摘要（`encodingRule: status`），`READ_EIN` 是 block read（`encodingRule: block`），均不分配数值转换模式。
-- `STATUS_WORD` 通常为 Read Word；特殊写入仅用于清除 UNKNOWN 位（写 0x0100），其他状态位通过底层状态寄存器或 `CLEAR_FAULTS` 处理；不得写成“写入可清除所有状态位”。
-- `READ_EIN` 存在规范内部冲突：Part II §18.13 描述 6 个数据字节（accumulator 2 + rollover 1 + sample count 3），Appendix I Table 31 列为 5。实现使用 `dataBytesConflict` 显式记录两个来源，不在 UI 中提供单一权威数字；计算器不是 READ_EIN packet-length authority。
-- 当前实现基线为 PMBus Rev 1.3（官方来源与校验信息见 `document/specifications.json`；规范 PDF 不再随源码树分发）。官方 Rev 1.3.1 仍保留上述冲突；官方当前版本为 1.5，但本仓库不评估或声明 1.5 兼容性，未来规范升级列为独立 backlog。
+只读命令表取自 [`command-metadata.ts`](../src/legacy/command-metadata.ts)。每条定义记录命令码、读写事务和数据字节数、数据类型、单位、格式来源及规范章节。格式由 `VOUT_MODE` 或器件决定时，按表中指引核对。DIRECT 系数以具体器件手册为准。
+
+- `STATUS_WORD` 是状态位摘要。通常用 Read Word 读取。写入 `0x0100` 只清除 UNKNOWN 位。其他状态位按对应状态寄存器或 `CLEAR_FAULTS` 的规则处理。
+- `READ_EIN` 使用 Block Read。Part II §18.13 描述 6 个数据字节（累加值 2、溢出计数 1、采样数 3），Appendix I Table 31 列为 5。`dataBytesConflict` 保存这两个来源，界面从该结构生成说明。
 
 ## 6. 格式编码量化误差（format-encoding quantization）
 

@@ -7,7 +7,6 @@ import {
   composeVoutMode,
   CALCULATOR_LINEAR_EXAMPLE_VOUT_MODE,
 } from '../legacy/vout-mode'
-import { getCommandConfig } from '../legacy/command-metadata'
 import { parseHexStrict } from './hex-parse'
 import { parseIntegerStrict } from './int-parse'
 import { classifyFloatText } from './float-parse'
@@ -195,17 +194,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       }
       return withoutValueRequest({ ...state, mode: action.mode })
     }
-
-    case 'command/set':
-      // Kept for state-level compatibility only; the UI command reference is
-      // read-only and never dispatches this action.  It must not switch modes
-      // or rewrite raw.
-      return action.commandKey === null
-        ? { ...state, commandKey: null }
-        : {
-            ...state,
-            commandKey: getCommandConfig(action.commandKey) ? action.commandKey : state.commandKey,
-          }
 
     case 'raw/set-from-hex': {
       const parsed = parseHexStrict(action.hex, 4)

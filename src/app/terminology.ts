@@ -123,10 +123,10 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
   },
   'abs-rel': {
     id: 'abs-rel',
-    token: 'Absolute / Relative',
-    name: '绝对值 / 相对值',
+    token: '绝对值或相对值',
+    name: '输出电压的表示方式',
     detail:
-      'VOUT_MODE bit7 的语义开关（Part II §8.5），只作用于规范列出的 8 个输出电压命令（VOUT_MARGIN_HIGH/LOW、VOUT_OV/UV_FAULT/WARN_LIMIT、POWER_GOOD_ON/OFF）。相对值按当前 VOUT_MODE 格式解释，实际阈值 = 相对值 × VOUT_COMMAND 标称值；VID 格式不支持 Relative（§8.5.3）。',
+      'VOUT_MODE 的第 7 位仅影响规范所列的 8 条命令（Part II §8.5），包括 VOUT_MARGIN_HIGH/LOW、VOUT_OV/UV_FAULT/WARN_LIMIT 和 POWER_GOOD_ON/OFF。使用相对值时，将它乘以 VOUT_COMMAND 的标称电压即可得到实际阈值。VID 只支持绝对值（§8.5.3）。',
     source: 'pmbus-spec',
     specRef: 'Part II §8.5',
     scope: 'VOUT_MODE bit7 / 输出电压命令',
@@ -224,18 +224,18 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
   'l16-ys': {
     id: 'l16-ys',
     token: 'Y_s',
-    name: 'SLINEAR16 偏移 payload',
+    name: 'SLINEAR16 偏移数据',
     detail:
-      '项目数学记号，表示 SLINEAR16 偏移命令的 16 位二补码 payload（规范基础 Part II §8.4.1.2），按 X_offset = Y_s × 2^N 解码；PMBus 1.3.1 本身不把该字段命名为 Y_s。',
+      '计算式中的 Y_s 是 SLINEAR16 的 16 位二补码数据。乘以 2^N 就得到电压偏移（Part II §8.4.1.2）。',
     source: 'project',
     scope: 'SLINEAR16 payload（项目记号）',
   },
   'l16-yu': {
     id: 'l16-yu',
     token: 'Y_u',
-    name: 'ULINEAR16 比值 payload',
+    name: 'ULINEAR16 比值数据',
     detail:
-      '项目数学记号，表示 relative ULINEAR16 的 16 位无符号 payload（规范基础 Part II §8.4.1.1 / §8.5），先解出无量纲比值 R = Y_u × 2^N；PMBus 1.3.1 本身不把该字段命名为 Y_u。',
+      '计算式中的 Y_u 是相对 ULINEAR16 的 16 位无符号整数。乘以 2^N 就得到比值 R（Part II §8.4.1.1、§8.5）。',
     source: 'project',
     scope: 'ULINEAR16 relative payload（项目记号）',
   },
@@ -243,8 +243,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     id: 'l16-vnom',
     token: 'V_NOM',
     name: '标称参考电压',
-    detail:
-      '项目记号，表示 relative 语义使用的 VOUT_COMMAND 标称输出电压（规范基础 Part II §8.5）：最终电压 = V_NOM × 比值 R；规范化地该参考值就是 VOUT_COMMAND 的值。',
+    detail: 'VOUT_COMMAND 的标称输出电压。将这个电压乘以比值 R，可算出实际电压（Part II §8.5）。',
     source: 'project',
     scope: 'relative 参考值（项目记号）',
   },
@@ -283,7 +282,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     token: 'm',
     name: 'DIRECT 斜率系数',
     detail:
-      'DIRECT 格式的两字节二补码斜率系数（Part II §7.4.1）：X = (1/m)(Y × 10^(−R) − b)；m = 0 时没有解码合同。系数必须来自器件 COEFFICIENTS 或产品资料，同一参数的读/写系数可能不同。',
+      'DIRECT 格式的两字节二补码斜率系数。m = 0 时无法计算物理值（Part II §7.4.1）。请查器件的 COEFFICIENTS 或数据手册，同一参数的读写系数可能不同。',
     source: 'pmbus-spec',
     specRef: 'Part II §7.4.1',
     scope: 'DIRECT 系数',
@@ -369,7 +368,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     token: '格式编码量化误差',
     name: '格式编码量化',
     detail:
-      '位宽有限的编码格式只能按台阶表示数值：请求值与可编码值之差最多约 1 个 LSB（Part II §8.5.2 示例：相对值 1.1 编码后实际为 1.0996）。本工具显示的是 requested − represented 的格式编码差距，不是器件测量/设置准确度——器件准确度与分辨率由产品资料规定（§7.8/§7.9）。',
+      '编码误差是输入值减去编码后可表示的值。例如，相对值 1.1 编码后可表示为 1.0996（Part II §8.5.2）。器件的测量准确度和分辨率请查数据手册（§7.8、§7.9）。',
     source: 'generic',
     specRef: 'Part II §7.8/§7.9',
     scope: '编码读数（全模式）',
@@ -379,7 +378,7 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
     token: 'Raw Word',
     name: '原始字',
     detail:
-      'canonical 16 位原始字：本计算器唯一的无符号数值位型真值。Raw Word 输入/显示、位网格、公式操作数、decode/encode、Raw Word 复制与 C 宏都指向同一个 state.raw；字节顺序只存在于 Wire Bytes 显示/复制层，永远不会改写 Raw Word 的数值含义（v3.0.0 领域模型）。',
+      '以十六进制显示的 16 位数据字。输入框和位网格都可编辑这个值。对照总线抓包时，请使用低字节在前的 Wire 字节。',
     source: 'project',
     scope: '原始字（全模式）',
   },
@@ -433,9 +432,6 @@ export const GLOSSARY: Record<TermId, GlossaryTerm> = {
 
 /** Stable id list (iteration order = declaration order). */
 export const GLOSSARY_TERM_IDS: readonly TermId[] = Object.keys(GLOSSARY) as TermId[]
-
-/** Canonical token allowlist derived from the glossary (never hand-duplicated). */
-export const CANONICAL_TOKENS: readonly string[] = GLOSSARY_TERM_IDS.map((id) => GLOSSARY[id].token)
 
 export function getGlossaryTerm(id: string): GlossaryTerm | undefined {
   return GLOSSARY[id as TermId]

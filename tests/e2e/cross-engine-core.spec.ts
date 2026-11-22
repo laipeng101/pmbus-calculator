@@ -1,21 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { appUrl } from './helpers/app-url'
 
-// Cross-engine core smoke（Firefox + WebKit 验收底线）。
-//
-// 目标：为桌面/移动 Chromium 深度语义套件之外的两个引擎建立小型、失败闭合的
-// 核心用户合同证据；不复制完整语义套件，也不重复领域 golden 向量。每条用例
-// 只保留「跨引擎最容易回归」的核心交互链，断言语义与既有 chromium 套件一致
-// （calculator.spec / hex-stepper.spec / terminology-popover.spec），数值全部
-// 来自已验证向量：
-//   1. boot + 模式切换 + canonical raw 跨模式保持；
-//   2. L11/L16/DIRECT/HALF 各一条 encode/decode 旅程（运行时/事件回归探针）；
-//   3. L16 非 LINEAR 共享字节 fail closed（不伪造物理结果）；
-//   4. canonical raw ↔ 位网格 ↔ wire 字节同步 + 复制反馈 + 剪贴板内容；
-//   5. Hex 步进器 pointer + keyboard 激活：精确单次提交与焦点保持；
-//   6. 术语气泡浮层（点击/Escape/焦点恢复）与只读命令参考。
-// 移动端触屏与视觉合同不在此套件范围（mobile-contract / visual 套件负责）。
-
 const RAW_HEX = '#raw-hex-input'
 const VALUE = '#value-input'
 const STEP_UP = '[data-testid="raw-hex-input-step-up"]'
@@ -25,7 +10,7 @@ const SUMMARY = '[data-testid="vout-mode-config-summary"]'
 const VM_TRIGGER = `${SUMMARY} [data-testid="term-trigger-vout-mode"]`
 const VM_POPOVER = '[data-testid="term-popover-vout-mode"]'
 
-test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
+test.describe('浏览器核心流程', { tag: '@browser-smoke' }, () => {
   test('boot：应用加载、L11 默认模式、结果面板就绪', async ({ page }) => {
     await page.goto(appUrl())
     await expect(page.getByRole('tab', { name: /LINEAR11/ })).toHaveAttribute(
@@ -47,6 +32,10 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
 
     await page.getByRole('tab', { name: /HALF/ }).click()
     await expect(page.locator(RAW_HEX)).toHaveValue('0007')
+
+    await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+    await page.getByRole('radio', { name: '相对值', exact: true }).click()
+    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x98')
 
     await page.getByRole('tab', { name: /LINEAR11/ }).click()
     await expect(page.locator(RAW_HEX)).toHaveValue('0007')
@@ -171,11 +160,9 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     context,
     browserName,
   }) => {
-    // WebKit 只支持授予 clipboard-read（grantPermissions 的 clipboard-write
-    // 权限名不存在）；其 writeText 无需 clipboard-write 权限即可成功。Firefox
-    // 不支持任何 clipboard 权限名，改由 firefox-core 项目的
-    // dom.events.testing.asyncClipboard 官方测试偏好启用。
-    if (browserName === 'webkit') {
+    if (browserName === 'chromium') {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    } else if (browserName === 'webkit') {
       await context.grantPermissions(['clipboard-read'])
     }
     await page.goto(appUrl())
@@ -189,11 +176,8 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await wireBtn.scrollIntoViewIfNeeded()
     await wireBtn.evaluate((el: HTMLButtonElement) => el.click())
     await expect(page.getByText('已复制: Wire 字节')).toBeVisible()
-    // 剪贴板回读只在 firefox 断言：Linux WebKit 即便已授予 clipboard-read，
-    // readText 仍被平台以 NotAllowedError 拒绝（CI run 33971115579 三次重试
-    // 取证）；写入本身由可见的「已复制」成功反馈证明（writeText promise
-    // resolve 后才渲染），这是不削弱产品的确定性用户反馈路径。
-    if (browserName === 'firefox') {
+    // Linux WebKit 只稳定支持写入，写入成功后显示复制反馈。
+    if (browserName !== 'webkit') {
       expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('0x 01 00')
     }
 
@@ -201,7 +185,7 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await msbBtn.scrollIntoViewIfNeeded()
     await msbBtn.evaluate((el: HTMLButtonElement) => el.click())
     await expect(page.getByText('已复制: MSB-first 字节')).toBeVisible()
-    if (browserName === 'firefox') {
+    if (browserName !== 'webkit') {
       expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('0x 00 01')
     }
   })
@@ -284,7 +268,7 @@ test.describe('cross-engine core smoke（Firefox + WebKit）', () => {
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     await expect(page.getByRole('row', { name: /VOUT_COMMAND/ })).toBeVisible()
-    await expect(page.getByRole('row', { name: /READ_VIN/ })).toContainText('由器件资料决定')
+    await expect(page.getByRole('row', { name: /READ_VIN/ })).toContainText('器件数据手册')
 
     // 只读：模式与 raw 完全不受影响，也没有预设按钮。
     await expect(hex).toHaveValue('0000')

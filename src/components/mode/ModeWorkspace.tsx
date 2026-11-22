@@ -249,11 +249,7 @@ export default function ModeWorkspace({ mode, state, vm, dispatch }: Props) {
               (vm.l16Payload?.blocked ? (
                 <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm" role="note">
                   <p className="mb-2">{vm.l16Payload.blocked.title}</p>
-                  {vm.l16Payload.blocked.detailLines.map((line) => (
-                    <p key={line} className="mb-2">
-                      {line}
-                    </p>
-                  ))}
+                  <p>{vm.l16Payload.blocked.detail}</p>
                 </div>
               ) : (
                 <div className="workspace-l16-block rounded-lg px-4 py-3 text-sm">
