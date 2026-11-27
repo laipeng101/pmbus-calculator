@@ -7,90 +7,101 @@ import {
   observePagesResources,
   stubCloudflare,
 } from './helpers/pages-contract'
-import { PAGES_REPOSITORY_NAME } from '../../scripts/pages-network-policy.mjs'
-
-const deploymentUrl = process.env.DEPLOYMENT_URL
+import { expectNoResourceErrors, type BrowserResources } from './helpers/browser-resources'
+import { PAGES_BASE_PATH, PAGES_REPOSITORY_NAME } from '../../scripts/pages-network-policy.mjs'
 
 const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
   version: string
 }
 
 const test = base.extend<{
-  deploymentTarget: string
-  deploymentResources: ReturnType<typeof observePagesResources>
+  deployment: { url: string; expectedTag: string }
+  deploymentResources: BrowserResources
 }>({
-  deploymentTarget: async ({ baseURL }, runWithTarget, testInfo) => {
+  deployment: async ({ baseURL }, runWithTarget, testInfo) => {
     const local = testInfo.project.metadata.pagesOverlayLocal === true
-    const target = local ? baseURL : deploymentUrl
-    test.skip(!target, 'DEPLOYMENT_URL is required for remote deployment smoke')
-    if (!target) throw new Error('Deployment URL is unavailable')
+    const target = local ? baseURL : process.env.DEPLOYMENT_URL
+    const expectedTag = local ? `v${pkg.version}` : process.env.EXPECTED_RELEASE_TAG
+    if (!target || !URL.canParse(target)) {
+      throw new Error(local ? 'Pages fixture requires baseURL' : 'DEPLOYMENT_URL must be a URL')
+    }
+    if (!isStableReleaseTag(expectedTag)) {
+      throw new Error(
+        local
+          ? 'package.json requires a stable version'
+          : 'EXPECTED_RELEASE_TAG must be a stable tag',
+      )
+    }
     const url = new URL(target)
     if (local) {
       expect(url.protocol).toBe('http:')
       expect(url.hostname).toBe('localhost')
-      expect(url.pathname).toBe('/pmbus-calculator/')
-    } else {
-      expect(url.protocol).toBe('https:')
+      expect(url.pathname).toBe(PAGES_BASE_PATH)
+    } else if (
+      url.protocol !== 'https:' ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
+      throw new Error(
+        'DEPLOYMENT_URL must be an HTTPS base URL without credentials, query or fragment',
+      )
     }
-    await runWithTarget(target)
+    await runWithTarget({ url: url.href, expectedTag })
   },
   deploymentResources: [
-    async ({ page, deploymentTarget }, runWithResources) => {
+    async ({ page, deployment }, runWithResources) => {
       // Check published HTML/CSP/UI wiring independently of Cloudflare uptime.
       // Only the audited endpoints are stubbed. Observe every test, including
       // calculator interactions, failed requests and each redirect hop.
       await stubCloudflare(page)
-      const observed = observePagesResources(page, deploymentTarget)
+      const observed = observePagesResources(page, deployment.url)
       await runWithResources(observed)
-      expect(observed.pageErrors).toEqual([])
-      expect(observed.failedAssets).toEqual([])
-      expect(observed.unexpectedExternalOrigins).toEqual([])
+      expectNoResourceErrors(observed)
     },
     { auto: true },
   ],
 })
 
 test.describe('GitHub Pages production deployment', () => {
-  test('deployment page loads with title, core controls and exact Pages overlay', async ({
+  test('deployed build loads the Pages overlay and converts LINEAR11 in both directions', async ({
     page,
-    deploymentTarget,
-  }, testInfo) => {
-    const response = await page.goto(deploymentTarget)
+    deployment,
+    deploymentResources,
+  }) => {
+    const response = await page.goto(deployment.url)
     if (response == null) throw new Error('page.goto returned no deployment response')
     expect(response.status()).toBe(200)
-    const local = testInfo.project.metadata.pagesOverlayLocal === true
-    if (!local) expect(new URL(page.url()).protocol).toBe('https:')
-    expect(new URL(page.url()).origin).toBe(new URL(deploymentTarget).origin)
+    expect(new URL(page.url()).origin).toBe(new URL(deployment.url).origin)
 
     await expect(page).toHaveTitle(/PMBus/)
     await expect(page).toHaveTitle(/VOUT_MODE/)
     await expect(page.getByRole('heading', { name: 'PMBus' })).toBeVisible()
-    const expectedTag = process.env.EXPECTED_RELEASE_TAG ?? (local ? `v${pkg.version}` : '')
-    if (!isStableReleaseTag(expectedTag))
-      throw new Error('EXPECTED_RELEASE_TAG must be a stable tag')
     // The oldest published builds omit the "App " prefix.
-    const versionBadge = new RegExp(`^(?:App )?${expectedTag.replaceAll('.', '\\.')}$`)
+    const versionBadge = new RegExp(`^(?:App )?${deployment.expectedTag.replaceAll('.', '\\.')}$`)
     await expect(page.getByTestId('version-badge')).toHaveText(versionBadge)
     await expect(page.getByLabel('模式切换')).toBeVisible()
     await expect(page.getByLabel('命令参考')).toBeVisible()
     await expect(page.getByLabel('结果面板')).toBeVisible()
 
     await expectPagesDomContract(page)
+    await expectPagesResources(page, deployment.url, deploymentResources)
+
+    const hexInput = page.locator('input[placeholder="0000"]')
+    const valueInput = page.locator('#value-input')
+    await hexInput.fill('F819')
+    await hexInput.press('Tab')
+    await expect(valueInput).toHaveValue('12.5')
+    await expect(hexInput).toHaveValue('F819')
+
+    await valueInput.fill('1')
+    await expect(hexInput).toHaveValue('0001')
   })
 
-  test('resources stay same-origin except the exact Cloudflare allowlist, with no errors', async ({
-    page,
-    deploymentTarget,
-    deploymentResources,
-  }) => {
-    await page.goto(deploymentTarget)
-    await expect(page.getByLabel('结果面板')).toBeVisible()
-    await expectPagesResources(page, deploymentTarget, deploymentResources)
-  })
-
-  test('390px viewport has no horizontal overflow', async ({ page, deploymentTarget }) => {
+  test('390px viewport has no horizontal overflow', async ({ page, deployment }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto(deploymentTarget)
+    await page.goto(deployment.url)
 
     const body = page.locator('body')
     const scrollWidth = await body.evaluate((el) => el.scrollWidth)
@@ -104,22 +115,5 @@ test.describe('GitHub Pages production deployment', () => {
     expect(box!.y).toBeGreaterThanOrEqual(0)
     expect(box!.x + box!.width).toBeLessThanOrEqual(390)
     expect(box!.y + box!.height).toBeLessThanOrEqual(844)
-  })
-
-  test('L11 closed loop: hex input decodes and value input encodes back', async ({
-    page,
-    deploymentTarget,
-  }) => {
-    await page.goto(deploymentTarget)
-    const hexInput = page.locator('input[placeholder="0000"]')
-    const valueInput = page.locator('#value-input')
-
-    await hexInput.fill('F819')
-    await hexInput.press('Tab')
-    await expect(valueInput).toHaveValue('12.5')
-    await expect(hexInput).toHaveValue('F819')
-
-    await valueInput.fill('1')
-    await expect(hexInput).toHaveValue('0001')
   })
 })

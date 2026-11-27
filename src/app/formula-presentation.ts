@@ -2,7 +2,7 @@ import type { AppState } from './state'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { deriveL16Semantics } from './l16-derivation'
 import { formatPlainNumber, formatPlainNumberLatex } from './numeric-presentation'
-import { RELATIVE_VOLTAGE_OVERFLOW_NOTE, RELATIVE_VOLTAGE_UNDERFLOW_NOTE } from './relative-voltage'
+import { RELATIVE_VOLTAGE_RANGE_NOTE } from './relative-voltage'
 import {
   classifyHalf,
   halfClassGenericLatex,
@@ -10,29 +10,14 @@ import {
   halfSignPowerLatex,
 } from './half-class'
 
-/**
- * Canonical formula presentation.
- *
- * Two contracts live here and must never be confused:
- *  - `plainText` / `latex` are the copy/C-macro contract. This PR keeps their
- *    user-visible output byte-identical to the previous release.
- *  - `equationLatex` / `equationPlainText` are the canonical FIRST-SCREEN
- *    equation for the numeric workspace: symbolic relation → current
- *    substituted values → final current result, or a truthful fail-closed
- *    terminal when no numeric result exists. The workspace renders them
- *    directly and never infers the first screen from auxiliary lines.
- *  - `symbolicLatex` / `symbolicPlainText` are the symbolic-only relation for
- *    auxiliary panels (the DIRECT input helper) — never the first screen.
- */
 export interface FormulaPresentation {
-  /** Plain-text formula used for copy output and C macro comments (unchanged contract). */
+  /** C 宏注释中的换算式。 */
   plainText: string
-  /** KaTeX source for the on-screen dynamic formula (unchanged contract). */
   latex: string
-  /** Complete first-screen equation (symbolic → substitution → result). */
+  /** 结果区的完整等式，纯文本用于 KaTeX 渲染失败时。 */
   equationLatex: string
   equationPlainText: string
-  /** Symbolic-only relation for auxiliary panels. */
+  /** 输入区的符号公式。 */
   symbolicLatex: string
   symbolicPlainText: string
 }
@@ -164,10 +149,7 @@ export function getFormulaPresentation(
           }
         }
         if (finalVoltage.kind === 'overflow' || finalVoltage.kind === 'underflow') {
-          const note =
-            finalVoltage.kind === 'overflow'
-              ? RELATIVE_VOLTAGE_OVERFLOW_NOTE
-              : RELATIVE_VOLTAGE_UNDERFLOW_NOTE
+          const note = RELATIVE_VOLTAGE_RANGE_NOTE[finalVoltage.kind]
           const plainText = `R=${state.raw} × 2^${n}=${ratioText}（${percentText}%）; X=${formatPlainNumber(nominal)}×R=—（${note}）`
           const latex = `R = Y_u \\times 2^N = ${state.raw} \\times 2^{${n}} = ${ratioLatex}\\ (${percentLatex}\\%) \\quad X = V_{NOM} \\times R = ${formatPlainNumberLatex(nominal)} \\times ${ratioLatex} = \\text{—}`
           return {

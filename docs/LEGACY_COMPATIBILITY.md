@@ -1,9 +1,7 @@
-# 旧版单文件兼容性
+# 离线版的换算差异
 
-下载 [`pmbus-calculator.html`](../pmbus-calculator.html)，可直接在浏览器中打开并离线使用。该文件仅维护必要的修复。需要最新换算和舍入规则时，请使用 [README 中的在线版或发布包](../README_zh-CN.md)。
-
-旧版单文件与[当前换算规则](DOMAIN_MODEL.md)有以下已知差异。
+下载 [`pmbus-calculator.html`](../pmbus-calculator.html)，用浏览器打开即可离线计算。需要当前的换算规则时，请使用在线版或 Web ZIP。[在线版与下载方式](../README_zh-CN.md)
 
 - **LINEAR11 自动选指数**。旧版用 `1e-15` 的容差判断两个候选值的误差是否相等。候选误差很接近或输入超出可表示范围时，两版可能选出不同的编码。
 - **HALF 尾数舍入**。旧版遇到中点时向上取整，当前遵循 IEEE 754 的最近偶数舍入。`1 + 2^-11` 在旧版编码为 `0x3C01`，当前编码为 `0x3C00`。
-- **ULINEAR16 编码函数**。旧版界面未调用的 `encodeLinear16` 只将输入限制在 `0..65535`。当前实现先按 PMBus Part II §8.4.1 对 `X / 2^N` 取整，再限制范围。
+- **LINEAR16 的 VOUT_MODE**。离线版选择非 LINEAR 的配置字节时会继续使用此前的指数。当前版会暂停该字节下的 LINEAR16 换算。[当前换算规则](DOMAIN_MODEL.md)

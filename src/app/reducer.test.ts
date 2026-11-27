@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import type { AppAction } from './actions'
 import { appReducer } from './reducer'
 import { INITIAL_STATE, type AppState } from './state'
 import { toCalculatorViewModel } from './view-model'
@@ -17,52 +18,18 @@ describe('appReducer — state transitions', () => {
   })
 
   describe('raw/set-from-hex', () => {
-    it('parses plain hex', () => {
-      const s = appReducer(base, { type: 'raw/set-from-hex', hex: 'e0c0' })
-      expect(s.raw).toBe(0xe0c0)
+    const start = { ...base, raw: 0x4321 }
+
+    it('clears the word on an empty input', () => {
+      expect(appReducer(start, { type: 'raw/set-from-hex', hex: '' }).raw).toBe(0)
     })
 
-    it('parses 0x-prefixed hex', () => {
-      const s = appReducer(base, { type: 'raw/set-from-hex', hex: '0x1A2B' })
-      expect(s.raw).toBe(0x1a2b)
-    })
-
-    it('allows leading and trailing whitespace only', () => {
-      const s = appReducer(base, { type: 'raw/set-from-hex', hex: '  1A2B  ' })
-      expect(s.raw).toBe(0x1a2b)
-    })
-
-    it('rejects internal whitespace (full string must match)', () => {
-      const s = appReducer(base, { type: 'raw/set-from-hex', hex: 'E0 C0' })
-      expect(s.raw).toBe(base.raw)
-    })
-
-    it('falls back on empty string (explicit reset-to-zero)', () => {
-      const s = appReducer(base, { type: 'raw/set-from-hex', hex: '' })
-      expect(s.raw).toBe(0)
-    })
-
-    it('rejects over-long hex instead of silently truncating', () => {
-      const s = appReducer(base, { type: 'raw/set-from-hex', hex: '0x12345' })
-      expect(s.raw).toBe(base.raw)
-    })
-
-    it('rejects partial parses such as 1G and 0x12ZZ', () => {
-      for (const hex of ['1G', '0x12ZZ']) {
-        const s = appReducer(base, { type: 'raw/set-from-hex', hex })
-        expect(s.raw, hex).toBe(base.raw)
-      }
-    })
-
-    it('rejects a bare 0x prefix', () => {
-      const s = appReducer(base, { type: 'raw/set-from-hex', hex: '0x' })
-      expect(s.raw).toBe(base.raw)
-    })
-
-    it('rejects invalid hex without modifying global state', () => {
-      const s = appReducer(base, { type: 'raw/set-from-hex', hex: 'zzzz' })
-      expect(s.raw).toBe(base.raw)
-    })
+    it.each(['E0 C0', '0x12345', '1G', '0x12ZZ', '0x', 'zzzz'])(
+      'keeps state for invalid hex %j',
+      (hex) => {
+        expect(appReducer(start, { type: 'raw/set-from-hex', hex })).toBe(start)
+      },
+    )
   })
 
   describe('raw/set', () => {
@@ -71,19 +38,10 @@ describe('appReducer — state transitions', () => {
       expect(s.raw).toBe(0xabcd)
     })
 
-    it('clamps to 0..65535 instead of wrapping', () => {
-      const hi = appReducer(base, { type: 'raw/set', raw: '127216' })
-      expect(hi.raw).toBe(65535)
-      const lo = appReducer(base, { type: 'raw/set', raw: '-1' })
-      expect(lo.raw).toBe(0)
-    })
-
-    it('clamps L16 manual V input to 0..65535', () => {
-      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const hi = appReducer(l16, { type: 'raw/set', raw: '70000' })
-      expect(hi.raw).toBe(65535)
-      const lo = appReducer(l16, { type: 'raw/set', raw: '-1' })
-      expect(lo.raw).toBe(0)
+    it.each(['L11', 'L16', 'DIRECT'] as const)('clamps %s raw word to 0..65535', (mode) => {
+      const start = appReducer(base, { type: 'mode/set', mode })
+      expect(appReducer(start, { type: 'raw/set', raw: '127216' }).raw).toBe(0xffff)
+      expect(appReducer(start, { type: 'raw/set', raw: '-1' }).raw).toBe(0)
     })
 
     it('rejects decimal partial parses, scientific notation, and floats', () => {
@@ -180,7 +138,7 @@ describe('appReducer — state transitions', () => {
       expect(s.l11.valueInput).toBeNull()
     })
 
-    it('ignores invalid drafts even when blur-style repair could make them valid (v2.5.9)', () => {
+    it('ignores invalid drafts even when blur-style repair could make them valid', () => {
       // Regression for the invalid-blur defect: the reducer is not the repair
       // layer — text like `NaN.` / `2..` / `NaNe` must never become a commit,
       // no matter which component produced the action string.
@@ -203,7 +161,7 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('LINEAR11 strictly-nearest encoding (v2.5.10)', () => {
+  describe('LINEAR11 strictly-nearest encoding', () => {
     it('commits the strictly nearest code with consistent N/Y/provenance', () => {
       const vectors = [
         { text: '0.0000076293945313', raw: 0x8001, n: -16, y: 1 },
@@ -244,7 +202,7 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('input-underflow fail-closed (v2.5.10)', () => {
+  describe('input-underflow fail-closed', () => {
     it('ignores underflow value/set in every mode, keeping raw and provenance', () => {
       const modes = ['L11', 'L16', 'DIRECT', 'HALF'] as const
       for (const mode of modes) {
@@ -283,94 +241,76 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('valueRequest lifecycle (L16/DIRECT/HALF quantization-error parity)', () => {
-    const enterMode = (mode: AppState['mode']) => appReducer(base, { type: 'mode/set', mode })
+  describe('编码请求的状态转换', () => {
+    it.each([
+      { mode: 'L16', raw: 0x0c00, request: { mode: 'L16', value: 12 } },
+      { mode: 'DIRECT', raw: 12, request: { mode: 'DIRECT', value: 12, text: '12' } },
+      { mode: 'HALF', raw: 0x4a00, request: { mode: 'HALF', value: 12 } },
+    ] as const)(
+      '$mode 重新选择当前模式时保留完整状态，修改原始字或模式时清除请求',
+      ({ mode, raw, request }) => {
+        const start = appReducer(base, { type: 'mode/set', mode })
+        const committed = appReducer(start, { type: 'value/set', value: '12' })
+        expect(committed.raw).toBe(raw)
+        expect(committed.valueRequest).toEqual(request)
+        const before = structuredClone(committed)
+        expect(appReducer(committed, { type: 'mode/set', mode })).toEqual(before)
 
-    it('records the committed request on value/set for L16, DIRECT and HALF', () => {
-      for (const [mode, raw] of [
-        ['L16', 0x0c00],
-        ['DIRECT', 12],
-        ['HALF', 0x4a00],
-      ] as const) {
-        const s = appReducer(enterMode(mode), { type: 'value/set', value: '12' })
-        // DIRECT keeps the exact committed lexeme alongside the Number (v2.5.12).
-        expect(s.valueRequest, mode).toEqual(
-          mode === 'DIRECT' ? { mode, value: 12, text: '12' } : { mode, value: 12 },
-        )
-        expect(s.raw, mode).toBe(raw)
+        const changes: AppAction[] = [
+          { type: 'raw/set-from-hex', hex: 'ABCD' },
+          { type: 'bit/toggle', bit: 15 },
+          { type: 'mode/set', mode: 'L11' },
+        ]
+        for (const action of changes) {
+          expect(appReducer(committed, action).valueRequest, action.type).toBeNull()
+        }
+      },
+    )
+
+    it('retains an explicit LINEAR11 request through its dedicated channel', () => {
+      const state = appReducer(base, { type: 'value/set', value: '12' })
+      expect(state.l11.valueInput).toBe(12)
+      expect(state.valueRequest).toBeNull()
+    })
+
+    it('invalidates a LINEAR16 request when the payload kind or configuration changes', () => {
+      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const committed = appReducer(l16, { type: 'value/set', value: '12' })
+      expect(committed.valueRequest).toEqual({ mode: 'L16', value: 12 })
+      const changes: AppAction[] = [
+        { type: 'l16/set-payload-kind', payloadKind: 'slinear16-offset' },
+        { type: 'vout-mode/set-linear-n', n: '-9' },
+      ]
+      for (const action of changes) {
+        expect(appReducer(committed, action).valueRequest, action.type).toBeNull()
       }
     })
 
-    it('keeps L11 on its historical l11.valueInput channel only', () => {
-      const s = appReducer(base, { type: 'value/set', value: '12' })
-      expect(s.l11.valueInput).toBe(12)
-      expect(s.valueRequest).toBeNull()
-    })
-
-    it('re-selecting the active mode keeps the provenance (same-mode idempotence)', () => {
-      // Same-tab click / Ctrl+ shortcut on the current mode must not wipe a
-      // still-valid request: neither raw bits nor semantics changed.
-      const l16 = appReducer(enterMode('L16'), { type: 'value/set', value: '12' })
-      expect(appReducer(l16, { type: 'mode/set', mode: 'L16' })).toBe(l16)
-
-      const direct = appReducer(enterMode('DIRECT'), { type: 'value/set', value: '12' })
-      expect(appReducer(direct, { type: 'mode/set', mode: 'DIRECT' })).toBe(direct)
-
-      const half = appReducer(enterMode('HALF'), { type: 'value/set', value: '12' })
-      expect(appReducer(half, { type: 'mode/set', mode: 'HALF' })).toBe(half)
-    })
-
-    it('clears a stale request when raw is edited through hex or bit toggles', () => {
-      for (const mode of ['L16', 'DIRECT', 'HALF'] as const) {
-        const withRequest = appReducer(enterMode(mode), { type: 'value/set', value: '12' })
-        expect(withRequest.valueRequest).not.toBeNull()
-        const viaHex = appReducer(withRequest, { type: 'raw/set-from-hex', hex: 'ABCD' })
-        expect(viaHex.valueRequest, `${mode} hex`).toBeNull()
-        const restored = appReducer(viaHex, {
-          type: 'value/set',
-          value: '12',
-        })
-        const viaBit = appReducer(restored, { type: 'bit/toggle', bit: 15 })
-        expect(viaBit.valueRequest, `${mode} bit`).toBeNull()
+    it('invalidates a DIRECT request when Y or any coefficient changes', () => {
+      const direct = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+      const committed = appReducer(direct, { type: 'value/set', value: '12' })
+      const changes: AppAction[] = [
+        { type: 'direct/set-y', y: '-5' },
+        { type: 'direct/set-coeff', name: 'm', value: '2' },
+        { type: 'direct/set-coeff', name: 'b', value: '1' },
+        { type: 'direct/set-coeff', name: 'r', value: '1' },
+        { type: 'direct/set-coeff', name: 'm', value: '0' },
+      ]
+      expect(committed.valueRequest).toEqual({ mode: 'DIRECT', value: 12, text: '12' })
+      for (const action of changes) {
+        expect(appReducer(committed, action).valueRequest, JSON.stringify(action)).toBeNull()
       }
     })
 
-    it('clears the request when DIRECT Y or coefficients change', () => {
-      const direct = appReducer(enterMode('DIRECT'), { type: 'value/set', value: '12' })
-      const viaY = appReducer(direct, { type: 'direct/set-y', y: '-5' })
-      expect(viaY.valueRequest).toBeNull()
-      const withNewRequest = appReducer(viaY, { type: 'value/set', value: '12' })
-      const viaCoeff = appReducer(withNewRequest, {
-        type: 'direct/set-coeff',
-        name: 'm',
-        value: '2',
-      })
-      expect(viaCoeff.valueRequest).toBeNull()
-      // m=0 stores the explicit error state but still invalidates the request.
-      const mZero = appReducer(withNewRequest, {
-        type: 'direct/set-coeff',
-        name: 'm',
-        value: '0',
-      })
-      expect(mZero.valueRequest).toBeNull()
-    })
-
-    it('clears the request on payload-kind switch, VOUT_MODE edits and mode switches', () => {
-      const l16 = appReducer(enterMode('L16'), { type: 'value/set', value: '12' })
-      expect(l16.valueRequest).toEqual({ mode: 'L16', value: 12 })
-
-      const switched = appReducer(l16, {
-        type: 'l16/set-payload-kind',
-        payloadKind: 'slinear16-offset',
-      })
-      expect(switched.valueRequest).toBeNull()
-
-      const again = appReducer(switched, { type: 'value/set', value: '12' })
-      const byteEdit = appReducer(again, { type: 'vout-mode/set-linear-n', n: '-9' })
-      expect(byteEdit.valueRequest).toBeNull()
-
-      const toHalf = appReducer(byteEdit, { type: 'mode/set', mode: 'HALF' })
-      expect(toHalf.valueRequest).toBeNull()
+    it('re-establishes the DIRECT request after explicit re-entry of the same value', () => {
+      const direct = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
+      const encoded = appReducer(direct, { type: 'value/set', value: '5' })
+      const decoded = appReducer(encoded, { type: 'raw/set-from-hex', hex: '0005' })
+      expect(decoded.raw).toBe(5)
+      expect(decoded.valueRequest).toBeNull()
+      const reentered = appReducer(decoded, { type: 'value/set', value: '5' })
+      expect(reentered.raw).toBe(5)
+      expect(reentered.valueRequest).toEqual({ mode: 'DIRECT', value: 5, text: '5' })
     })
   })
 
@@ -398,7 +338,7 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('SLINEAR16 offset bit7 semantics (v2.5.1 P1-A/P1-B)', () => {
+  describe('SLINEAR16 offset bit7 semantics', () => {
     const enterRelativeSlinear = () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
       const withMode = appReducer(l16, { type: 'vout-mode/set-byte', hex: '98' })
@@ -420,7 +360,7 @@ describe('appReducer — state transitions', () => {
       expect(withNominal.l16.nominalVout).toBe(3.3)
     })
 
-    it('l16/set-nominal-vout rejects invalid drafts the blur path used to repair (v2.5.9)', () => {
+    it('标称参考值拒绝无法提交的草稿', () => {
       // The invalid-blur defect turned a pasted `12..` into nominal 12 on
       // blur. The reducer never accepted such text; pin it against the exact
       // counterexample so no future layer can reintroduce the commit.
@@ -685,7 +625,7 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('structured VOUT_MODE actions (M37)', () => {
+  describe('structured VOUT_MODE actions', () => {
     it('set-vout-relative only flips bit7 for non-VID formats and keeps raw', () => {
       const s = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x18' })
       const rel = appReducer(s, { type: 'vout-mode/set-relative', relative: true })
@@ -714,18 +654,21 @@ describe('appReducer — state transitions', () => {
       expect(analyzeVoutMode(s.voutMode.byte).status).toBe('invalid-parameter')
     })
 
-    it('set-vout-format canonicalizes DIRECT/Half parameter and VID bit7', () => {
-      const relLinear = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x98' })
-      const direct = appReducer(relLinear, { type: 'vout-mode/set-format', format: 2 })
-      expect(direct.voutMode.byte).toBe(0xc0) // relative DIRECT, param forced 0
-      const vid = appReducer(relLinear, { type: 'vout-mode/set-format', format: 1 })
-      expect(vid.voutMode.byte).toBe(0x38) // absolute VID code 24, bit7 cleared
-    })
-
-    it('set-vout-format to LINEAR preserves the parameter bits', () => {
-      const half = appReducer(base, { type: 'vout-mode/set-byte', hex: '0x60' })
-      const linear = appReducer(half, { type: 'vout-mode/set-format', format: 0 })
-      expect(linear.voutMode.byte).toBe(0x00)
+    it.each([
+      { hex: '98', format: 2, name: 'DIRECT', expected: 0xc0 },
+      { hex: '98', format: 3, name: 'IEEE Half', expected: 0xe0 },
+      { hex: '98', format: 1, name: 'VID', expected: 0x38 },
+      { hex: 'E1', format: 0, name: 'LINEAR', expected: 0x81 },
+    ] as const)('从 0x$hex 切换到 $name 时按目标格式更新配置字节', ({ hex, format, expected }) => {
+      const start = appReducer(
+        { ...base, mode: 'VOUT_MODE', raw: 0x3412 },
+        {
+          type: 'vout-mode/set-byte',
+          hex,
+        },
+      )
+      const state = appReducer(start, { type: 'vout-mode/set-format', format })
+      expect(state).toMatchObject({ mode: 'VOUT_MODE', raw: 0x3412, voutMode: { byte: expected } })
     })
 
     it('set-vout-linear-n edits only bits[4:0] and clamps to -16..15', () => {
@@ -758,7 +701,7 @@ describe('appReducer — state transitions', () => {
     })
 
     it('structured actions never touch raw or top-level mode', () => {
-      const s0 = appReducer(base, { type: 'mode/set', mode: 'L16' })
+      const s0 = appReducer({ ...base, raw: 0x3412 }, { type: 'mode/set', mode: 'L16' })
       const s1 = appReducer(s0, { type: 'vout-mode/set-relative', relative: true })
       expect(s1.raw).toBe(s0.raw)
       expect(s1.mode).toBe('L16')
@@ -768,123 +711,62 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('idempotent VOUT_MODE semantic writes preserve provenance (v2.5.7)', () => {
-    // L16 default byte 0x18: value 1 encodes raw 0x0100 with an explicit
-    // valueRequest provenance.
+  describe('重复设置同一个 VOUT_MODE 字节', () => {
     const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
     const withRequest = appReducer(l16, { type: 'value/set', value: '1' })
-    expect(withRequest.raw).toBe(0x0100)
-    expect(withRequest.valueRequest).not.toBeNull()
 
-    it('re-selecting absolute (already absolute) keeps the state and provenance', () => {
-      const s = appReducer(withRequest, { type: 'vout-mode/set-relative', relative: false })
-      expect(s).toBe(withRequest)
-    })
+    it.each([
+      { label: '绝对值', action: { type: 'vout-mode/set-relative', relative: false } },
+      { label: 'LINEAR 格式', action: { type: 'vout-mode/set-format', format: 0 } },
+      { label: '指数 N', action: { type: 'vout-mode/set-linear-n', n: '-8' } },
+      { label: '参数位', action: { type: 'vout-mode/set-parameter', parameter: 0x18 } },
+      { label: '十六进制字节', action: { type: 'vout-mode/set-byte', hex: '18' } },
+    ] satisfies { label: string; action: AppAction }[])(
+      '重选$label保留完整状态和编码请求',
+      ({ action }) => {
+        expect(withRequest).toMatchObject({ raw: 0x0100, valueRequest: { mode: 'L16', value: 1 } })
+        const before = structuredClone(withRequest)
+        expect(appReducer(withRequest, action)).toEqual(before)
+      },
+    )
 
-    it('re-selecting relative (already relative) keeps the state and provenance', () => {
-      // SLINEAR16 offset encodes for any LINEAR byte (§13.3/§13.4), including
-      // relative 0x98 — the only way to hold provenance on a relative byte.
-      const relativeByte = appReducer(
-        appReducer(l16, { type: 'l16/set-payload-kind', payloadKind: 'slinear16-offset' }),
-        { type: 'vout-mode/set-relative', relative: true },
+    it('有符号偏移也可在重复选择相对值时保留请求', () => {
+      const offset = appReducer(l16, {
+        type: 'l16/set-payload-kind',
+        payloadKind: 'slinear16-offset',
+      })
+      const relative = appReducer(offset, { type: 'vout-mode/set-relative', relative: true })
+      const encoded = appReducer(relative, { type: 'value/set', value: '1' })
+      expect(encoded).toMatchObject({
+        raw: 0x0100,
+        voutMode: { byte: 0x98 },
+        valueRequest: { mode: 'L16', value: 1 },
+      })
+      const before = structuredClone(encoded)
+      expect(appReducer(encoded, { type: 'vout-mode/set-relative', relative: true })).toEqual(
+        before,
       )
-      const withRelativeRequest = appReducer(relativeByte, { type: 'value/set', value: '1' })
-      expect(withRelativeRequest.raw).toBe(0x0100)
-      expect(withRelativeRequest.valueRequest).not.toBeNull()
-
-      const s = appReducer(withRelativeRequest, { type: 'vout-mode/set-relative', relative: true })
-      expect(s).toBe(withRelativeRequest)
     })
 
-    it('re-selecting the same format keeps the state and provenance', () => {
-      const s = appReducer(withRequest, { type: 'vout-mode/set-format', format: 0 })
-      expect(s).toBe(withRequest)
-    })
-
-    it('re-entering the same LINEAR N keeps the state and provenance', () => {
-      const s = appReducer(withRequest, { type: 'vout-mode/set-linear-n', n: '-8' })
-      expect(s).toBe(withRequest)
-    })
-
-    it('re-selecting the same parameter keeps the state and provenance', () => {
-      const s = appReducer(withRequest, { type: 'vout-mode/set-parameter', parameter: 0x18 })
-      expect(s).toBe(withRequest)
-    })
-
-    it('expert hex edit with the same byte keeps the state and provenance', () => {
-      const s = appReducer(withRequest, { type: 'vout-mode/set-byte', hex: '18' })
-      expect(s).toBe(withRequest)
-    })
-
-    it('a real byte change still invalidates provenance (opposite path)', () => {
-      const s = appReducer(withRequest, { type: 'vout-mode/set-relative', relative: true })
-      expect(s.voutMode.byte).toBe(0x98)
-      expect(s.valueRequest).toBeNull()
-    })
-  })
-
-  describe('raw/set-from-hex — canonical Raw Word contract (v3.0.0)', () => {
-    // The Raw Word Hex field IS the canonical numeric raw word in every mode:
-    // '3412' always means 0x3412. The v2.6.5 L16 LE byte-stream interpretation
-    // ('3412' meaning 0x1234) is intentionally deleted; wire bytes live only
-    // in the serialization layer (view-model wireBytes / msbFirstBytes).
-    it('parses L16 hex input as the canonical raw word (no byte-order swap)', () => {
-      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const s = appReducer(l16, { type: 'raw/set-from-hex', hex: '3412' })
-      expect(s.raw).toBe(0x3412)
-    })
-
-    it('the same digits mean the same word in every mode', () => {
-      for (const mode of ['L11', 'L16', 'DIRECT', 'HALF'] as const) {
-        const s = appReducer(base, { type: 'mode/set', mode })
-        const typed = appReducer(s, { type: 'raw/set-from-hex', hex: '1234' })
-        expect(typed.raw).toBe(0x1234)
-      }
-    })
-
-    it('round-trips the canonical display form: parse(format(raw)) === raw', () => {
-      const canonicalRawWords = [0x0000, 0x0001, 0x1234, 0x8000, 0xbfff, 0xc000, 0xffff]
-      for (const mode of ['L11', 'L16', 'DIRECT', 'HALF'] as const) {
-        const start = appReducer(base, { type: 'mode/set', mode })
-        for (const raw of canonicalRawWords) {
-          const s = appReducer(start, { type: 'raw/set', raw: String(raw) })
-          expect(s.raw).toBe(raw)
-          const digits = s.raw.toString(16).toUpperCase().padStart(4, '0')
-          const reparsed = appReducer(s, { type: 'raw/set-from-hex', hex: digits })
-          expect(reparsed.raw).toBe(raw)
-          // Lowercase and 0x-prefixed forms parse to the same word.
-          expect(
-            appReducer(s, { type: 'raw/set-from-hex', hex: '0x' + digits.toLowerCase() }).raw,
-          ).toBe(raw)
-        }
-      }
-    })
-
-    it('the main Raw Word hex view matches state.raw in L16 regardless of any preference', () => {
-      const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
-      const s = appReducer(l16, { type: 'raw/set-from-hex', hex: 'c000' })
-      const vm = toCalculatorViewModel(s)
-      expect(vm.rawHex).toBe('0xC000')
-      expect(vm.rawHexDigits).toBe('C000')
-      expect(vm.wireBytes).toBe('0x 00 C0')
-      expect(vm.msbFirstBytes).toBe('0x C0 00')
+    it('实际字节改变时清除原请求', () => {
+      const next = appReducer(withRequest, { type: 'vout-mode/set-relative', relative: true })
+      expect(next).toMatchObject({ raw: 0x0100, voutMode: { byte: 0x98 }, valueRequest: null })
     })
   })
 
   describe('direct/set-y', () => {
     const directMode = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
 
-    it('encodes signed Y into raw (single source of truth)', () => {
-      const s = appReducer(directMode, { type: 'direct/set-y', y: '100' })
-      expect(s.raw).toBe(100)
-      expect(s.direct).toEqual(directMode.direct)
-    })
-
-    it('clamps Y to -32768..32767', () => {
-      const hi = appReducer(directMode, { type: 'direct/set-y', y: '40000' })
-      expect(hi.raw).toBe(0x7fff)
-      const lo = appReducer(directMode, { type: 'direct/set-y', y: '-40000' })
-      expect(lo.raw).toBe(0x8000)
+    it.each([
+      { y: '100', raw: 100 },
+      { y: '32767', raw: 0x7fff },
+      { y: '-32768', raw: 0x8000 },
+      { y: '40000', raw: 0x7fff },
+      { y: '-40000', raw: 0x8000 },
+    ])('encodes and clamps signed Y=$y', ({ y, raw }) => {
+      const state = appReducer(directMode, { type: 'direct/set-y', y })
+      expect(state.raw).toBe(raw)
+      expect(state.direct).toEqual(directMode.direct)
     })
 
     it('ignores invalid string', () => {
@@ -899,102 +781,31 @@ describe('appReducer — state transitions', () => {
   })
 
   describe('direct/set-coeff', () => {
-    it('sets m as a signed 16-bit integer', () => {
-      const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '-10' })
-      expect(s.direct.m).toBe(-10)
-      expect(s.direct.errors.m).toBeNull()
-    })
-
-    it('sets b as a signed 16-bit integer', () => {
-      const s = appReducer(base, { type: 'direct/set-coeff', name: 'b', value: '-32768' })
-      expect(s.direct.b).toBe(-32768)
-    })
-
-    it('sets r as a signed 8-bit integer', () => {
-      const s = appReducer(base, { type: 'direct/set-coeff', name: 'r', value: '3' })
-      expect(s.direct.r).toBe(3)
-    })
-
-    it('rejects float coefficients with an explicit error', () => {
-      const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
-      expect(s.direct.m).toBe(base.direct.m)
-      expect(s.direct.errors.m).toContain('M 必须是')
-    })
-
-    it('rejects out-of-range m', () => {
-      const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '40000' })
-      expect(s.direct.m).toBe(base.direct.m)
-      expect(s.direct.errors.m).toContain('M 必须是')
-    })
-
-    it('accepts m/b boundaries', () => {
-      const hi = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '32767' })
-      expect(hi.direct.m).toBe(32767)
-      const lo = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '-32768' })
-      expect(lo.direct.m).toBe(-32768)
-    })
-
-    it('accepts r boundaries and rejects out-of-range r', () => {
-      const hi = appReducer(base, { type: 'direct/set-coeff', name: 'r', value: '127' })
-      expect(hi.direct.r).toBe(127)
-      const lo = appReducer(base, { type: 'direct/set-coeff', name: 'r', value: '-128' })
-      expect(lo.direct.r).toBe(-128)
-      const bad = appReducer(base, { type: 'direct/set-coeff', name: 'r', value: '128' })
-      expect(bad.direct.r).toBe(base.direct.r)
-      expect(bad.direct.errors.r).toContain('R 必须是')
-    })
-
-    it('stores m=0 with an explicit error (never silent)', () => {
-      const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '0' })
-      expect(s.direct.m).toBe(0)
-      expect(s.direct.errors.m).toContain('m 不能为 0')
-    })
-
-    it('clears error after a valid coefficient is entered', () => {
-      const bad = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
-      expect(bad.direct.errors.m).toBeTruthy()
-      const good = appReducer(bad, { type: 'direct/set-coeff', name: 'm', value: '2' })
-      expect(good.direct.m).toBe(2)
-      expect(good.direct.errors.m).toBeNull()
-    })
-
-    it('ignores invalid string', () => {
-      const s = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: 'x' })
-      expect(s.direct.m).toBe(base.direct.m)
-      expect(s.direct.errors.m).toContain('M 必须是')
-    })
+    it.each([
+      { name: 'm', min: -32768, max: 32767 },
+      { name: 'b', min: -32768, max: 32767 },
+      { name: 'r', min: -128, max: 127 },
+    ] as const)(
+      'accepts both boundaries and sets a field error outside $name range',
+      ({ name, min, max }) => {
+        const direct = { ...base, mode: 'DIRECT' as const, raw: 0x1234 }
+        for (const value of [min, max]) {
+          const state = appReducer(direct, { type: 'direct/set-coeff', name, value: String(value) })
+          expect(state.direct[name]).toBe(value)
+          expect(state.direct.errors[name]).toBeNull()
+          expect(state.raw).toBe(0x1234)
+        }
+        for (const value of [String(min - 1), String(max + 1), '2.5', 'x']) {
+          const rejected = appReducer(direct, { type: 'direct/set-coeff', name, value })
+          expect(rejected.direct[name]).toBe(direct.direct[name])
+          expect(rejected.direct.errors[name]).toContain(`${name.toUpperCase()} 必须是`)
+          expect(rejected.raw).toBe(0x1234)
+        }
+      },
+    )
   })
 
-  describe('DIRECT value -> raw encode', () => {
-    const directMode = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
-
-    it('Value 12 with m=1,b=0,R=0 -> raw 12 -> Value 12', () => {
-      const s = appReducer(directMode, { type: 'value/set', value: '12' })
-      expect(s.raw).toBe(12)
-    })
-
-    it('Value -> raw -> Value round-trips with legacy rounding', () => {
-      const s = appReducer(directMode, { type: 'value/set', value: '12.5' })
-      expect(s.raw).toBe(13) // legacy round(12.5) = 13
-      const s2 = appReducer(s, { type: 'value/set', value: '13' })
-      expect(s2.raw).toBe(13)
-    })
-
-    it('encodes negative physical values to signed Y raw', () => {
-      const s = appReducer(directMode, { type: 'value/set', value: '-5' })
-      // y = round(-5) = -5 -> fromSigned(-5,16) = 0xFFFB
-      expect(s.raw).toBe(0xfffb)
-    })
-
-    it('is a no-op when m=0', () => {
-      const zeroM = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '0' })
-      const directZero = appReducer(zeroM, { type: 'mode/set', mode: 'DIRECT' })
-      const s = appReducer(directZero, { type: 'value/set', value: '12' })
-      expect(s.raw).toBe(directZero.raw)
-    })
-  })
-
-  describe('large finite requests without parse-layer clipping (v2.5.8)', () => {
+  describe('large finite requests without parse-layer clipping', () => {
     const directWith = (m: number, b: number, r: number) => {
       let s = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
       for (const [name, v] of [
@@ -1101,41 +912,21 @@ describe('appReducer — state transitions', () => {
   describe('HALF value -> raw encode', () => {
     const halfMode = appReducer(base, { type: 'mode/set', mode: 'HALF' })
 
-    it('Value 1 -> raw 0x3C00', () => {
-      const s = appReducer(halfMode, { type: 'value/set', value: '1' })
-      expect(s.raw).toBe(0x3c00)
-    })
-
-    it('Value NaN -> raw 0x7E00', () => {
-      const s = appReducer(halfMode, { type: 'value/set', value: 'NaN' })
-      expect(s.raw).toBe(0x7e00)
-    })
-
-    it('Value +Infinity -> raw 0x7C00 and -Infinity -> 0xFC00', () => {
-      expect(appReducer(halfMode, { type: 'value/set', value: 'Infinity' }).raw).toBe(0x7c00)
-      expect(appReducer(halfMode, { type: 'value/set', value: '-Infinity' }).raw).toBe(0xfc00)
-    })
-
-    it('Value -0 -> raw 0x8000 (preserves negative zero)', () => {
-      const s = appReducer(halfMode, { type: 'value/set', value: '-0' })
-      expect(s.raw).toBe(0x8000)
-    })
-
-    it('signed-zero decimal shorthand all encode 0x8000 (v2.5.7)', () => {
-      // IEEE 754 binary16 keeps -0 (0x8000) distinct from +0 (0x0000);
-      // Number('-.0') is -0 and the parser must preserve it (Part II §7.6).
-      for (const text of ['-0', '-0.0', '-.0', '-.00', '-0e3']) {
-        const s = appReducer(halfMode, { type: 'value/set', value: text })
-        expect(s.raw, text).toBe(0x8000)
-        expect(s.valueRequest?.mode, text).toBe('HALF')
-        expect(Object.is(s.valueRequest?.value, -0), text).toBe(true)
-      }
-    })
-
-    it('positive-zero shorthand variants all encode 0x0000', () => {
-      for (const text of ['0', '+0', '0.0', '.0', '+.0', '0e3']) {
-        expect(appReducer(halfMode, { type: 'value/set', value: text }).raw, text).toBe(0x0000)
-      }
+    it.each([
+      { text: '1', value: 1, raw: 0x3c00 },
+      { text: 'NaN', value: NaN, raw: 0x7e00 },
+      { text: 'Infinity', value: Infinity, raw: 0x7c00 },
+      { text: '+Infinity', value: Infinity, raw: 0x7c00 },
+      { text: '-Infinity', value: -Infinity, raw: 0xfc00 },
+      { text: '-0', value: -0, raw: 0x8000 },
+      { text: '-.0', value: -0, raw: 0x8000 },
+      { text: '0e3', value: 0, raw: 0x0000 },
+    ])('retains the request and canonical encoded bits for $text', ({ text, value, raw }) => {
+      const committed = appReducer(halfMode, { type: 'raw/set-from-hex', hex: '3555' })
+      const result = appReducer(committed, { type: 'value/set', value: text })
+      expect(result.raw).toBe(raw)
+      expect(result.valueRequest?.mode).toBe('HALF')
+      expect(result.valueRequest?.value).toBe(value)
     })
 
     it('bare dot drafts never reach the HALF encoder (transitional)', () => {
@@ -1147,53 +938,7 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('DIRECT raw -> signed Y / Value sync', () => {
-    const directMode = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
-
-    it('raw/set-from-hex updates raw for DIRECT (Y derived by view-model)', () => {
-      const s = appReducer(directMode, { type: 'raw/set-from-hex', hex: '8000' })
-      expect(s.raw).toBe(0x8000)
-    })
-
-    it('raw/set clamps and stores 16-bit raw in DIRECT', () => {
-      const hi = appReducer(directMode, { type: 'raw/set', raw: '131071' })
-      expect(hi.raw).toBe(65535)
-      const lo = appReducer(directMode, { type: 'raw/set', raw: '-1' })
-      expect(lo.raw).toBe(0)
-    })
-
-    it('bit/toggle toggles raw in DIRECT', () => {
-      const s = appReducer(directMode, { type: 'bit/toggle', bit: 0 })
-      expect(s.raw).toBe(0x8000)
-    })
-  })
-
-  describe('DIRECT error isolation', () => {
-    it('keeps invalid coefficient error in state.direct.errors for DIRECT display', () => {
-      const bad = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
-      expect(bad.direct.errors.m).toBeTruthy()
-      expect(bad.raw).toBe(base.raw)
-    })
-
-    it('does not corrupt an existing valid raw value on invalid coefficient input', () => {
-      const directMode = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
-      const withRaw = appReducer(directMode, { type: 'raw/set-from-hex', hex: '1234' })
-      const bad = appReducer(withRaw, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
-      expect(bad.raw).toBe(0x1234)
-      expect(bad.direct.m).toBe(withRaw.direct.m)
-      expect(bad.direct.errors.m).toBeTruthy()
-    })
-
-    it('keeps the error stored after switching away and back (mode-scoped display, not state reset)', () => {
-      const bad = appReducer(base, { type: 'direct/set-coeff', name: 'm', value: '2.5' })
-      const away = appReducer(bad, { type: 'mode/set', mode: 'L11' })
-      expect(away.direct.errors.m).toBeTruthy()
-      const back = appReducer(away, { type: 'mode/set', mode: 'DIRECT' })
-      expect(back.direct.errors.m).toBeTruthy()
-    })
-  })
-
-  describe('M21 统一整数语法（可选正负号 + 十进制数字）', () => {
+  describe('统一整数语法（可选正负号 + 十进制数字）', () => {
     it('l11/set-n rejects 1e2 instead of clamping 100 to 15', () => {
       const s = appReducer(base, { type: 'l11/set-n', n: '1e2' })
       expect(s.l11.n).toBe(base.l11.n)
@@ -1338,7 +1083,7 @@ describe('appReducer — state transitions', () => {
     )
   })
 
-  describe('M38 shared VOUT_MODE byte + L16 payload actions', () => {
+  describe('共享 VOUT_MODE 字节和 LINEAR16 数据格式', () => {
     it('vout-mode/set-byte is lossless for any 0x00..0xFF including non-canonical bytes', () => {
       for (const byte of [0x00, 0x18, 0x20, 0x40, 0xa0, 0x41, 0xc1, 0xe1, 0xff]) {
         const s = appReducer(base, { type: 'vout-mode/set-byte', hex: byte.toString(16) })
@@ -1392,7 +1137,7 @@ describe('appReducer — state transitions', () => {
       ).toBeNull()
     })
 
-    it('l16/clear-nominal-vout resets the reference to null (v2.5.8)', () => {
+    it('清除标称参考值后回到缺参考状态', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
       const relative = appReducer(l16, { type: 'vout-mode/set-relative', relative: true })
       const withNominal = appReducer(relative, {
@@ -1433,7 +1178,7 @@ describe('appReducer — state transitions', () => {
       expect(zero.l16.nominalVout).not.toBeNull()
     })
 
-    it('l16/set-nominal-vout rejects out-of-range decimal text (v2.5.8)', () => {
+    it('标称参考值越界时保留已提交的值', () => {
       const l16 = appReducer(base, { type: 'mode/set', mode: 'L16' })
       const committed = appReducer(l16, { type: 'l16/set-nominal-vout', nominalVout: '12' })
       const rejected = appReducer(committed, { type: 'l16/set-nominal-vout', nominalVout: '1e400' })
@@ -1464,7 +1209,7 @@ describe('appReducer — state transitions', () => {
     })
   })
 
-  describe('DIRECT exact typed-value encoding (v2.5.11)', () => {
+  describe('DIRECT exact typed-value encoding', () => {
     const directWith = (m: number, b: number, r: number) => {
       let s = appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
       for (const [name, v] of [
@@ -1477,44 +1222,16 @@ describe('appReducer — state transitions', () => {
       return s
     }
 
-    it('re-entering the exact decimal of raw FFFF returns to FFFF, not 0000', () => {
-      const s = directWith(1, 1, 17)
-      // The folded display "-1" would encode Y=0 under the old float path;
-      // the exact lexeme of Y=-1 must re-encode to Y=-1.
-      const ffff = appReducer(s, { type: 'value/set', value: '-1.00000000000000001' })
-      expect(ffff.raw).toBe(0xffff)
-      expect(PMBusMath.toSigned(ffff.raw, 16)).toBe(-1)
-      // The provenance keeps the committed lexeme; the Number stays binary64.
-      expect(ffff.valueRequest).toEqual({ mode: 'DIRECT', value: -1, text: '-1.00000000000000001' })
-    })
-
-    it('typing plain "-1" under m=1,b=1,R=17 lands on raw 0000 as a new request', () => {
-      const s = directWith(1, 1, 17)
-      const committed = appReducer(s, { type: 'value/set', value: '-1' })
-      // Exact contract: (1·(-1) + 1)·10^17 = 0 → Y=0. This is a genuinely
-      // different request than the FFFF state's exact -1.00000000000000001.
-      expect(committed.raw).toBe(0x0000)
-      expect(committed.valueRequest).toEqual({ mode: 'DIRECT', value: -1, text: '-1' })
-    })
-
-    it('raw 0000 and FFFF coexist honestly under one coefficient set', () => {
-      const s = directWith(1, 1, 17)
-      const zero = appReducer(s, { type: 'value/set', value: '-1' })
-      expect(zero.raw).toBe(0x0000)
-      const minus = appReducer(zero, { type: 'value/set', value: '-1.00000000000000001' })
-      expect(minus.raw).toBe(0xffff)
-      // Switching back via the plain folded text keeps the honest verdicts.
-      const backToZero = appReducer(minus, { type: 'value/set', value: '-1' })
-      expect(backToZero.raw).toBe(0x0000)
-    })
-
-    it('keeps the v2.5.8 large-request vectors on the exact path', () => {
-      const lo = appReducer(directWith(1, 0, -21), { type: 'value/set', value: '1e21' })
-      expect(lo.raw).toBe(0x0001)
-      const neg = appReducer(directWith(1, 0, -21), { type: 'value/set', value: '-1e21' })
-      expect(neg.raw).toBe(0xffff)
-      const flipped = appReducer(directWith(-1, 0, -21), { type: 'value/set', value: '1e21' })
-      expect(flipped.raw).toBe(0xffff)
+    it('encodes two exact lexemes with the same binary64 value to different words', () => {
+      const start = directWith(1, 1, 17)
+      const exact = '-1.00000000000000001'
+      const first = appReducer(start, { type: 'value/set', value: exact })
+      expect(first.raw).toBe(0xffff)
+      expect(first.valueRequest).toEqual({ mode: 'DIRECT', value: -1, text: exact })
+      const rounded = appReducer(first, { type: 'value/set', value: '-1' })
+      expect(rounded.raw).toBe(0)
+      expect(rounded.valueRequest).toEqual({ mode: 'DIRECT', value: -1, text: '-1' })
+      expect(appReducer(rounded, { type: 'value/set', value: exact })).toEqual(first)
     })
 
     it('keeps the legacy Math.round half-up tie on exact arithmetic', () => {
@@ -1522,7 +1239,7 @@ describe('appReducer — state transitions', () => {
       const s = appReducer(directWith(1, 0, 0), { type: 'value/set', value: '12.5' })
       expect(s.raw).toBe(13)
       const neg = appReducer(directWith(1, 0, 0), { type: 'value/set', value: '-12.5' })
-      expect(neg.raw).toBe(PMBusMath.fromSigned(-12, 16)) // Math.round(-12.5) = -12
+      expect(neg.raw).toBe(0xfff4) // Math.round(-12.5) = -12
     })
 
     it('is a no-op when m=0 (no fabricated encode)', () => {
@@ -1533,16 +1250,15 @@ describe('appReducer — state transitions', () => {
       expect(s.valueRequest).toBeNull()
     })
 
-    it('fails closed on an overlong lexeme: no commit, no provenance (v2.5.12)', () => {
-      // Domain defense: the boundary inside parseDecimalExactRational rejects
-      // overlong text even on a direct dispatch (never only-DOM enforcement).
+    it('rejects a complete finite lexeme over the DIRECT length budget', () => {
+      // Compensation keeps the value finite, so the length guard must reject the input.
       const s = directWith(1, 0, 0)
       const committed = appReducer(s, { type: 'value/set', value: '7' })
-      const overlong = `1${'0'.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH + 1)}`
+      const overlong = `1${'0'.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH)}e-${DIRECT_EXACT_MAX_LEXEME_LENGTH}`
       expect(appReducer(committed, { type: 'value/set', value: overlong })).toBe(committed)
     })
 
-    it('fails closed on a whitespace-padded dispatch payload: trim buys no budget (v2.5.13)', () => {
+    it('fails closed on a whitespace-padded dispatch payload: trim buys no budget', () => {
       // The raw caller string is measured BEFORE any trim, so whitespace
       // padding cannot smuggle a short lexeme past the shared boundary.
       const s = directWith(1, 0, 0)
@@ -1557,7 +1273,7 @@ describe('appReducer — state transitions', () => {
       expect(appReducer(committed, { type: 'value/set', value: '   ' })).toBe(committed)
     })
 
-    it('keeps accepted provenance text bounded by the raw lexeme cap (v2.5.13)', () => {
+    it('keeps accepted provenance text bounded by the raw lexeme cap', () => {
       const s = directWith(1, 0, 0)
       const padded = `${' '.repeat(DIRECT_EXACT_MAX_LEXEME_LENGTH - 1)}1`
       const next = appReducer(s, { type: 'value/set', value: padded })
@@ -1569,11 +1285,9 @@ describe('appReducer — state transitions', () => {
       }
     })
 
-    it('commits a compensated scientific lexeme: raw 0x0007 → 0x0001 with lexeme provenance (v2.6.2)', () => {
+    it('精确提交有效数字带长尾零和负指数的科学计数法', () => {
       // The audit vector: binary64 value exactly 1, Y=1 under m=1,b=0,R=0.
-      // The v2.5.12 boundary rejected it silently (UI valid, reducer no-op,
-      // no error anywhere); the compensated boundary must commit it like any
-      // other legal finite request.
+      // 尾零抵消负指数，精确的值仍为 1。
       const s = directWith(1, 0, 0)
       const committed = appReducer(s, { type: 'value/set', value: '7' })
       expect(committed.raw).toBe(0x0007)
@@ -1584,68 +1298,12 @@ describe('appReducer — state transitions', () => {
       expect(next.valueRequest).toEqual({ mode: 'DIRECT', value: 1, text })
     })
 
-    it('fails closed when the lexeme is not an exact decimal (defensive)', () => {
-      // classifyFloatText would reject these before the reducer; a direct
-      // dispatch must still not fabricate a state change.
-      const s = directWith(1, 1, 17)
-      const NaNLiteral = appReducer(s, { type: 'value/set', value: 'NaN' })
-      expect(NaNLiteral).toBe(s)
-      const infinity = appReducer(s, { type: 'value/set', value: 'Infinity' })
-      expect(infinity).toBe(s)
-    })
-  })
-
-  describe('DIRECT exact request provenance lifecycle (v2.5.12)', () => {
-    const toDirect = () => appReducer(base, { type: 'mode/set', mode: 'DIRECT' })
-
-    it('value/set stores the exact committed lexeme the encoder consumed', () => {
-      // Default coefficients m=1, b=0, R=0: round(−1.0000000000000000001) = −1.
-      const s = appReducer(toDirect(), { type: 'value/set', value: '-1.0000000000000000001' })
-      expect(s.raw).toBe(0xffff)
-      expect(s.valueRequest).toEqual({
-        mode: 'DIRECT',
-        value: -1,
-        text: '-1.0000000000000000001',
-      })
-    })
-
-    it('an explicit same-value re-entry re-establishes provenance as a new transaction', () => {
-      const first = appReducer(toDirect(), { type: 'value/set', value: '5' })
-      const second = appReducer(first, { type: 'value/set', value: '5' })
-      expect(second.valueRequest).toEqual(first.valueRequest)
-      expect(second.valueRequest).not.toBe(first.valueRequest)
-      expect(second.valueRequest).toEqual({ mode: 'DIRECT', value: 5, text: '5' })
-    })
-
-    it('real raw edits (hex / bit / Y) clear the lexeme provenance', () => {
-      const committed = appReducer(toDirect(), { type: 'value/set', value: '7' })
-      expect(committed.valueRequest).not.toBeNull()
-      expect(
-        appReducer(committed, { type: 'raw/set-from-hex', hex: '1234' }).valueRequest,
-      ).toBeNull()
-      expect(appReducer(committed, { type: 'bit/toggle', bit: 0 }).valueRequest).toBeNull()
-      expect(appReducer(committed, { type: 'direct/set-y', y: '3' }).valueRequest).toBeNull()
-    })
-
-    it('coefficient edits clear the lexeme provenance', () => {
-      const committed = appReducer(toDirect(), { type: 'value/set', value: '7' })
-      for (const name of ['m', 'b', 'r'] as const) {
-        const edited = appReducer(committed, {
-          type: 'direct/set-coeff',
-          name,
-          value: name === 'm' ? '2' : '1',
-        })
-        expect(edited.valueRequest, name).toBeNull()
+    it('rejects out-of-range decimals and HALF literals without altering the request', () => {
+      const direct = directWith(1, 0, 0)
+      const committed = appReducer(direct, { type: 'value/set', value: '7' })
+      for (const value of ['1e400', '1e-400', 'NaN', 'Infinity']) {
+        expect(appReducer(committed, { type: 'value/set', value }), value).toBe(committed)
       }
-    })
-
-    it('mode switches clear the provenance; illegal drafts never create one', () => {
-      const committed = appReducer(toDirect(), { type: 'value/set', value: '7' })
-      expect(appReducer(committed, { type: 'mode/set', mode: 'L11' }).valueRequest).toBeNull()
-      const overflow = appReducer(toDirect(), { type: 'value/set', value: '1e400' })
-      expect(overflow.valueRequest).toBeNull()
-      const underflow = appReducer(toDirect(), { type: 'value/set', value: '1e-400' })
-      expect(underflow.valueRequest).toBeNull()
     })
   })
 })

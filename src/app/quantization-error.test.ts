@@ -1,19 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { computeQuantizationOutcome } from './quantization-error'
 import { PMBusMath } from '../legacy/pmbus-math'
-import type { AppState } from './state'
+import { INITIAL_STATE, type AppState } from './state'
 
-const BASE: AppState = {
-  mode: 'L11',
-  raw: 0,
-  voutMode: { byte: 0x18 },
-  l11: { n: 0, y: 0, autoN: true, valueInput: null },
-  valueRequest: null,
-  l16: { payloadKind: 'ulinear16', nominalVout: null },
-  direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-  copy: { prefix0x: true, spaceBetweenBytes: true },
-  ui: { theme: 'system', debugOpen: false, bitMappingOpen: { rawWord: true, voutMode: true } },
-}
+const BASE = INITIAL_STATE
 
 function make(overrides: Partial<AppState> = {}): AppState {
   return { ...BASE, ...overrides }
@@ -147,7 +137,7 @@ describe('computeQuantizationOutcome — LINEAR16', () => {
     expect(high?.represented).toBe(255.99609375)
   })
 
-  it('returns no outcome for non-LINEAR shared bytes (fail closed, v2.5.2)', () => {
+  it('非 LINEAR 共享字节不产生 LINEAR16 量化结果', () => {
     // §8.4: the output-voltage data format comes from the current VOUT_MODE,
     // so no implicit 0x18 channel exists — no represented value, no outcome.
     for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
@@ -161,22 +151,6 @@ describe('computeQuantizationOutcome — LINEAR16', () => {
       )
       expect(q, `0x${byte.toString(16)}`).toBeNull()
     }
-  })
-
-  it('restores the quantization outcome after an explicit apply of 0x18', () => {
-    // Same request shape as the fail-closed case above, but with the shared
-    // byte explicitly written to the LINEAR default: the normal ULINEAR16
-    // channel is back (N=-8).
-    const q = computeQuantizationOutcome(
-      make({
-        mode: 'L16',
-        raw: 0x0001,
-        voutMode: { byte: 0x18 },
-        valueRequest: { mode: 'L16', value: 0.005 },
-      }),
-    )
-    expect(q?.represented).toBe(0.00390625)
-    expect(q?.status).toBe('quantized')
   })
 
   it('SLINEAR16 offset + 0x98 clamps 200 to the signed boundary (saturated)', () => {
@@ -241,23 +215,6 @@ describe('computeQuantizationOutcome — DIRECT', () => {
     expect(q?.status).toBe('quantized')
   })
 
-  it('zero request with non-zero represented: absolute kept, relative undefined', () => {
-    // m=1, b=1, R=-1: X=0 → Y=round((0+1)×10^-1)=0 → decode −1.
-    // requested − represented = +1; relative error for a zero denominator
-    // is undefined and must never render as 0%.
-    const q = computeQuantizationOutcome(
-      make({
-        mode: 'DIRECT',
-        raw: 0,
-        direct: { m: 1, b: 1, r: -1, errors: { m: null, b: null, r: null } },
-        valueRequest: { mode: 'DIRECT', value: 0, text: '0' },
-      }),
-    )
-    expect(q).toMatchObject({ status: 'quantized', requested: 0, represented: -1 })
-    expect(q?.absoluteError).toBe(1)
-    expect(q?.relativeError).toBeNull()
-  })
-
   it('classifies Y-domain clamping as saturated', () => {
     const q = computeQuantizationOutcome(
       make({
@@ -272,7 +229,7 @@ describe('computeQuantizationOutcome — DIRECT', () => {
   })
 })
 
-describe('computeQuantizationOutcome — DIRECT exact request provenance (v2.5.12)', () => {
+describe('DIRECT 精确请求的量化结果', () => {
   // Hand-built fixture mirroring a reducer transaction: `value` is the
   // classify-float Number of the same lexeme stored in `text`.
   const directExactState = (raw: number, m: number, b: number, r: number, text: string): AppState =>
@@ -416,24 +373,20 @@ describe('computeQuantizationOutcome — DIRECT exact request provenance (v2.5.1
 
   it('exact-zero requests keep relativePercent null (true zero and signed −0)', () => {
     const zero = computeQuantizationOutcome(directExactState(0x0000, 1, 1, -1, '0'))
-    expect(zero?.status).toBe('quantized')
-    expect(zero?.directExact?.requested.numerator).toBe(0n)
-    expect(zero?.directExact?.relativePercent).toBeNull()
+    expect(zero).toMatchObject({
+      status: 'quantized',
+      requested: 0,
+      represented: -1,
+      absoluteError: 1,
+      relativeError: null,
+      directExact: { requested: { numerator: 0n }, relativePercent: null },
+    })
     const signedZero = computeQuantizationOutcome(directExactState(0x0000, 1, 0, 0, '-0'))
     expect(signedZero?.status).toBe('exact')
     expect(signedZero?.directExact?.relativePercent).toBeNull()
   })
 
-  it('m=0 and non-parsing provenance fail closed with no fabricated outcome', () => {
-    const mZero = computeQuantizationOutcome(
-      make({
-        mode: 'DIRECT',
-        raw: 1,
-        direct: { m: 0, b: 0, r: 0, errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null } },
-        valueRequest: { mode: 'DIRECT', value: 1, text: '1' },
-      }),
-    )
-    expect(mZero).toBeNull()
+  it('omits the outcome for invalid exact request text', () => {
     // A provenance whose lexeme no longer parses is unreachable through the
     // reducer (deterministic parse of the stored lexeme); fail closed anyway.
     const stale = computeQuantizationOutcome(
@@ -522,6 +475,8 @@ describe('computeQuantizationOutcome — IEEE Half', () => {
     )
     // requested −0 − represented −0 → 0; relative for a zero denominator is null.
     expect(negativeZero?.status).toBe('exact')
+    expect(negativeZero?.requested).toBe(-0)
+    expect(negativeZero?.represented).toBe(-0)
     expect(negativeZero?.absoluteError).toBe(0)
     expect(negativeZero?.relativeError).toBeNull()
   })

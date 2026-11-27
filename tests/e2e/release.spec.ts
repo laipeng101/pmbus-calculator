@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { test, expect } from '@playwright/test'
+import {
+  expectApplicationAssets,
+  expectNoResourceErrors,
+  observeBrowserResources,
+} from './helpers/browser-resources'
 import { expectProductionCsp } from './helpers/pages-contract'
-import { RELEASE_CSP } from '../../scripts/pages-network-policy.mjs'
+import { formatCsp, RELEASE_CSP } from '../../scripts/pages-network-policy.mjs'
 
 const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
   version: string
@@ -9,46 +14,11 @@ const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.ur
 
 test.describe('production build smoke', () => {
   test('生产构建加载正常：标题、核心控件、CSP 与静态资源', async ({ page, baseURL }) => {
-    const pageErrors: string[] = []
-    const failedAssets: string[] = []
-    const fontResponses: string[] = []
-    const offOriginResources: string[] = []
-    const sameOriginTypes = new Set<string>()
     const previewOrigin = new URL(baseURL!).origin
-
-    page.on('request', (request) => {
-      if (new URL(request.url()).origin !== previewOrigin) {
-        offOriginResources.push(request.url())
-      }
-    })
-
-    page.on('requestfailed', (request) => {
-      failedAssets.push(`${request.resourceType()} ${request.url()}`)
-    })
-
-    page.on('pageerror', (error) => {
-      pageErrors.push(error.message)
-    })
-
-    page.on('response', (response) => {
-      const type = response.request().resourceType()
-      const status = response.status()
-      if (status >= 200 && status < 400 && new URL(response.url()).origin === previewOrigin) {
-        sameOriginTypes.add(type)
-      }
-      if (type === 'font' && status >= 200 && status < 400) {
-        fontResponses.push(response.url())
-      }
-      if (
-        status >= 400 &&
-        status < 600 &&
-        ['document', 'script', 'stylesheet', 'font', 'image', 'media', 'xhr', 'fetch'].includes(
-          type,
-        )
-      ) {
-        failedAssets.push(`${status} ${response.request().method()} ${response.url()}`)
-      }
-    })
+    const observed = observeBrowserResources(
+      page,
+      (request) => new URL(request.url()).origin === previewOrigin,
+    )
 
     await page.goto('/')
 
@@ -66,40 +36,14 @@ test.describe('production build smoke', () => {
     await expect(page.locator('link[href*="pages-overlay.css"]')).toHaveCount(0)
     expect((await page.content()).toLowerCase().includes('cloudflareinsights.com')).toBe(false)
 
-    await expect(page.locator('.katex').first()).toBeVisible()
-    await expect(page.locator('.katex-error')).toHaveCount(0)
-    await expect(page.locator('.katex math').first()).toBeAttached()
-
-    await page.evaluate(async () => {
-      await document.fonts.ready
-    })
-
-    const katexFontFamily = await page
-      .locator('.katex')
-      .first()
-      .evaluate((el) => getComputedStyle(el).fontFamily)
-    expect(katexFontFamily).toContain('KaTeX_Main')
-
-    expect(fontResponses.length).toBeGreaterThan(0)
-    for (const fontUrl of fontResponses) {
-      expect(new URL(fontUrl).origin).toBe(previewOrigin)
-    }
-
-    expect(pageErrors).toEqual([])
-    expect(failedAssets).toEqual([])
-    expect(offOriginResources).toEqual([])
-    for (const type of ['script', 'stylesheet', 'font']) {
-      expect(sameOriginTypes.has(type), `${type} loads same-origin`).toBe(true)
-    }
+    await expectApplicationAssets(page, previewOrigin, observed)
+    expectNoResourceErrors(observed)
   })
 
   test('browser CSP guard rejects NBSP before head and policies after resource elements', async ({
     page,
   }) => {
-    const policy = Object.entries(RELEASE_CSP)
-      .map(([directive, values]) => `${directive} ${values.join(' ')}`)
-      .join('; ')
-    const meta = `<meta http-equiv="Content-Security-Policy" content="${policy}">`
+    const meta = `<meta http-equiv="Content-Security-Policy" content="${formatCsp(RELEASE_CSP)}">`
     // Canonical link and JSON script exercise resource ordering without any
     // network request or executable fixture code.
     const valid = `<!doctype html><html><head>${meta}<link rel="canonical" href="/"><script type="application/json">{}</script></head><body>fixture</body></html>`

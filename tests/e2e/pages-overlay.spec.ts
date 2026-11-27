@@ -1,10 +1,11 @@
-import { test, expect, type Locator, type Page, type TestInfo } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import {
   expectPagesDomContract,
   expectPagesResources,
   observePagesResources,
   stubCloudflare,
 } from './helpers/pages-contract'
+import { expectNoResourceErrors } from './helpers/browser-resources'
 import { CLOUDFLARE_RUM_URL, PAGES_REPOSITORY_NAME } from '../../scripts/pages-network-policy.mjs'
 
 const calculatorTargets = [
@@ -117,13 +118,6 @@ function contrastRatio(foreground: string, background: string): number {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
 }
 
-async function recordViewport(page: Page, testInfo: TestInfo, name: string) {
-  await page.evaluate(async () => document.fonts.ready)
-  const path = testInfo.outputPath(`${name}.png`)
-  await page.screenshot({ path, animations: 'disabled' })
-  await testInfo.attach(name, { path, contentType: 'image/png' })
-}
-
 async function reachLinkByKeyboard(page: Page, repository: Locator) {
   // Start from the fresh page and traverse real Tab order. This catches an
   // accidental tabindex=-1 without assuming browser-chrome focus wrapping.
@@ -184,7 +178,7 @@ for (const theme of ['light', 'dark'] as const) {
   test(`${theme}: repository link is visible, keyboard reachable and clear of all five modes`, async ({
     page,
     baseURL,
-  }, testInfo) => {
+  }) => {
     await page.addInitScript(
       (value) => localStorage.setItem('pmbus-calculator:theme', value),
       theme,
@@ -192,8 +186,7 @@ for (const theme of ['light', 'dark'] as const) {
     const observed = observePagesResources(page, baseURL!)
     await page.goto('./')
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-    await expectPagesDomContract(page)
-    await expectPagesResources(page, baseURL!, observed)
+    await page.evaluate(async () => document.fonts.ready)
     const repository = page.getByRole('link', { name: PAGES_REPOSITORY_NAME, exact: true })
     const colors = await repository.evaluate((element) => {
       const style = getComputedStyle(element)
@@ -202,10 +195,7 @@ for (const theme of ['light', 'dark'] as const) {
     expect(contrastRatio(colors.color, colors.background)).toBeGreaterThanOrEqual(4.5)
     expect(Number.parseFloat(colors.radius)).toBeGreaterThanOrEqual(8)
     await expectClearViewport(page)
-    await recordViewport(page, testInfo, `${theme}-viewport`)
     await reachLinkByKeyboard(page, repository)
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await recordViewport(page, testInfo, `${theme}-focus`)
 
     for (const mode of ['LINEAR11', 'LINEAR16', 'DIRECT', 'HALF', 'VOUT_MODE']) {
       await page.getByRole('tab', { name: new RegExp(mode) }).click()
@@ -216,9 +206,7 @@ for (const theme of ['light', 'dark'] as const) {
       await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
       await expectClearViewport(page)
     }
-    expect(observed.pageErrors).toEqual([])
-    expect(observed.failedAssets).toEqual([])
-    expect(observed.unexpectedExternalOrigins).toEqual([])
+    expectNoResourceErrors(observed)
   })
 }
 
@@ -324,6 +312,7 @@ test(
     }, CLOUDFLARE_RUM_URL)
     expect(status).toBe(200)
     await expectPagesResources(page, baseURL!, observed)
+    expectNoResourceErrors(observed)
   },
 )
 

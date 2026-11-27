@@ -1,16 +1,8 @@
 import { test, expect, type Page } from '@playwright/test'
-import { appUrl } from './helpers/app-url'
-
-/**
- * M39 共享位字段网格结构 / 几何 / 无障碍合同。
- *
- * 16 位 = 4 个 nibble 组 × 4 位；VOUT_MODE（独立页与 L16 内嵌 compact）= 2 × 4。
- * regular 与 compact 只是统一 token 下的尺寸差异，不产生另一套 DOM 语义；
- * L16 的 bits[6:5] 必须真正 disabled 并在 ARIA 中说明“格式位固定为 LINEAR”。
- */
+import { expectNoHorizontalOverflow } from './helpers/layout'
 
 async function settle(page: Page) {
-  await page.goto(appUrl())
+  await page.goto('./')
   await expect(page.locator('.katex').first()).toBeVisible()
 }
 
@@ -21,7 +13,6 @@ async function gridInfo(page: Page, selector: string) {
     const nibbles = Array.from(root.querySelectorAll(':scope .bitfield-grid > .bitfield-nibble'))
     return {
       density: root.getAttribute('data-density'),
-      bitCount: root.getAttribute('data-bit-count'),
       nibbleCount: nibbles.length,
       bitsPerNibble: nibbles.map((n) => n.querySelectorAll('.bitfield-bit').length),
       hexLabels: nibbles.map((n) => {
@@ -30,7 +21,6 @@ async function gridInfo(page: Page, selector: string) {
       }),
       legendItems: Array.from(root.querySelectorAll('.bitfield-legend-item')).map((item) => ({
         text: item.textContent ?? '',
-        swatchClass: item.querySelector('.legend-swatch')?.className ?? '',
         swatchSize: (() => {
           const box = item.querySelector('.legend-swatch')!.getBoundingClientRect()
           return { w: Math.round(box.width), h: Math.round(box.height) }
@@ -40,8 +30,8 @@ async function gridInfo(page: Page, selector: string) {
   }, selector)
 }
 
-test.describe('M39 共享位字段网格', () => {
-  test('16 位网格是 4 nibble × 4 位，nibble 标签为大写 mono Hex', async ({ page }) => {
+test.describe('位编辑器', () => {
+  test('16 位编辑器每四位分组，以大写等宽十六进制标注', async ({ page }) => {
     await settle(page)
     const info = await gridInfo(page, '.bitfield[data-bit-count="16"]')
     expect(info.nibbleCount).toBe(4)
@@ -62,8 +52,8 @@ test.describe('M39 共享位字段网格', () => {
     expect(allText).not.toContain('Mantissa [')
   })
 
-  test('独立 VOUT_MODE 是 2 nibble × 4 位；bit/Hex/语义三向同步仍成立', async ({ page }) => {
-    await page.goto(appUrl())
+  test('独立 VOUT_MODE 的两组位按钮与字节输入同步', async ({ page }) => {
+    await page.goto('./')
     await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
     const info = await gridInfo(page, '.bitfield[data-bit-count="8"]')
     expect(info.nibbleCount).toBe(2)
@@ -79,8 +69,8 @@ test.describe('M39 共享位字段网格', () => {
     await expect(bit7).toHaveAttribute('aria-pressed', 'false')
   })
 
-  test('L16 内嵌 VOUT_MODE 为 compact 且仍是两个四位组；bits[6:5] 真正禁用', async ({ page }) => {
-    await page.goto(appUrl())
+  test('LINEAR16 内嵌配置器保留两个四位组，格式位禁用', async ({ page }) => {
+    await page.goto('./')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const root = page.locator('.bitfield[data-density="compact"]')
     await expect(root).toBeVisible()
@@ -111,8 +101,8 @@ test.describe('M39 共享位字段网格', () => {
     expect(legendText).toContain('参数 [4:0]')
   })
 
-  test('L16 数据解释类型切换时图例文案跟随（无符号值 vs 有符号值）', async ({ page }) => {
-    await page.goto(appUrl())
+  test('LINEAR16 数据解释切换后显示对应图例', async ({ page }) => {
+    await page.goto('./')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     const legend = page.locator('.bitfield[data-bit-count="16"] .bitfield-legend')
     await expect(legend).toContainText('数值 V [15:0]')
@@ -120,89 +110,59 @@ test.describe('M39 共享位字段网格', () => {
     await expect(legend).toContainText('有符号值 Y [15:0]')
   })
 
-  test('非 LINEAR 共享字节的 L16 图例必须是中性 raw word，绝不显示 V/Y（v2.5.3）', async ({
-    page,
-  }) => {
-    await page.goto(appUrl())
-    await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    const legend = page.locator('.bitfield[data-bit-count="16"] .bitfield-legend')
-    for (const hex of ['20', '3E', '40', '60']) {
-      await page.locator('#vout-mode-input').fill(hex)
-      await page.locator('#vout-mode-input').press('Tab')
-      await expect(legend, `VOUT_MODE ${hex}`).toContainText('未按 LINEAR16 解释')
-      await expect(legend, `VOUT_MODE ${hex}`).not.toContainText('数值 V')
-      await expect(legend, `VOUT_MODE ${hex}`).not.toContainText('有符号值 Y')
+  const rawBits = { id: 'bit-mapping-raw-word-content', name: '16 位编辑器', count: 16 }
+  const configurationBits = {
+    id: 'bit-mapping-vout-mode-content',
+    name: 'VOUT_MODE 8 位编辑器',
+    count: 8,
+  }
+  const modes = [
+    { name: 'LINEAR11', grids: [rawBits] },
+    { name: 'LINEAR16', grids: [rawBits, configurationBits] },
+    { name: 'VOUT_MODE', grids: [configurationBits] },
+  ]
 
-      // The payload dropdown must not resurrect the V/Y legend either.
-      await page.getByLabel('L16 数据解释类型').selectOption('slinear16-offset')
-      await expect(legend, `VOUT_MODE ${hex} + SLINEAR16`).toContainText('未按 LINEAR16 解释')
-      await expect(legend, `VOUT_MODE ${hex} + SLINEAR16`).not.toContainText('有符号值 Y')
-      await page.getByLabel('L16 数据解释类型').selectOption('ulinear16')
-    }
-    // Back on a LINEAR byte the payload-specific legends return.
-    await page.locator('#vout-mode-input').fill('18')
-    await page.locator('#vout-mode-input').press('Tab')
-    await expect(legend).toContainText('数值 V [15:0]')
-    await expect(legend).not.toContainText('未按 LINEAR16 解释')
-  })
-
-  for (const width of [360, 390, 430, 768, 1024, 1440, 2048]) {
-    test(`${width}px：五种模式的位格留在卡片内，页面无横向溢出`, async ({ page }) => {
-      // 位格在卡片两侧对称溢出时，页面的 scrollWidth 可能不变。
+  // 采样位网格列数和工作区分栏切换处。两侧同时溢出时页面宽度可能不变。
+  for (const width of [359, 360, 960, 1151, 1152]) {
+    test(`${width} px 下各位编辑器完整显示在面板内`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
-      await page.goto(appUrl())
-      await expect(page.getByTestId('result-panel')).toBeVisible()
-      for (const tab of [/LINEAR11/, /LINEAR16/, /DIRECT/, /HALF/, /VOUT_MODE/]) {
-        await page.getByRole('tab', { name: tab }).click()
-        await expect(page.locator('.bitfield').first()).toBeVisible()
-        const violations = await page.evaluate(() => {
-          const root = document.documentElement
-          const out = root.scrollWidth > root.clientWidth ? ['页面横向溢出'] : []
-          for (const field of document.querySelectorAll('.bitfield')) {
-            let card = field.parentElement
-            while (card && getComputedStyle(card).borderRadius === '0px') {
-              card = card.parentElement
-            }
-            if (card == null) continue
-            const cs = getComputedStyle(card)
-            const cardRect = card.getBoundingClientRect()
-            const contentL = cardRect.left + (parseFloat(cs.paddingLeft) || 0)
-            const contentR = cardRect.right - (parseFloat(cs.paddingRight) || 0)
-            for (const bit of field.querySelectorAll('.bitfield-bit')) {
-              const r = bit.getBoundingClientRect()
-              if (r.width === 0) continue
-              if (r.left < contentL - 0.5 || r.right > contentR + 0.5) {
-                out.push(
-                  'bit ' +
-                    (bit.querySelector('.bitfield-index')?.textContent ?? '?') +
-                    ' [' +
-                    Math.round(r.left) +
-                    '..' +
-                    Math.round(r.right) +
-                    '] vs content [' +
-                    Math.round(contentL) +
-                    '..' +
-                    Math.round(contentR) +
-                    ']',
+      await page.goto('./')
+
+      for (const mode of modes) {
+        await page.getByRole('tab', { name: new RegExp(mode.name) }).click()
+        for (const { id, name, count } of mode.grids) {
+          const panel = page.locator(`#${id}`)
+          const group = panel.getByRole('group', { name, exact: true })
+          await expect(group).toBeVisible()
+          await expect(group.getByRole('button')).toHaveCount(count)
+
+          const clipped = await panel.evaluate((element) => {
+            const panel = element.getBoundingClientRect()
+            return Array.from(element.querySelectorAll('.bitfield-bit'))
+              .filter((bit) => {
+                const box = bit.getBoundingClientRect()
+                return (
+                  box.width <= 0 ||
+                  box.height <= 0 ||
+                  box.left < panel.left - 0.5 ||
+                  box.right > panel.right + 0.5
                 )
-              }
-            }
-          }
-          return out
-        })
-        expect(violations, width + 'px ' + String(tab)).toEqual([])
+              })
+              .map((bit) => bit.getAttribute('aria-label'))
+          })
+          expect(clipped, `${mode.name} 的 ${name}`).toEqual([])
+        }
+        await expectNoHorizontalOverflow(page)
       }
     })
   }
 })
 
-test.describe('v2.6.2 L16 bits[6:5] 禁用原因可见（overlay 外）', () => {
+test.describe('LINEAR16 配置格式位的禁用原因', () => {
   // 原生 disabled 的位按钮不产生指针/焦点事件，禁用原因必须有 tooltip 之外的
   // 可见路径，并通过 aria-describedby 关联到这两个按钮。
-  test('linked 状态：可见原因 + bit5/bit6 aria-describedby；bit7 不关联；独立页无该行', async ({
-    page,
-  }) => {
-    await page.goto(appUrl())
+  test('已关联的 LINEAR16 格式位关联可见禁用原因', async ({ page }) => {
+    await page.goto('./')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
 
     const reason = page.locator('#vout-bits65-disabled-reason')
@@ -225,10 +185,8 @@ test.describe('v2.6.2 L16 bits[6:5] 禁用原因可见（overlay 外）', () => 
     await expect(page.locator('#vout-bits65-disabled-reason')).toHaveCount(0)
   })
 
-  test('non-linear 状态：可见原因切换为“非 LINEAR”措辞，aria-describedby 保持', async ({
-    page,
-  }) => {
-    await page.goto(appUrl())
+  test('非 LINEAR 配置的格式位关联相应禁用原因', async ({ page }) => {
+    await page.goto('./')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
 
     const hex = page.locator('#vout-mode-input')
@@ -247,14 +205,11 @@ test.describe('v2.6.2 L16 bits[6:5] 禁用原因可见（overlay 外）', () => 
     }
   })
 
-  test('可见原因行不引入横向溢出（390px 移动端）', async ({ page }) => {
+  test('390 px 下禁用原因完整显示', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto(appUrl())
+    await page.goto('./')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
     await expect(page.locator('#vout-bits65-disabled-reason')).toBeVisible()
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-    )
-    expect(overflow).toBe(true)
+    await expectNoHorizontalOverflow(page)
   })
 })

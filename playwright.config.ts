@@ -1,16 +1,15 @@
 import { defineConfig, devices } from '@playwright/test'
 import { browserDefaults, desktop, preview } from './playwright.shared'
+import { PAGES_BASE_PATH } from './scripts/pages-network-policy.mjs'
 
-const appPath = '/pmbus-calculator'
-const server = preview(4173, `${appPath}/`)
+const server = preview(4173, PAGES_BASE_PATH)
 const mobile = '**/mobile-contract.spec.ts'
 const crossEngine = '**/cross-engine-core.spec.ts'
-process.env.E2E_APP_BASE_PATH = appPath
 
 export default defineConfig(browserDefaults('app'), {
   fullyParallel: true,
   workers: process.env.CI ? 2 : undefined,
-  use: { baseURL: 'http://localhost:4173' },
+  use: { baseURL: server.url },
   webServer: server,
   projects: [
     {

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer, type RequestListener, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { gzipSync } from 'node:zlib'
 import { afterEach, expect, test } from 'vitest'
+import { applyPagesOverlay } from '../scripts/apply-pages-overlay.mjs'
+import { PAGES_BASE_PATH } from '../scripts/pages-network-policy.mjs'
+import { TOKEN_ENV } from '../scripts/pages-overlay-contract.mjs'
 import { verifyPagesEntities } from '../scripts/verify-pages-entities.mjs'
+import { writeReleaseSite } from './fixtures/pages-site'
 
 const run = promisify(execFile)
 const script = fileURLToPath(new URL('../scripts/verify-pages-entities.mjs', import.meta.url))
@@ -31,7 +35,7 @@ async function serve(onRequest: RequestListener) {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('Missing fixture server address')
-  return `http://127.0.0.1:${address.port}/pmbus-calculator/`
+  return `http://127.0.0.1:${address.port}${PAGES_BASE_PATH}`
 }
 
 afterEach(async () => {
@@ -44,44 +48,68 @@ afterEach(async () => {
   for (const directory of directories.splice(0)) rmSync(directory, { force: true, recursive: true })
 })
 
-test('CLI checks the complete tree at the Pages prefix with a fresh identity request per file', async () => {
-  const files = {
-    'index.html': '<!doctype html><title>PMBus</title>',
-    'assets/字体 1.woff2': Buffer.from([0, 1, 2, 255]),
-    'pages-overlay.css': 'body{}',
-  }
-  const requests = new Map<string, string[]>()
-  let missing = false
+test('CLI checks the complete overlaid Pages tree with a fresh identity request per file', async () => {
+  const root = site({})
+  const finalSite = writeReleaseSite(root)
+  const fontName = 'assets/字体 1.woff2'
+  writeFileSync(path.join(finalSite, fontName), Buffer.from([0, 1, 2, 255]))
+  const indexPath = path.join(finalSite, 'index.html')
+  const releaseIndex = readFileSync(indexPath)
+  applyPagesOverlay('_site', { repoRoot: root, env: { [TOKEN_ENV]: 'a'.repeat(32) } })
+  const files = new Map(
+    ['index.html', 'pages-overlay.css', 'assets/app.js', 'assets/app.css', fontName].map((name) => [
+      name,
+      readFileSync(path.join(finalSite, name)),
+    ]),
+  )
+  const runId = 'original-run-id'
+  const requests: string[][] = []
   const base = await serve((request, response) => {
     const url = new URL(request.url!, 'http://localhost')
-    requests.set(decodeURIComponent(url.pathname), [
+    const requestPath = decodeURIComponent(url.pathname)
+    requests.push([
+      requestPath,
       request.method!,
       url.search,
       request.headers['accept-encoding']!,
       request.headers['cache-control']!,
     ])
-    const name = decodeURIComponent(url.pathname.slice('/pmbus-calculator/'.length))
-    if (Object.hasOwn(files, name) && !(missing && name === 'pages-overlay.css')) {
-      response.end(files[name as keyof typeof files])
-    } else {
-      response.writeHead(404).end()
-    }
+    const name = requestPath.slice(PAGES_BASE_PATH.length)
+    const bytes = files.get(name)
+    if (bytes) response.end(bytes)
+    else response.writeHead(404).end()
   })
-  const args = [script, '--site', site(files), '--base-url', base, '--query', 'original-run-id']
+  const args = [script, '--site', finalSite, '--base-url', base, '--query', runId]
 
   const result = await run(process.execPath, args, { timeout: 3_000 })
-  expect(result.stdout).toMatch(/3\/3 files verified/)
-  expect(Object.fromEntries(requests)).toEqual(
-    Object.fromEntries(
-      Object.keys(files).map((name) => [
-        `/pmbus-calculator/${name}`,
-        ['GET', '?cb=original-run-id', 'identity', 'no-cache'],
+  expect(result.stdout).toContain(`${files.size}/${files.size} files verified`)
+  expect(requests).toHaveLength(files.size)
+  expect(requests).toEqual(
+    expect.arrayContaining(
+      [...files.keys()].map((name) => [
+        `${PAGES_BASE_PATH}${name}`,
+        'GET',
+        `?cb=${runId}`,
+        'identity',
+        'no-cache',
       ]),
     ),
   )
-  expect(result.stdout + result.stderr).not.toContain('original-run-id')
+  expect(result.stdout + result.stderr).not.toContain(runId)
 
-  missing = true
+  const finalIndex = files.get('index.html')!
+  // Pad the pre-overlay document so an incorrect response can only fail the digest check.
+  files.set(
+    'index.html',
+    Buffer.concat([releaseIndex, Buffer.alloc(finalIndex.length - releaseIndex.length, ' ')]),
+  )
+  await expect(run(process.execPath, args, { timeout: 3_000 })).rejects.toMatchObject({
+    code: 1,
+    stderr: expect.stringContaining('"index.html": SHA-256 mismatch'),
+  })
+
+  files.set('index.html', finalIndex)
+  files.delete('pages-overlay.css')
   await expect(run(process.execPath, args, { timeout: 3_000 })).rejects.toMatchObject({
     code: 1,
     stderr: expect.stringContaining('"pages-overlay.css": HTTP 404'),
@@ -126,7 +154,7 @@ test('rejects redirects before contacting either a same-path alias or an externa
   })
   let redirectTo = external
   const url = await serve((request, response) => {
-    if (request.url === '/pmbus-calculator/assets/app.js') {
+    if (request.url === `${PAGES_BASE_PATH}assets/app.js`) {
       response.writeHead(302, { location: redirectTo }).end()
     } else {
       redirectedRequests += 1

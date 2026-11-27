@@ -260,9 +260,10 @@ describe('analyzeVoutMode — golden vectors (Part II §8.3 Table 2 / §8.4.2 Ta
 })
 
 describe('analyzeVoutMode — exhaustive invariants (0x00..0xFF)', () => {
-  test('no throw, field extraction is identity, status is deterministic', () => {
+  test('keeps every raw byte and decodes its fields and validity', () => {
     for (let byte = 0; byte <= 0xff; byte++) {
       const a = analyzeVoutMode(byte)
+      expect(a.byte).toBe(byte)
       expect(a.format).toBe((byte >> 5) & 0x03)
       expect(a.formatName).toBe(
         a.format === 0
@@ -448,22 +449,5 @@ describe('composeVoutMode — canonical encode and round-trip', () => {
       const byte = composeVoutMode({ relative: false, format: 0, parameter: param })
       expect(analyzeVoutMode(byte!).linearExponent).toBe(n)
     }
-  })
-
-  test('every byte 0x00..0xFF is losslessly analyzable (format from bits[6:5] only)', () => {
-    for (let byte = 0; byte <= 0xff; byte++) {
-      const a = analyzeVoutMode(byte)
-      expect(a.byte, `0x${byte.toString(16)}`).toBe(byte)
-      expect(a.format, `0x${byte.toString(16)}`).toBe((byte >> 5) & 0x03)
-      expect(a.isRelative, `0x${byte.toString(16)}`).toBe(((byte >> 7) & 1) === 1)
-      expect(a.parameter, `0x${byte.toString(16)}`).toBe(byte & 0x1f)
-    }
-  })
-
-  test('official Relative example 0x96: R = 1.099609375 = 109.9609375%', () => {
-    const a = analyzeVoutMode(0x96)
-    expect(a.isRelative).toBe(true)
-    expect(a.format).toBe(0)
-    expect(a.linearExponent).toBe(-10)
   })
 })

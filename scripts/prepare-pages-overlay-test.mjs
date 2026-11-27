@@ -18,32 +18,38 @@ import {
   resolveSite,
 } from './pages-overlay-contract.mjs'
 
+export const PAGES_OVERLAY_TEST_SITE = 'test-results/pages-overlay-fixture/_site'
+
 /** @param {string} [repoRoot] */
 export function preparePagesOverlayTest(repoRoot = DEFAULT_ROOT) {
   const root = fs.realpathSync(repoRoot)
   const dist = path.join(root, 'dist')
   const baseline = readSiteFiles(dist)
+  const site = path.join(root, PAGES_OVERLAY_TEST_SITE)
+  const fixtureRoot = path.dirname(site)
+  for (const dir of [path.dirname(fixtureRoot), fixtureRoot]) {
+    fs.mkdirSync(dir, { recursive: true })
+    requireContract(
+      fs.realpathSync(dir) === dir,
+      'Pages test output must not resolve through a symlink',
+    )
+  }
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'pmbus-pages-fixture-'))
-  const site = path.join(root, '_site')
   try {
     fs.copyFileSync(path.join(root, 'package.json'), path.join(temp, 'package.json'))
-    fs.cpSync(dist, path.join(temp, 'dist'), { recursive: true })
     const output = path.join(temp, 'release-output')
     // Exercises the real deterministic packager, checksum and ZIP safety gate.
-    const { zipName, sumsName } = generateAssets(path.join(temp, 'dist'), output)
+    const { zipName, sumsName } = generateAssets(dist, output)
     const zip = path.join(output, zipName)
     const originalZip = fs.readFileSync(zip)
     const sums = fs.readFileSync(path.join(output, sumsName))
     if (fs.lstatSync(site, { throwIfNoEntry: false })) {
-      // This one ignored, rebuildable target is the same clean-policy target.
-      // Reject symlinks/special files before replacing an earlier test fixture.
-      readSiteFiles(resolveSite('_site', root))
-      fs.rmSync(site, { recursive: true })
+      fs.rmSync(resolveSite('_site', fixtureRoot), { recursive: true })
     }
     extractReleaseZip(zip, site)
     const env = { GITHUB_REPOSITORY: PAGES_REPOSITORY, [TOKEN_ENV]: '0'.repeat(32) }
-    applyPagesOverlay('_site', { repoRoot: root, env })
-    const verified = verifyPagesOverlay('_site', { repoRoot: root, env })
+    applyPagesOverlay('_site', { repoRoot: fixtureRoot, env })
+    const verified = verifyPagesOverlay('_site', { repoRoot: fixtureRoot, env })
     requireContract(
       originalZip.equals(fs.readFileSync(zip)) &&
         sums.equals(fs.readFileSync(path.join(output, sumsName))),
@@ -63,6 +69,7 @@ export function preparePagesOverlayTest(repoRoot = DEFAULT_ROOT) {
     }
     return {
       ...verified,
+      site: PAGES_OVERLAY_TEST_SITE,
       scope: 'synthetic local fixture',
       releaseZipUnchanged: true,
       releaseFiles: baseline.size,

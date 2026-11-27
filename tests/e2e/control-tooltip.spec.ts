@@ -1,28 +1,20 @@
 import { test, expect, type Page } from '@playwright/test'
-import { appUrl } from './helpers/app-url'
-
-/**
- * v2.6.0 控件 tooltip 合同：按钮/按钮型控件悬停即显示、键盘 focus-visible
- * 打开、click 原动作只执行一次、与术语气泡共享全局单开；v2.6.2 起满足
- * WCAG 2.2 SC 1.4.13——指针移入浮层保持可见，同时离开触发器与浮层才关闭。
- */
+import { tabTo } from './helpers/keyboard'
 
 const THEME_TOOLTIP = '[data-testid="control-tooltip-theme-toggle"]'
 const THEME_BUTTON = 'header button[aria-label^="当前主题"]'
 
 async function settle(page: Page) {
-  await page.goto(appUrl())
+  await page.goto('./')
   await expect(page.locator('.katex').first()).toBeVisible()
   await page.evaluate(async () => {
     await document.fonts.ready
   })
-  await page.waitForTimeout(80)
 }
 
-test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
-  test('hover 打开、指针移入 tooltip 保持（SC 1.4.13 Hoverable）、离开两者后关闭', async ({
-    page,
-  }) => {
+test.describe('控件操作说明', () => {
+  test('悬停打开说明，指针移入说明时保持可见', async ({ page }) => {
+    await page.clock.install()
     await settle(page)
 
     const button = page.locator(THEME_BUTTON)
@@ -30,14 +22,20 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     const tooltip = page.locator(THEME_TOOLTIP)
     await expect(tooltip).toBeVisible()
     await expect(tooltip).toHaveAttribute('role', 'tooltip')
-    await expect(button).toHaveAttribute('aria-describedby', /.+/)
+    const tooltipId = await tooltip.getAttribute('id')
+    if (tooltipId == null) throw new Error('Missing control tooltip ID')
+    await expect(button).toHaveAttribute('aria-describedby', tooltipId)
+    await expect(button).not.toHaveAttribute('aria-expanded')
+    await expect(button).not.toHaveAttribute('title')
     await expect(tooltip).toContainText('当前主题')
 
     // WCAG 2.2 SC 1.4.13：指针从触发器移入浮层（跨过 8px offset 间隙），
     // 浮层保持可见、可悬停，触发器 aria-describedby 不变。
     await tooltip.hover()
+    // 指针停在说明上时，让虚拟时钟跨过关闭宽限。
+    await page.clock.runFor(200)
     await expect(tooltip).toBeVisible()
-    await expect(button).toHaveAttribute('aria-describedby', /.+/)
+    await expect(button).toHaveAttribute('aria-describedby', tooltipId)
 
     // 返回路径：从浮层移回触发器同样保持打开。
     await button.hover()
@@ -49,7 +47,7 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     await expect(button).not.toHaveAttribute('aria-describedby')
   })
 
-  test('click 原动作只执行一次，不被 tooltip 抢占或二次触发', async ({ page }) => {
+  test('说明打开时点击仍只切换一次主题', async ({ page }) => {
     await settle(page)
 
     const button = page.locator(THEME_BUTTON)
@@ -66,18 +64,14 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     await expect(button).toHaveAttribute('aria-label', /暗色/)
   })
 
-  test('键盘 focus-visible 打开，blur（Tab 离开）关闭；Escape 关闭并恢复焦点', async ({ page }) => {
+  test('键盘聚焦打开说明，Tab 和 Escape 可关闭', async ({ page }) => {
     await settle(page)
 
     // 真实键盘 Tab 进入页头：v2.6.0 起页头术语触发器在主题按钮之前，用有界
     // Tab 循环前进到主题按钮，focus-visible 路径打开 tooltip。
     const button = page.locator(THEME_BUTTON)
     const tooltip = page.locator(THEME_TOOLTIP)
-    for (let i = 0; i < 20; i++) {
-      if (await button.evaluate((el) => el.matches(':focus'))) break
-      await page.keyboard.press('Tab')
-    }
-    await expect(button).toBeFocused()
+    await tabTo(page, button)
     await expect(tooltip).toBeVisible()
 
     // Tab 离开（blur）关闭。
@@ -92,7 +86,7 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     await expect(button).toBeFocused()
   })
 
-  test('跨类型单开：术语气泡开着时 hover 控件，全局只剩控件 tooltip', async ({ page }) => {
+  test('悬停打开控件说明时关闭原有术语气泡', async ({ page }) => {
     await settle(page)
     await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
 
@@ -108,7 +102,7 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     await expect(page.locator('[role="tooltip"]')).toHaveCount(1)
   })
 
-  test('术语气泡开着时键盘聚焦控件也互斥（focus 打开关闭术语气泡）', async ({ page }) => {
+  test('键盘打开控件说明时关闭原有术语气泡', async ({ page }) => {
     await settle(page)
     await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
 
@@ -121,25 +115,13 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     // 纯键盘反向 Tab（有界循环到主题按钮）：focus-visible 打开控件 tooltip
     // 并按单开合同关闭术语气泡。
     const button = page.locator(THEME_BUTTON)
-    for (let i = 0; i < 40; i++) {
-      if (await button.evaluate((el) => el.matches(':focus'))) break
-      await page.keyboard.press('Shift+Tab')
-    }
-    await expect(button).toBeFocused()
+    await tabTo(page, button, 'Shift+Tab', 40)
     await expect(page.locator(THEME_TOOLTIP)).toBeVisible()
     await expect(page.locator('[data-testid="term-popover-vout-mode"]')).toHaveCount(0)
     await expect(page.locator('[role="tooltip"]')).toHaveCount(1)
   })
 
-  test('控件触发器不是 disclosure：无 aria-expanded，且无原生 title 帮助', async ({ page }) => {
-    await settle(page)
-
-    const button = page.locator(THEME_BUTTON)
-    await expect(button).not.toHaveAttribute('aria-expanded')
-    await expect(button).not.toHaveAttribute('title')
-  })
-
-  test('模式 tab：hover 打开说明（含 Ctrl 快捷键），click 只切换模式', async ({ page }) => {
+  test('模式标签说明展示快捷键，点击切换模式', async ({ page }) => {
     await settle(page)
 
     const tab = page.getByRole('tab', { name: /LINEAR16/ })
@@ -158,7 +140,7 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     await expect(page.locator('#mode-panel')).toContainText(/LINEAR16/)
   })
 
-  test('N 锁定按钮：hover 说明随锁定状态变化，原生 title 已移除', async ({ page }) => {
+  test('指数锁定按钮的说明随锁定状态更新', async ({ page }) => {
     await settle(page)
 
     const lock = page.locator('.n-lock-button')
@@ -168,11 +150,9 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     await expect(tooltip).toBeVisible()
     await expect(tooltip).toContainText('自动')
 
-    // click 切换状态后说明跟随（先离开再 hover，触发新的 hover 打开）。
-    // click 会原地替换图标节点，Chromium 可能在旧坐标补发一次 phantom
-    // pointerenter；等一帧让该伪事件先落地再移开指针，避免误判为悬停不关。
+    // Wait for the replacement state before moving off the hover target.
     await lock.click()
-    await page.waitForTimeout(120)
+    await expect(lock).toHaveAccessibleName('N 已解锁（手动）')
     await page.mouse.move(8, 300)
     await expect(tooltip).toHaveCount(0)
     await lock.hover()
@@ -203,7 +183,7 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     expect(titled).toEqual([])
   })
 
-  test('复制工具与偏好按钮：hover 说明存在且物理值禁用原因来自同一模板', async ({ page }) => {
+  test('复制工具显示操作说明和禁用原因', async ({ page }) => {
     await settle(page)
 
     const rawCopy = page.getByRole('button', { name: 'Raw Word Hex' })
@@ -227,7 +207,7 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     await expect(prefix).toHaveAttribute('aria-pressed', 'false')
   })
 
-  test('位编辑按钮：hover 显示动态位号/区域/当前值，点击仍翻转', async ({ page }) => {
+  test('位按钮可查看位号和当前值，点击翻转位', async ({ page }) => {
     await settle(page)
 
     // bit 15（原始数据位网格首位）。
@@ -242,7 +222,7 @@ test.describe('v2.6.0 控件 tooltip（悬停/键盘焦点说明）', () => {
     await expect(bit).toHaveAttribute('aria-pressed', 'true')
   })
 
-  test('disclosure 控件：计算过程/命令参考 hover 有说明，展开收起不受影响', async ({ page }) => {
+  test('计算过程与命令参考的说明保留展开和收起操作', async ({ page }) => {
     await settle(page)
 
     // The first screen already carries the complete equation; a committed

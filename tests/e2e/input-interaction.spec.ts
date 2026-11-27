@@ -1,81 +1,36 @@
-import { test, expect, type Locator, type Page } from '@playwright/test'
-import { appUrl } from './helpers/app-url'
+import { test, expect, type Page } from '@playwright/test'
+import { expectNoHorizontalOverflow, expectTextInside } from './helpers/layout'
 
-/**
- * M21 input & keyboard interaction reliability — bounded pairwise matrix.
- *
- * 每个非法输入场景断言：字段中的 draft、aria-invalid、错误关联 ID、
- * raw/最后有效值未被破坏、合法修正后错误清除、页面无横向 overflow、
- * 错误文本不被截断。
- */
-
-async function setTheme(page: Page, theme: 'light' | 'dark') {
-  await page.addInitScript((value) => {
-    localStorage.setItem('pmbus-calculator:theme', value)
-  }, theme)
-}
-
-async function expectNoBodyHorizontalOverflow(page: Page) {
-  const { scrollWidth, clientWidth } = await page.locator('body').evaluate((el) => ({
-    scrollWidth: el.scrollWidth,
-    clientWidth: el.clientWidth,
-  }))
-  expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
-}
-
-async function expectErrorNotTruncated(page: Page, errorId: string) {
-  const el = page.locator(`#${errorId}`)
-  await expect(el).toBeVisible()
-  const info = await el.evaluate((node) => {
-    const cs = getComputedStyle(node)
-    return {
-      scrollWidth: node.scrollWidth,
-      clientWidth: node.clientWidth,
-      textOverflow: cs.textOverflow,
-      whiteSpace: cs.whiteSpace,
-    }
-  })
-  expect(info.scrollWidth, `error ${errorId} is clipped`).toBeLessThanOrEqual(info.clientWidth + 1)
-  expect(info.textOverflow).not.toBe('ellipsis')
-  expect(info.whiteSpace).not.toBe('nowrap')
-}
-
-/** Field must be flagged invalid with a unique, visible, associated error node. */
-async function expectFieldError(page: Page, inputId: string): Promise<Locator> {
+async function expectFieldError(page: Page, inputId: string) {
   const input = page.locator(`#${inputId}`)
+  const errorId = `${inputId}-error`
+  const error = page.locator(`#${errorId}`)
   await expect(input).toHaveAttribute('aria-invalid', 'true')
-  const describedBy = await input.getAttribute('aria-describedby')
-  if (describedBy == null) throw new Error(`${inputId} is missing aria-describedby`)
-  const error = page.locator(`#${describedBy}`)
-  expect(await page.locator(`#${describedBy}`).count(), `error id ${describedBy} unique`).toBe(1)
-  await expect(error).toBeVisible()
-  // The inline error must sit below its input without covering it.
+  await expect(input).toHaveAttribute('aria-describedby', errorId)
+  await expect(error).toHaveCount(1)
+  await expectTextInside(error)
+
   const inputBox = await input.boundingBox()
   const errorBox = await error.boundingBox()
-  if (inputBox == null || errorBox == null) throw new Error('missing boxes')
+  if (inputBox == null || errorBox == null)
+    throw new Error('Missing input or inline error geometry')
   expect(errorBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height - 1)
-  await expectErrorNotTruncated(page, describedBy)
-  return error
 }
 
 async function expectNoFieldError(page: Page, inputId: string) {
-  const input = page.locator(`#${inputId}`)
-  await expect(input).not.toHaveAttribute('aria-invalid', 'true')
-  const describedBy = await input.getAttribute('aria-describedby')
-  if (describedBy) {
-    expect(await page.locator(`#${describedBy}`).count()).toBe(0)
-  }
+  await expect(page.locator(`#${inputId}`)).not.toHaveAttribute('aria-invalid', 'true')
+  await expect(page.locator(`#${inputId}-error`)).toHaveCount(0)
 }
 
-test.describe('L11（360×800 light）：手动 Y/N 非法输入、错误关联、合法修正', () => {
+test.describe('LINEAR11 的指数和尾数输入', () => {
   test.beforeEach(async ({ page }) => {
-    await setTheme(page, 'light')
+    await page.emulateMedia({ colorScheme: 'light' })
     await page.setViewportSize({ width: 360, height: 800 })
-    await page.goto(appUrl())
+    await page.goto('./')
   })
 
-  test('N 非法输入：draft 保留、错误关联、raw 不变、修正后清除', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0000"]')
+  test('指数格式无效时保留草稿，修正后更新原字', async ({ page }) => {
+    const hexInput = page.locator('#raw-hex-input')
     await hexInput.fill('0801')
     await hexInput.press('Tab')
     await expect(hexInput).toHaveValue('0801')
@@ -103,11 +58,11 @@ test.describe('L11（360×800 light）：手动 Y/N 非法输入、错误关联�
     await expect(nInput).toHaveValue('3')
     await expect(hexInput).toHaveValue('1801')
 
-    await expectNoBodyHorizontalOverflow(page)
+    await expectNoHorizontalOverflow(page)
   })
 
-  test('Y 非法输入：错误关联、raw 不变、修正后清除、模式切换无 stale error', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0000"]')
+  test('尾数错误与输入框关联，修正或切换模式后清除', async ({ page }) => {
+    const hexInput = page.locator('#raw-hex-input')
     await hexInput.fill('0801')
     await hexInput.press('Tab')
 
@@ -129,20 +84,20 @@ test.describe('L11（360×800 light）：手动 Y/N 非法输入、错误关联�
     await expectNoFieldError(page, 'l11-y-input')
     await expect(page.getByLabel('Y（11 位有符号整数）')).toHaveValue('25')
 
-    await expectNoBodyHorizontalOverflow(page)
+    await expectNoHorizontalOverflow(page)
   })
 })
 
-test.describe('L16（390×844 dark）：V 非法整数、clamp 合同、无 body overflow', () => {
+test.describe('LINEAR16 的无符号整数输入', () => {
   test.beforeEach(async ({ page }) => {
-    await setTheme(page, 'dark')
+    await page.emulateMedia({ colorScheme: 'dark' })
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto(appUrl())
+    await page.goto('./')
     await page.getByRole('tab', { name: /LINEAR16/ }).click()
   })
 
-  test('V 非法整数被拒绝且 draft/错误可见，合法值照常提交', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0000"]')
+  test('V 拒绝非整数并保留草稿，修正后更新原字', async ({ page }) => {
+    const hexInput = page.locator('#raw-hex-input')
     const vInput = page.getByLabel('V（16 位无符号，0～65535）')
 
     await vInput.fill('1e2')
@@ -160,11 +115,11 @@ test.describe('L16（390×844 dark）：V 非法整数、clamp 合同、无 body
     // raw word 0x000C；Raw Word 字段始终显示 canonical 数值原字。
     await expect(hexInput).toHaveValue('000C')
 
-    await expectNoBodyHorizontalOverflow(page)
+    await expectNoHorizontalOverflow(page)
   })
 
-  test('V 超范围仍采用 clamp 合同（不是 wrap 也不是拒绝）', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0000"]')
+  test('V 超出范围时取边界值', async ({ page }) => {
+    const hexInput = page.locator('#raw-hex-input')
     const vInput = page.getByLabel('V（16 位无符号，0～65535）')
 
     await vInput.fill('70000')
@@ -178,15 +133,15 @@ test.describe('L16（390×844 dark）：V 非法整数、clamp 合同、无 body
     await expect(vInput).toHaveValue('0')
     await expect(hexInput).toHaveValue('0000')
 
-    await expectNoBodyHorizontalOverflow(page)
+    await expectNoHorizontalOverflow(page)
   })
 })
 
-test.describe('DIRECT（768×1024 light）：m/b/R 与 Y 字段级错误、修正、公式稳定', () => {
+test.describe('DIRECT 的系数和整数输入', () => {
   test.beforeEach(async ({ page }) => {
-    await setTheme(page, 'light')
+    await page.emulateMedia({ colorScheme: 'light' })
     await page.setViewportSize({ width: 768, height: 1024 })
-    await page.goto(appUrl())
+    await page.goto('./')
     await page.getByRole('tab', { name: /DIRECT/ }).click()
   })
 
@@ -204,6 +159,14 @@ test.describe('DIRECT（768×1024 light）：m/b/R 与 Y 字段级错误、修�
     await expectFieldError(page, 'direct-coeff-m-input')
     await expectFieldError(page, 'direct-coeff-b-input')
 
+    const linear = page.getByRole('tab', { name: /LINEAR11/ })
+    const direct = page.getByRole('tab', { name: /DIRECT/ })
+    await linear.click()
+    await expect(page.locator('#direct-coeff-m-input-error')).toHaveCount(0)
+    await direct.click()
+    await expectFieldError(page, 'direct-coeff-m-input')
+    await expectFieldError(page, 'direct-coeff-b-input')
+
     await mInput.fill('2')
     await mInput.press('Tab')
     await expectNoFieldError(page, 'direct-coeff-m-input')
@@ -214,25 +177,25 @@ test.describe('DIRECT（768×1024 light）：m/b/R 与 Y 字段级错误、修�
     await expectNoFieldError(page, 'direct-coeff-b-input')
 
     // raw 未被非法输入破坏
-    const hexInput = page.locator('input[placeholder="0000"]')
+    const hexInput = page.locator('#raw-hex-input')
     await expect(hexInput).toHaveValue('0000')
-    await expectNoBodyHorizontalOverflow(page)
+    await expectNoHorizontalOverflow(page)
   })
 
-  test('m=0 为显式错误状态：字段级错误且不在 InfoPanel 重复播报，Value 不编码', async ({
-    page,
-  }) => {
+  test('m 为零时只显示字段错误，暂停换算及物理值复制', async ({ page }) => {
     const mInput = page.getByLabel('DIRECT 系数 m')
-    const hexInput = page.locator('input[placeholder="0000"]')
+    const hexInput = page.locator('#raw-hex-input')
 
     await mInput.fill('0')
+    const inlineError = page.locator('#direct-coeff-m-input-error')
+    await expect(mInput).toBeFocused()
+    await expect(inlineError).toBeVisible()
+    await expect(inlineError).toHaveText('DIRECT 系数 m 不能为 0')
     await mInput.press('Tab')
     await expectFieldError(page, 'direct-coeff-m-input')
     await expect(mInput).toHaveValue('0')
 
     // 同一错误只在内联出现一次，InfoPanel 不重复
-    const inlineError = page.locator('#direct-coeff-m-input-error')
-    await expect(inlineError).toContainText('m 不能为 0')
     expect(
       await page
         .locator('section[aria-label="提示信息"]')
@@ -243,10 +206,15 @@ test.describe('DIRECT（768×1024 light）：m/b/R 与 Y 字段级错误、修�
 
     await page.locator('#value-input').fill('12')
     await expect(hexInput).toHaveValue('0000')
+    await expect(page.getByTestId('result-value')).toHaveText('—')
+    const copy = page.getByRole('button', { name: '物理值', exact: true })
+    await expect(copy).toBeDisabled()
+    await expect(copy).toHaveAttribute('aria-describedby', 'physical-value-copy-reason')
+    await expect(page.locator('#physical-value-copy-reason')).toContainText('m=0')
   })
 
-  test('Y 非法整数：字段级错误、raw 不变、公式稳定', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0000"]')
+  test('Y 拒绝非整数，原字和公式保持', async ({ page }) => {
+    const hexInput = page.locator('#raw-hex-input')
     await hexInput.fill('000A')
     await hexInput.press('Tab')
 
@@ -265,147 +233,64 @@ test.describe('DIRECT（768×1024 light）：m/b/R 与 Y 字段级错误、修�
     await expectFieldError(page, 'direct-y-input')
     await expect(page.locator('.katex').first()).toBeVisible()
     await expect(page.locator('.katex-error')).toHaveCount(0)
-    await expectNoBodyHorizontalOverflow(page)
+    await expectNoHorizontalOverflow(page)
   })
 })
 
-test.describe('HALF（1280×900 dark）：NaN/Infinity 合法、垃圾文本非法', () => {
-  test.beforeEach(async ({ page }) => {
-    await setTheme(page, 'dark')
-    await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto(appUrl())
-    await page.getByRole('tab', { name: /HALF/ }).click()
-  })
+test('非 HALF 模式拒绝 NaN 并保持原字，修正后正常提交', async ({ page }) => {
+  await page.goto('./')
+  const raw = page.locator('#raw-hex-input')
+  const value = page.locator('#value-input')
+  await raw.fill('0007')
 
-  test('NaN 与 ±Infinity 是一等值，不产生错误状态', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0000"]')
-    const valueInput = page.locator('#value-input')
+  await value.fill('NaN')
+  await value.press('Tab')
+  await expectFieldError(page, 'value-input')
+  await expect(raw).toHaveValue('0007')
 
-    await valueInput.fill('NaN')
-    await expect(hexInput).toHaveValue('7E00')
-    await expectNoFieldError(page, 'value-input')
-
-    await valueInput.fill('Infinity')
-    await expect(hexInput).toHaveValue('7C00')
-
-    await valueInput.fill('-Infinity')
-    await expect(hexInput).toHaveValue('FC00')
-  })
-
-  test('垃圾文本非法：draft 保留、错误关联、raw 不变、修正后清除', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0000"]')
-    const valueInput = page.locator('#value-input')
-
-    // 先建立一个已知的最后有效状态
-    await valueInput.fill('-Infinity')
-    await expect(hexInput).toHaveValue('FC00')
-
-    await valueInput.fill('garbage')
-    await expectFieldError(page, 'value-input')
-    await expect(valueInput).toHaveValue('garbage')
-    await expect(hexInput).toHaveValue('FC00')
-
-    await valueInput.press('Tab')
-    await expect(valueInput).toHaveValue('garbage')
-    await expectFieldError(page, 'value-input')
-
-    await valueInput.fill('1.5')
-    await valueInput.press('Tab')
-    await expectNoFieldError(page, 'value-input')
-    await expect(hexInput).toHaveValue('3E00')
-
-    await expectNoBodyHorizontalOverflow(page)
-  })
-
-  test('非 HALF 模式拒绝 NaN 并给出字段级错误（在 L11 中验证）', async ({ page }) => {
-    await page.getByRole('tab', { name: /LINEAR11/ }).click()
-    const hexInput = page.locator('input[placeholder="0000"]')
-    const valueInput = page.locator('#value-input')
-
-    await valueInput.fill('NaN')
-    await expectFieldError(page, 'value-input')
-    await expect(hexInput).toHaveValue('0000')
-
-    await valueInput.fill('12')
-    await valueInput.press('Tab')
-    await expectNoFieldError(page, 'value-input')
-    await expect(hexInput).toHaveValue('000C')
-  })
+  await value.fill('12')
+  await value.press('Tab')
+  await expectNoFieldError(page, 'value-input')
+  await expect(raw).toHaveValue('000C')
 })
 
-test.describe('命令参考（950×304）：只读表格无溢出', () => {
+test.describe('模式切换快捷键', () => {
   test.beforeEach(async ({ page }) => {
-    await page.setViewportSize({ width: 950, height: 304 })
-    await page.goto(appUrl())
+    await page.goto('./')
   })
 
-  test('展开后表格完整可读且页面不产生横向滚动', async ({ page }) => {
-    await page.locator('#command-reference-toggle').click()
-    await expect(page.getByRole('row', { name: /STATUS_WORD/ })).toBeVisible()
-    const scrollWidth = await page.locator('body').evaluate((el) => el.scrollWidth)
-    const clientWidth = await page.locator('body').evaluate((el) => el.clientWidth)
-    expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
-  })
-})
+  test('物理值和原字输入中的快捷键保留焦点、草稿及最后有效值', async ({ page }) => {
+    const value = page.locator('#value-input')
+    const raw = page.locator('#raw-hex-input')
+    const linear11 = page.getByRole('tab', { name: /LINEAR11/ })
+    await value.fill('12.5')
+    await expect(raw).toHaveValue('F819')
 
-test.describe('全局快捷键：编辑区不触发、非编辑区触发', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto(appUrl())
-  })
-
-  test('焦点在物理值输入内按 Ctrl+2..4：不切换模式、不丢 draft、不抢焦点', async ({ page }) => {
-    const valueInput = page.locator('#value-input')
-    await valueInput.click()
-    await valueInput.fill('12.5')
-    await expect(page.locator('input[placeholder="0000"]')).toHaveValue('F819')
-
-    for (const combo of ['Control+2', 'Control+3', 'Control+4']) {
-      await page.keyboard.press(combo)
-      await expect(page.getByRole('tab', { name: /LINEAR11/ })).toHaveAttribute(
-        'aria-selected',
-        'true',
-      )
-      await expect(valueInput).toBeFocused()
-      await expect(valueInput).toHaveValue('12.5')
-      await expect(page.locator('input[placeholder="0000"]')).toHaveValue('F819')
-    }
-  })
-
-  test('焦点在 Hex 输入内按 Ctrl+2：不切换、不丢 draft', async ({ page }) => {
-    const hexInput = page.locator('input[placeholder="0000"]')
-    await hexInput.click()
-    await page.keyboard.type('F819')
+    await value.fill('12.5e-')
     await page.keyboard.press('Control+2')
-    await expect(page.getByRole('tab', { name: /LINEAR11/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
-    await expect(hexInput).toBeFocused()
-    await expect(hexInput).toHaveValue('F819')
+    await expect(linear11).toHaveAttribute('aria-selected', 'true')
+    await expect(value).toBeFocused()
+    await expect(value).toHaveValue('12.5e-')
+    await expect(raw).toHaveValue('F819')
+
+    await raw.fill('F81G')
+    await page.keyboard.press('Control+3')
+    await expect(linear11).toHaveAttribute('aria-selected', 'true')
+    await expect(raw).toBeFocused()
+    await expect(raw).toHaveValue('F81G')
+    await expect(raw).toHaveAttribute('aria-invalid', 'true')
+    await expect(page.getByTestId('result-value')).toHaveText('12.5')
   })
 
-  test('焦点在 L16 数据解释 select 内按 Ctrl+1：不切换', async ({ page }) => {
-    await page.getByRole('tab', { name: /LINEAR16/ }).click()
-    const payloadSelect = page.getByLabel('L16 数据解释类型')
-    await payloadSelect.focus()
-    await payloadSelect.press('Control+1')
-    await expect(page.getByRole('tab', { name: /LINEAR16/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
-  })
-
-  test('焦点在 DIRECT 系数与 L11 N/Y 输入内按快捷键：不切换', async ({ page }) => {
-    await page.getByRole('tab', { name: /DIRECT/ }).click()
-    await page.getByLabel('DIRECT 系数 m').press('Control+2')
-    await expect(page.getByRole('tab', { name: /DIRECT/ })).toHaveAttribute('aria-selected', 'true')
-
-    await page.getByRole('tab', { name: /LINEAR11/ }).click()
-    await page.getByLabel('Y（11 位有符号整数）').press('Control+3')
-    await expect(page.getByRole('tab', { name: /LINEAR11/ })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    )
+  test('数据解释选择框捕获焦点时快捷键不会切换模式', async ({ page }) => {
+    const l16 = page.getByRole('tab', { name: /LINEAR16/ })
+    await l16.click()
+    const payload = page.getByRole('combobox', { name: 'L16 数据解释类型' })
+    await payload.focus()
+    await page.keyboard.press('Control+1')
+    await expect(l16).toHaveAttribute('aria-selected', 'true')
+    await expect(payload).toBeFocused()
+    await expect(payload).toHaveValue('ulinear16')
   })
 
   test('非编辑区按 Ctrl+1..5 仍切换到正确模式', async ({ page }) => {

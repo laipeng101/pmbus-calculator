@@ -92,7 +92,7 @@ export function buildResultContext(state: AppState, source: ContextSource): Resu
             : `V_NOM = ${formatPlainNumber(state.l16.nominalVout)} V`,
         )
         if (source.physicalValueCopy && state.l16.nominalVout !== null) {
-          contextParts.push('派生电压暂无可用结果')
+          contextParts.push('无法计算电压')
         }
       } else if (payload.signedOffset && info.isRelative) {
         contextParts.push('有符号偏移；bit7 不参与计算')

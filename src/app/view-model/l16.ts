@@ -1,10 +1,7 @@
 import { PMBusMath } from '../../legacy/pmbus-math'
 import { deriveL16Semantics } from '../l16-derivation'
 import type { L16FormatSemantics } from '../l16-payload-contract'
-import {
-  RELATIVE_VOLTAGE_OVERFLOW_NOTE,
-  RELATIVE_VOLTAGE_UNDERFLOW_NOTE,
-} from '../relative-voltage'
+import { RELATIVE_VOLTAGE_RANGE_NOTE } from '../relative-voltage'
 import type { AppState } from '../state'
 import type { L16BlockVM, L16PayloadContextVM, VoutModeInfoVM, WarningVM } from './types'
 import { formatByteHex } from './format'
@@ -190,15 +187,11 @@ export function resolveL16RelativeDiagnostics(state: AppState): WarningVM[] {
   if (interpretation.kind !== 'relative-ratio') return []
   const { finalVoltage, ratio } = interpretation
   if (finalVoltage.kind === 'overflow' || finalVoltage.kind === 'underflow') {
-    const note =
-      finalVoltage.kind === 'overflow'
-        ? RELATIVE_VOLTAGE_OVERFLOW_NOTE
-        : RELATIVE_VOLTAGE_UNDERFLOW_NOTE
     return [
       {
         id: `l16-relative-${finalVoltage.kind}`,
         level: 'warning',
-        text: `${note}。仍可查看标称值和比值，也可以复制原始数据字或传输字节。`,
+        text: RELATIVE_VOLTAGE_RANGE_NOTE[finalVoltage.kind],
       },
     ]
   }
@@ -231,28 +224,20 @@ export function resolveL16PhysicalValueCopy(
     )
     return {
       available: false,
-      reason: `物理值复制不可用：${blocked.title}；当前页面没有物理值结果。Raw Word / Wire 字节复制仍可用。`,
+      reason: `${blocked.title}。当前页无法计算物理值。`,
     }
   }
-  if (interpretation.kind !== 'relative-ratio') return undefined
-  if (interpretation.finalVoltage.kind === 'missing-reference') {
+  if (interpretation.kind !== 'relative-ratio' || interpretation.finalVoltage.kind === 'finite')
+    return undefined
+  const { kind } = interpretation.finalVoltage
+  if (kind === 'missing-reference') {
     return {
       available: false,
-      reason:
-        '物理值复制不可用：尚未提供 VOUT_COMMAND 标称参考值，无法计算最终电压。Raw Word / Wire 字节复制仍可用。',
+      reason: '请填写 VOUT_COMMAND 标称参考值，算出电压后即可复制。',
     }
   }
-  if (interpretation.finalVoltage.kind === 'overflow') {
-    return {
-      available: false,
-      reason: `物理值复制不可用：${RELATIVE_VOLTAGE_OVERFLOW_NOTE}。Raw Word / Wire 字节复制仍可用。`,
-    }
+  return {
+    available: false,
+    reason: RELATIVE_VOLTAGE_RANGE_NOTE[kind],
   }
-  if (interpretation.finalVoltage.kind === 'underflow') {
-    return {
-      available: false,
-      reason: `物理值复制不可用：${RELATIVE_VOLTAGE_UNDERFLOW_NOTE}。Raw Word / Wire 字节复制仍可用。`,
-    }
-  }
-  return undefined
 }

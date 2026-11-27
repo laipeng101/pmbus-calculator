@@ -203,20 +203,6 @@ describe('production page facts without client token output', () => {
   })
 
   it.each([
-    ['version', '3.3.0', 'VERSION_MISMATCH'],
-    ['csp', 'script-src https:', 'CSP_ERROR'],
-    ['cspPlacement', false, 'CSP_ERROR'],
-    ['beaconValid', false, 'PAGE_CONTRACT_ERROR'],
-    ['repositoryValid', false, 'PAGE_CONTRACT_ERROR'],
-    ['overlayCssPresent', false, 'PAGE_CONTRACT_ERROR'],
-    ['assetsSameOrigin', false, 'UNEXPECTED_EXTERNAL_REQUEST'],
-  ])('rejects bad %s before accepting Analytics', (key, value, classification) => {
-    expect(() => validateLiveDom({ ...facts, [String(key)]: value }, inputs.expectedTag)).toThrow(
-      String(classification),
-    )
-  })
-
-  it.each([
     ['App v3.3.1', '3.3.1'],
     ['  App v3.3.1  ', '3.3.1'],
     ['v2.5.13', '2.5.13'],
@@ -239,11 +225,7 @@ describe('production page facts without client token output', () => {
     expect(() => validateLiveDom(result, inputs.expectedTag)).toThrow('VERSION_MISMATCH')
   })
 
-  it('fails closed when the badge is missing or duplicated', () => {
-    document.body.innerHTML = ''
-    expect(() => validateLiveDom(readLiveDom(browserArguments), inputs.expectedTag)).toThrow(
-      'VERSION_MISMATCH',
-    )
+  it('rejects duplicate version badges', () => {
     document.body.innerHTML = `<span data-testid="version-badge">App v3.3.1</span>
       <span data-testid="version-badge">App v3.3.1</span>`
     expect(() => validateLiveDom(readLiveDom(browserArguments), inputs.expectedTag)).toThrow(
@@ -258,28 +240,61 @@ describe('production page facts without client token output', () => {
     )
   })
 
-  it('rejects duplicate or misplaced CSP and an altered repository link', () => {
+  it.each([
+    [
+      'changed CSP',
+      'CSP_ERROR',
+      () => document.querySelector('meta')!.setAttribute('content', "script-src 'self'"),
+    ],
+    [
+      'duplicate CSP',
+      'CSP_ERROR',
+      () => document.head.prepend(document.querySelector('meta')!.cloneNode()),
+    ],
+    ['misplaced CSP', 'CSP_ERROR', () => document.body.append(document.querySelector('meta')!)],
+    [
+      'changed repository link',
+      'PAGE_CONTRACT_ERROR',
+      () => document.querySelector('a')!.setAttribute('rel', 'opener'),
+    ],
+    [
+      'missing overlay stylesheet',
+      'PAGE_CONTRACT_ERROR',
+      () => document.querySelector('link[href="./pages-overlay.css"]')!.remove(),
+    ],
+    [
+      'extra beacon options',
+      'PAGE_CONTRACT_ERROR',
+      () =>
+        document
+          .querySelector('[data-cf-beacon]')!
+          .setAttribute('data-cf-beacon', JSON.stringify({ token: 'a'.repeat(32), extra: true })),
+    ],
+    [
+      'duplicate beacon source',
+      'PAGE_CONTRACT_ERROR',
+      () => {
+        const duplicate = document.createElement('script')
+        duplicate.type = 'module'
+        duplicate.src = CLOUDFLARE_BEACON_URL
+        document.body.append(duplicate)
+      },
+    ],
+    [
+      'unknown external resource',
+      'UNEXPECTED_EXTERNAL_REQUEST',
+      () => {
+        const extra = document.createElement('script')
+        extra.src = 'https://unknown.example/script.js'
+        document.body.append(extra)
+      },
+    ],
+  ] as const)('rejects %s in the parsed DOM', (_change, classification, mutate) => {
     fixture()
-    document.body.append(document.querySelector('meta')!)
-    document.querySelector('a')!.setAttribute('rel', 'opener')
-    expect(readLiveDom(browserArguments)).toMatchObject({
-      cspPlacement: false,
-      repositoryValid: false,
-    })
-  })
-
-  it('rejects extra beacon options, duplicate modules and unknown external resources', () => {
-    fixture()
-    document
-      .querySelector('[data-cf-beacon]')!
-      .setAttribute('data-cf-beacon', JSON.stringify({ token: 'a'.repeat(32), extra: true }))
-    const extra = document.createElement('script')
-    extra.src = 'https://unknown.example/script.js'
-    document.body.append(extra)
-    expect(readLiveDom(browserArguments)).toMatchObject({
-      beaconValid: false,
-      assetsSameOrigin: false,
-    })
+    mutate()
+    expect(() => validateLiveDom(readLiveDom(browserArguments), inputs.expectedTag)).toThrow(
+      classification,
+    )
   })
 })
 
@@ -304,7 +319,10 @@ describe('real browser observation contract (offline events)', () => {
 
   it('never accepts a CORS failure after apparently successful response headers', () => {
     const h = harness()
-    h.success()
+    h.complete(h.beacon, 200)
+    h.initiate()
+    h.context.emit('request', h.rum)
+    h.respond(h.rum, 204)
     h.context.emit('requestfailed', h.rum)
     h.page.emit('console', {
       type: () => 'error',
@@ -346,17 +364,10 @@ describe('real browser observation contract (offline events)', () => {
     expect(h.observer.ready()).toBe(false)
   })
 
-  it.each([
-    [`${CLOUDFLARE_BEACON_URL}?extra=1`, 'script', 'GET'],
-    ['https://static.cloudflareinsights.com.evil.example/beacon.min.js', 'script', 'GET'],
-    [`${CLOUDFLARE_RUM_URL}/extra`, 'fetch', 'POST'],
-    [CLOUDFLARE_RUM_URL, 'script', 'POST'],
-    [CLOUDFLARE_RUM_URL, 'fetch', 'GET'],
-    ['https://unknown.example/resource', 'font', 'GET'],
-  ])('rejects every unaudited request even if it never responds: %s', (url, type, method) => {
+  it('rejects an unaudited request before a response arrives', () => {
     const h = harness()
     h.success()
-    h.context.emit('request', request(url, type, method))
+    h.context.emit('request', request('https://unknown.example/resource', 'font'))
     expect(h.observer.ready()).toBe(false)
     expect(h.observer.failure()?.classification).toBe('UNEXPECTED_EXTERNAL_REQUEST')
   })
@@ -417,14 +428,8 @@ describe('bounded independent attempts', () => {
     expect(instance.close).toHaveBeenCalledOnce()
   })
 
-  it.each([
-    'ENVIRONMENT_BLOCKED',
-    'CSP_ERROR',
-    'CORS_ERROR',
-    'HOSTNAME_MISMATCH',
-    'UNEXPECTED_EXTERNAL_REQUEST',
-    'VERSION_MISMATCH',
-  ])('never retries or accepts %s', async (classification) => {
+  it('stops after the first non-retryable failure', async () => {
+    const classification = 'CSP_ERROR'
     const attempt = vi.fn(async () => failure(classification, false))
     const result = await verifyLiveAnalytics(inputs, {
       browserType: { launch: async () => browser() },

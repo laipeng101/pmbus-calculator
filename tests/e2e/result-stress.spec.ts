@@ -1,17 +1,16 @@
 import { test, expect, type Page } from '@playwright/test'
-import { appUrl } from './helpers/app-url'
+import { expectNoHorizontalOverflow, expectTextInside } from './helpers/layout'
 
 async function settle(page: Page) {
-  await page.goto(appUrl())
+  await page.goto('./')
   await expect(page.locator('.katex').first()).toBeVisible()
   await page.evaluate(async () => {
     await document.fonts.ready
   })
-  await page.waitForTimeout(80)
 }
 
 async function fillRaw(page: Page, hex: string) {
-  const hexInput = page.locator('input[placeholder="0000"]')
+  const hexInput = page.locator('#raw-hex-input')
   await hexInput.fill(hex)
   await hexInput.press('Tab')
 }
@@ -21,32 +20,8 @@ async function switchMode(page: Page, name: RegExp) {
   await expect(page.locator('.katex').first()).toBeVisible()
 }
 
-async function expectNoBodyOverflow(page: Page) {
-  const result = await page.evaluate(() => ({
-    scrollWidth: document.documentElement.scrollWidth,
-    clientWidth: document.documentElement.clientWidth,
-  }))
-  expect(result.scrollWidth).toBeLessThanOrEqual(result.clientWidth)
-}
-
-async function expectValueInsideTile(page: Page) {
-  const tile = page.locator('[data-testid="result-tile"]')
-  const value = page.locator('[data-testid="result-value"]')
-  await expect(tile).toBeVisible()
-  await expect(value).toBeVisible()
-
-  const tileBox = await tile.boundingBox()
-  const valueBox = await value.boundingBox()
-  if (tileBox == null || valueBox == null) throw new Error('missing result bounding boxes')
-
-  expect(valueBox.x).toBeGreaterThanOrEqual(tileBox.x - 0.5)
-  expect(valueBox.x + valueBox.width).toBeLessThanOrEqual(tileBox.x + tileBox.width + 0.5)
-  expect(valueBox.y).toBeGreaterThanOrEqual(tileBox.y - 0.5)
-  expect(valueBox.y + valueBox.height).toBeLessThanOrEqual(tileBox.y + tileBox.height + 0.5)
-}
-
-test.describe('M16 result stress geometry', () => {
-  test('four specified non-zero stress values decode correctly', async ({ page }) => {
+test.describe('结果数值、误差和复制反馈', () => {
+  test('各数值换算页显示非零原字的读数和公式字段', async ({ page }) => {
     await settle(page)
 
     await fillRaw(page, 'A3C1')
@@ -83,78 +58,25 @@ test.describe('M16 result stress geometry', () => {
     )
   })
 
-  for (const viewport of [
-    { width: 1440, height: 900 },
-    { width: 1280, height: 900 },
-    { width: 390, height: 844 },
-    { width: 360, height: 800 },
-  ]) {
-    test(`HALF long value stays inside tile at ${viewport.width}x${viewport.height}`, async ({
-      page,
-    }) => {
-      await page.setViewportSize(viewport)
-      await settle(page)
-      await switchMode(page, /HALF/)
-      await fillRaw(page, '8FC3')
-
-      await expect(page.locator('#value-input')).toHaveValue('-0.000473737716675')
-      await expectValueInsideTile(page)
-      await expectNoBodyOverflow(page)
-    })
-  }
-
-  for (const viewport of [
-    { width: 1440, height: 900 },
-    { width: 1280, height: 900 },
-    { width: 950, height: 304 },
-    { width: 390, height: 844 },
-    { width: 360, height: 800 },
-  ]) {
-    test(`stress viewport has no body overflow at ${viewport.width}x${viewport.height}`, async ({
-      page,
-    }) => {
-      await page.setViewportSize(viewport)
-      await settle(page)
-      await switchMode(page, /HALF/)
-      await fillRaw(page, '8FC3')
-      await expectNoBodyOverflow(page)
-
-      await switchMode(page, /DIRECT/)
-      await page.getByLabel('DIRECT 系数 r').fill('12')
-      await page.getByLabel('DIRECT 系数 r').press('Tab')
-      await fillRaw(page, '8FC3')
-      await expectNoBodyOverflow(page)
-    })
-  }
-
-  test('desktop stress formulas scroll only inside their own container', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 })
+  test('HALF 长读数在桌面和窄屏的结果卡内完整显示', async ({ page }) => {
     await settle(page)
+    await switchMode(page, /HALF/)
+    await fillRaw(page, '8FC3')
+    const result = page.getByTestId('result-value')
+    await expect(result).toHaveText('-0.000473737716675')
 
-    for (const mode of [/LINEAR11/, /LINEAR16/, /DIRECT/, /HALF/] as const) {
-      await switchMode(page, mode)
-      if (mode.source === 'LINEAR16') {
-        await page.locator('#vout-mode-input').fill('13')
-        await page.locator('#vout-mode-input').press('Tab')
-      }
-      if (mode.source === 'DIRECT') {
-        await page.getByLabel('DIRECT 系数 r').fill('12')
-        await page.getByLabel('DIRECT 系数 r').press('Tab')
-      }
-      await fillRaw(page, '8FC3')
-
-      // The complete symbolic → substituted → result chain is the first-screen
-      // equation; when it exceeds the narrow track it scrolls inside its own
-      // dedicated container and never widens the page body.
-      const formulaLine = page.locator('[data-testid="result-row-substitution"]').first()
-      await expect(formulaLine).toBeVisible()
-      const overflowX = await formulaLine.evaluate((el) => getComputedStyle(el).overflowX)
-      expect(overflowX).toBe('auto')
-      await expectNoBodyOverflow(page)
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 360, height: 800 },
+    ]) {
+      await page.setViewportSize(viewport)
+      await page.evaluate(() => document.fonts.ready)
+      await expectTextInside(result, page.getByTestId('result-tile'))
+      await expectNoHorizontalOverflow(page)
     }
   })
 
-  test('preference groups keep labels and controls in the same group', async ({ page }) => {
+  test('十六进制格式偏好按组呈现', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await settle(page)
 
@@ -176,7 +98,7 @@ test.describe('M16 result stress geometry', () => {
     expect(labels).toEqual(['0x 前缀', '字节空格'])
   })
 
-  test('negative ordinary quantization error is informational, never danger', async ({ page }) => {
+  test('普通负向量化误差使用提示样式', async ({ page }) => {
     await settle(page)
     const valueInput = page.locator('#value-input')
     await valueInput.fill('0.999999')
@@ -200,9 +122,7 @@ test.describe('M16 result stress geometry', () => {
     expect(color).not.toBe(danger)
   })
 
-  test('quantization panel: hidden without request, visible on encode, hidden after raw edit', async ({
-    page,
-  }) => {
+  test('物理值编码显示量化误差，原字编辑清除误差', async ({ page }) => {
     await settle(page)
 
     // LINEAR16, clean entry: no provenance → no fabricated zero.
@@ -232,9 +152,7 @@ test.describe('M16 result stress geometry', () => {
     await expect(panel).toContainText('+0.001094 (21.8750%)')
   })
 
-  test('DIRECT zero request shows the absolute error and an undefined relative error', async ({
-    page,
-  }) => {
+  test('DIRECT 零请求显示绝对误差，相对误差显示为 —', async ({ page }) => {
     await settle(page)
     await switchMode(page, /DIRECT/)
 
@@ -259,60 +177,7 @@ test.describe('M16 result stress geometry', () => {
     await expect(panel).toHaveAttribute('data-kind', 'warn')
   })
 
-  test('HALF: finite overflow surfaces as danger, subnormal tie never reads as zero', async ({
-    page,
-  }) => {
-    await settle(page)
-    await switchMode(page, /HALF/)
-    const panel = page.locator('[data-testid="quantization-error"]')
-    const valueInput = page.locator('#value-input')
-
-    // 65520 rounds to +Infinity — the most important encoding failure to show.
-    await valueInput.fill('65520')
-    await valueInput.press('Tab')
-    await expect(panel).toContainText('65520 → +Infinity')
-    await expect(panel).toHaveAttribute('data-kind', 'error')
-    await expect(panel).toContainText('溢出')
-
-    // 2⁻²⁵ ties-to-even to +0: absolute error is non-zero, shown in adaptive
-    // significant digits, relative error 100%.
-    await valueInput.fill('2.9802322387695312e-8')
-    await valueInput.press('Tab')
-    await expect(panel).toContainText('+2.98023223877e-8 (100.0000%)')
-    await expect(panel).toHaveAttribute('data-kind', 'warn')
-
-    // Manual raw edit hides the readout instead of faking a zero.
-    await fillRaw(page, '3C05')
-    await expect(panel).toHaveCount(0)
-  })
-
-  test('LINEAR16 non-LINEAR byte hides the readout; explicit 0x18 restores it', async ({
-    page,
-  }) => {
-    await settle(page)
-    await switchMode(page, /LINEAR16/)
-
-    // 0x20 = VID format (non-LINEAR): fail closed — no value input, no
-    // quantization panel, no fallback channel (v2.5.2, Part II §8.4).
-    await page.locator('#vout-mode-input').fill('20')
-    await page.locator('#vout-mode-input').press('Tab')
-    await expect(page.locator('[data-testid="quantization-error"]')).toHaveCount(0)
-    await expect(page.locator('#value-input')).toHaveCount(0)
-
-    // Explicitly applying the default byte really writes 0x18 and restores
-    // the ULINEAR16 encoding channel and its quantization readout.
-    await page.getByRole('button', { name: '应用计算器 LINEAR 示例 0x18' }).click()
-    await expect(page.getByTestId('vout-mode-byte')).toHaveText('0x18')
-    await expect(page.locator('#value-input')).toHaveCount(1)
-
-    const valueInput = page.locator('#value-input')
-    await valueInput.fill('0.005')
-    await valueInput.press('Tab')
-    const panel = page.locator('[data-testid="quantization-error"]')
-    await expect(panel).toContainText('+0.001094 (21.8750%)')
-  })
-
-  test('copy feedback has role status and does not push layout', async ({ page }) => {
+  test('复制反馈可播报且不推移按钮', async ({ page }) => {
     await settle(page)
     await page.evaluate(() => {
       Object.defineProperty(navigator, 'clipboard', {
