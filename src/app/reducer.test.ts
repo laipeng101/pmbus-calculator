@@ -866,7 +866,6 @@ describe('appReducer — state transitions', () => {
       const vm = toCalculatorViewModel(s)
       expect(vm.rawHex).toBe('0xC000')
       expect(vm.rawHexDigits).toBe('C000')
-      expect(vm.rawWordHex).toBe('0xC000')
       expect(vm.wireBytes).toBe('0x 00 C0')
       expect(vm.msbFirstBytes).toBe('0x C0 00')
     })

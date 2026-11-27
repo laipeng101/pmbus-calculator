@@ -13,6 +13,7 @@ body:
         - L16
         - DIRECT
         - HALF
+        - VOUT_MODE
         - COPY
         - COMMAND
         - THEME
@@ -23,14 +24,14 @@ body:
     id: repro
     attributes:
       label: 复现步骤
-      description: 从 `npm run dev` 开始的最小复现
+      description: 提供最短复现步骤。涉及换算时附输入值、Raw Word 或 VOUT_MODE 字节。
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
       label: 期望行为
-      description: 依据规范/旧实现/参考实现的正确行为
+      description: 说明期望的结果或界面行为。
     validations:
       required: true
   - type: textarea
@@ -44,16 +45,10 @@ body:
     attributes:
       label: 规范来源
       description: PMBus 章节、IEEE 754、参考实现链接等
-    validations:
-      required: true
   - type: textarea
     id: version
     attributes:
       label: 环境
-      value: |
-        Node:
-        npm:
-        OS:
-        Browser:
+      description: 提供使用的站点或 App 版本及浏览器。若是本地工具链问题，请附 Node.js、npm 与操作系统版本。
     validations:
       required: true
