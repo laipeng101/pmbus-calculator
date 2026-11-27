@@ -100,7 +100,9 @@ test.describe('计算器真实用户流程', () => {
 
     await page.getByLabel('DIRECT 系数 m').fill('0')
 
-    await expect(page.getByText(/m 不能为 0/).first()).toBeVisible()
+    const error = page.locator('#direct-coeff-m-input-error')
+    await expect(error).toBeVisible()
+    await expect(error).toHaveText('DIRECT 系数 m 不能为 0')
     await page.locator('#value-input').fill('12')
     await expect(hexInput).toHaveValue('0000')
   })

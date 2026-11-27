@@ -6,7 +6,6 @@ import type { AppState } from '../state'
 import type { CalculatorViewModel, VoutModeInfoVM } from './types'
 import {
   buildBitGroups,
-  byteDigits,
   formatByteHex,
   formatBytes,
   formatRawHex,
@@ -85,18 +84,11 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     voutModeInfo = voutModePage
   }
 
-  // v3.0.0: the main Raw Word hex is the canonical numeric raw word in every
-  // mode — parse(format(raw)) === raw holds without any byte-order transform,
-  // mirroring the raw/set-from-hex reducer exactly.
   const formula = getFormulaPresentation(state, valueText)
   const formulaText = formula.plainText
 
   const rawWordHex = formatRawHex(raw)
   const rawHex = state.mode === 'VOUT_MODE' ? formatByteHex(state.voutMode.byte) : rawWordHex
-  const rawHexDigits =
-    state.mode === 'VOUT_MODE'
-      ? byteDigits(state.voutMode.byte)
-      : (raw & 0xffff).toString(16).toUpperCase().padStart(4, '0')
 
   const halfSpecial = state.mode === 'HALF' ? resolveHalfSpecial(raw) : undefined
 
@@ -115,8 +107,7 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
       physicalValueCopy,
     }),
     rawHex,
-    rawHexDigits,
-    rawWordHex: rawHex,
+    rawHexDigits: rawHex.slice(2),
     wireBytes: formatBytes(le, {
       prefix0x: state.copy.prefix0x,
       space: state.copy.spaceBetweenBytes,
@@ -149,13 +140,6 @@ export function toCalculatorViewModel(state: AppState): CalculatorViewModel {
     voutModeInfo,
     voutModePage,
     halfSpecial,
-    visible: {
-      voutMode: state.mode === 'L16',
-      directCoefficients: state.mode === 'DIRECT',
-      halfNote: state.mode === 'HALF',
-      nRange: state.mode === 'L11' || state.mode === 'L16',
-      byteCalculator: state.mode === 'VOUT_MODE',
-    },
   }
 }
 

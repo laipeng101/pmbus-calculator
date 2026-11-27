@@ -310,11 +310,10 @@ describe('toCalculatorViewModel', () => {
       expect(vm.nRangeText).toBe('0 ~ 255.99609375')
     })
 
-    test('rawHex is the canonical raw word in every state (no byte-order transform)', () => {
+    test('rawHex displays the canonical LINEAR16 raw word', () => {
       const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234 }))
       expect(vm.rawHex).toBe('0x1234')
       expect(vm.rawHexDigits).toBe('1234')
-      expect(vm.rawWordHex).toBe('0x1234')
     })
 
     test('physical value derives from the same canonical raw word', () => {
@@ -719,12 +718,6 @@ describe('toCalculatorViewModel', () => {
         )
       }
     })
-
-    test('byte calculator hides the 16-bit raw/byte-order UI', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE' }))
-      expect(vm.visible.byteCalculator).toBe(true)
-      expect(vm.visible.voutMode).toBe(false)
-    })
   })
 
   describe('v2.5.4 VOUT_MODE 状态、警告和说明的 Half↔DIRECT 对比矩阵', () => {
@@ -1083,38 +1076,6 @@ describe('toCalculatorViewModel', () => {
       )
       // prefix0x adds '0x ' (space after prefix), spaceBetweenBytes controls byte separation
       expect(vm.wireBytes).toBe('0x 3412')
-    })
-
-    test('serialization never feeds back into the raw word identity', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0x1234 }))
-      expect(vm.rawHex).toBe('0x1234')
-      expect(vm.rawWordHex).toBe('0x1234')
-    })
-  })
-
-  describe('visibility flags', () => {
-    test('L11 shows nRange only', () => {
-      const vm = toCalculatorViewModel(BASE)
-      expect(vm.visible.nRange).toBe(true)
-      expect(vm.visible.voutMode).toBe(false)
-      expect(vm.visible.directCoefficients).toBe(false)
-      expect(vm.visible.halfNote).toBe(false)
-    })
-
-    test('L16 shows voutMode and nRange', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16' }))
-      expect(vm.visible.voutMode).toBe(true)
-      expect(vm.visible.nRange).toBe(true)
-    })
-
-    test('DIRECT shows directCoefficients', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'DIRECT' }))
-      expect(vm.visible.directCoefficients).toBe(true)
-    })
-
-    test('HALF shows halfNote', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'HALF' }))
-      expect(vm.visible.halfNote).toBe(true)
     })
   })
 
