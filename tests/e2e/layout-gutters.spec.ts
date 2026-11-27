@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { appUrl } from './helpers/app-url'
+import { expectTextInside } from './helpers/layout'
 
 async function assertGutters(page: Page) {
   const title = page.getByRole('heading', { name: 'PMBus' })
@@ -37,7 +37,7 @@ async function assertGutters(page: Page) {
   expect(Math.abs(headerRight - workspaceRight)).toBeLessThanOrEqual(1)
 }
 
-test.describe('gutter alignment', () => {
+test.describe('页面边距与复制工具栏', () => {
   for (const viewport of [
     { width: 1440, height: 900 },
     { width: 1280, height: 900 },
@@ -45,57 +45,36 @@ test.describe('gutter alignment', () => {
     { width: 768, height: 1024 },
     { width: 390, height: 844 },
   ]) {
-    test(`${viewport.width}px gutter aligns header, command reference and primary panel`, async ({
-      page,
-    }) => {
+    test(`${viewport.width} px 下页头、命令参考和输入区边缘对齐`, async ({ page }) => {
       await page.setViewportSize(viewport)
-      await page.goto(appUrl())
+      await page.goto('./')
       await assertGutters(page)
     })
   }
 
-  test('copy toolbar buttons do not wrap at 1280 and 390', async ({ page }) => {
-    for (const viewport of [
-      { width: 1280, height: 900 },
-      { width: 390, height: 844 },
-    ]) {
-      await page.setViewportSize(viewport)
-      await page.goto(appUrl())
-      const buttons = page.getByRole('button', {
-        name: /Raw Word Hex|Wire 字节|MSB-first 字节|物理值|C 代码/,
-      })
-      const count = await buttons.count()
-      expect(count).toBeGreaterThanOrEqual(5)
-      for (let i = 0; i < count; i++) {
-        const button = buttons.nth(i)
-        const fits = await button.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
-        expect(fits).toBe(true)
+  test('复制按钮标签完整显示，桌面分为三列与两列', async ({ page }) => {
+    await page.goto('./')
+
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 })
+      await page.evaluate(() => document.fonts.ready)
+      const tops: number[] = []
+      for (const label of ['Raw Word Hex', 'Wire 字节', 'MSB-first 字节', '物理值', 'C 代码']) {
+        const button = page.getByRole('button', { name: label, exact: true })
+        const text = await expectTextInside(button.getByText(label, { exact: true }), button)
+        expect(new Set(text.map(({ top }) => top)).size, label).toBe(1)
+        const box = await button.boundingBox()
+        if (box == null) throw new Error(`Missing copy button geometry: ${label}`)
+        tops.push(box.y)
+      }
+
+      if (width === 1280) {
+        const [raw, wire, msb, physical, macro] = tops
+        expect(Math.abs(raw - wire)).toBeLessThanOrEqual(1)
+        expect(Math.abs(raw - msb)).toBeLessThanOrEqual(1)
+        expect(Math.abs(physical - macro)).toBeLessThanOrEqual(1)
+        expect(physical).toBeGreaterThan(raw)
       }
     }
-  })
-
-  test('copy toolbar uses balanced 6-column rows', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto(appUrl())
-    const first = page.getByRole('button', { name: 'Raw Word Hex' })
-    const wire = page.getByRole('button', { name: 'Wire 字节' })
-    const msb = page.getByRole('button', { name: 'MSB-first 字节' })
-    const value = page.getByRole('button', { name: '物理值' })
-    const c = page.getByRole('button', { name: 'C 代码' })
-
-    const boxes = {
-      first: await first.boundingBox(),
-      wire: await wire.boundingBox(),
-      msb: await msb.boundingBox(),
-      value: await value.boundingBox(),
-      c: await c.boundingBox(),
-    }
-    for (const [name, box] of Object.entries(boxes)) {
-      if (box == null) throw new Error(`${name} missing box`)
-    }
-    expect(Math.abs((boxes.first as DOMRect).y - (boxes.wire as DOMRect).y)).toBeLessThanOrEqual(1)
-    expect(Math.abs((boxes.first as DOMRect).y - (boxes.msb as DOMRect).y)).toBeLessThanOrEqual(1)
-    expect(Math.abs((boxes.value as DOMRect).y - (boxes.c as DOMRect).y)).toBeLessThanOrEqual(1)
-    expect((boxes.value as DOMRect).y).toBeGreaterThan((boxes.first as DOMRect).y)
   })
 })

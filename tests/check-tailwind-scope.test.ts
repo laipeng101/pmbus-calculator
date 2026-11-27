@@ -2,11 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  canarySearchNeedle,
-  checkTailwindScope,
-  parseCanaryUtility,
-} from '../scripts/check-tailwind-scope.mjs'
+import { checkTailwindScope } from '../scripts/check-tailwind-scope.mjs'
 import { TAILWIND_SOURCE_CANARY_UTILITY } from './tailwind-source-canary'
 
 const roots: string[] = []
@@ -54,24 +50,6 @@ async function makeEnvironment(
   return { distDir, canaryPath, productionSrcDir }
 }
 
-describe('parseCanaryUtility', () => {
-  it('parses the exported canary utility from source text', () => {
-    const source = `// comment\nexport const TAILWIND_SOURCE_CANARY_UTILITY = 'w-[77.125rem]'\n`
-    expect(parseCanaryUtility(source)).toBe('w-[77.125rem]')
-  })
-
-  it('throws when the export is missing', () => {
-    expect(() => parseCanaryUtility('export const OTHER = 1')).toThrow(
-      /TAILWIND_SOURCE_CANARY_UTILITY/,
-    )
-  })
-
-  it('derives the arbitrary-value payload as the search needle', () => {
-    expect(canarySearchNeedle('w-[77.125rem]')).toBe('77.125rem')
-    expect(canarySearchNeedle('contents')).toBe('contents')
-  })
-})
-
 describe('checkTailwindScope', () => {
   it('passes for a clean dist even if excluded colocated tests mention the canary', async () => {
     const root = await makeTempRoot()
@@ -95,20 +73,15 @@ describe('checkTailwindScope', () => {
     expect(result.errors.join('\n')).toMatch(/canary .* leaked into compiled CSS/)
   })
 
-  it('fails when the .lowercase leaked rule is generated', async () => {
+  it.each([
+    ['lowercase', 'text-transform:lowercase'],
+    ['table', 'display:table'],
+  ])('rejects a leaked .%s rule', async (selector, declaration) => {
     const root = await makeTempRoot()
-    const leaked = `${CLEAN_TAILWIND_CSS}.lowercase{text-transform:lowercase}`
+    const leaked = `${CLEAN_TAILWIND_CSS}.${selector}{${declaration}}`
     const result = await checkTailwindScope(await makeEnvironment(root, leaked))
     expect(result.ok).toBe(false)
-    expect(result.errors.join('\n')).toMatch(/leaked rule "\.lowercase\{…\}"/)
-  })
-
-  it('fails when the .table leaked rule is generated', async () => {
-    const root = await makeTempRoot()
-    const leaked = `${CLEAN_TAILWIND_CSS}.table{display:table}`
-    const result = await checkTailwindScope(await makeEnvironment(root, leaked))
-    expect(result.ok).toBe(false)
-    expect(result.errors.join('\n')).toMatch(/leaked rule "\.table\{…\}"/)
+    expect(result.errors.join('\n')).toContain(`leaked rule ".${selector}{…}"`)
   })
 
   it('fails when a required product utility is missing from the compiled CSS', async () => {

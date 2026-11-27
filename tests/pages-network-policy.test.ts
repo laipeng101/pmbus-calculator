@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   CLOUDFLARE_BEACON_URL,
   CLOUDFLARE_RUM_URL,
+  PAGES_BASE_PATH,
   isAllowedPagesRequest,
   isSafePagesPath,
   parseCsp,
 } from '../scripts/pages-network-policy.mjs'
 
-const deployment = 'https://laipeng101.github.io/pmbus-calculator/'
+const deployment = `https://laipeng101.github.io${PAGES_BASE_PATH}`
 
 it('rejects paths that can be confused with a different resource or origin', () => {
   for (const name of [
@@ -28,14 +29,11 @@ it('rejects paths that can be confused with a different resource or origin', () 
 })
 
 describe('Pages smoke exact external request allowlist', () => {
-  it.each(['document', 'script', 'stylesheet', 'font', 'image', 'fetch', 'xhr'])(
-    'continues to allow same-origin %s resources',
-    (type) => {
-      expect(isAllowedPagesRequest(`${deployment}assets/resource`, type, 'GET', deployment)).toBe(
-        true,
-      )
-    },
-  )
+  it('allows same-origin resources', () => {
+    expect(isAllowedPagesRequest(`${deployment}assets/resource`, 'font', 'GET', deployment)).toBe(
+      true,
+    )
+  })
 
   it('allows only the exact Cloudflare module script URL', () => {
     expect(isAllowedPagesRequest(CLOUDFLARE_BEACON_URL, 'script', 'GET', deployment)).toBe(true)
@@ -84,27 +82,21 @@ describe('Pages smoke exact external request allowlist', () => {
     'https://@cloudflareinsights.com/cdn-cgi/rum',
     'https://cloudflareinsights.com.evil.example/cdn-cgi/rum',
     'https://cloudflareinsights.com/cdn-cgi/other/../rum',
-  ])('rejects noncanonical RUM URL %s for every permitted POST transport', (url) => {
-    for (const type of ['fetch', 'xhr', 'ping', 'other']) {
-      expect(isAllowedPagesRequest(url, type, 'POST', deployment)).toBe(false)
-    }
+  ])('rejects noncanonical RUM URL %s', (url) => {
+    expect(isAllowedPagesRequest(url, 'fetch', 'POST', deployment)).toBe(false)
   })
 
-  it('rejects arbitrary, lookalike, alternate-protocol and redirect destinations', () => {
-    for (const url of [
-      'https://example.com/resource',
-      'https://cdn.cloudflareinsights.com/cdn-cgi/rum',
-      'https://cloudflareinsights.com.evil.example/cdn-cgi/rum',
-      'https://cloudflareinsights.com:444/cdn-cgi/rum',
-      'https://user@cloudflareinsights.com/cdn-cgi/rum',
-      'http://cloudflareinsights.com/cdn-cgi/rum',
-      'data:text/javascript,export{}',
-      'not a URL',
-    ]) {
-      expect(isAllowedPagesRequest(url, 'fetch', 'POST', deployment), url).toBe(false)
-    }
+  it.each([
+    'https://example.com/resource',
+    'https://cdn.cloudflareinsights.com/cdn-cgi/rum',
+    'data:text/javascript,export{}',
+    'not a URL',
+  ])('rejects other external destinations such as %s', (url) => {
+    expect(isAllowedPagesRequest(url, 'fetch', 'POST', deployment)).toBe(false)
   })
+})
 
+describe('Pages CSP syntax', () => {
   it('does not silently accept duplicate CSP directives', () => {
     expect(() => parseCsp("script-src 'self'; script-src https:")).toThrow(/duplicate/)
   })

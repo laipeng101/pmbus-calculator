@@ -6,17 +6,17 @@ import {
 } from './result-presentation'
 
 describe('getResultValueSizeClass', () => {
-  it('uses predictable length-based font steps', () => {
-    expect(getResultValueSizeClass('0')).toBe('xl')
-    expect(getResultValueSizeClass('-12.5')).toBe('xl')
-    expect(getResultValueSizeClass('4.49255371094')).toBe('md')
-    expect(getResultValueSizeClass('-0.000473737716675')).toBe('sm')
-  })
-
-  it('never produces ellipsis or truncation classes for long exact values', () => {
-    const longValue = '-0.000473737716675'
-    expect(getResultValueSizeClass(longValue)).toBe('sm')
-    expect(getResultValueSizeClass('255.99609375')).toBe('lg')
+  it('uses the expected font sizes at each text-length boundary', () => {
+    for (const [length, size] of [
+      [8, 'xl'],
+      [9, 'lg'],
+      [12, 'lg'],
+      [13, 'md'],
+      [16, 'md'],
+      [17, 'sm'],
+    ] as const) {
+      expect(getResultValueSizeClass('0'.repeat(length)), String(length)).toBe(size)
+    }
   })
 })
 

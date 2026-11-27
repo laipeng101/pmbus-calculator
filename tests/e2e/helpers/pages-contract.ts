@@ -1,4 +1,4 @@
-import { expect, type Page, type Request } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 import {
   CLOUDFLARE_BEACON_URL,
   CLOUDFLARE_RUM_URL,
@@ -8,6 +8,11 @@ import {
   isAllowedPagesRequest,
   parseCsp,
 } from '../../../scripts/pages-network-policy.mjs'
+import {
+  expectApplicationAssets,
+  observeBrowserResources,
+  type BrowserResources,
+} from './browser-resources'
 
 export async function stubCloudflare(page: Page): Promise<void> {
   // Only the two audited destinations are stubbed. An unexpected destination
@@ -33,49 +38,10 @@ export async function stubCloudflare(page: Page): Promise<void> {
   })
 }
 
-export function observePagesResources(page: Page, deploymentUrl: string) {
-  const pageErrors: string[] = []
-  const failedAssets: string[] = []
-  const unexpectedExternalOrigins: string[] = []
-  const observedRequests: Array<{ url: string; type: string }> = []
-  const successfulAssets: Array<{ url: string; type: string }> = []
-
-  function checkOrigin(request: Request) {
-    if (
-      !isAllowedPagesRequest(request.url(), request.resourceType(), request.method(), deploymentUrl)
-    ) {
-      unexpectedExternalOrigins.push(`${request.resourceType()} ${request.url()}`)
-    }
-  }
-
-  page.on('pageerror', (error) => pageErrors.push(error.message))
-  // Requests include failures and each redirect hop; response-only auditing
-  // misses a forbidden third party that is blocked or never responds.
-  page.on('request', (request) => {
-    checkOrigin(request)
-    observedRequests.push({ url: request.url(), type: request.resourceType() })
-  })
-  page.on('requestfailed', (request) => {
-    failedAssets.push(`${request.resourceType()} ${request.url()}`)
-  })
-  page.on('response', (response) => {
-    const request = response.request()
-    checkOrigin(request)
-    if (response.status() >= 400 && response.status() < 600) {
-      failedAssets.push(`${response.status()} ${request.method()} ${response.url()}`)
-    }
-    if (response.status() >= 200 && response.status() < 400) {
-      successfulAssets.push({ url: response.url(), type: request.resourceType() })
-    }
-  })
-
-  return {
-    pageErrors,
-    failedAssets,
-    unexpectedExternalOrigins,
-    observedRequests,
-    successfulAssets,
-  }
+export function observePagesResources(page: Page, deploymentUrl: string): BrowserResources {
+  return observeBrowserResources(page, (request) =>
+    isAllowedPagesRequest(request.url(), request.resourceType(), request.method(), deploymentUrl),
+  )
 }
 
 export async function expectProductionCsp(
@@ -122,7 +88,6 @@ export async function expectPagesDomContract(page: Page): Promise<void> {
         Object.keys(data).length === 1 &&
         'token' in data &&
         typeof data.token === 'string' &&
-        data.token.length === 32 &&
         /^[a-f0-9]{32}$/i.test(data.token)
       return { ...attributes, validData }
     } catch {
@@ -180,30 +145,11 @@ export async function expectPagesDomContract(page: Page): Promise<void> {
 export async function expectPagesResources(
   page: Page,
   deploymentUrl: string,
-  observed: ReturnType<typeof observePagesResources>,
+  observed: BrowserResources,
 ): Promise<void> {
-  await expect(page.locator('.katex').first()).toBeVisible()
-  await expect(page.locator('.katex-error')).toHaveCount(0)
-  await expect(page.locator('.katex math').first()).toBeAttached()
-  await page.evaluate(async () => document.fonts.ready)
-  expect(
-    await page
-      .locator('.katex')
-      .first()
-      .evaluate((el) => getComputedStyle(el).fontFamily),
-  ).toContain('KaTeX_Main')
-
   const pages = new URL(deploymentUrl)
   const basePath = `${pages.pathname.replace(/\/$/, '')}/`
-  const applicationAssets = observed.successfulAssets.filter(
-    ({ url }) => new URL(url).origin === pages.origin,
-  )
-  for (const type of ['script', 'stylesheet', 'font']) {
-    expect(
-      applicationAssets.some((asset) => asset.type === type),
-      `${type} loads same-origin`,
-    ).toBe(true)
-  }
+  const applicationAssets = await expectApplicationAssets(page, pages.origin, observed)
   expect(
     applicationAssets.some(
       ({ url, type }) =>
@@ -214,13 +160,5 @@ export async function expectPagesResources(
   for (const asset of applicationAssets) {
     expect(new URL(asset.url).pathname.startsWith(basePath)).toBe(true)
   }
-  expect(observed.observedRequests.filter(({ url }) => url === CLOUDFLARE_BEACON_URL)).toHaveLength(
-    1,
-  )
-  for (const font of observed.observedRequests.filter(({ type }) => type === 'font')) {
-    expect(new URL(font.url).origin).toBe(pages.origin)
-  }
-  expect(observed.pageErrors).toEqual([])
-  expect(observed.failedAssets).toEqual([])
-  expect(observed.unexpectedExternalOrigins).toEqual([])
+  expect(observed.requestedUrls.filter((url) => url === CLOUDFLARE_BEACON_URL)).toHaveLength(1)
 }

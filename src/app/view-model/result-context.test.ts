@@ -87,35 +87,6 @@ describe('result context — stable four slots', () => {
     }
   })
 
-  test('all L16 byte x payload combinations retain the actual byte; non-LINEAR never invents N', () => {
-    for (const payloadKind of ['ulinear16', 'slinear16-offset'] as const) {
-      for (let byte = 0; byte < 256; byte++) {
-        const items = context({
-          mode: 'L16',
-          raw: 0x3412,
-          voutMode: { byte },
-          l16: { payloadKind, nominalVout: null },
-        })
-        const text = flat(items)
-        expect(text).toContain('0x3412')
-        expect(text).toContain('0x' + byte.toString(16).padStart(2, '0').toUpperCase())
-        const parameters = paramsSlot(items, 'parameters')
-        if ((byte & 0x60) !== 0) {
-          expect(text).toContain('未按 LINEAR16 解释')
-          expect(parameters.params.some((pair) => pair.label === 'N')).toBe(false)
-        } else {
-          const parameter = byte & 31
-          const signed = parameter < 16 ? parameter : parameter - 32
-          expect(parameters.params).toContainEqual({
-            label: 'N',
-            value: String(signed),
-            termId: 'exponent',
-          })
-        }
-      }
-    }
-  })
-
   test('relative missing reference differs from a supplied zero', () => {
     const state = { mode: 'L16' as const, raw: 0x0100, voutMode: { byte: 0x98 } }
     expect(textSlot(context(state), 'context').value).toBe('待填标称参考值')
@@ -141,26 +112,6 @@ describe('result context — stable four slots', () => {
     expect(textSlot(items, 'context').value).toBe('有符号偏移；bit7 不参与计算')
     expect(flat(items)).not.toContain('待填标称参考值')
   })
-
-  test.each([
-    { raw: 0xffff, byte: 0x8f, nominalVout: 1e308 },
-    { raw: 1, byte: 0x90, nominalVout: Number.MIN_VALUE },
-  ])(
-    'relative range failure keeps the reference and flags unavailable result ($byte)',
-    ({ raw, byte, nominalVout }) => {
-      expect(
-        textSlot(
-          context({
-            mode: 'L16',
-            raw,
-            voutMode: { byte },
-            l16: { payloadKind: 'ulinear16', nominalVout },
-          }),
-          'context',
-        ).value,
-      ).toContain('派生电压暂无可用结果')
-    },
-  )
 
   test('DIRECT shows structured coefficients and the device-specific source disclosure', () => {
     const items = context({

@@ -17,7 +17,7 @@ beforeEach(() => {
 
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }))
 
-it('applies the same safe path rules to ZIP entry names and Pages files', () => {
+it('keeps Python and JavaScript ZIP entry validation in agreement', () => {
   const entries = [...zipEntries.legal, ...zipEntries.illegal.map(({ entry }) => entry)]
   const check = `import json, runpy, sys
 validate = runpy.run_path(sys.argv[1])['validate_name']

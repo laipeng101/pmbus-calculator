@@ -1,13 +1,12 @@
-import { test, expect, type Page } from '@playwright/test'
-import { appUrl } from './helpers/app-url'
+import { test, expect, type Locator, type Page } from '@playwright/test'
+import { tabTo } from './helpers/keyboard'
 
 async function settle(page: Page) {
-  await page.goto(appUrl())
+  await page.goto('./')
   await expect(page.locator('.katex').first()).toBeVisible()
   await page.evaluate(async () => {
     await document.fonts.ready
   })
-  await page.waitForTimeout(80)
 }
 
 // VOUT_MODE 结果面板是配置摘要而非公式，因此这里只要求结果面板可见。
@@ -51,7 +50,7 @@ async function resultGeometry(page: Page) {
   })
 }
 
-test.describe('M36 result-first geometry', () => {
+test.describe('结果优先布局', () => {
   const viewports = [
     { width: 1440, height: 900, maxTop: 360 },
     { width: 1280, height: 900, maxTop: 360 },
@@ -60,7 +59,7 @@ test.describe('M36 result-first geometry', () => {
   ]
 
   for (const viewport of viewports) {
-    test(`${viewport.width}×${viewport.height}: 五模式结果卡完整位于首屏且切换顶边稳定`, async ({
+    test(`${viewport.width}×${viewport.height}: 首屏结果、输入和位映射保持可达`, async ({
       page,
     }) => {
       await page.setViewportSize(viewport)
@@ -69,6 +68,7 @@ test.describe('M36 result-first geometry', () => {
       const tops: number[] = []
       for (const mode of MODES) {
         await switchMode(page, mode.tab)
+        await page.evaluate(() => window.scrollTo(0, 0))
         const g = await resultGeometry(page)
 
         expect(g.tileTop).toBeGreaterThanOrEqual(0)
@@ -85,13 +85,47 @@ test.describe('M36 result-first geometry', () => {
         expect(g.scrollWidth).toBeLessThanOrEqual(g.clientWidth)
 
         tops.push(g.tileTop)
+        if (mode.label === 'VOUT_MODE') continue
+
+        const bitGrid = page.getByRole('group', { name: '16 位编辑器', exact: true })
+        const value = page.locator('#value-input')
+        await expectInsideViewport(page.locator('#raw-hex-input'), page)
+        if (viewport.width >= 1280) {
+          await expectInsideViewport(bitGrid, page)
+          await expectInsideViewport(value, page)
+          if (mode.label === 'DIRECT') {
+            for (const name of ['m', 'b', 'r']) {
+              await expectInsideViewport(page.locator(`#direct-coeff-${name}-input`), page)
+            }
+          }
+          if (mode.label === 'LINEAR16') {
+            await expectInsideViewport(page.locator('#l16-payload-kind'), page)
+            await expect(page.locator('#l16-n-input')).toBeVisible()
+          }
+        } else {
+          await expectInsideViewport(page.getByTestId('bit-mapping-raw-word-toggle'), page)
+          const gridBox = await bitGrid.boundingBox()
+          const valueBox = await value.boundingBox()
+          if (gridBox === null || valueBox === null)
+            throw new Error('Missing mobile input geometry')
+          expect(gridBox.y + gridBox.height).toBeLessThanOrEqual(valueBox.y)
+        }
       }
 
       expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(2)
+
+      if (viewport.width < 1280) {
+        await switchMode(page, /LINEAR16/)
+        await page.getByTestId('bit-mapping-raw-word-toggle').click()
+        await page.getByRole('radio', { name: '相对值', exact: true }).click()
+        await page.evaluate(() => window.scrollTo(0, 0))
+        await expectInsideViewport(page.locator('#l16-nominal-vout'), page)
+        await expect(page.getByTestId('result-context')).toContainText('待填标称参考值')
+      }
     })
   }
 
-  test('默认信息顺序：ModeSwitcher → ResultSummary → ModeWorkspace', async ({ page }) => {
+  test('模式选择、结果和输入区依次呈现', async ({ page }) => {
     await settle(page)
 
     const order = await page.evaluate(() => {
@@ -134,12 +168,21 @@ test.describe('M36 result-first geometry', () => {
       for (const toggle of await page.locator('.bit-mapping-toggle[aria-expanded="true"]').all()) {
         await toggle.click()
       }
+      await expect(
+        page
+          .locator('#bit-mapping-raw-word-content, #bit-mapping-vout-mode-content')
+          .filter({ visible: true }),
+      ).toHaveCount(0)
       const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight)
       expect(scrollHeight, mode.label).toBeLessThanOrEqual(1400)
+      if (mode.label === 'LINEAR16') {
+        await expect(page.locator('#vout-mode-input')).toBeVisible()
+        await expect(page.locator('#l16-n-input')).toBeEnabled()
+      }
     }
   })
 
-  test('桌面 workspace 两列顶端对齐；移动端为单列且无重叠', async ({ page }) => {
+  test('桌面双列顶端对齐，窄屏单列无重叠', async ({ page }) => {
     for (const viewport of [
       { width: 1280, height: 900, columns: 2 },
       { width: 390, height: 844, columns: 1 },
@@ -185,7 +228,7 @@ test.describe('M36 result-first geometry', () => {
   })
 })
 
-test.describe('M36 disclosure 与命令参考', () => {
+test.describe('计算过程展开', () => {
   test('计算过程默认折叠，可展开且不改变计算结果', async ({ page }) => {
     await settle(page)
     const details = page.locator('[data-testid="calculation-steps-disclosure"]')
@@ -213,7 +256,7 @@ test.describe('M36 disclosure 与命令参考', () => {
     expect(await value.textContent()).toBe(before)
   })
 
-  test('计算过程 disclosure 可键盘操作并有 focus-visible', async ({ page }) => {
+  test('计算过程可用键盘展开收起并显示焦点', async ({ page }) => {
     await settle(page)
     const valueInput = page.locator('#value-input')
     await valueInput.fill('0.999999')
@@ -221,7 +264,7 @@ test.describe('M36 disclosure 与命令参考', () => {
     const details = page.locator('[data-testid="calculation-steps-disclosure"]')
     const summary = page.locator('[data-testid="calculation-steps-summary"]')
 
-    await summary.focus()
+    await tabTo(page, summary)
     const focusInfo = await summary.evaluate((el) => ({
       focusVisible: el.matches(':focus-visible'),
       outlineWidth: getComputedStyle(el).outlineWidth,
@@ -236,3 +279,70 @@ test.describe('M36 disclosure 与命令参考', () => {
     await expect(details).not.toHaveAttribute('open')
   })
 })
+
+async function expectInsideViewport(locator: Locator, page: Page) {
+  const box = await locator.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.y).toBeGreaterThanOrEqual(0)
+  expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height)
+}
+
+test('首次键盘操作在 12 次 Tab 内到达 Raw，主输入保持 focus-visible', async ({ page }) => {
+  await settle(page)
+  const raw = page.locator('#raw-hex-input')
+  await tabTo(page, raw, 'Tab', 12)
+  await expect(raw.and(page.locator(':focus-visible'))).toBeFocused()
+})
+
+test('结果旁的原字、参数和状态随模式与配置更新', async ({ page }) => {
+  await settle(page)
+  const context = page.getByTestId('result-context')
+  await page.locator('#value-input').fill('12.5')
+  await expect(context).toContainText('0xF819')
+  // 参数槽位现在是结构化 label/value 对（不拼成 “N = -1” 一类字符串）。
+  const params = page.getByTestId('result-context-params')
+  await expect(params).toContainText('N')
+  await expect(params).toContainText('-1')
+  await page.getByRole('tab', { name: /DIRECT/ }).click()
+  await page.locator('#direct-coeff-r-input').fill('12')
+  await page.locator('#direct-coeff-r-input').press('Tab')
+  await expect(params).toContainText('R')
+  await expect(params).toContainText('12')
+  await expect(context).toContainText('器件相关')
+  await page.getByRole('tab', { name: /LINEAR16/ }).click()
+  await page.locator('#vout-mode-input').fill('20')
+  await page.locator('#vout-mode-input').press('Tab')
+  await expect(context).toContainText('0x20')
+  await expect(context).toContainText('未按 LINEAR16 解释')
+  await expect(params).not.toContainText('N')
+  await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
+  await page.locator('#vout-mode-input').fill('18')
+  await page.locator('#vout-mode-input').press('Tab')
+  await expect(params).toContainText('N')
+  await expect(params).toContainText('-8')
+})
+
+for (const width of [360, 390, 960]) {
+  test(`${width}px：DIRECT 系数标签换行和报错时三列输入保持对齐`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await settle(page)
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+    const fields = ['m', 'b', 'r'].map((name) => page.locator(`#direct-coeff-${name}-input`))
+    const expectAligned = async () => {
+      const boxes = await Promise.all(fields.map((field) => field.boundingBox()))
+      const tops = boxes.map((box) => box!.y)
+      expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(1)
+    }
+    await expectAligned()
+
+    await fields[0].fill('32768')
+    await fields[0].press('Tab')
+    await expect(fields[0]).toHaveAttribute('aria-invalid', 'true')
+    await expectAligned()
+    await expect(page.locator('#raw-hex-input')).toHaveValue('0000')
+
+    await page.locator('label[for="direct-coeff-r-input"]').click()
+    await expect(fields[2]).toBeFocused()
+    await expect(fields[0]).toHaveAttribute('aria-invalid', 'true')
+  })
+}

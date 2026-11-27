@@ -31,9 +31,8 @@ jobs:
           node-version-file: .node-version
           cache: npm
 
-      - name: Select PR checks
+      - name: Select checks
         id: scope
-        if: github.event_name == 'pull_request'
         run: node scripts/classify-ci-scope.mjs
 
       - run: npm ci --no-audit
@@ -45,12 +44,16 @@ jobs:
         if: steps.scope.outputs.scope != 'docs' && steps.scope.outputs.scope != 'unit'
       - run: npm run verify:browser
         if: steps.scope.outputs.scope != 'docs' && steps.scope.outputs.scope != 'unit'
+      - run: npm run test:pages-overlay
+        if: steps.scope.outputs.scope == 'pages'
 
       - name: Upload Playwright reports on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-reports-${{ github.run_attempt }}
-          path: playwright-report/app
+          path: |
+            playwright-report/app
+            playwright-report/pages-overlay
           retention-days: 7
           if-no-files-found: ignore

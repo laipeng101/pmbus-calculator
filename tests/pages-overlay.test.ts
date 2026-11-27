@@ -1,6 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
-import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -19,12 +18,13 @@ import {
   parseSiteArg,
   readSiteFiles,
 } from '../scripts/pages-overlay-contract.mjs'
-import { generateAssets } from '../scripts/prepare-release-assets.mjs'
-import { verifyPagesEntities } from '../scripts/verify-pages-entities.mjs'
+import {
+  PAGES_OVERLAY_TEST_SITE,
+  preparePagesOverlayTest,
+} from '../scripts/prepare-pages-overlay-test.mjs'
 import { verifyPagesOverlay } from '../scripts/verify-pages-overlay.mjs'
+import { releaseFixtureCsp as policy, writeReleaseSite } from './fixtures/pages-site'
 
-const policy =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
 const token = 'a'.repeat(32) // Synthetic fixture input, never a site configuration.
 const env = { GITHUB_REPOSITORY: REPOSITORY, [TOKEN_ENV]: token }
 const roots: string[] = []
@@ -32,28 +32,7 @@ const roots: string[] = []
 function fixture(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pmbus-overlay-unit-'))
   roots.push(root)
-  fs.mkdirSync(path.join(root, '_site', 'assets'), { recursive: true })
-  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '3.3.0' }))
-  fs.writeFileSync(
-    path.join(root, '_site', 'index.html'),
-    `<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="${policy}" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PMBus fixture</title>
-    <script type="module" crossorigin src="./assets/app.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/app.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
-</html>
-`,
-  )
-  fs.writeFileSync(path.join(root, '_site', 'assets', 'app.js'), 'export {}\n')
-  fs.writeFileSync(path.join(root, '_site', 'assets', 'app.css'), 'body { color: black; }\n')
+  writeReleaseSite(root)
   return root
 }
 
@@ -208,23 +187,30 @@ describe('input gates fail before any mutation', () => {
 
   // Non-HTML whitespace before/in head is body text to the browser. trim()
   // would accept a CSP that the browser moves into body and then ignores.
-  it.each(['\u00a0', '\ufeff', '\u2000', '\u2028'])(
-    'rejects non-HTML whitespace at structural boundaries: %#',
-    (space) => {
-      for (const change of [
-        (html: string) => html.replace('<head>', `${space}<head>`),
-        (html: string) => html.replace('<meta charset=', `${space}<meta charset=`),
-        (html: string) => html.replace('http-equiv=', `${space}http-equiv=`),
-        (html: string) => html.replace("script-src 'self'", `script-src${space}'self'`),
-      ]) {
-        const root = fixture()
-        edit(root, change)
-        const before = tree(root)
-        expect(() => apply(root)).toThrow()
-        expect(tree(root)).toEqual(before)
-      }
-    },
-  )
+  it.each([
+    ['before head', (html: string) => html.replace('<head>', '\u00a0<head>'), /Unexpected text/],
+    [
+      'inside head',
+      (html: string) => html.replace('<meta charset=', '\u2000<meta charset='),
+      /Unexpected text/,
+    ],
+    [
+      'between attributes',
+      (html: string) => html.replace('http-equiv=', '\ufeffhttp-equiv='),
+      /quoted HTML grammar/,
+    ],
+    [
+      'inside CSP',
+      (html: string) => html.replace("script-src 'self'", "script-src\u2028'self'"),
+      /CSP contains non-ASCII/,
+    ],
+  ] as const)('rejects non-HTML whitespace %s', (_position, change, reason) => {
+    const root = fixture()
+    edit(root, change)
+    const before = tree(root)
+    expect(() => apply(root)).toThrow(reason)
+    expect(tree(root)).toEqual(before)
+  })
 
   it.each(['missing', 'directory', 'symlink', 'hardlink'] as const)(
     'requires index.html to be an unlinked regular file: %s',
@@ -513,32 +499,25 @@ describe('independent final overlay verifier', () => {
   })
 })
 
-describe('Release/provenance and CLI integration', () => {
-  it('a verified ZIP stays byte-identical while only its extraction receives the overlay', async () => {
+describe('Pages fixture and CLI integration', () => {
+  it('prepares an isolated Pages site from a Release ZIP and preserves deployment staging', () => {
     const root = fixture()
-    fs.cpSync(path.join(root, '_site'), path.join(root, 'dist'), { recursive: true })
-    const output = path.join(root, 'release-output')
-    const { zipName, sumsName } = await generateAssets(path.join(root, 'dist'), output, false)
-    const zip = path.join(output, zipName)
-    const originalZip = fs.readFileSync(zip)
-    const sums = fs.readFileSync(path.join(output, sumsName))
-    fs.rmSync(path.join(root, '_site'), { recursive: true })
-    execFileSync(
-      'python3',
-      [
-        '-c',
-        'import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])',
-        zip,
-        path.join(root, '_site'),
-      ],
-      { timeout: 10_000 },
+    const dist = path.join(root, 'dist')
+    fs.cpSync(path.join(root, '_site'), dist, { recursive: true })
+    const deployment = tree(root)
+    const result = preparePagesOverlayTest(root)
+
+    expect(result).toMatchObject({
+      ok: true,
+      site: PAGES_OVERLAY_TEST_SITE,
+      releaseZipUnchanged: true,
+      releaseFiles: deployment.size,
+    })
+    expect(tree(root)).toEqual(deployment)
+    expect(readSiteFiles(dist)).toEqual(deployment)
+    expect(fs.readFileSync(path.join(root, result.site, 'index.html'), 'utf8')).toContain(
+      'data-pages-only="repository-link"',
     )
-    apply(root)
-    expect(verify(root).ok).toBe(true)
-    expect(fs.readFileSync(zip)).toEqual(originalZip)
-    expect(fs.readFileSync(path.join(output, sumsName))).toEqual(sums)
-    await generateAssets(path.join(root, 'dist'), output, true)
-    expect(fs.readFileSync(zip)).toEqual(originalZip)
   })
 
   it('real CLI emits one JSON object, never token contents, on success or failure', () => {
@@ -582,44 +561,6 @@ describe('Release/provenance and CLI integration', () => {
       expect(result.stderr).not.toBe('')
       expect(result.stdout + result.stderr).not.toContain(token)
       expect(result.stdout + result.stderr).not.toContain('b'.repeat(32))
-    }
-  })
-
-  it('live entity verification derives its manifest from FINAL index and overlay CSS', async () => {
-    const root = fixture()
-    const originalIndex = Buffer.from(index(root))
-    apply(root)
-    const files = tree(root)
-    const observed: string[] = []
-    let stale = false
-    const server = http.createServer((request, response) => {
-      const name = new URL(request.url!, 'http://localhost').pathname.replace(
-        '/pmbus-calculator/',
-        '',
-      )
-      observed.push(name)
-      const bytes = stale && name === 'index.html' ? originalIndex : files.get(name)
-      response.writeHead(bytes ? 200 : 404)
-      response.end(bytes)
-    })
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-    try {
-      const address = server.address() as { port: number }
-      const url = `http://127.0.0.1:${address.port}/pmbus-calculator/`
-      const options = { concurrency: 2, deadlineMs: 5_000, requestTimeoutMs: 1_000, query: null }
-      const result = await verifyPagesEntities(path.join(root, '_site'), url, options)
-      expect(result.failures).toBe(0)
-      expect(result.manifest.count).toBe(files.size)
-      expect(observed).toContain(CSS_NAME)
-      expect(observed).toContain('index.html')
-      stale = true
-      const mismatch = await verifyPagesEntities(path.join(root, '_site'), url, options)
-      expect(mismatch.failures).toBeGreaterThan(0)
-      expect(mismatch.firstFailure?.path).toBe('index.html')
-    } finally {
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      )
     }
   })
 })

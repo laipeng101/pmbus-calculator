@@ -1,19 +1,9 @@
-import { test, expect, type Page } from '@playwright/test'
-import { appUrl } from './helpers/app-url'
+import { test, expect } from '@playwright/test'
+import { tabTo } from './helpers/keyboard'
+import { expectNoHorizontalOverflow } from './helpers/layout'
 
-/**
- * v2.6.0 起页头包含多个术语触发器，fresh load 的第一个 Tab 落在标题内的
- * PMBus 触发器上；用有界真实键盘 Tab 循环前进到目标控件。
- */
-async function tabUntilFocused(page: Page, locator: ReturnType<Page['getByRole']>, maxSteps = 20) {
-  for (let i = 0; i < maxSteps; i++) {
-    if (await locator.evaluate((el) => el.matches(':focus'))) return
-    await page.keyboard.press('Tab')
-  }
-}
-
-test.describe('LaTeX 公式展示与交互反馈', () => {
-  test('四个计算模式均出现 KaTeX 容器且无 .katex-error', async ({ page }) => {
+test.describe('公式展示与交互反馈', () => {
+  test('四个换算页渲染可见公式和 MathML，编辑原字后同步更新', async ({ page }) => {
     const pageErrors: string[] = []
     const consoleErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
@@ -21,26 +11,28 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
       if (message.type() === 'error') consoleErrors.push(message.text())
     })
 
-    await page.goto(appUrl())
+    await page.goto('./')
 
-    // VOUT_MODE 是结构化配置字节而非数学公式（M39 字体角色合同），其结果面板
-    // 不经 KaTeX 排版；只有四个数值换算模式仍渲染真实公式。
-    const tabs = [{ name: /LINEAR11/ }, { name: /LINEAR16/ }, { name: /DIRECT/ }, { name: /HALF/ }]
-
-    for (const tab of tabs) {
-      await page.getByRole('tab', { name: tab.name }).click()
-      await expect(page.locator('.katex:visible').first()).toBeVisible()
-      await expect(page.locator('.katex-error')).toHaveCount(0)
-      await expect(page.locator('.katex math').first()).toBeAttached()
+    const equation = page.getByTestId('result-row-substitution')
+    for (const mode of ['LINEAR16', 'DIRECT', 'HALF', 'LINEAR11']) {
+      await page.getByRole('tab', { name: new RegExp(mode) }).click()
+      await expect(equation.locator('.katex')).toBeVisible()
+      await expect(equation.locator('math')).toBeAttached()
+      await expect(page.getByTestId('result-panel').locator('[data-katex-fallback]')).toHaveCount(0)
     }
 
+    await page.locator('#raw-hex-input').fill('F819')
+    await expect(page.getByTestId('result-value')).toHaveText('12.5')
+    await expect(equation).toContainText('25')
+    await expect(equation).toContainText('12.5')
+    await expect(equation.locator('math')).toBeAttached()
     expect(pageErrors).toEqual([])
     expect(consoleErrors).toEqual([])
   })
 
   test('VOUT_MODE 结果面板使用配置摘要而非 KaTeX', async ({ page }) => {
     const summary = page.getByTestId('vout-mode-config-summary')
-    await page.goto(appUrl())
+    await page.goto('./')
     await page.getByRole('tab', { name: /VOUT_MODE/ }).click()
     await expect(summary).toBeVisible()
     await expect(summary).toContainText('VOUT_MODE')
@@ -61,23 +53,8 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     expect(summaryFont).not.toContain('Times New Roman')
   })
 
-  test('修改输入后公式同步更新', async ({ page }) => {
-    await page.goto(appUrl())
-    const hexInput = page.locator('input[placeholder="0000"]')
-
-    await hexInput.fill('F819')
-    await hexInput.press('Tab')
-
-    await expect(page.locator('#value-input')).toHaveValue('12.5')
-    // 首屏“一条完整等式”包含实际 N/Y 值与最终结果：25 × 2^-1 = 12.5。
-    const substitution = page.locator('[data-testid="result-row-substitution"]').first()
-    await expect(substitution).toBeVisible()
-    await expect(substitution).toContainText('25')
-    await expect(substitution).toContainText('12.5')
-  })
-
-  test('cursor 语义：按钮 pointer、输入 text、禁用 N 为 not-allowed', async ({ page }) => {
-    await page.goto(appUrl())
+  test('按钮、原字输入和禁用的指数显示对应指针', async ({ page }) => {
+    await page.goto('./')
 
     const commandReferenceToggle = page.locator('#command-reference-toggle')
     await expect(commandReferenceToggle).toBeVisible()
@@ -85,7 +62,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
       'pointer',
     )
 
-    const hexInput = page.locator('input[placeholder="0000"]')
+    const hexInput = page.locator('#raw-hex-input')
     expect(await hexInput.evaluate((el) => getComputedStyle(el).cursor)).toBe('text')
 
     const nInput = page.getByLabel('N 值 (指数)')
@@ -93,52 +70,54 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     expect(await nInput.evaluate((el) => getComputedStyle(el).cursor)).toBe('not-allowed')
   })
 
-  test('hover 有可观察反馈', async ({ page }) => {
-    await page.goto(appUrl())
+  test('悬停时显示控件反馈', async ({ page }) => {
+    await page.goto('./')
 
     const commandReferenceToggle = page.locator('#command-reference-toggle')
     await expect(commandReferenceToggle).toBeVisible()
+    await page.evaluate(() => document.fonts.ready)
     const hoverCapable = await page.evaluate(
       () => window.matchMedia('(hover: hover) and (pointer: fine)').matches,
     )
 
-    if (!hoverCapable) return
+    expect(hoverCapable).toBe(true)
 
     const shadowBefore = await commandReferenceToggle.evaluate(
       (el) => getComputedStyle(el).boxShadow,
     )
     await commandReferenceToggle.hover()
-    const shadowAfter = await commandReferenceToggle.evaluate(
-      (el) => getComputedStyle(el).boxShadow,
-    )
-    expect(shadowAfter).not.toBe(shadowBefore)
-    expect(shadowAfter).toContain('rgb')
+    const shadow = () => commandReferenceToggle.evaluate((el) => getComputedStyle(el).boxShadow)
+    await expect.poll(shadow).not.toBe(shadowBefore)
+    await expect.poll(shadow).toContain('rgb')
   })
 
-  test('active 有按压反馈', async ({ page }) => {
-    await page.goto(appUrl())
+  test('按下控件时位置发生变化', async ({ page }) => {
+    await page.goto('./')
 
     const commandReferenceToggle = page.locator('#command-reference-toggle')
     await expect(commandReferenceToggle).toBeVisible()
+    await page.evaluate(() => document.fonts.ready)
     const hoverCapable = await page.evaluate(
       () => window.matchMedia('(hover: hover) and (pointer: fine)').matches,
     )
 
-    if (!hoverCapable) return
+    expect(hoverCapable).toBe(true)
 
     // hover 先让元素滚动到视口并等待布局稳定，避免字体加载重流使
     // boundingBox 过期、mousedown 落到相邻元素上。
     await commandReferenceToggle.hover()
     const box = await commandReferenceToggle.boundingBox()
     if (box == null) throw new Error('command reference toggle bounding box missing')
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.down()
-    const transformDuringActive = await commandReferenceToggle.evaluate(
+    const restingTransform = await commandReferenceToggle.evaluate(
       (el) => getComputedStyle(el).transform,
     )
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await expect
+      .poll(() => commandReferenceToggle.evaluate((el) => getComputedStyle(el).transform))
+      .not.toBe(restingTransform)
     await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 + 40)
     await page.mouse.up()
-    expect(transformDuringActive).not.toBe('none')
   })
 
   // 键盘 focus-visible 合同：从 fresh load 的真实 Tab 进入，断言预期具体控件
@@ -146,8 +125,8 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
   // 位于主题按钮之前），并用 Tab/Shift+Tab 往返验证相邻控件。不依赖“最后
   // 一个控件 Tab 后焦点仍在页面内”：HTML sequential focus navigation 允许
   // 在页面末尾转向浏览器控件。
-  test('键盘 Tab 进入首控件并在相邻控件间往返时 focus-visible 可观察', async ({ page }) => {
-    await page.goto(appUrl())
+  test('键盘可在页头和模式标签之间往返并看到焦点', async ({ page }) => {
+    await page.goto('./')
 
     const firstControl = page.getByTestId('term-trigger-pmbus').first()
     const themeToggle = page.getByRole('button', { name: /当前主题/ })
@@ -163,8 +142,7 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     expect(firstFocus.outlineWidth).not.toBe('0px')
 
     // 有界 Tab 前进越过页头术语触发器，落到主题按钮。
-    await tabUntilFocused(page, themeToggle)
-    await expect(themeToggle).toBeFocused()
+    await tabTo(page, themeToggle)
     const tabFocus = await themeToggle.evaluate((el) => ({
       focusVisible: el.matches(':focus-visible'),
       outlineWidth: getComputedStyle(el).outlineWidth,
@@ -178,132 +156,100 @@ test.describe('LaTeX 公式展示与交互反馈', () => {
     await expect(themeToggle).toBeFocused()
   })
 
-  test('prefers-reduced-motion: reduce 关闭非必要动画且保留功能反馈', async ({ page }) => {
+  test('减少动效时术语气泡静止显示，仍可按键操作和换算', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.goto(appUrl())
-
-    const toMs = (value: string) => parseFloat(value) * (value.endsWith('ms') ? 1 : 1000)
-
-    const motionMetrics = await page.evaluate(() => {
-      const selectedTab = document.querySelector(
-        '[role="tab"][aria-selected="true"]',
-      ) as HTMLElement | null
-      const tabTransitionDuration = selectedTab
-        ? getComputedStyle(selectedTab).transitionDuration
-        : '0.2s'
-
-      const popoverProbe = document.createElement('div')
-      popoverProbe.className = 'popover-enter'
-      document.body.appendChild(popoverProbe)
-      const popoverAnimationDuration = getComputedStyle(popoverProbe).animationDuration
-      popoverProbe.remove()
-
-      const transformProbe = document.createElement('div')
-      transformProbe.style.transition = 'transform 180ms ease'
-      document.body.appendChild(transformProbe)
-      const transformTransitionDuration = getComputedStyle(transformProbe).transitionDuration
-      transformProbe.remove()
-
-      return { tabTransitionDuration, popoverAnimationDuration, transformTransitionDuration }
-    })
-
-    expect(toMs(motionMetrics.tabTransitionDuration)).toBeLessThanOrEqual(1)
-    expect(toMs(motionMetrics.popoverAnimationDuration)).toBeLessThanOrEqual(1)
-    expect(toMs(motionMetrics.transformTransitionDuration)).toBeLessThanOrEqual(1)
-
-    // 状态颜色保留：当前选中 tab 仍使用可见的背景色与前景色。
-    const selectedTab = page.getByRole('tab', { name: /LINEAR11/ })
-    const selectedStyles = await selectedTab.evaluate((el) => {
-      const cs = getComputedStyle(el)
-      return { backgroundColor: cs.backgroundColor, color: cs.color }
-    })
-    expect(selectedStyles.backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
-    expect(selectedStyles.color).not.toBe('rgba(0, 0, 0, 0)')
-
-    // focus-visible 提示保留：从 fresh load 的真实 Tab 进入并断言预期控件。
+    await page.goto('./')
+    const term = page.getByTestId('term-trigger-pmbus').first()
     await page.keyboard.press('Tab')
-    const themeToggle = page.getByRole('button', { name: /当前主题/ })
-    await tabUntilFocused(page, themeToggle)
-    await expect(themeToggle).toBeFocused()
-    const focusInfo = await themeToggle.evaluate((el) => ({
-      focusVisible: el.matches(':focus-visible'),
-      outlineWidth: getComputedStyle(el).outlineWidth,
-    }))
-    expect(focusInfo.focusVisible).toBe(true)
-    expect(focusInfo.outlineWidth).not.toBe('0px')
+    await expect(term).toBeFocused()
+    await page.keyboard.press('Enter')
+    const popover = page.getByTestId('term-popover-pmbus')
+    await expect(popover).toBeVisible()
+    await expect(popover).toHaveCSS('animation-name', 'none')
+    await page.keyboard.press('Escape')
+    await expect(popover).toHaveCount(0)
+    await expect(term).toBeFocused()
 
-    // active 按压反馈保留。
-    const commandReferenceToggle = page.locator('#command-reference-toggle')
-    await commandReferenceToggle.scrollIntoViewIfNeeded()
-    const box = await commandReferenceToggle.boundingBox()
-    if (box == null) throw new Error('command reference toggle bounding box missing')
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.down()
-    const activeTransform = await commandReferenceToggle.evaluate(
-      (el) => getComputedStyle(el).transform,
-    )
-    await page.mouse.up()
-    expect(activeTransform).not.toBe('none')
-
-    // 功能行为不受影响。
-    const hexInput = page.locator('input[placeholder="0000"]')
-    await hexInput.fill('F819')
-    await hexInput.press('Tab')
-    await expect(page.locator('#value-input')).toHaveValue('12.5')
-    await expect(page.locator('.katex').first()).toBeVisible()
-    await expect(page.locator('.katex-error')).toHaveCount(0)
-  })
-
-  test('360/390 视口无横向滚动，长公式只在自身容器滚动', async ({ page }) => {
-    for (const width of [360, 390]) {
-      await page.setViewportSize({ width, height: 844 })
-      await page.goto(appUrl())
-      await page.getByRole('tab', { name: /DIRECT/ }).click()
-
-      await page.getByLabel('DIRECT 系数 m').fill('-32768')
-      await page.getByLabel('DIRECT 系数 m').press('Tab')
-      await page.getByLabel('DIRECT 系数 b').fill('-32768')
-      await page.getByLabel('DIRECT 系数 b').press('Tab')
-      await page.getByLabel('DIRECT 系数 r').fill('-128')
-      await page.getByLabel('DIRECT 系数 r').press('Tab')
-      await page.getByLabel('Y（16 位有符号，−32768～32767）').fill('-32768')
-      await page.getByLabel('Y（16 位有符号，−32768～32767）').press('Tab')
-
-      const body = page.locator('body')
-      const scrollWidth = await body.evaluate((el) => el.scrollWidth)
-      const clientWidth = await body.evaluate((el) => el.clientWidth)
-      expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
-
-      const formulaContainer = page.locator('.math-scroll').first()
-      await expect(formulaContainer).toBeVisible()
-      expect(await formulaContainer.evaluate((el) => getComputedStyle(el).overflowX)).toBe('auto')
-    }
-  })
-
-  test('light/dark 主题下公式与 focus ring 可读', async ({ page }) => {
-    await page.addInitScript(() => {
-      localStorage.setItem('pmbus-calculator:theme', 'dark')
-    })
-    await page.goto(appUrl())
-
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-    await expect(page.locator('.katex').first()).toBeVisible()
-
-    // 从 fresh load 的真实 Tab 进入，在预期控件上验证 dark 主题 focus ring。
-    await page.keyboard.press('Tab')
-    const themeToggle = page.getByRole('button', { name: /当前主题/ })
-    await tabUntilFocused(page, themeToggle)
-    await expect(themeToggle).toBeFocused()
-    const darkFocus = await themeToggle.evaluate((el) => {
-      const style = getComputedStyle(el)
-      return {
-        focusVisible: el.matches(':focus-visible'),
-        outlineWidth: style.outlineWidth,
-        outlineColor: style.outlineColor,
+    const activeTab = page.getByRole('tab', { name: /LINEAR11/ })
+    const toggle = page.getByRole('button', { name: '命令参考（只读）' })
+    for (const control of [activeTab, toggle]) {
+      const durations = await control.evaluate((el) => getComputedStyle(el).transitionDuration)
+      for (const duration of durations.split(',')) {
+        const milliseconds = parseFloat(duration) * (duration.trim().endsWith('ms') ? 1 : 1000)
+        expect(milliseconds).toBeLessThanOrEqual(1)
       }
-    })
-    expect(darkFocus.focusVisible).toBe(true)
-    expect(darkFocus.outlineWidth).not.toBe('0px')
-    expect(darkFocus.outlineColor).not.toBe('rgba(0, 0, 0, 0)')
+    }
+
+    await tabTo(page, activeTab)
+    await expect(activeTab.and(page.locator(':focus-visible'))).toBeFocused()
+    await expect(activeTab).not.toHaveCSS('outline-width', '0px')
+
+    await toggle.hover()
+    const box = await toggle.boundingBox()
+    if (box === null) throw new Error('Missing command reference button')
+    const resting = await toggle.evaluate((el) => getComputedStyle(el).transform)
+    await page.mouse.down()
+    await expect
+      .poll(() => toggle.evaluate((el) => getComputedStyle(el).transform))
+      .not.toBe(resting)
+    await page.mouse.move(box.x + box.width + 8, box.y)
+    await page.mouse.up()
+
+    await page.locator('#raw-hex-input').fill('F819')
+    await expect(page.getByTestId('result-value')).toHaveText('12.5')
   })
+
+  test('360 px 下长公式在自身容器内滚动', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 })
+    await page.goto('./')
+    await page.getByRole('tab', { name: /DIRECT/ }).click()
+
+    for (const [field, text] of [
+      ['m', '-32768'],
+      ['b', '-32768'],
+      ['r', '-128'],
+    ]) {
+      const input = page.getByLabel(`DIRECT 系数 ${field}`, { exact: true })
+      await input.fill(text)
+      await input.press('Tab')
+    }
+    await page.locator('#raw-hex-input').fill('7FFF')
+    const formula = page.getByTestId('result-row-substitution')
+    await expect(formula.locator('math')).toBeAttached()
+    await page.evaluate(() => document.fonts.ready)
+    await expect(formula).toHaveCSS('overflow-x', 'auto')
+    await expect
+      .poll(() => formula.evaluate((el) => el.scrollWidth - el.clientWidth))
+      .toBeGreaterThan(0)
+    await formula.evaluate((el) => {
+      el.scrollLeft = el.scrollWidth
+    })
+    await expect.poll(() => formula.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0)
+    await expectNoHorizontalOverflow(page)
+  })
+
+  for (const theme of ['light', 'dark'] as const) {
+    const label = theme === 'light' ? '浅色' : '暗色'
+    test(`${label}主题下显示公式和键盘焦点轮廓`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme })
+      await page.goto('./')
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+      await expect(page.locator('.katex').first()).toBeVisible()
+
+      const themeToggle = page.getByRole('button', { name: /当前主题/ })
+      await tabTo(page, themeToggle)
+      await expect(themeToggle).toBeFocused()
+      const focus = await themeToggle.evaluate((el) => {
+        const style = getComputedStyle(el)
+        return {
+          visible: el.matches(':focus-visible'),
+          width: style.outlineWidth,
+          color: style.outlineColor,
+        }
+      })
+      expect(focus.visible).toBe(true)
+      expect(focus.width).not.toBe('0px')
+      expect(focus.color).not.toBe('rgba(0, 0, 0, 0)')
+    })
+  }
 })

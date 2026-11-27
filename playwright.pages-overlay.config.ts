@@ -1,7 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 import { browserDefaults, desktop, preview } from './playwright.shared'
+import { PAGES_BASE_PATH } from './scripts/pages-network-policy.mjs'
+import { PAGES_OVERLAY_TEST_SITE } from './scripts/prepare-pages-overlay-test.mjs'
 
-const server = preview(4176, '/pmbus-calculator/', '_site')
+const server = preview(4176, PAGES_BASE_PATH, PAGES_OVERLAY_TEST_SITE)
 
 export default defineConfig(browserDefaults('pages-overlay'), {
   fullyParallel: true,

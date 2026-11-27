@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -19,12 +19,9 @@ it('limits the lightweight PR check to repository documentation', () => {
   ).toBe('docs')
 
   for (const file of [
-    'package-lock.json',
     'tests/e2e/new-test.test.ts',
     'tests/fixtures/helpers.ts',
     'src/app/state.ts',
-    '.github/workflows/release.yml',
-    'src/styles/tokens.css',
     'src/README.md',
     'tests/e2e/visual.spec.ts',
     'docs/notes\n.md',
@@ -33,7 +30,22 @@ it('limits the lightweight PR check to repository documentation', () => {
     expect(classifyChanges(['CONTRIBUTING.md', file]), file).toBe('browser')
   }
   expect(classifyChanges(['README.md', 'src/app/state.test.ts', 'tests/pec.test.ts'])).toBe('unit')
-  expect(classifyChanges([])).toBe('browser')
+})
+
+it('runs the full Pages check for direct deployment and layout inputs', () => {
+  for (const file of [
+    'package-lock.json',
+    '.github/workflows/release.yml',
+    'scripts/verify-pages-asset-references.mjs',
+    'src/App.tsx',
+    'src/components/layout/AppHeader.tsx',
+    'src/components/feedback/ThemeToggle.tsx',
+    'src/styles/tokens.css',
+    'tests/e2e/helpers/browser-resources.ts',
+  ]) {
+    expect(classifyChanges(['README.md', 'tests/pec.test.ts', file]), file).toBe('pages')
+  }
+  expect(classifyChanges([])).toBe('pages')
 })
 
 it('checks the merged diff and keeps both sides of a rename in scope', () => {
@@ -56,14 +68,18 @@ it('checks the merged diff and keeps both sides of a rename in scope', () => {
     git('add', '.')
     git('commit', '-qm', 'test')
   }
-  const check = () =>
+  const check = (event: 'pull_request' | 'workflow_dispatch' = 'pull_request') => {
+    const output = join(cwd, '.git', 'ci-output')
+    writeFileSync(output, '')
     execFileSync(process.execPath, [resolve('scripts/classify-ci-scope.mjs')], {
       cwd,
-      encoding: 'utf8',
-      env: { ...process.env, GITHUB_OUTPUT: '' },
+      env: { ...process.env, GITHUB_EVENT_NAME: event, GITHUB_OUTPUT: output },
     })
+    return readFileSync(output, 'utf8')
+  }
   try {
     git('init', '-qb', 'main')
+    expect(check('workflow_dispatch')).toBe('scope=pages\n')
     writeFileSync(join(cwd, 'calculator.ts'), 'export const raw = 0\n')
     commit()
     git('switch', '-qc', 'guide')
@@ -73,11 +89,15 @@ it('checks the merged diff and keeps both sides of a rename in scope', () => {
     writeFileSync(join(cwd, 'package.json'), '{}')
     commit()
     git('merge', '-q', '--no-ff', '--no-edit', 'guide')
-    expect(check()).toContain('CI scope: docs')
+    expect(check()).toBe('scope=docs\n')
 
     git('mv', 'calculator.ts', 'CONTRIBUTING.md')
     commit()
-    expect(check()).toContain('CI scope: browser')
+    expect(check()).toBe('scope=browser\n')
+
+    git('mv', 'package.json', 'defaults.json')
+    commit()
+    expect(check()).toBe('scope=pages\n')
   } finally {
     rmSync(cwd, { recursive: true, force: true })
   }

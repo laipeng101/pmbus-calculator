@@ -10,6 +10,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import {
   CLOUDFLARE_BEACON_URL,
   CLOUDFLARE_RUM_URL,
+  PAGES_BASE_PATH,
   PAGES_CSP,
   PAGES_REPOSITORY_NAME,
   PAGES_REPOSITORY_URL,
@@ -18,7 +19,7 @@ import {
 } from './pages-network-policy.mjs'
 import { isStableReleaseTag, isStableReleaseVersion } from './release-artifact-contract.mjs'
 
-export const DEPLOYMENT_URL = 'https://laipeng101.github.io/pmbus-calculator/'
+export const DEPLOYMENT_URL = `https://laipeng101.github.io${PAGES_BASE_PATH}`
 export const TOTAL_BUDGET_MS = 45_000
 // Leave a margin for process startup and forced exit, and reserve cleanup time.
 export const WATCHDOG_MS = 44_000

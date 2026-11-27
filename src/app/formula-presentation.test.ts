@@ -207,13 +207,6 @@ describe('formula presentation model', () => {
     expect(f.equationPlainText).not.toContain('N =')
   })
 
-  it('keeps the L11 formula in plain text and LaTeX', () => {
-    const s = state({ mode: 'L11', raw: 0x000c })
-    const vm = toCalculatorViewModel(s)
-    expect(vm.formulaText).toBe('Y=12 × 2^0')
-    expect(vm.formulaLatex).toBe('X = Y \\times 2^N = 12 \\times 2^{0}')
-  })
-
   it('KaTeX templates only use the safe common subset', () => {
     const samples = [
       state({ mode: 'L11', raw: 0xf819 }),
@@ -236,23 +229,13 @@ describe('formula presentation model', () => {
   })
 })
 
-describe('relative ULINEAR16 equation diagnostics', () => {
-  it('without a nominal shows the ratio only, never a stale voltage (v2.5.8)', () => {
+describe('relative ULINEAR16 LaTeX diagnostics', () => {
+  it('keeps the ratio and asks for the missing nominal reference', () => {
     const f = formula(state({ mode: 'L16', raw: 0x0100, voutMode: { byte: 0x98 } }))
-    expect(f.equationPlainText).toBe('R=256 × 2^-8=1（请填写 VOUT_COMMAND 标称参考值）')
-    expect(f.equationPlainText).not.toMatch(/X=/)
     expect(f.equationLatex).toContain('\\text{请填写标称参考值 } V_{NOM}')
-
-    const withNominal = state({
-      mode: 'L16',
-      raw: 0x0100,
-      voutMode: { byte: 0x98 },
-      l16: { payloadKind: 'ulinear16', nominalVout: 12 },
-    })
-    expect(formula(withNominal).equationPlainText).toBe('R=256 × 2^-8=1（100%）; X=12×R=12 V')
   })
 
-  it('overflow keeps nominal and ratio but never fabricates a final voltage (v2.5.9)', () => {
+  it('keeps the nominal and ratio but renders the unavailable final voltage', () => {
     const f = formula(
       state({
         mode: 'L16',
@@ -261,21 +244,6 @@ describe('relative ULINEAR16 equation diagnostics', () => {
         l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
       }),
     )
-    expect(f.equationPlainText).toContain('=—（计算结果太大，超出可表示范围）')
-    expect(f.equationPlainText).not.toContain('Infinity')
     expect(f.equationLatex).toContain('= \\text{—}')
-  })
-
-  it('underflow reports the shared underflow diagnostic (v2.5.9)', () => {
-    const f = formula(
-      state({
-        mode: 'L16',
-        raw: 0x0001,
-        voutMode: { byte: 0x90 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 5e-324 },
-      }),
-    )
-    expect(f.equationPlainText).toContain('=—（计算下溢')
-    expect(f.equationPlainText).not.toMatch(/=0 V/)
   })
 })

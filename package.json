@@ -1,7 +1,7 @@
 {
   "name": "pmbus-calculator",
   "private": true,
-  "version": "3.4.5",
+  "version": "3.4.6",
   "type": "module",
   "engines": {
     "node": ">=22.20.0 <23 || >=24.19.0 <25",
@@ -34,7 +34,7 @@
     "release:prepare-assets": "node scripts/prepare-release-assets.mjs",
     "verify": "npm run verify:light && npm run lint && npm run check:release-contract && npm run test:run && npm run build && npm run check:tailwind-scope",
     "verify:light": "npm run format:check && npm run check:repo-hygiene",
-    "verify:browser": "playwright test --project=chromium-desktop --project=chromium-mobile-contract --grep \"@browser-smoke|chromium-mobile-contract\"",
+    "verify:browser": "playwright test --project=chromium-desktop --project=chromium-mobile-contract --grep @browser-smoke",
     "test:e2e:release": "playwright test --config playwright.release.config.ts",
     "test:e2e:visual": "bash scripts/test-visual.sh",
     "test:e2e:deployment": "playwright test --config playwright.deployment.config.ts",

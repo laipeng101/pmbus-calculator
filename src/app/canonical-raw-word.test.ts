@@ -5,19 +5,7 @@ import { toCalculatorViewModel } from './view-model'
 import { formatRawWordCopyText } from './result-presentation'
 import { PMBusMath } from '../legacy/pmbus-math'
 
-/**
- * v3.0.0 canonical Raw Word invariants (breaking domain-model contract).
- *
- * state.raw is the single canonical unsigned 16-bit raw word behind the main
- * Raw Word Hex field, the bit grid, the formula operand, decode/encode, the
- * raw-word copy and the C macro. Byte order exists only in the serialization
- * layer (wireBytes / msbFirstBytes) and can never reinterpret raw identity.
- *
- * Golden vectors are the minimum acceptance set of the v3.0.0 task:
- * L16 VOUT_MODE 0x14 (N=-12) 12 V → C000; L11 C100; DIRECT (1,0,0) 1234;
- * HALF 3C00 → 1; wire bytes always low=[raw&0xff, raw>>8].
- */
-
+// Raw Word、位网格和换算使用同一个 16 位原始字。字节序只影响显示和复制。
 function base(): AppState {
   return structuredClone(INITIAL_STATE)
 }
@@ -28,45 +16,30 @@ function typeHex(state: AppState, hex: string): AppState {
 
 const ALL_NUMERIC_MODES = ['L11', 'L16', 'DIRECT', 'HALF'] as const
 
-/** Exhaustive-enough boundary set plus the task's canonical vectors. */
 const PROBE_RAW_WORDS = [
-  0x0000, 0x0001, 0x00ff, 0x0100, 0x1234, 0x3412, 0x7fff, 0x8000, 0xbfff, 0xc000, 0xc100, 0x3c00,
-  0xfffe, 0xffff,
+  0x0000, 0x0001, 0x00ff, 0x0100, 0x1234, 0x3412, 0x7ffe, 0x7fff, 0x8000, 0x8001, 0xbfff, 0xc000,
+  0xc100, 0x3c00, 0xfffe, 0xffff,
 ]
 
-const BOUNDARY_RAW_WORDS = [0x0000, 0x0001, 0x7ffe, 0x7fff, 0x8000, 0x8001, 0xfffe, 0xffff]
-
-function formatCanonical(raw: number): string {
-  return (raw & 0xffff).toString(16).toUpperCase().padStart(4, '0')
-}
-
-describe('canonical Raw Word — raw identity (v3.0.0)', () => {
-  it('the main Raw Word hex equals state.raw in every numeric mode', () => {
-    for (const mode of ALL_NUMERIC_MODES) {
-      for (const raw of PROBE_RAW_WORDS) {
-        let s = appReducer(base(), { type: 'mode/set', mode })
-        s = appReducer(s, { type: 'raw/set', raw: String(raw) })
-        const vm = toCalculatorViewModel(s)
-        expect(vm.rawHex, `${mode} rawHex for ${formatCanonical(raw)}`).toBe(
-          `0x${formatCanonical(raw)}`,
-        )
-        expect(vm.rawHexDigits).toBe(formatCanonical(raw))
-      }
-    }
-  })
-
-  it('parse(format(raw)) === raw holds across the full boundary set', () => {
-    for (const mode of ALL_NUMERIC_MODES) {
+describe('原始数据字的显示和重输', () => {
+  it.each(ALL_NUMERIC_MODES)(
+    '%s formats the stored word, and re-entering that text restores the word',
+    (mode) => {
       const start = appReducer(base(), { type: 'mode/set', mode })
-      for (const raw of BOUNDARY_RAW_WORDS) {
-        const typed = typeHex(start, formatCanonical(raw))
-        expect(typed.raw, `${mode} typed ${formatCanonical(raw)}`).toBe(raw)
-        // Lowercase and 0x-prefixed inputs parse to the same word.
-        expect(typeHex(start, formatCanonical(raw).toLowerCase()).raw).toBe(raw)
-        expect(typeHex(start, `0x${formatCanonical(raw)}`).raw).toBe(raw)
+      for (const raw of PROBE_RAW_WORDS) {
+        const state = appReducer(start, { type: 'raw/set', raw: String(raw) })
+        const vm = toCalculatorViewModel(state)
+        const digits = raw.toString(16).toUpperCase().padStart(4, '0')
+        expect(vm.rawHexDigits).toBe(digits)
+        expect(vm.rawHex).toBe(`0x${digits}`)
+
+        const draft = appReducer(state, { type: 'bit/toggle', bit: 15 })
+        for (const text of [vm.rawHexDigits, vm.rawHex, `  ${vm.rawHex.toLowerCase()}  `]) {
+          expect(typeHex(draft, text).raw, text).toBe(raw)
+        }
       }
-    }
-  })
+    },
+  )
 
   it('L16 typing 3412 yields raw 0x3412 (the v2 LE byte-stream swap is deleted)', () => {
     const l16 = appReducer(base(), { type: 'mode/set', mode: 'L16' })
@@ -90,7 +63,7 @@ describe('canonical Raw Word — bit-grid identity', () => {
     expect(vm.rawHex).toBe('0xC010')
     // Nibble hex in the bit grid reflects the same word.
     expect(vm.bitGroups.map((g) => g.hex).join('')).toBe('C010')
-    // Decode follows the same word (N=-8: 0xC010 → 49152 × 2^-8 = 192).
+    expect(vm.formulaText).toBe('V=49168 × 2^-8')
     expect(vm.valueText).toBe('192.0625')
   })
 })
@@ -105,6 +78,22 @@ describe('canonical Raw Word — serialization invariants (SMBus 3.0 §6.5.4)', 
       expect(vm.wireBytes).toBe(`0x ${hex(low)} ${hex(high)}`)
       expect(vm.msbFirstBytes).toBe(`0x ${hex(high)} ${hex(low)}`)
     }
+  })
+
+  it.each([
+    { prefix0x: true, spaceBetweenBytes: true, wire: '0x 34 12', msb: '0x 12 34' },
+    { prefix0x: false, spaceBetweenBytes: true, wire: '34 12', msb: '12 34' },
+    { prefix0x: true, spaceBetweenBytes: false, wire: '0x 3412', msb: '0x 1234' },
+    { prefix0x: false, spaceBetweenBytes: false, wire: '3412', msb: '1234' },
+  ])('formats bytes with prefix=$prefix0x and spacing=$spaceBetweenBytes', (row) => {
+    const { prefix0x, spaceBetweenBytes, wire, msb } = row
+    const vm = toCalculatorViewModel({
+      ...base(),
+      raw: 0x1234,
+      copy: { prefix0x, spaceBetweenBytes },
+    })
+    expect(vm.wireBytes).toBe(wire)
+    expect(vm.msbFirstBytes).toBe(msb)
   })
 
   it('serialization preferences never alter raw, bit grid, decode or the C macro', () => {

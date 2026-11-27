@@ -19,7 +19,7 @@ import { deriveL16Semantics } from './l16-derivation'
 import { computeQuantizationOutcome } from './quantization-error'
 import type { QuantizationOutcome } from './quantization-error'
 import { formatPlainNumber } from './numeric-presentation'
-import { RELATIVE_VOLTAGE_OVERFLOW_NOTE, RELATIVE_VOLTAGE_UNDERFLOW_NOTE } from './relative-voltage'
+import { RELATIVE_VOLTAGE_RANGE_NOTE } from './relative-voltage'
 import {
   analyzeDirectTextReentry,
   formatExactDecimal,
@@ -134,10 +134,7 @@ function buildL16Steps(state: AppState): CalculationStepVM[] {
       ]
     }
     if (finalVoltage.kind === 'overflow' || finalVoltage.kind === 'underflow') {
-      const note =
-        finalVoltage.kind === 'overflow'
-          ? RELATIVE_VOLTAGE_OVERFLOW_NOTE
-          : RELATIVE_VOLTAGE_UNDERFLOW_NOTE
+      const note = RELATIVE_VOLTAGE_RANGE_NOTE[finalVoltage.kind]
       return [
         warningStep(
           'l16-relative-range',

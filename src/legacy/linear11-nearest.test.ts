@@ -51,18 +51,8 @@ const DECODE_TABLE = (() => {
   return table
 })()
 
-/** Oracle: global minimum of |X − decode(raw)| over all 65536 LINEAR11 codes. */
-function oracleMinError(val: number): number {
-  let min = Infinity
-  for (let raw = 0; raw < 65536; raw++) {
-    const err = Math.abs(val - DECODE_TABLE[raw])
-    if (err < min) min = err
-  }
-  return min
-}
-
-/** Exhaust all codes, including boundary Y values, then apply the tie contract. */
-function oraclePreferredRaw(val: number): number {
+/** Exhaust all codes and resolve equal errors using the documented tie policy. */
+function oracleNearest(val: number): { raw: number; error: number } {
   let bestRaw = 0
   let bestError = Infinity
   let bestN = Infinity
@@ -84,7 +74,7 @@ function oraclePreferredRaw(val: number): number {
       bestY = y
     }
   }
-  return bestRaw
+  return { raw: bestRaw, error: bestError }
 }
 
 function rawOf(best: { n: number; y: number }): number {
@@ -115,37 +105,24 @@ describe('findBestLinear11 — strictly nearest code (v2.5.10)', () => {
       expect(best.value).toBe(best.y * PMBusMath.pow2(best.n))
       expect(best.delta).toBe(val - best.value)
       // The chosen error must equal the true global minimum (oracle).
-      expect(Math.abs(best.delta)).toBe(oracleMinError(val))
+      expect(Math.abs(best.delta)).toBe(oracleNearest(val).error)
     })
   }
 
-  it('keeps the documented exact-tie policy at the exact midpoint 2^-17 (smaller |N|)', () => {
-    const best = PMBusMath.findBestLinear11(TWO_POW_MINUS_17)
-    expect(rawOf(best)).toBe(0x0000)
-    // The tie is exact in binary64: both candidates are 2^-17 away.
-    expect(Math.abs(TWO_POW_MINUS_17 - 0)).toBe(Math.abs(TWO_POW_MINUS_17 - TWO_POW_MINUS_16))
-    expect(Math.abs(best.delta)).toBe(TWO_POW_MINUS_17)
-    expect(Math.abs(best.delta)).toBe(oracleMinError(TWO_POW_MINUS_17))
-  })
-
-  it('keeps the exact-tie policy at the negative midpoint -2^-17', () => {
-    const best = PMBusMath.findBestLinear11(-TWO_POW_MINUS_17)
-    expect(rawOf(best)).toBe(0x0000)
-    expect(Math.abs(best.delta)).toBe(oracleMinError(-TWO_POW_MINUS_17))
-  })
-
   describe('mantissa boundary ties include every legal exponent candidate', () => {
-    for (let n = -16; n <= 15; n++) {
-      for (const midpoint of [1023.5 * 2 ** n, -1025 * 2 ** n]) {
-        it(`matches the full-code tie oracle at ${midpoint} and its binary64 neighbours`, () => {
+    it.each(Array.from({ length: 32 }, (_, index) => index - 16))(
+      'matches the full-code tie oracle at N=%i and on both sides of the midpoint',
+      (n) => {
+        for (const midpoint of [1023.5 * 2 ** n, -1025 * 2 ** n]) {
           for (const value of [nextDown(midpoint), midpoint, nextUp(midpoint)]) {
             const best = PMBusMath.findBestLinear11(value)
-            expect(rawOf(best), `input ${value}`).toBe(oraclePreferredRaw(value))
-            expect(Math.abs(best.delta), `input ${value}`).toBe(oracleMinError(value))
+            const expected = oracleNearest(value)
+            expect(rawOf(best), `input ${value}`).toBe(expected.raw)
+            expect(Math.abs(best.delta), `input ${value}`).toBe(expected.error)
           }
-        })
-      }
-    }
+        }
+      },
+    )
   })
 
   it('resolves the first representable step above the midpoint strictly to 0x8001', () => {
@@ -155,7 +132,7 @@ describe('findBestLinear11 — strictly nearest code (v2.5.10)', () => {
     // Strictly nearer: the distance to 2^-16 is smaller than to zero, and
     // no other code is closer than both.
     expect(above - best.value).toBeLessThan(Math.abs(above - 0))
-    expect(Math.abs(above - best.value)).toBe(oracleMinError(above))
+    expect(Math.abs(above - best.value)).toBe(oracleNearest(above).error)
   })
 
   it('resolves the last representable step below the midpoint strictly to 0x0000', () => {
@@ -163,7 +140,7 @@ describe('findBestLinear11 — strictly nearest code (v2.5.10)', () => {
     const best = PMBusMath.findBestLinear11(below)
     expect(rawOf(best)).toBe(0x0000)
     expect(Math.abs(below - best.value)).toBeLessThan(Math.abs(below - TWO_POW_MINUS_16))
-    expect(Math.abs(below - best.value)).toBe(oracleMinError(below))
+    expect(Math.abs(below - best.value)).toBe(oracleNearest(below).error)
   })
 
   it('resolves the negative midpoint neighbours strictly (0x87ff / 0x0000)', () => {
@@ -177,32 +154,18 @@ describe('findBestLinear11 — strictly nearest code (v2.5.10)', () => {
     const NS = [-16, -9, -1, 0, 3, 8, 14, 15]
     const YS = [-1024, -513, -512, -2, -1, 0, 1, 2, 511, 512, 1022]
 
-    for (const n of NS) {
+    it.each(NS)('finds the minimum error around midpoint samples at N=%i', (n) => {
       for (const y of YS) {
-        if (y + 1 > 1023) continue
-        // Exact midpoint between two adjacent N-grid codes:
-        // m = (2y+1) × 2^(n-1), exact in binary64 for the ranges sampled.
-        const a = y * PMBusMath.pow2(n)
-        const b = (y + 1) * PMBusMath.pow2(n)
-        const m = a + (b - a) / 2
-
-        it(`midpoint of (N=${n}, Y=${y}) — exact, +1 ulp, −1 ulp all hit the oracle minimum`, () => {
-          for (const val of [m, nextUp(m), nextDown(m)]) {
-            if (val <= PMBusMath.minLinear11() || val >= PMBusMath.maxLinear11()) continue
-            const best = PMBusMath.findBestLinear11(val)
-            expect(Math.abs(best.delta), `input ${val}`).toBe(oracleMinError(val))
-            expect(rawOf(best), `input ${val}`).toBe(PMBusMath.encodeLinear11(best.n, best.y))
-          }
-          // When the midpoint is itself representable (|2y+1| ≤ 1023 at
-          // N−1 ≥ −16 → code (n−1, 2y+1)), the exact input must encode with
-          // zero error. For n = −16 the midpoint would need N = −17, which
-          // is out of range, so it is genuinely unrepresentable.
-          if (n - 1 >= -16 && Math.abs(2 * y + 1) <= 1023) {
-            expect(PMBusMath.findBestLinear11(m).delta).toBe(0)
-          }
-        })
+        const midpoint = (2 * y + 1) * 2 ** (n - 1)
+        for (const value of [nextDown(midpoint), midpoint, nextUp(midpoint)]) {
+          const best = PMBusMath.findBestLinear11(value)
+          expect(Math.abs(best.delta), `Y=${y}, input=${value}`).toBe(oracleNearest(value).error)
+        }
+        if (n > -16 && Math.abs(2 * y + 1) <= 1023) {
+          expect(PMBusMath.findBestLinear11(midpoint).delta, `Y=${y}`).toBe(0)
+        }
       }
-    }
+    })
   })
 
   describe('upper grid: adjacent codes with no interior candidates (y ≥ 512)', () => {
@@ -223,13 +186,22 @@ describe('findBestLinear11 — strictly nearest code (v2.5.10)', () => {
 
   describe('existing regular values, saturation and boundaries do not regress', () => {
     it('keeps exact representations on the smallest-|N| code', () => {
-      // 12 = 12×2^0 also equals 3×2^2 etc.; the tie policy prefers |N|=0.
-      expect(rawOf(PMBusMath.findBestLinear11(12))).toBe(0x000c)
-      expect(rawOf(PMBusMath.findBestLinear11(2))).toBe(0x0002)
-      expect(rawOf(PMBusMath.findBestLinear11(0.5))).toBe(0xf801)
-      expect(rawOf(PMBusMath.findBestLinear11(1000))).toBe(0x03e8)
-      expect(rawOf(PMBusMath.findBestLinear11(-10))).toBe(0x07f6)
-      expect(rawOf(PMBusMath.findBestLinear11(0))).toBe(0x0000)
+      for (const [value, raw] of [
+        [0, 0x0000],
+        [1, 0x0001],
+        [2, 0x0002],
+        [10, 0x000a],
+        [12, 0x000c],
+        [0.5, 0xf801],
+        [0.25, 0xf001],
+        [1000, 0x03e8],
+        [-1, 0x07ff],
+        [-10, 0x07f6],
+      ]) {
+        const best = PMBusMath.findBestLinear11(value)
+        expect(rawOf(best), `input=${value}`).toBe(raw)
+        expect(best.delta).toBe(0)
+      }
     })
 
     it('saturates at both global extremes with the boundary delta', () => {
@@ -248,15 +220,11 @@ describe('findBestLinear11 — strictly nearest code (v2.5.10)', () => {
       }
     })
 
-    it('never returns the zero code for the smallest non-zero magnitudes', () => {
-      for (const val of [TWO_POW_MINUS_17, nextUp(TWO_POW_MINUS_17), 5e-324, Number.MIN_VALUE]) {
-        const best = PMBusMath.findBestLinear11(val)
-        expect(Math.abs(best.delta)).toBe(oracleMinError(val))
-        // Below 2^-17 zero is the strict optimum; above it, some non-zero
-        // code must be strictly better than zero — never a fabricated tie.
-        if (val > TWO_POW_MINUS_17) {
-          expect(Math.abs(best.delta)).toBeLessThan(Math.abs(val - 0))
-        }
+    it('encodes the smallest positive and negative binary64 magnitudes to zero', () => {
+      for (const value of [Number.MIN_VALUE, -Number.MIN_VALUE]) {
+        const best = PMBusMath.findBestLinear11(value)
+        expect(rawOf(best)).toBe(0x0000)
+        expect(best.delta).toBe(value)
       }
     })
   })

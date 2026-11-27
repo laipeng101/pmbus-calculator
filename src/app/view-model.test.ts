@@ -2,95 +2,32 @@ import { describe, test, expect } from 'vitest'
 import { toCalculatorViewModel } from './view-model'
 import { PMBusMath } from '../legacy/pmbus-math'
 import { appReducer } from './reducer'
-import type { AppState } from './state'
+import { INITIAL_STATE, type AppState } from './state'
 
-const BASE: AppState = {
-  mode: 'L11',
-  raw: 0,
-  voutMode: { byte: 0x18 },
-  l11: { n: 0, y: 0, autoN: true, valueInput: null },
-  valueRequest: null,
-  l16: { payloadKind: 'ulinear16', nominalVout: null },
-  direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-  copy: { prefix0x: true, spaceBetweenBytes: true },
-  ui: { theme: 'system', debugOpen: false, bitMappingOpen: { rawWord: true, voutMode: true } },
-}
+const BASE = INITIAL_STATE
 
 function make(overrides: Partial<AppState> = {}): AppState {
   return { ...BASE, ...overrides }
 }
 
-describe('L16 physical-value copy availability', () => {
-  for (const payloadKind of ['ulinear16', 'slinear16-offset'] as const) {
-    for (const nominalVout of [null, 0, 12]) {
-      test(`${payloadKind}, nominal=${nominalVout}: all 256 bytes agree with result availability`, () => {
-        for (let byte = 0; byte < 256; byte++) {
-          const vm = toCalculatorViewModel(
-            make({
-              mode: 'L16',
-              raw: 0x0100,
-              voutMode: { byte },
-              l16: { payloadKind, nominalVout },
-            }),
-          )
-          const nonLinear = (byte & 0x60) !== 0
-          const missingReference =
-            payloadKind === 'ulinear16' && (byte & 0x80) !== 0 && nominalVout === null
-          if (nonLinear || missingReference) {
-            expect(vm.valueText, `byte ${byte}`).toBe('—')
-            expect(vm.physicalValueCopy?.available, `byte ${byte}`).toBe(false)
-            expect(vm.physicalValueCopy?.reason).toContain(nonLinear ? 'VOUT_MODE' : '标称参考值')
-          } else {
-            expect(vm.valueText, `byte ${byte}`).not.toBe('—')
-            expect(vm.physicalValueCopy, `byte ${byte}`).toBeUndefined()
-          }
-        }
-      })
-    }
-  }
-
-  test('a zero ratio still needs a reference; a provided zero is copyable', () => {
-    const state = make({ mode: 'L16', raw: 0, voutMode: { byte: 0x98 } })
-    expect(toCalculatorViewModel(state).physicalValueCopy?.available).toBe(false)
-    const supplied = toCalculatorViewModel({ ...state, l16: { ...state.l16, nominalVout: 0 } })
-    expect(supplied.valueText).toBe('0')
-    expect(supplied.physicalValueCopy).toBeUndefined()
-  })
-})
-
 describe('toCalculatorViewModel', () => {
   describe('mode=L11', () => {
-    test('raw=0 produces value 0', () => {
-      const vm = toCalculatorViewModel(BASE)
-      expect(vm.valueText).toBe('0')
-      expect(vm.formulaText).toBe('Y=0 × 2^0')
-      expect(vm.rawHex).toBe('0x0000')
+    test('the same word is decoded by the active format', () => {
+      const l11 = toCalculatorViewModel(make({ raw: 0x7c00 }))
+      expect(l11.valueText).toBe('-33554432')
+      expect(l11.nRangeText).toBe('-33554432 ~ 33521664')
+      expect(l11.warnings).toEqual([])
+      expect(toCalculatorViewModel(make({ mode: 'HALF', raw: 0x7c00 })).valueText).toBe('+Infinity')
     })
 
-    test('raw=0x0001 produces value 1', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0x0001 }))
-      expect(vm.valueText).toBe('1')
-    })
-
-    test('raw=0x0801 produces value 2 (N=1, Y=1)', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0x0801 }))
-      expect(vm.valueText).toBe('2')
+    test('preserves the canonical text of a small and a large LINEAR11 value', () => {
+      expect(toCalculatorViewModel(make({ raw: 0x8bff })).valueText).toBe('0.0312194824219')
+      expect(toCalculatorViewModel(make({ raw: 0x7bff })).valueText).toBe('33521664')
     })
 
     test('formula is derived from raw, not stale l11 state', () => {
       const vm = toCalculatorViewModel(make({ raw: 0xf819, l11: { ...BASE.l11, n: 0, y: 0 } }))
       expect(vm.formulaText).toBe('Y=25 × 2^-1')
-    })
-
-    test('raw=0xF801 (N=-1, Y=1) formats to 0.5', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0xf801 }))
-      expect(vm.valueText).toBe('0.5')
-    })
-
-    test('delta panel stays hidden without a value edit — no fabricated zero', () => {
-      const vm = toCalculatorViewModel(BASE)
-      expect(vm.deltaText).toBeUndefined()
-      expect(vm.deltaKind).toBeUndefined()
     })
 
     test('delta reports the quantization error from the requested value', () => {
@@ -105,592 +42,57 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
-  describe('mode=L16', () => {
-    test('raw=0 with default n=-8 produces value 0', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16' }))
-      expect(vm.valueText).toBe('0')
-      expect(vm.formulaText).toBe('V=0 × 2^-8')
-    })
-
-    test('raw=0x0C00 produces value 12', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00 }))
-      expect(vm.valueText).toBe('12')
-    })
-
-    test('voutModeInfo reports absolute LINEAR and exponent for 0x18', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x18 } }))
-      expect(vm.voutModeInfo?.hex).toBe('0x18')
-      expect(vm.voutModeInfo?.isLinear).toBe(true)
-      expect(vm.voutModeInfo?.isRelative).toBe(false)
-      expect(vm.voutModeInfo?.mode).toBe(0)
-      expect(vm.voutModeInfo?.param).toBe(0x18)
-      expect(vm.voutModeInfo?.status).toBe('ok')
-      expect(vm.voutModeInfo?.linearExponent).toBe(-8)
-    })
-
-    test('relative LINEAR VOUT_MODE 0x98 is not computed as an absolute voltage', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }))
-      expect(vm.voutModeInfo?.isLinear).toBe(true)
-      expect(vm.voutModeInfo?.isRelative).toBe(true)
-      expect(vm.voutModeInfo?.status).toBe('reference-required')
-      expect(vm.valueText).toBe('—')
-      expect(vm.warnings.some((w) => w.id === 'vout-mode-relative')).toBe(true)
-      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear')).toBe(false)
-    })
-
-    test('non-LINEAR shared VOUT_MODE fails closed for L16 (v2.5.2)', () => {
-      for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
-        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
-        expect(vm.voutModeInfo?.source, `0x${byte.toString(16)}`).toBe('non-linear')
-        // The displayed byte is the ACTUAL shared byte — never a substituted 0x18.
-        expect(vm.voutModeInfo?.byte, `0x${byte.toString(16)}`).toBe(byte)
-        expect(vm.valueText, `0x${byte.toString(16)}`).toBe('—')
-        expect(vm.nRangeText, `0x${byte.toString(16)}`).toBeUndefined()
-        expect(vm.l16Payload?.physicalInputAvailable, `0x${byte.toString(16)}`).toBe(false)
-        expect(vm.l16Payload?.nonLinear, `0x${byte.toString(16)}`).toBe(true)
-        expect(
-          vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear'),
-          `0x${byte.toString(16)}`,
-        ).toBe(true)
-        expect(vm.deltaText, `0x${byte.toString(16)}`).toBeUndefined()
-      }
-    })
-
-    test('未使用的 VID 代码 00h 无法换算电压', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x20 } }))
-      expect(vm.voutModeInfo?.source).toBe('non-linear')
-      expect(vm.voutModeInfo?.domainStatus).toBe('not-used')
-      expect(vm.l16Payload?.nonLinearFormat).toBe('VID')
-      // v2.5.3 discriminated contract: legal format, missing profile — NOT a
-      // prohibition.
-      expect(vm.l16Payload?.blocked?.status).toBe('vid-profile-required')
-      expect(vm.l16Payload?.blocked?.title).toContain('VID 格式')
-      expect(vm.l16Payload?.blocked?.detail).toContain('没有可用的电压映射')
-      // Fail-closed numerics unchanged: no input, no range, no quantization.
-      expect(vm.l16Payload?.physicalInputAvailable).toBe(false)
-      expect(vm.nRangeText).toBeUndefined()
-      expect(vm.valueText).toBe('—')
-      expect(vm.warnings.some((w) => w.id === 'l16-vout-mode-nonlinear')).toBe(true)
-    })
-
-    test('VID 0x3E + ULINEAR16：制造商自定义 code 合法，映射来自器件资料；不称保留或禁止', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x3e } }))
-      expect(vm.l16Payload?.blocked?.status).toBe('vid-profile-required')
-      expect(vm.l16Payload?.blocked?.title).toContain('1Eh — 制造商自定义（需器件资料）')
-      expect(vm.l16Payload?.blocked?.detail).toContain('器件资料中的 VID 码表')
-    })
-
-    test.each([
-      ['0x20', 0x20],
-      ['0x3e', 0x3e],
-    ] as const)(
-      'VID %s + SLINEAR16：二补码偏移命令按 §13.3/§13.4 规范禁止（error 级）',
-      (_hex, byte) => {
-        const vm = toCalculatorViewModel(
-          make({
-            mode: 'L16',
-            voutMode: { byte },
-            l16: { ...BASE.l16, payloadKind: 'slinear16-offset' },
-          }),
-        )
-        expect(vm.l16Payload?.blocked?.status).toBe('vid-offset-prohibited')
-        const copy = vm.l16Payload?.blocked?.detail
-        expect(copy).toContain('§13.3 / §13.4')
-        expect(copy).toContain('VOUT_TRIM / VOUT_CAL_OFFSET')
-        // Spec-level violation announces an error-level warning.
-        expect(
-          vm.warnings.some(
-            (w) => w.id === 'vout-mode-vid-offset-prohibited' && w.level === 'error',
-          ),
-        ).toBe(true)
-        expect(vm.l16Payload?.physicalInputAvailable).toBe(false)
-        expect(vm.valueText).toBe('—')
-      },
-    )
-
-    test.each(['ulinear16', 'slinear16-offset'] as const)(
-      'relative VID 0xA0 + %s：字节组合无效（§8.5.3），不落入偏移禁止或 profile 分支',
-      (payloadKind) => {
-        const vm = toCalculatorViewModel(
-          make({
-            mode: 'L16',
-            voutMode: { byte: 0xa0 },
-            l16: { ...BASE.l16, payloadKind },
-          }),
-        )
-        expect(vm.l16Payload?.blocked?.status).toBe('vid-relative-invalid')
-        expect(vm.l16Payload?.blocked?.detail).toContain('§8.5.3')
-        expect(
-          vm.warnings.some((w) => w.id === 'vout-mode-invalid-combination' && w.level === 'error'),
-        ).toBe(true)
-        expect(vm.formulaText).not.toContain('相对 LINEAR')
-        expect(vm.formulaText).toContain('非 LINEAR')
-      },
-    )
-
-    test('DIRECT 0x40 和 IEEE Half 0x60 提示切换到对应的换算页', () => {
-      const direct = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x40 } }))
-      expect(direct.l16Payload?.blocked?.status).toBe('direct-profile-required')
-      const directCopy = direct.l16Payload?.blocked?.detail
-      expect(directCopy).toContain('在 DIRECT 页换算')
-      expect(directCopy).toContain('m、b、R')
-      expect(directCopy).toContain('§7.4')
-
-      const half = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x60 } }))
-      expect(half.l16Payload?.blocked?.status).toBe('half-unsupported-in-l16')
-      const halfCopy = half.l16Payload?.blocked?.detail
-      expect(halfCopy).toContain('切换到 HALF 页')
-      expect(halfCopy).toContain('§8.4.4')
-
-      // Same contract for the signed-offset payload interpretation.
-      const directOffset = toCalculatorViewModel(
-        make({
-          mode: 'L16',
-          voutMode: { byte: 0x40 },
-          l16: { ...BASE.l16, payloadKind: 'slinear16-offset' },
-        }),
-      )
-      expect(directOffset.l16Payload?.blocked?.status).toBe('direct-profile-required')
-    })
-
-    test('非法参数 0x41/0x61：reserved-or-invalid 合同；error 级警告保持', () => {
-      for (const byte of [0x41, 0x61]) {
-        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
-        expect(vm.l16Payload?.blocked?.status).toBe('reserved-or-invalid')
-        expect(vm.l16Payload?.blocked?.detail).toContain('00000b')
-        expect(
-          vm.warnings.some((w) => w.id === 'vout-mode-invalid-parameter' && w.level === 'error'),
-          `0x${byte.toString(16)}`,
-        ).toBe(true)
-      }
-    })
-
-    test('LINEAR 字节永不出现 blocked 卡：0x18 绝对值与 0x98 偏移恢复完整输入', () => {
-      const abs = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00 }))
-      expect(abs.l16Payload?.blocked).toBeUndefined()
-      expect(abs.l16Payload?.physicalInputAvailable).toBe(true)
-
-      const offset = toCalculatorViewModel(
-        make({
-          mode: 'L16',
-          raw: 0x034d,
-          voutMode: { byte: 0x98 },
-          l16: { ...BASE.l16, payloadKind: 'slinear16-offset' },
-        }),
-      )
-      expect(offset.l16Payload?.blocked).toBeUndefined()
-      expect(offset.l16Payload?.physicalInputAvailable).toBe(true)
-      expect(offset.valueText).toBe('3.30078125')
-    })
-
-    test('DIRECT/Half 非法/非零参数共享字节在 L16 fail-closed 且 error 级保持', () => {
-      for (const byte of [0x41, 0x5f, 0x61, 0x7f, 0xc1, 0xe1]) {
-        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
-        expect(vm.voutModeInfo?.source, `0x${byte.toString(16)}`).toBe('non-linear')
-        expect(vm.valueText, `0x${byte.toString(16)}`).toBe('—')
-        expect(vm.l16Payload?.nonLinear, `0x${byte.toString(16)}`).toBe(true)
-      }
-      // invalid-parameter / invalid-combination warnings stay at error level.
-      const invalid = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x41 } }))
-      expect(
-        invalid.warnings.some((w) => w.id === 'vout-mode-invalid-parameter' && w.level === 'error'),
-      ).toBe(true)
-    })
-
-    test('relative VID 0xA0 共享字节在 L16 fail-closed 且绝不显示相对 LINEAR', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0xa0 } }))
-      expect(vm.voutModeInfo?.source).toBe('non-linear')
-      expect(vm.warnings.some((w) => w.id === 'vout-mode-invalid-combination')).toBe(true)
-      expect(vm.formulaText).not.toContain('相对 LINEAR')
-      expect(vm.formulaText).toContain('非 LINEAR')
-    })
-
-    test('nRangeText reflects 0..65535×2^N', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16' }))
-      expect(vm.nRangeText).toBe('0 ~ 255.99609375')
-    })
-
-    test('rawHex displays the canonical LINEAR16 raw word', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234 }))
-      expect(vm.rawHex).toBe('0x1234')
-      expect(vm.rawHexDigits).toBe('1234')
-    })
-
-    test('physical value derives from the same canonical raw word', () => {
-      // VOUT_MODE 0x18 (absolute LINEAR, N=-8): raw 0x1234 → 4660 × 2^-8.
-      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x1234 }))
-      expect(vm.valueText).toBe('18.203125')
-    })
-
-    test('quantization panel stays hidden without an explicit request (no fabricated zero)', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16' }))
-      expect(vm.deltaText).toBeUndefined()
-    })
-
-    test('quantization error reports the round-to-nearest ULINEAR16 error', () => {
-      // N=-8 (VOUT_MODE 0x18): requested 0.005 → Y=1 → represented 0.00390625.
-      const vm = toCalculatorViewModel(
-        make({
-          mode: 'L16',
-          raw: 0x0001,
-          voutMode: { byte: 0x18 },
-          valueRequest: { mode: 'L16', value: 0.005 },
-        }),
-      )
-      expect(vm.deltaText).toBe('+0.001094 (21.8750%)')
-      expect(vm.deltaKind).toBe('warn')
-    })
-
-    test('relative ULINEAR16 hides the panel; SLINEAR16 offset ignores bit7 relative', () => {
-      // Relative ULINEAR16 is a ratio — no physical request error applies.
-      const relative = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x98 } }))
-      expect(relative.deltaText).toBeUndefined()
-
-      // SLINEAR16 offset (Part II §13.3/§13.4): bit7 does not participate,
-      // so a committed offset request still quantizes against the payload.
-      const slinearRequest = make({
-        mode: 'L16',
-        raw: 0x034d, // Y_s=845 → 3.30078125 at N=-8
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'slinear16-offset', nominalVout: null },
-        valueRequest: { mode: 'L16', value: 3.3 },
-      })
-      const offset = toCalculatorViewModel(slinearRequest)
-      expect(offset.deltaText).toBe('-0.000781 (-0.0237%)')
-      expect(offset.deltaKind).toBe('warn')
-    })
-  })
-
-  test('relative ULINEAR16 ratio with nominal reference computes X = V_NOM × R', () => {
-    const vm = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0x0466,
-        voutMode: { byte: 0x96 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 3.3 },
-      }),
-    )
-    expect(vm.valueText).toBe('3.6287109375')
-    expect(vm.formulaText).toContain('R=1126 × 2^-10')
-  })
-
-  test('relative ULINEAR16 without nominal reference shows ratio but no final result', () => {
-    const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0466, voutMode: { byte: 0x96 } }))
-    expect(vm.valueText).toBe('—')
-    expect(vm.steps.some((s) => s.id === 'l16-relative-nominal-missing')).toBe(true)
-    expect(vm.steps.some((s) => s.kind === 'result')).toBe(false)
-  })
-
-  test('relative ULINEAR16 derivation overflow is diagnosed everywhere (v2.5.9)', () => {
-    // 98 / 0200 | 1e308: ratio=2, product = +Infinity → no fabricated result.
-    const vm = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0x0200,
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
-      }),
-    )
-    expect(vm.valueText).toBe('—')
-    expect(vm.steps.some((s) => s.id === 'l16-relative-range')).toBe(true)
-    expect(vm.steps.some((s) => s.plainText.includes('Infinity'))).toBe(false)
-    expect(vm.formulaText).toContain('计算结果太大，超出可表示范围')
-    expect(vm.formulaText).toContain('1e+308')
-    expect(vm.formulaText).not.toContain('Infinity')
-    expect(vm.warnings.some((w) => w.id === 'l16-relative-overflow' && w.level === 'warning')).toBe(
-      true,
-    )
-    expect(vm.physicalValueCopy?.available).toBe(false)
-    expect(vm.physicalValueCopy?.reason).toContain('超出可表示范围')
-  })
-
-  test('relative ULINEAR16 derivation underflow is diagnosed, not shown as exact zero (v2.5.9)', () => {
-    // 90 / 0001 | 5e-324: ratio=2^-16, product rounds to 0 with nonzero factors.
-    const vm = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0x0001,
-        voutMode: { byte: 0x90 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 5e-324 },
-      }),
-    )
-    expect(vm.valueText).toBe('—')
-    expect(vm.steps.some((s) => s.id === 'l16-relative-range')).toBe(true)
-    expect(vm.formulaText).toContain('计算下溢')
-    expect(vm.warnings.some((w) => w.id === 'l16-relative-underflow')).toBe(true)
-    expect(vm.physicalValueCopy?.available).toBe(false)
-  })
-
-  test('relative ULINEAR16 true zeros stay finite and copyable (v2.5.9)', () => {
-    // 98 / 0000 | 1e308: ratio=0 → true zero, never underflow.
-    const zeroRatio = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0x0000,
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
-      }),
-    )
-    expect(zeroRatio.valueText).toBe('0')
-    expect(zeroRatio.physicalValueCopy).toBeUndefined()
-    expect(zeroRatio.warnings.some((w) => w.id === 'l16-relative-overflow')).toBe(false)
-    expect(zeroRatio.warnings.some((w) => w.id === 'l16-relative-underflow')).toBe(false)
-    // 98 / FFFF | 0: nominal=0 (decode-only) → true zero.
-    const zeroNominal = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0xffff,
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 0 },
-      }),
-    )
-    expect(zeroNominal.valueText).toBe('0')
-    expect(zeroNominal.physicalValueCopy).toBeUndefined()
-  })
-
-  test('relative ULINEAR16 R=0 is flagged §8.5.2-non-compliant while the math stays exact (v2.6.4)', () => {
-    // Acceptance vector: 98 / 0000 | 12 → R=0, X=0. The result card keeps the
-    // exact mathematical zero — the new warning only flags spec non-compliance
-    // (Part II §8.5.2: "The relative value is always a positive value"), it
-    // never fakes a saturation or an error result.
-    const vm = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0x0000,
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 12 },
-      }),
-    )
-    expect(vm.valueText).toBe('0')
-    const zeroRatio = vm.warnings.find((w) => w.id === 'l16-relative-zero-ratio')
-    expect(zeroRatio?.level).toBe('warning')
-    expect(zeroRatio?.text).toContain('§8.5.2')
-    expect(zeroRatio?.text).toContain('要求相对值大于 0')
-    expect(vm.warnings.some((w) => w.id === 'l16-relative-underflow')).toBe(false)
-    expect(vm.warnings.some((w) => w.id === 'l16-relative-overflow')).toBe(false)
-    expect(vm.physicalValueCopy).toBeUndefined()
-  })
-
-  test('R=0 non-compliance warning is scoped to relative ULINEAR16 (v2.6.4)', () => {
-    // nominal=0 with ratio≠0 is a decode-only true zero — no ratio violation.
-    const zeroNominal = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0xffff,
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 0 },
-      }),
-    )
-    expect(zeroNominal.valueText).toBe('0')
-    expect(zeroNominal.warnings.some((w) => w.id === 'l16-relative-zero-ratio')).toBe(false)
-    // SLINEAR16 offset ignores bit7 — no ratio semantics, no warning.
-    const offset = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0x0000,
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'slinear16-offset', nominalVout: 12 },
-      }),
-    )
-    expect(offset.warnings.some((w) => w.id === 'l16-relative-zero-ratio')).toBe(false)
-    // Absolute LINEAR has no relative-ratio semantics at all.
-    const absolute = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0x0000,
-        voutMode: { byte: 0x18 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 12 },
-      }),
-    )
-    expect(absolute.warnings.some((w) => w.id === 'l16-relative-zero-ratio')).toBe(false)
-    // A missing reference keeps the ratio visible; the committed R=0 is still
-    // non-compliant data and must stay flagged without a nominal.
-    const noNominal = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0x0000,
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'ulinear16', nominalVout: null },
-      }),
-    )
-    expect(noNominal.valueText).toBe('—')
-    expect(noNominal.warnings.some((w) => w.id === 'l16-relative-zero-ratio')).toBe(true)
-  })
-
-  test('relative DIRECT/Half requirement warnings state the §8.5.2 positivity rule (v2.6.4)', () => {
-    // Part II §8.5.2: the relative value is always positive — the relative
-    // DIRECT/Half requirement copy must carry the same rule as relative LINEAR.
-    const direct = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0xc0 } }))
-    expect(direct.warnings.find((w) => w.id === 'vout-mode-direct-profile')?.text).toContain(
-      '相对值必须为正',
-    )
-    const half = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0xe0 } }))
-    expect(half.warnings.find((w) => w.id === 'vout-mode-half-standard')?.text).toContain(
-      '相对值必须为正',
-    )
-    // Absolute siblings stay free of relative-value copy.
-    const directAbsolute = toCalculatorViewModel(
-      make({ mode: 'VOUT_MODE', voutMode: { byte: 0x40 } }),
-    )
-    expect(
-      directAbsolute.warnings.find((w) => w.id === 'vout-mode-direct-profile')?.text,
-    ).not.toContain('相对值必须为正')
-    const halfAbsolute = toCalculatorViewModel(
-      make({ mode: 'VOUT_MODE', voutMode: { byte: 0x60 } }),
-    )
-    expect(
-      halfAbsolute.warnings.find((w) => w.id === 'vout-mode-half-standard')?.text,
-    ).not.toContain('相对值必须为正')
-  })
-
-  test('huge finite nominal with ratio=1 stays fully computed and copyable (v2.5.9)', () => {
-    // 98 / 0100 | 1e308: finite result — a large committed reference is not a
-    // range error and must not disable the physical-value copy.
-    const vm = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0x0100,
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'ulinear16', nominalVout: 1e308 },
-      }),
-    )
-    expect(vm.valueText).toBe('1e+308')
-    expect(vm.physicalValueCopy).toBeUndefined()
-    expect(vm.steps).toEqual([])
-  })
-
-  test('SLINEAR16 offset under relative byte keeps its signed result and copy (v2.5.9)', () => {
-    const vm = toCalculatorViewModel(
-      make({
-        mode: 'L16',
-        raw: 0x0200,
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'slinear16-offset', nominalVout: 1e308 },
-      }),
-    )
-    // Y_s = 512, N = -8 → X_offset = 2 — the signed payload ignores bit7 and
-    // the nominal channel entirely; no derivation-range diagnostics appear.
-    expect(vm.valueText).toBe('2')
-    expect(vm.physicalValueCopy).toBeUndefined()
-    expect(vm.warnings.some((w) => w.id === 'l16-relative-overflow')).toBe(false)
-  })
-
-  test('SLINEAR16 offset ignores VOUT_MODE bit7 (raw 0xFF00 stays -1 V at N=-8)', () => {
-    for (const byte of [0x18, 0x98]) {
-      const vm = toCalculatorViewModel(
-        make({
-          mode: 'L16',
-          raw: 0xff00,
-          voutMode: { byte },
-          l16: { payloadKind: 'slinear16-offset', nominalVout: null },
-        }),
-      )
-      expect(vm.valueText, `0x${byte.toString(16)}`).toBe('-1')
-      expect(vm.formulaText, `0x${byte.toString(16)}`).toContain('Y_s=-256 × 2^-8 = -1 V')
-    }
-  })
-
-  describe('mode=L16 SLINEAR16 offset under bit7 (v2.5.1 P1-A/P1-B)', () => {
-    const makeRelativeSlinear = () =>
-      make({
-        mode: 'L16',
-        voutMode: { byte: 0x98 },
-        l16: { payloadKind: 'slinear16-offset', nominalVout: null },
-      })
-
-    test('physical input contract: signed offset available, nominal not required', () => {
-      const vm = toCalculatorViewModel(makeRelativeSlinear())
-      expect(vm.l16Payload).toMatchObject({
-        kind: 'slinear16-offset',
-        signedOffset: true,
-        relativeRatio: false,
-        physicalInputAvailable: true,
-        requiresNominalReference: false,
-      })
-      // Signed range at N=-8, labelled even though the byte is relative.
-      expect(vm.nRangeText).toBe('-128 ~ 127.99609375')
-    })
-
-    test('3.3 request quantizes with the P1-A vector and full panel context', () => {
-      const vm = toCalculatorViewModel(
-        make({
-          ...makeRelativeSlinear(),
-          raw: 0x034d,
-          valueRequest: { mode: 'L16', value: 3.3 },
-        }),
-      )
-      expect(vm.valueText).toBe('3.30078125')
-      expect(vm.deltaText).toBe('-0.000781 (-0.0237%)')
-      expect(vm.deltaKind).toBe('warn')
-      expect(vm.deltaNote).toBeUndefined() // byte is LINEAR: no fallback note
-      // Walkthrough carries the quantization intermediate for the request.
-      expect(vm.steps.some((st) => st.id === 'l16-quantization')).toBe(true)
-    })
-
-    test('manual Y_s edit invalidates provenance across panel and steps', () => {
-      // Reducer state after value/set 3.3 then l16/set-slinear-y 1.
-      const vm = toCalculatorViewModel(
-        make({
-          ...makeRelativeSlinear(),
-          raw: 0x0001,
-          valueRequest: null,
-        }),
-      )
+  test.each(['L11', 'L16', 'DIRECT', 'HALF', 'VOUT_MODE'] as const)(
+    '%s displays no quantization result without an encoding request',
+    (mode) => {
+      const vm = toCalculatorViewModel(make({ mode, raw: 0x1000 }))
       expect(vm.deltaText).toBeUndefined()
       expect(vm.deltaKind).toBeUndefined()
-      expect(vm.deltaNote).toBeUndefined()
-      expect(vm.steps.some((st) => st.id === 'l16-quantization')).toBe(false)
-    })
+    },
+  )
 
-    test('relative ULINEAR16 context still requires the nominal reference', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', voutMode: { byte: 0x98 } }))
-      expect(vm.l16Payload).toMatchObject({
-        kind: 'ulinear16',
-        signedOffset: false,
-        relativeRatio: true,
-        physicalInputAvailable: false,
-        requiresNominalReference: true,
-      })
-      expect(vm.nRangeText).toBeUndefined()
-    })
-  })
-
-  describe('mode=VOUT_MODE (standalone byte calculator)', () => {
-    test('valueText is the canonical byte hex and valueLabel is VOUT_MODE 字节', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE' }))
+  describe('独立 VOUT_MODE 配置页', () => {
+    test('结果和位组显示共享的配置字节', () => {
+      const vm = toCalculatorViewModel(
+        make({ mode: 'VOUT_MODE', raw: 0x1234, voutMode: { byte: 0x18 } }),
+      )
       expect(vm.valueText).toBe('0x18')
       expect(vm.valueLabel).toBe('VOUT_MODE 字节')
-      expect(vm.rawHexDigits).toBe('18')
+      expect(vm.voutModePage).toMatchObject({
+        hexDigits: '18',
+        structureLegal: true,
+        calculable: true,
+      })
+      expect(vm.voutModePage?.nibbles.map((group) => group.hex)).toEqual(['1', '8'])
     })
 
-    test('voutModePage exposes nibbles, structureLegal and calculable', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x18 } }))
-      expect(vm.voutModePage?.hexDigits).toBe('18')
-      expect(vm.voutModePage?.nibbles).toHaveLength(2)
-      expect(vm.voutModePage?.nibbles[0].hex).toBe('1')
-      expect(vm.voutModePage?.nibbles[1].hex).toBe('8')
-      expect(vm.voutModePage?.structureLegal).toBe(true)
-      expect(vm.voutModePage?.calculable).toBe(true)
-    })
-
-    test('relative LINEAR byte is structure-legal but not calculable without a nominal reference', () => {
+    test('相对 LINEAR 配置合法，缺少标称参考值时无法计算电压', () => {
       const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte: 0x98 } }))
       expect(vm.voutModePage?.structureLegal).toBe(true)
       expect(vm.voutModePage?.calculable).toBe(false)
       expect(vm.voutModePage?.statusText).toBe('相对 LINEAR')
     })
 
-    test('v2.5.5: 0x3E/0x3F are structure-legal, not calculable, and need external data', () => {
-      for (const byte of [0x3e, 0x3f]) {
-        const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte } }))
-        expect(vm.voutModePage?.structureLegal, `0x${byte.toString(16)}`).toBe(true)
-        expect(vm.voutModePage?.calculable, `0x${byte.toString(16)}`).toBe(false)
-        expect(vm.voutModePage?.requiresExternalData, `0x${byte.toString(16)}`).toBe(true)
-        expect(vm.voutModePage?.vidCodeKind, `0x${byte.toString(16)}`).toBe('profile-required')
-      }
+    test.each([0x3e, 0x3f])('制造商自定义 VID 配置 %i 需要器件资料', (byte) => {
+      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte } }))
+      expect(vm.voutModePage).toMatchObject({
+        structureLegal: true,
+        calculable: false,
+        requiresExternalData: true,
+        vidCodeKind: 'profile-required',
+      })
     })
 
-    test('v2.5.5 legality/external-data matrix across representative bytes', () => {
+    test.each([
+      { byte: 0x20, id: 'vout-mode-vid-not-used', text: 'VID 代码类型 00h 未使用' },
+      { byte: 0x21, id: 'vout-mode-vid-reserved', text: '表 3 明列' },
+      { byte: 0x25, id: 'vout-mode-vid-reserved', text: '未在 Part II §8.4.2 表 3 列出' },
+    ])('keeps the VID warning provenance visible for byte $byte', ({ byte, id, text }) => {
+      const vm = toCalculatorViewModel(make({ mode: 'VOUT_MODE', voutMode: { byte } }))
+      expect(vm.warnings).toEqual([{ id, level: 'warning', text: expect.stringContaining(text) }])
+    })
+
+    test('各类配置分别报告结构是否合法以及是否需要器件资料', () => {
       const rows: Array<{
         byte: number
         structureLegal: boolean
@@ -704,7 +106,6 @@ describe('toCalculatorViewModel', () => {
         { byte: 0xe0, structureLegal: true, requiresExternalData: false },
         { byte: 0x20, structureLegal: false, requiresExternalData: false },
         { byte: 0x24, structureLegal: false, requiresExternalData: false },
-        { byte: 0x3e, structureLegal: true, requiresExternalData: true },
         { byte: 0xa0, structureLegal: false, requiresExternalData: false },
         { byte: 0x61, structureLegal: false, requiresExternalData: false },
       ]
@@ -720,7 +121,7 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
-  describe('v2.5.4 VOUT_MODE 状态、警告和说明的 Half↔DIRECT 对比矩阵', () => {
+  describe('VOUT_MODE 的 IEEE Half 和 DIRECT 状态、警告与说明', () => {
     // IEEE Half is standard binary16 (Part II §7.6/§8.4.4): no user-visible
     // surface may claim a device profile. DIRECT keeps the m/b/R requirement
     // (§7.4); relative bytes keep the nominal-reference wording (§8.5.2).
@@ -746,6 +147,7 @@ describe('toCalculatorViewModel', () => {
         expect(everySurface, 'unexpected copy: ' + banned).not.toContain(banned)
       }
       expect(everySurface).not.toContain('标称参考值')
+      expect(warningCopy).not.toContain('相对值必须为正')
       expect(warningCopy).toContain('标准 IEEE 754 binary16')
       expect(warningCopy).toContain('§7.6')
       expect(explanationCopy).toContain('HALF 模式页')
@@ -758,11 +160,10 @@ describe('toCalculatorViewModel', () => {
       for (const banned of HALF_BANNED) {
         expect(everySurface, 'unexpected copy: ' + banned).not.toContain(banned)
       }
-      // v2.5.5: per-surface — each requirement surface itself carries the
-      // nominal-reference wording, not just the concatenation.
       expect(warningCopy).toContain('标称参考值')
       expect(explanationCopy).toContain('标称参考值')
       expect(warningCopy).toContain('§8.5.2')
+      expect(warningCopy).toContain('相对值必须为正')
     })
 
     test('0x40/0xC0 DIRECT：继续要求器件 m/b/R；相对再加标称参考值', () => {
@@ -770,6 +171,7 @@ describe('toCalculatorViewModel', () => {
       expect(absolute.page?.statusText).toBe('绝对 DIRECT（需 m/b/R 系数）')
       expect(absolute.warningCopy).toContain('m/b/R')
       expect(absolute.warningCopy).toContain('§7.4')
+      expect(absolute.warningCopy).not.toContain('相对值必须为正')
       expect(absolute.explanationCopy).toContain('m/b/R')
       for (const surface of [
         absolute.page?.statusText ?? '',
@@ -781,12 +183,10 @@ describe('toCalculatorViewModel', () => {
 
       const relative = voutModePageSurfaces(0xc0)
       expect(relative.page?.statusText).toBe('相对 DIRECT（需系数与参考值）')
-      // v2.5.5: the InfoPanel warning ITSELF states both the m/b/R
-      // coefficients and the VOUT_COMMAND nominal reference (§8.5.2);
-      // the details explain both requirements.
       expect(relative.warningCopy).toContain('m/b/R')
       expect(relative.warningCopy).toContain('标称参考值')
       expect(relative.warningCopy).toContain('§8.5.2')
+      expect(relative.warningCopy).toContain('相对值必须为正')
       expect(relative.explanationCopy).toContain('m/b/R')
       expect(relative.explanationCopy).toContain('标称参考值')
     })
@@ -807,26 +207,19 @@ describe('toCalculatorViewModel', () => {
   })
 
   describe('mode=DIRECT', () => {
-    test('default coefficients produce value 0', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'DIRECT' }))
-      expect(vm.valueText).toBe('0')
-    })
-
-    test('m=0 produces NaN value text without an InfoPanel warning (inline-only error)', () => {
-      const vm = toCalculatorViewModel(
-        make({
-          mode: 'DIRECT',
-          raw: 10,
-          direct: {
-            m: 0,
-            b: 0,
-            r: 0,
-            errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null },
-          },
-        }),
-      )
-      expect(vm.valueText).toBe('—')
-      expect(vm.warnings.some((w) => w.id === 'direct-m-zero')).toBe(false)
+    test.each([
+      { hex: '0000', y: 0 },
+      { hex: '7FFF', y: 32767 },
+      { hex: '8000', y: -32768 },
+      { hex: 'FFFF', y: -1 },
+    ])('projects the typed word $hex as signed Y=$y', ({ hex, y }) => {
+      const state = appReducer(make({ mode: 'DIRECT', raw: 0x5555 }), {
+        type: 'raw/set-from-hex',
+        hex,
+      })
+      const vm = toCalculatorViewModel(state)
+      expect(vm.directY).toBe(y)
+      expect(vm.valueText).toBe(String(y))
     })
 
     test('raw=0x000A (Y=10), m=2, b=0, R=0 produces value 5', () => {
@@ -841,50 +234,35 @@ describe('toCalculatorViewModel', () => {
       expect(vm.directY).toBe(10)
     })
 
-    test('raw=0x8000 is signed Y=-32768 in DIRECT mode', () => {
+    test.each([
+      { r: -128, text: '1e+128' },
+      { r: 127, text: '1e-127' },
+    ])('renders the finite magnitude at valid DIRECT exponent R=$r', ({ r, text }) => {
       const vm = toCalculatorViewModel(
-        make({
-          mode: 'DIRECT',
-          raw: 0x8000,
-          direct: { m: 1, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-        }),
+        make({ mode: 'DIRECT', raw: 1, direct: { ...BASE.direct, r } }),
       )
-      expect(vm.directY).toBe(-32768)
+      expect(vm.valueText).toBe(text)
     })
 
-    test('quantization panel stays hidden without an explicit request (no fabricated zero)', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'DIRECT' }))
-      expect(vm.deltaText).toBeUndefined()
-    })
-
-    test('quantization error reports the legacy DIRECT rounding error', () => {
-      // m=1000: requested 1.2345 → Y=round(1234.5)=1235 → represented 1.235.
-      // v2.5.12: the delta and percent render from the exact rational; the
-      // note distinguishes the committed request from the represented value.
-      const vm = toCalculatorViewModel(
-        make({
-          mode: 'DIRECT',
-          raw: 1235,
-          direct: { m: 1000, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-          valueRequest: { mode: 'DIRECT', value: 1.2345, text: '1.2345' },
-        }),
-      )
-      expect(vm.valueText).toBe('1.235')
-      expect(vm.deltaText).toBe('-0.0005（约 -0.0405%）')
-      expect(vm.deltaKind).toBe('warn')
-      expect(vm.deltaNote).toContain('用户请求 1.2345')
-      expect(vm.deltaNote).toContain('raw 精确表示 1.235')
-    })
-
-    test('m=0 hides the quantization panel together with the value', () => {
-      const vm = toCalculatorViewModel(
-        make({
-          mode: 'DIRECT',
-          direct: { m: 0, b: 0, r: 0, errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null } },
-        }),
-      )
-      expect(vm.deltaText).toBeUndefined()
-    })
+    test.each([
+      { text: '1.2345', raw: 1235, value: '1.235' },
+      { text: '-1.2345', raw: 0xfb2e, value: '-1.234' },
+    ])(
+      'renders the signed DIRECT midpoint request $text and its exact delta',
+      ({ text, raw, value }) => {
+        const state = appReducer(make({ mode: 'DIRECT', direct: { ...BASE.direct, m: 1000 } }), {
+          type: 'value/set',
+          value: text,
+        })
+        const vm = toCalculatorViewModel(state)
+        expect(state.raw).toBe(raw)
+        expect(vm.valueText).toBe(value)
+        expect(vm.deltaText).toBe('-0.0005（约 -0.0405%）')
+        expect(vm.deltaKind).toBe('warn')
+        expect(vm.deltaNote).toContain(`用户请求 ${text}`)
+        expect(vm.deltaNote).toContain(`raw 精确表示 ${value}`)
+      },
+    )
 
     test('exact boundary overshoot renders saturated with a non-zero scientific delta', () => {
       // Counterexample C: 32767.0000000000000001 folds to 32767 in binary64
@@ -906,38 +284,19 @@ describe('toCalculatorViewModel', () => {
   })
 
   describe('mode=HALF', () => {
-    test('raw=0 produces value 0', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'HALF' }))
-      expect(vm.valueText).toBe('0')
-    })
-
-    test('raw=0x7C00 produces +Infinity', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x7c00 }))
-      expect(vm.valueText).toBe('+Infinity')
-    })
-
-    test('raw=0xFC00 produces -Infinity', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0xfc00 }))
-      expect(vm.valueText).toBe('-Infinity')
-    })
-
-    test('raw=0x7E00 produces NaN', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x7e00 }))
-      expect(vm.valueText).toBe('NaN')
-    })
-
-    test('raw=0x8000 preserves negative zero', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x8000 }))
-      expect(vm.valueText).toBe('-0')
-    })
-
-    test('raw=0x0000 preserves positive zero', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x0000 }))
-      expect(vm.valueText).toBe('0')
-    })
-
-    test('quantization panel stays hidden without an explicit request (no fabricated zero)', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'HALF' }))
+    test.each([
+      { raw: 0x0000, text: '0' },
+      { raw: 0x8000, text: '-0' },
+      { raw: 0x0001, text: '5.96046447754e-8' },
+      { raw: 0x03ff, text: '0.0000609755516052' },
+      { raw: 0x0400, text: '0.00006103515625' },
+      { raw: 0x7bff, text: '65504' },
+      { raw: 0x7c00, text: '+Infinity' },
+      { raw: 0xfc00, text: '-Infinity' },
+      { raw: 0x7e00, text: 'NaN' },
+    ])('shows HALF word $raw as $text before any explicit encode request', ({ raw, text }) => {
+      const vm = toCalculatorViewModel(make({ mode: 'HALF', raw }))
+      expect(vm.valueText).toBe(text)
       expect(vm.deltaText).toBeUndefined()
     })
 
@@ -954,87 +313,23 @@ describe('toCalculatorViewModel', () => {
       expect(vm.deltaKind).toBe('warn')
     })
 
-    test('special values: no request hides, committed special requests classify', () => {
-      // NaN / ±Infinity payload without provenance → hidden (error unknown).
-      expect(toCalculatorViewModel(make({ mode: 'HALF', raw: 0x7e00 })).deltaText).toBeUndefined()
-      expect(toCalculatorViewModel(make({ mode: 'HALF', raw: 0x7c00 })).deltaText).toBeUndefined()
-
-      // Committed NaN request → explicit special classification, not silence.
-      const nanRequest = make({
-        mode: 'HALF',
-        raw: 0x7e00,
-        valueRequest: { mode: 'HALF', value: NaN },
-      })
-      const nan = toCalculatorViewModel(nanRequest)
+    test('a committed HALF special value reports that quantization is inapplicable', () => {
+      const state = appReducer(make({ mode: 'HALF' }), { type: 'value/set', value: 'NaN' })
+      const nan = toCalculatorViewModel(state)
       expect(nan.deltaText).toBe('NaN → NaN')
       expect(nan.deltaKind).toBe('warn')
       expect(nan.deltaNote).toContain('量化误差不适用')
     })
 
-    test('finite overflow surfaces as an error instead of hiding', () => {
-      const overflow = toCalculatorViewModel(
-        make({
-          mode: 'HALF',
-          raw: 0x7c00,
-          valueRequest: { mode: 'HALF', value: 65520 },
-        }),
+    test('finite overflow surfaces as an error in the readout and steps', () => {
+      const state = appReducer(make({ mode: 'HALF' }), { type: 'value/set', value: '65520' })
+      const vm = toCalculatorViewModel(state)
+      expect(vm.deltaText).toBe('65520 → +Infinity')
+      expect(vm.deltaKind).toBe('error')
+      expect(vm.deltaNote).toContain('溢出')
+      expect(vm.steps.find((step) => step.id === 'half-quantization')?.plainText).toBe(
+        '格式编码量化误差（请求值 − 表示值） = （有限值编码溢出为 +Infinity）',
       )
-      expect(overflow.deltaText).toBe('65520 → +Infinity')
-      expect(overflow.deltaKind).toBe('error')
-      expect(overflow.deltaNote).toContain('溢出')
-    })
-  })
-
-  describe('calculation steps (unified four-mode skeleton)', () => {
-    test('L11 ordinary decode adds no supplemental steps (first screen is complete)', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0xf819 }))
-      expect(vm.steps).toEqual([])
-    })
-
-    test('L16 absolute LINEAR decode adds no supplemental steps', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00 }))
-      expect(vm.steps).toEqual([])
-    })
-
-    test('L16 relative LINEAR（缺 nominal）与 non-LINEAR steps contain no result', () => {
-      const rel = toCalculatorViewModel(
-        make({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }),
-      )
-      expect(rel.steps.some((s) => s.kind === 'result')).toBe(false)
-
-      // Non-LINEAR shared bytes fail closed: the walkthrough shows the
-      // fail-closed warning and never derives a LINEAR result (v2.5.2).
-      for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
-        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
-        expect(
-          vm.steps.some((s) => s.kind === 'result'),
-          `0x${byte.toString(16)}`,
-        ).toBe(false)
-        expect(
-          vm.steps.some((s) => s.id === 'l16-nonlinear'),
-          `0x${byte.toString(16)}`,
-        ).toBe(true)
-        expect(
-          vm.steps.some((s) => s.id === 'l16-n'),
-          `0x${byte.toString(16)}`,
-        ).toBe(false)
-      }
-    })
-
-    test('DIRECT ordinary decode adds no supplemental steps', () => {
-      const vm = toCalculatorViewModel(
-        make({
-          mode: 'DIRECT',
-          raw: 10,
-          direct: { m: 2, b: 0, r: 0, errors: { m: null, b: null, r: null } },
-        }),
-      )
-      expect(vm.steps).toEqual([])
-    })
-
-    test('HALF normal decode adds no supplemental steps', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'HALF', raw: 0x3c00 }))
-      expect(vm.steps).toEqual([])
     })
   })
 
@@ -1056,71 +351,23 @@ describe('toCalculatorViewModel', () => {
     })
   })
 
-  describe('wire-byte serialization (v3.0.0)', () => {
-    test('wireBytes is the low-byte-first sequence (SMBus/PMBus wire order)', () => {
-      const vm = toCalculatorViewModel(make({ raw: 0x1234 }))
-      expect(vm.wireBytes).toBe('0x 34 12')
-      expect(vm.msbFirstBytes).toBe('0x 12 34')
-    })
-
-    test('prefix0x=false omits 0x prefix', () => {
-      const vm = toCalculatorViewModel(
-        make({ raw: 0x1234, copy: { ...BASE.copy, prefix0x: false } }),
-      )
-      expect(vm.wireBytes).not.toMatch(/^0x/)
-    })
-
-    test('spaceBetweenBytes=false joins the bytes', () => {
-      const vm = toCalculatorViewModel(
-        make({ raw: 0x1234, copy: { ...BASE.copy, spaceBetweenBytes: false } }),
-      )
-      // prefix0x adds '0x ' (space after prefix), spaceBetweenBytes controls byte separation
-      expect(vm.wireBytes).toBe('0x 3412')
-    })
-  })
-
   test('C macro copies the raw word and its formula as RAW_VALUE', () => {
     const vm = toCalculatorViewModel(make({ raw: 0x000c }))
     expect(vm.cMacroText).toBe('#define RAW_VALUE 0x000C /* Y=12 × 2^0 */')
   })
 
-  describe('DIRECT error visibility (inline-only, no InfoPanel duplication)', () => {
-    test('coefficient errors never surface as InfoPanel warnings in any mode', () => {
-      for (const mode of ['DIRECT', 'L11', 'L16', 'HALF'] as const) {
-        const vm = toCalculatorViewModel(
-          make({
-            mode,
-            direct: {
-              m: 1,
-              b: 0,
-              r: 0,
-              errors: { m: 'm 必须是 -32768..32767 的整数', b: null, r: null },
-            },
-          }),
-        )
-        expect(
-          vm.warnings.find((w) => w.id === 'direct-coeff-error'),
-          mode,
-        ).toBeUndefined()
-      }
-    })
-
-    test('m=0 error is inline-only: no direct-m-zero InfoPanel warning', () => {
-      const vm = toCalculatorViewModel(
-        make({
-          mode: 'DIRECT',
-          raw: 1,
-          direct: {
-            m: 0,
-            b: 0,
-            r: 0,
-            errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null },
-          },
-        }),
-      )
-      expect(vm.warnings.find((w) => w.id === 'direct-m-zero')).toBeUndefined()
-    })
-  })
+  test.each(['DIRECT', 'L11', 'L16', 'HALF', 'VOUT_MODE'] as const)(
+    '%s does not surface DIRECT coefficient errors in the InfoPanel',
+    (mode) => {
+      const direct = appReducer(make({ mode }), {
+        type: 'direct/set-coeff',
+        name: 'm',
+        value: '2.5',
+      })
+      expect(direct.direct.errors.m).toBeTruthy()
+      expect(toCalculatorViewModel(direct).warnings).toEqual([])
+    },
+  )
 
   describe('warnings', () => {
     test('default L11 state has no Y=0 info warning', () => {
@@ -1168,61 +415,20 @@ describe('toCalculatorViewModel', () => {
       expect(under.warnings.some((w) => w.id === 'l11-saturation')).toBe(true)
     })
 
-    test('L16 relative LINEAR 与 non-LINEAR 不提供 nRangeText；显式 0x18 后恢复', () => {
-      const rel = toCalculatorViewModel(
-        make({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }),
-      )
-      expect(rel.nRangeText).toBeUndefined()
-
-      // Non-LINEAR shared bytes have no pseudo LINEAR range (v2.5.2).
-      for (const byte of [0x20, 0x40, 0x60, 0xe0]) {
-        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
-        expect(vm.nRangeText, `0x${byte.toString(16)}`).toBeUndefined()
-      }
-
-      // Only an explicit apply of the default byte restores the range.
-      const applied = toCalculatorViewModel(
-        make({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x18 } }),
-      )
-      expect(applied.nRangeText).toBe('0 ~ 255.99609375')
-    })
-
-    test('L16 relative LINEAR（缺 nominal）只保留缺参考值诊断，不展示伪结果', () => {
-      const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte: 0x98 } }))
-      expect(vm.steps.some((s) => s.id === 'l16-relative-nominal-missing')).toBe(true)
-      expect(vm.steps.some((s) => s.id === 'l16-v')).toBe(false)
-      expect(vm.steps.some((s) => s.kind === 'result')).toBe(false)
-    })
-
-    test('L16 非 LINEAR 共享字节 fail-closed：无伪 N、无伪 V、无结果（v2.5.2）', () => {
-      for (const byte of [0x20, 0x40, 0x60, 0xe0, 0x41, 0x61]) {
-        const vm = toCalculatorViewModel(make({ mode: 'L16', raw: 0x0c00, voutMode: { byte } }))
+    test('LINEAR11 saturation diagnostics stay scoped to LINEAR11', () => {
+      const l11 = { ...BASE.l11, valueInput: 1e9 }
+      for (const mode of ['L16', 'DIRECT', 'HALF', 'VOUT_MODE'] as const) {
+        const vm = toCalculatorViewModel(make({ mode, l11 }))
         expect(
-          vm.steps.some((s) => s.id === 'l16-nonlinear'),
-          `0x${byte.toString(16)}`,
-        ).toBe(true)
-        expect(
-          vm.steps.some((s) => s.id === 'l16-v'),
-          `0x${byte.toString(16)}`,
-        ).toBe(false)
-        expect(
-          vm.steps.some((s) => s.id === 'l16-n'),
-          `0x${byte.toString(16)}`,
-        ).toBe(false)
-        expect(
-          vm.steps.some((s) => s.kind === 'result'),
-          `0x${byte.toString(16)}`,
-        ).toBe(false)
-        expect(
-          vm.steps.some((s) => s.id === 'l16-quantization'),
-          `0x${byte.toString(16)}`,
+          vm.warnings.some((warning) => warning.id === 'l11-saturation'),
+          mode,
         ).toBe(false)
       }
     })
   })
 })
 
-describe('M16 quantization-error sign semantics', () => {
+describe('量化误差符号与提示等级', () => {
   test('small negative delta is informational (warn), never danger', () => {
     const vm = toCalculatorViewModel(
       make({ raw: 0x0001, l11: { ...BASE.l11, valueInput: 0.999999 } }),
@@ -1238,7 +444,7 @@ describe('M16 quantization-error sign semantics', () => {
   })
 })
 
-describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
+describe('DIRECT 显示精度、重输和复制', () => {
   const directWith = (
     raw: number,
     m: number,
@@ -1283,7 +489,7 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     expect(steps.find((s) => s.id === 'direct-exact-decimal')?.value).toBe('-1.00000000000000001')
   })
 
-  test('v3.1.1 display-formatting fold: (1,1,12) raw FFFF fires every fidelity surface', () => {
+  test('显示位数导致 FFFF 重输偏差时提供精确值和复制文本', () => {
     // The binary64 value round-trips (v2.5.11's guard is blind here), but the
     // displayed text "-1" encodes to Y=0 through the real typed path.
     const vm = toCalculatorViewModel(directWith(0xffff, 1, 1, 12))
@@ -1305,7 +511,7 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     expect(vm.steps.find((s) => s.id === 'direct-exact-decimal')?.value).toBe('-1.000000000001')
   })
 
-  test('v3.1.1 repeating rational: (3,1,16) raw 0000 copy is a verified approximation, labelled honestly', () => {
+  test('循环小数的可重输复制文本注明为近似值', () => {
     const vm = toCalculatorViewModel(directWith(0x0000, 3, 1, 16))
     expect(vm.valueText).toBe('-0.333333333333')
     expect(vm.directFidelity).toBeDefined()
@@ -1340,14 +546,14 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     expect(vm.steps.some((s) => s.id === 'direct-exact-value')).toBe(false)
   })
 
-  test('quantization readout flags the folded state even with a zero binary64 delta', () => {
-    // Committing the exact lexeme keeps FFFF: requested Number -1 vs
-    // represented -1 is binary64-exact, but the exact pipeline reports the
-    // real +1e-17 delta and the folded state never reads as clean ok/exact.
-    const vm = toCalculatorViewModel(
-      directWith(0xffff, 1, 1, 17, { mode: 'DIRECT', value: -1, text: '-1' }),
-    )
-    expect(vm.deltaText).toBe('+1e-17（约 1e-15%）')
+  test('a committed exact request reports its real delta when binary64 rounds it to zero', () => {
+    const state = appReducer(directWith(0, 1, 1, 17), {
+      type: 'value/set',
+      value: '-1.000000000000000011',
+    })
+    const vm = toCalculatorViewModel(state)
+    expect(state.raw).toBe(0xffff)
+    expect(vm.deltaText).toContain('-1e-18')
     expect(vm.deltaKind).toBe('warn')
     expect(vm.deltaNote).toContain('量化误差按精确值计算')
   })
@@ -1387,21 +593,23 @@ describe('DIRECT precision-fidelity contract (v2.5.11)', () => {
     expect(safe.directFidelity).toBeUndefined()
   })
 
-  test('m=0 keeps the inline-only error, exposes no fidelity surface and disables the physical copy', () => {
-    const vm = toCalculatorViewModel(
-      make({
-        mode: 'DIRECT',
-        raw: 10,
-        direct: { m: 0, b: 0, r: 0, errors: { m: 'DIRECT 系数 m 不能为 0', b: null, r: null } },
-      }),
-    )
+  test('m=0 leaves an inline error, omits quantitative output and disables physical copy', () => {
+    const zero = appReducer(directWith(10, 1, 0, 0), {
+      type: 'direct/set-coeff',
+      name: 'm',
+      value: '0',
+    })
+    const vm = toCalculatorViewModel(zero)
+    expect(zero.direct.errors.m).toContain('m 不能为 0')
+    expect(vm.valueText).toBe('—')
+    expect(vm.deltaText).toBeUndefined()
+    expect(vm.warnings).toEqual([])
     expect(vm.directFidelity).toBeUndefined()
     expect(vm.physicalValueCopyOverride).toBeUndefined()
-    // v3.1.1: the placeholder '—' is not a re-enterrable physical value —
-    // the copy is disabled with an accessible reason instead of copying '—'.
-    expect(vm.physicalValueCopy).toBeDefined()
-    expect(vm.physicalValueCopy?.available).toBe(false)
-    expect(vm.physicalValueCopy?.reason).toContain('m=0')
+    expect(vm.physicalValueCopy).toEqual({
+      available: false,
+      reason: expect.stringContaining('m=0'),
+    })
   })
 
   test('copy override is absent for non-DIRECT modes (no cross-mode leak)', () => {

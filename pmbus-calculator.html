@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
-    <title>PMBus 数值格式计算器 (L11/L16/DIRECT/HALF) — 历史离线兼容</title>
+    <title>PMBus 数值格式计算器（离线版）</title>
     <style>
       :root{--p:#1e40af;--bg:#f8fafc;--surface:#ffffff;--text-primary:#0f172a;--text-secondary:#475569;--text-muted:#64748b;--border:#e2e8f0;--input-bg:#ffffff;--input-border:#e2e8f0;--input-text:#0f172a;--hover-bg:#f1f5f9;--warning-bg:#fffbeb;--error-bg:#fef2f2;--focus-ring:rgba(30,64,175,0.15);--bl:#3b82f6;--gn:#10b981;--am:#f59e0b;--rd:#ef4444;--pu:#8b5cf6;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.05), 0 8px 10px -6px rgb(0 0 0 / 0.05);--container-pad:32px;--title-size:1.75rem;--result-size:2.75rem;--bit-size:34px;--bit-font:15px}
       @media (prefers-color-scheme: dark){:root{--p:#60a5fa;--bg:#0f172a;--surface:#1e2937;--text-primary:#e2e8f0;--text-secondary:#94a3b8;--text-muted:#cbd5e1;--border:#475569;--input-bg:#334155;--input-border:#475569;--input-text:#e2e8f0;--hover-bg:#334155;--warning-bg:#451a03;--error-bg:#450a0a;--focus-ring:rgba(147,197,253,0.25);--bl:#60a5fa;--gn:#34d399;--am:#fbbf24;--rd:#f87171;--shadow:0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3);--container-pad:32px;--title-size:1.75rem;--result-size:2.75rem;--bit-size:34px;--bit-font:15px}}
@@ -765,24 +765,21 @@
         .formula-footer { padding-right: 0; justify-content: center; }
       }
 
-      /* 历史离线归档横幅（仅仓库内使用，非 Pages 部署资产） */
       .legacy-banner {
         margin-bottom: 12px;
-        padding: 8px 10px;
+        padding: 8px 44px 8px 10px;
         font-size: 12.5px;
         color: var(--text-muted);
-        border: 1px dashed var(--border);
       }
+      #commandNote { margin: -8px 0 20px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
     </style>
   </head>
   <body>
     <main class="w" role="main">
-      <div class="bo legacy-banner">
-        历史离线兼容文件：本文件仅作为仓库内离线归档，不再是产品入口；新版 Web App 见
-        <a href="https://laipeng101.github.io/pmbus-calculator/">https://laipeng101.github.io/pmbus-calculator/</a>。
-        PMBus 数值格式语义请以 <code>src/legacy/pmbus-math.ts</code> 与 <code>docs/DOMAIN_MODEL.md</code> 为准。
+      <div class="legacy-banner">
+        可离线计算。<a href="https://laipeng101.github.io/pmbus-calculator/">打开在线版</a>
       </div>
-      <h1>PMBus 数值格式计算器（历史离线兼容）</h1>
+      <h1>PMBus 数值格式计算器（离线版）</h1>
       <button
         id="themeToggle"
         class="toggle-small"
@@ -839,29 +836,17 @@
       </nav>
 
       <div class="bo" style="margin: 8px 0 20px">
-        <label style="margin-right: 8px">命令字典：</label>
+        <label for="commandSelect" style="margin-right: 8px">PMBus 命令</label>
         <select
           id="commandSelect"
           onchange="selectCommand(this.value)"
           style="max-width: 340px; font-size: 13.5px; flex: 1"
-          data-tooltip="快速加载常用PMBus命令的典型参数和模式 (参照Part II命令表)"
+          data-tooltip="可载入数值示例，或查看状态字与块读取命令的说明"
         >
-          <option value="">-- 选择 PMBus 1.3 命令 --</option>
-          <option value="VOUT_COMMAND">VOUT_COMMAND (0x21) - 输出电压</option>
-          <option value="VOUT_OV_FAULT_LIMIT">VOUT_OV_FAULT_LIMIT (0x40)</option>
-          <option value="READ_VOUT">READ_VOUT (0x8B)</option>
-          <option value="READ_VIN">READ_VIN (0x88)</option>
-          <option value="READ_IOUT">READ_IOUT (0x8C)</option>
-          <option value="READ_TEMPERATURE_1">READ_TEMPERATURE_1 (0x8D)</option>
-          <option value="VIN_OV_FAULT_LIMIT">VIN_OV_FAULT_LIMIT (0x55)</option>
-          <option value="OT_FAULT_LIMIT">OT_FAULT_LIMIT (0x4F)</option>
-          <option value="FAN_COMMAND">FAN_COMMAND (0x3B) - 风扇转速 (L11)</option>
-          <option value="READ_POUT">READ_POUT (0x96) - 输出功率</option>
-          <option value="READ_FAN_SPEED_1">READ_FAN_SPEED_1 (0x90)</option>
-          <option value="STATUS_WORD">STATUS_WORD (0x79) - 状态字</option>
-          <option value="READ_EIN">READ_EIN (0x86) - 累计能量 (Part II 18.13)</option>
+          <option value="">选择命令</option>
         </select>
       </div>
+      <p id="commandNote" role="status" hidden></p>
 
       <div id="linearSection">
         <div class="bo" id="byteOrderCtrl" style="display: none">
@@ -1089,10 +1074,10 @@
         Hex右侧小按钮(0x/␣) · 颜色区分状态 · 复制C代码 · Ctrl+1/2/3/4切换模式 · 点击字节复制
       </div>
       <section id="debugPanel" class="debug-panel" hidden aria-label="调试工具">
-        <div class="debug-title">Debug Only</div>
+        <div class="debug-title">离线自检</div>
         <div class="debug-actions">
           <button id="runBoundaryTestsBtn" class="debug-btn" type="button">
-            🧪 全面边界测试 & 优化验证
+            运行边界测试
           </button>
         </div>
         <div id="debugOutput" class="debug-output" aria-live="polite"></div>
@@ -1294,30 +1279,27 @@
           val: 12,
           n: -8,
           voutMode: '18',
-          label: 'VOUT_COMMAND',
+          name: '设置输出电压',
           cmd: 0x21,
           type: 'scalar16',
-          spec: 'PMBus Part II 13.2 / Part I 8.4.1',
         },
         VOUT_OV_FAULT_LIMIT: {
           mode: 'L16',
           val: 13.2,
           n: -8,
           voutMode: '18',
-          label: 'VOUT_OV_FAULT_LIMIT',
+          name: '输出过压故障阈值',
           cmd: 0x40,
           type: 'scalar16',
-          spec: 'PMBus Part II 15.x / follows VOUT_MODE',
         },
         READ_VOUT: {
           mode: 'L16',
           val: 12,
           n: -8,
           voutMode: '18',
-          label: 'READ_VOUT',
+          name: '读取输出电压',
           cmd: 0x8b,
           type: 'scalar16',
-          spec: 'PMBus Part II 18.4; format follows VOUT_MODE',
         },
         READ_VIN: {
           mode: 'DIRECT',
@@ -1325,10 +1307,9 @@
           m: 1,
           b: 0,
           R: -2,
-          label: 'READ_VIN',
+          name: '读取输入电压',
           cmd: 0x88,
           type: 'scalar16',
-          spec: 'PMBus Part II 18.1; two data bytes in Section 7 format',
         },
         READ_IOUT: {
           mode: 'DIRECT',
@@ -1336,10 +1317,9 @@
           m: 100,
           b: 0,
           R: -2,
-          label: 'READ_IOUT',
+          name: '读取输出电流',
           cmd: 0x8c,
           type: 'scalar16',
-          spec: 'PMBus Part II 18.5; two data bytes in Section 7 format',
         },
         READ_TEMPERATURE_1: {
           mode: 'DIRECT',
@@ -1347,10 +1327,9 @@
           m: 1,
           b: 0,
           R: 0,
-          label: 'READ_TEMPERATURE_1',
+          name: '读取温度',
           cmd: 0x8d,
           type: 'scalar16',
-          spec: 'PMBus Part II 18.6; two data bytes in Section 7 format',
         },
         VIN_OV_FAULT_LIMIT: {
           mode: 'DIRECT',
@@ -1358,10 +1337,9 @@
           m: 1,
           b: 0,
           R: -1,
-          label: 'VIN_OV_FAULT_LIMIT',
+          name: '输入过压故障阈值',
           cmd: 0x55,
           type: 'scalar16',
-          spec: 'PMBus Part II 15.23; two data bytes in Section 7 format',
         },
         OT_FAULT_LIMIT: {
           mode: 'DIRECT',
@@ -1369,19 +1347,17 @@
           m: 1,
           b: 0,
           R: 0,
-          label: 'OT_FAULT_LIMIT',
+          name: '过温故障阈值',
           cmd: 0x4f,
           type: 'scalar16',
-          spec: 'PMBus Part II 15.17; two data bytes in Section 7 format',
         },
         FAN_COMMAND: {
           mode: 'L11',
           val: 5000,
           n: 3,
-          label: 'FAN_COMMAND',
+          name: '设置风扇转速',
           cmd: 0x3b,
           type: 'scalar16',
-          spec: 'PMBus Part II 14.12; two data bytes in Section 7 format',
         },
         READ_POUT: {
           mode: 'DIRECT',
@@ -1389,41 +1365,29 @@
           m: 1,
           b: 0,
           R: -1,
-          label: 'READ_POUT',
+          name: '读取输出功率',
           cmd: 0x96,
           type: 'scalar16',
-          spec: 'PMBus Part II 18.11; two data bytes in Section 7 format',
         },
         READ_FAN_SPEED_1: {
           mode: 'L11',
           val: 3200,
           n: 2,
-          label: 'READ_FAN_SPEED_1',
+          name: '读取风扇转速',
           cmd: 0x90,
           type: 'scalar16',
-          spec: 'PMBus Part II 18.7; returns RPM in Section 7 format',
         },
         STATUS_WORD: {
-          mode: 'L11',
-          val: 0,
-          n: 0,
-          label: 'STATUS_WORD',
+          name: '状态字',
           cmd: 0x79,
           type: 'statusWord',
-          spec: 'PMBus Part II 17.2 Table 16',
-          note: 'STATUS_WORD 是 16 位状态位摘要，不是物理量编码；低字节等同 STATUS_BYTE，高字节为摘要故障位。通常为 Read Word；特殊写入 0x0100 仅用于清除 UNKNOWN 位，其余状态位经底层状态寄存器或 CLEAR_FAULTS 处理。',
+          note: '16 位状态字。低字节与 STATUS_BYTE 相同，高字节汇总故障和状态。通常用 Read Word 读取。写入 0x0100 只清除 UNKNOWN 位。其他状态位按对应寄存器或 CLEAR_FAULTS 的规则处理。',
         },
         READ_EIN: {
-          mode: 'DIRECT',
-          val: 100,
-          m: 1,
-          b: 0,
-          R: 0,
-          label: 'READ_EIN',
+          name: '读取累计输入能量',
           cmd: 0x86,
           type: 'blockRead',
-          spec: 'PMBus Part II 18.13 / command table',
-          note: 'READ_EIN 属于 Block Read，多于 16 位；规范内部存在字节数冲突：PMBus Part II §18.13 描述 6 个数据字节，Appendix I Table 31 列为 5；以目标器件资料及适用规范修订为准，计算器不是 READ_EIN packet-length authority。',
+          note: '使用 Block Read 读取累计输入能量。PMBus Part II §18.13 描述 6 个数据字节，附录 I 表 31 列为 5 个。请按器件数据手册和适用的规范版本读取。',
         },
       }
 
@@ -1431,10 +1395,11 @@
         return COMMAND_METADATA[cmdKey] || null
       }
 
-      function getCommandNote(cmdKey) {
-        const cfg = getCommandConfig(cmdKey)
-        if (!cfg || !cfg.note) return ''
-        return `⚠ ${cfg.note}`
+      function renderCommandNote(cmdKey) {
+        const note = getCommandConfig(cmdKey)?.note ?? ''
+        const element = $('commandNote')
+        element.textContent = note
+        element.hidden = !note
       }
 
       // ==================== 全局状态变量 ====================
@@ -1448,7 +1413,6 @@
       let add0xPrefix = true
       let addSpaceBetweenBytes = true
       let copyEndian = 'le'
-      const DEBUG_MODE = false
 
       // Bit element cache for performance (stage 04 optimization - pre-create elements)
       let bitButtons = []
@@ -1483,15 +1447,9 @@
         return currentMode === 'L16' && byteOrder === 'be' ? hex4(PMBusMath.swapBytes(v)) : hex4(v)
       }
 
-      function setDebugVisibility(forceVisible = DEBUG_MODE) {
-        const panel = $('debugPanel')
-        if (!panel) return
-        panel.hidden = !forceVisible
-      }
-
-      function setDebugOutput(html = '') {
-        const output = $('debugOutput')
-        if (output) output.innerHTML = html
+      function readHexWord() {
+        const text = $('inputHex').value.replace(/[^0-9a-fA-F]/g, '')
+        return text ? parseInt(text, 16) & 0xffff : 0
       }
 
       // ==================== 安全解析函数 ====================
@@ -1777,8 +1735,7 @@
           let n, y, value
 
           if (source === 'hex') {
-            const hexStr = ($('inputHex').value || '').replace(/[^0-9a-fA-F]/g, '')
-            let parsedHex = hexStr ? parseInt(hexStr, 16) & 0xffff : 0
+            const parsedHex = readHexWord()
             if (currentMode === 'L16' && byteOrder === 'be') {
               rawInt = PMBusMath.swapBytes(parsedHex)
             } else {
@@ -1841,7 +1798,6 @@
                 y = best.y
                 rawInt = PMBusMath.encodeLinear11(n, y)
                 value = best.value
-                window.lastDelta = best.delta
               } else {
                 n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15)
                 if (isNaN(n)) n = 0
@@ -1852,7 +1808,6 @@
                 rawInt = PMBusMath.encodeLinear11(n, y)
                 const represented = y * p
                 value = represented
-                window.lastDelta = inputVal - represented
               }
             } else {
               n = PMBusMath.clamp(parseIntegerSafe($('inputN').value) ?? 0, -16, 15)
@@ -1861,21 +1816,20 @@
               y = PMBusMath.clamp(Math.round(value / p), 0, 65535)
               rawInt = y
               value = y * p
-              window.lastDelta = 0
             }
           } else if (source === 'voutMode') {
             // VOUT_MODE变更：更新LINEAR16的N值
             const hex = ($('voutModeHex').value || '').replace(/[^0-9a-fA-F]/g, '')
             if (hex) {
               const parsed = PMBusMath.parseVoutMode(parseInt(hex, 16))
-              if (parsed.linearExponent !== null) {
+              if (typeof parsed.linearExponent === 'number') {
                 n = parsed.linearExponent
                 $('voutModeInfo').textContent = parsed.modeName + ', N=' + n
                 y = rawInt
                 value = y * PMBusMath.pow2(n)
                 setFieldValue('inputN', n, source)
               } else {
-                $('voutModeInfo').textContent = parsed.modeName + ' (非LINEAR模式)'
+                $('voutModeInfo').textContent = `${parsed.modeName}，沿用当前 LINEAR16 指数`
                 return
               }
             } else {
@@ -1904,7 +1858,6 @@
             if (inputVal !== null) {
               const represented = y * PMBusMath.pow2(n)
               d = inputVal - represented
-              window.lastDelta = d
               if (Math.abs(inputVal) > 1e-12) {
                 percent = (d / Math.abs(inputVal)) * 100
               }
@@ -1990,7 +1943,7 @@
             info.innerHTML =
               'N=' +
               n +
-              ' (VOUT_MODE) V=' +
+              ' V=' +
               y +
               ' <span class="' +
               (yOk ? 'o' : 'w') +
@@ -2021,8 +1974,7 @@
           let value
 
           if (source === 'hex') {
-            const hexStr = ($('inputHex').value || '').replace(/[^0-9a-fA-F]/g, '')
-            let p = hexStr ? parseInt(hexStr, 16) & 0xffff : 0
+            const p = readHexWord()
             directY = p >= 32768 ? p - 65536 : p
           } else if (source === 'directY') {
             const v = parseIntegerSafe($('inputDirectY').value)
@@ -2111,18 +2063,14 @@
 
       function updateHalf(source) {
         try {
-          let value
-          if (source === 'hex' || source === 'bit' || source === 'init' || source === 'mode') {
-            rawInt &= 0xffff
-            const decoded = PMBusMath.decodeHalf(rawInt)
-            value = decoded.value
+          if (source === 'hex') {
+            rawInt = readHexWord()
           } else if (source === 'val') {
             const inputVal = parseFloatSafe($('inputValue').value)
             if (inputVal === null) return
             rawInt = PMBusMath.encodeHalf(inputVal)
-            const decoded = PMBusMath.decodeHalf(rawInt)
-            value = decoded.value
           }
+          const { value } = PMBusMath.decodeHalf(rawInt)
           setFieldValue('inputHex', displayHex(rawInt), source)
           if (source !== 'val') {
             setFieldValue('inputValue', isNaN(value) ? 'NaN' : formatNumber(value), source)
@@ -2240,25 +2188,24 @@
 
       // ==================== 模式切换函数 ====================
       function applyModeLabels(mode) {
-        const isNarrow = window.innerWidth < 380
+        $('labelValue').textContent = mode === 'HALF' ? '浮点值' : '物理值'
         if (mode === 'L11') {
-          $('labelY').textContent = isNarrow ? 'Y (±1023)' : 'Y (11-bit ±1023)'
+          $('labelY').textContent = 'Y（11 位有符号数）'
           $('resultLabel').innerHTML = 'X = Y × 2<sup>N</sup>'
-          $('hexLabel').textContent = '原始值 (Hex)'
-          $('labelValue').textContent = isNarrow ? 'Value' : '物理值 (Value)'
+          $('hexLabel').textContent = '原始值（Hex）'
         } else if (mode === 'L16') {
-          $('labelY').textContent = isNarrow ? 'V (0~65535)' : 'V (16-bit 0~65535)'
+          $('labelY').textContent = 'V（16 位无符号数）'
           $('resultLabel').innerHTML = 'V × 2<sup>N</sup>'
-          $('hexLabel').textContent = 'VOUT_COMMAND (Hex)'
-          $('labelValue').textContent = isNarrow ? 'Value' : '物理值 (Value)'
+          $('hexLabel').textContent = '原始值（Hex）'
         } else if (mode === 'HALF') {
-          $('resultLabel').innerHTML = 'IEEE 754 Half Float'
-          $('hexLabel').textContent = 'Half Float (Hex)'
-          $('labelValue').textContent = 'Float 值'
+          $('resultLabel').textContent = 'IEEE 754 半精度浮点数'
+          $('hexLabel').textContent = '原始值（Hex）'
         } else {
-          $('resultLabel').innerHTML = 'DIRECT 格式'
-          $('hexLabel').textContent = 'Y (Hex)'
-          $('labelValue').textContent = isNarrow ? 'Value' : '物理值 (Value)'
+          $('resultLabel').textContent = 'DIRECT 格式'
+          $('hexLabel').textContent = 'Y（Hex）'
+        }
+        if (currentCommand) {
+          $('resultLabel').textContent = `${getCommandConfig(currentCommand).name}（${currentCommand}）`
         }
       }
 
@@ -2278,21 +2225,15 @@
         $('byteOrderCtrl').style.display = mode === 'L16' ? '' : 'none'
         $('voutModeCtrl').style.display = mode === 'L16' ? '' : 'none'
 
-        // 修复：N值锁住状态下命令切换异常（确保N有效，non-L11时重置锁状态）
-        if (mode !== 'L11') {
-          autoSelectN = false
-          const lockBtn = $('nLockBtn')
-          if (lockBtn) {
-            lockBtn.textContent = '🔒'
-            lockBtn.classList.remove('unlocked')
-            lockBtn.classList.add('locked')
-          }
-        }
+        if (mode !== 'L11') autoSelectN = false
+        syncAutoNButton()
 
+        currentCommand = ''
+        $('commandSelect').value = ''
+        renderCommandNote('')
         applyModeLabels(mode)
         const hn = $('halfNote')
         if (hn) hn.style.display = mode === 'HALF' ? 'block' : 'none'
-        currentCommand = ''
         if (prev === 'DIRECT' && !isDirect) {
           $('resultFormula').textContent = ''
           $('resultBox').classList.remove('direct-mode')
@@ -2305,18 +2246,16 @@
         updateAll('mode')
       }
 
+      function syncAutoNButton() {
+        const btn = $('nLockBtn')
+        btn.textContent = autoSelectN ? '🔓' : '🔒'
+        btn.classList.toggle('unlocked', autoSelectN)
+        btn.classList.toggle('locked', !autoSelectN)
+      }
+
       function toggleAutoN() {
         autoSelectN = !autoSelectN
-        const btn = $('nLockBtn')
-        if (autoSelectN) {
-          btn.textContent = '🔓'
-          btn.classList.remove('locked')
-          btn.classList.add('unlocked')
-        } else {
-          btn.textContent = '🔒'
-          btn.classList.remove('unlocked')
-          btn.classList.add('locked')
-        }
+        syncAutoNButton()
         if (currentMode === 'L11') updateAll('val')
       }
 
@@ -2340,24 +2279,17 @@
       }
 
       function selectCommand(cmdKey) {
-        if (!cmdKey) {
+        const cfg = getCommandConfig(cmdKey)
+        if (!cfg || cfg.type !== 'scalar16') {
           currentCommand = ''
-          const baseLabel =
-            currentMode === 'L11'
-              ? 'X = Y × 2<sup>N</sup>'
-              : currentMode === 'L16'
-                ? 'V × 2<sup>N</sup>'
-                : currentMode === 'HALF'
-                  ? 'IEEE 754 Half Float'
-                  : 'DIRECT 格式'
-          $('resultLabel').innerHTML = baseLabel
-          $('specialWarn').className = 'warn-banner'
+          $('commandSelect').value = cmdKey
+          applyModeLabels(currentMode)
+          renderCommandNote(cmdKey)
           return
         }
-        const cfg = getCommandConfig(cmdKey)
-        if (!cfg) return
         switchMode(cfg.mode)
         currentCommand = cmdKey
+        $('commandSelect').value = cmdKey
         if ((cfg.mode === 'L16' || cfg.mode === 'L11') && cfg.voutMode) {
           $('voutModeHex').value = cfg.voutMode
           updateAll('voutMode') // 确保 VOUT_MODE 提示文字同步更新
@@ -2370,13 +2302,7 @@
           if (cfg.R !== undefined) $('coeff_R').value = cfg.R
         }
         updateAll('val')
-        $('resultLabel').innerHTML =
-          `${cfg.label} <span style="font-size:0.85em;opacity:0.7">(${cmdKey})</span>`
-        const note = getCommandNote(cmdKey)
-        if (note) {
-          $('specialWarn').textContent = note
-          $('specialWarn').className = 'warn-banner show'
-        }
+        applyModeLabels(currentMode)
       }
 
       // ==================== 剪贴板复制功能 ====================
@@ -2471,35 +2397,21 @@
       }
 
       function generateCMacro() {
-        const value = parseFloatSafe($('inputValue').value) || 0
-        let raw = rawInt & 0xffff
-        if (currentMode === 'DIRECT') raw = (directY < 0 ? directY + 65536 : directY) & 0xffff
-        let macroName = currentCommand ? `PMBUS_${currentCommand}` : 'PMBUS_VAL'
-        const cfg = currentCommand ? getCommandConfig(currentCommand) : null
-        const cmdCode = cfg ? cfg.cmd || 0 : 0
-        const bytesForPEC = [cmdCode, raw & 0xff, (raw >> 8) & 0xff]
-        const pec = PMBusMath.calculatePEC(bytesForPEC)
+        const raw = (currentMode === 'DIRECT' ? directY : rawInt) & 0xffff
+        const macroName = currentCommand ? `PMBUS_${currentCommand}` : 'PMBUS_VAL'
         let comment = `/*
- * PMBus 数值格式 ${currentCommand || currentMode} (参照 Part II §8.3 与命令定义)
- * 物理值 = ${value.toFixed(4)}
- * 原始值 = 0x${hex4(raw)}
- * SMBus PEC = 0x${hex2(pec)} (per SMBus 3.0 §5.4, poly=0x07)
+ * PMBus 数值格式 ${currentCommand || currentMode}
+ * 显示值 = ${$('displayValue').textContent}
 `
         if (currentMode === 'L11') {
           const n = parseIntegerSafe($('inputN').value) || 0
           const y = parseIntegerSafe($('inputY').value) || 0
-          const delta =
-            typeof window.lastDelta !== 'undefined' ? window.lastDelta.toFixed(6) : '0.000000'
-          let percent = '0.0000'
-          if (Math.abs(value) > 1e-12) {
-            percent = ((parseFloat(delta) / Math.abs(value)) * 100).toFixed(4)
-          }
-          comment += ` * N=${n}, Y=${y} (LINEAR11 per Part I 8.2) 误差=${delta} (${percent}%)
+          comment += ` * N=${n}, Y=${y}
  * 计算公式: X = Y × 2^N
 `
         } else if (currentMode === 'L16') {
           const n = parseIntegerSafe($('inputN').value) || 0
-          comment += ` * N=${n} (来自VOUT_MODE=0x${$('voutModeHex') ? $('voutModeHex').value : '00'}), V=${raw} (LINEAR16)
+          comment += ` * N=${n}, V=${raw} (LINEAR16)
 `
         } else if (currentMode === 'HALF') {
           const s = (raw >> 15) & 1
@@ -2512,15 +2424,11 @@
           const m = parseIntegerSafe($('coeff_m').value) ?? 1
           const b = parseIntegerSafe($('coeff_b').value) ?? 0
           const R = parseIntegerSafe($('coeff_R').value) ?? 0
-          comment += ` * m=${m}, b=${b}, R=${R} (DIRECT per Part II) Y=${directY}
+          comment += ` * m=${m}, b=${b}, R=${R}, Y=${directY}
  * 计算公式: X=(1/m)×(Y×10^(-R)-b)
 `
         }
-        comment += `
- * #define ${macroName} 0x${hex4(raw)}U
- * 使用示例: pmbusWrite16(0x${cmdCode.toString(16).toUpperCase().padStart(2, '0')}, ${macroName}); // PEC=0x${hex2(pec)}
- */`
-        return comment + `\n#define ${macroName}  0x${hex4(raw)}U`
+        return comment + ` */\n#define ${macroName}  0x${hex4(raw)}U`
       }
 
       // ==================== 字段事件绑定 ====================
@@ -2528,6 +2436,7 @@
         const el = $(id)
         if (!el) return
         const hexWrapper = $('hexWrapper')
+        let edited = false
 
         function markEditing() {
           editingField = id
@@ -2559,6 +2468,8 @@
 
         el.addEventListener('blur', function () {
           unmarkEditing()
+          if (!edited) return
+          edited = false
           const fixed = fixOnBlur(el.value, kind)
           if (fixed !== el.value) el.value = fixed
           updateAll(source)
@@ -2572,6 +2483,7 @@
         })
 
         el.addEventListener('input', function () {
+          edited = true
           const start = this.selectionStart ?? 0
           const end = this.selectionEnd ?? 0
           const before = this.value
@@ -2596,7 +2508,10 @@
 
       // ==================== 初始化函数 ====================
       function init() {
-        setDebugVisibility()
+        $('debugPanel').hidden = !new URLSearchParams(location.search).has('debug')
+        for (const [key, { cmd, name }] of Object.entries(COMMAND_METADATA)) {
+          $('commandSelect').add(new Option(`${key}（0x${hex2(cmd)}）${name}`, key))
+        }
         wireField('inputHex', 'hex', 'hex')
         wireField('inputN', 'ny', 'int')
         wireField('inputY', 'ny', 'int')
@@ -2696,30 +2611,8 @@
 
       init()
 
-      // 窄屏下动态调整标签长度（防止圆角裁切和布局挤压）
-      let resizeTimer
-      window.addEventListener('resize', () => {
-        clearTimeout(resizeTimer)
-        resizeTimer = setTimeout(() => {
-          // 只刷新响应式标签，不触发 switchMode，避免窗口变化时清空 currentCommand。
-          if (typeof applyModeLabels === 'function') {
-            const savedLabel = currentCommand ? getCommandConfig(currentCommand)?.label : ''
-            applyModeLabels(currentMode)
-            if (currentCommand && savedLabel) {
-              $('resultLabel').innerHTML =
-                `${savedLabel} <span style="font-size:0.85em;opacity:0.7">(${currentCommand})</span>`
-            }
-          }
-        }, 150)
-      })
-
       // ==================== 边界测试函数 (按 PDF 规范 + 用户操作) ====================
       function runBoundaryTests() {
-        if (typeof PMBusMath === 'undefined' || typeof $ === 'undefined') {
-          alert('核心函数未加载，请刷新页面')
-          return
-        }
-
         const results = []
         const failures = []
         const addPass = (title, details) => results.push({ title, status: 'PASS', details })
@@ -2750,6 +2643,8 @@
           add0xPrefix,
           addSpaceBetweenBytes,
           copyEndian,
+          deltaHtml: $('deltaError').innerHTML,
+          deltaDisplay: $('deltaError').style.display,
           storage: {
             pmbus_add0x: localStorage.getItem('pmbus_add0x'),
             pmbus_space: localStorage.getItem('pmbus_space'),
@@ -2765,27 +2660,12 @@
             coeff_b: $('coeff_b').value,
             coeff_R: $('coeff_R').value,
             voutModeHex: $('voutModeHex').value,
+            byteOrderSelect: $('byteOrderSelect').value,
             commandSelect: $('commandSelect').value,
           },
         }
 
         try {
-          test('LINEAR11 极值编码符合 Part I 7.x / 8.x', () => {
-            const max = PMBusMath.decodeLinear11(PMBusMath.encodeLinear11(15, 1023))
-            const min = PMBusMath.decodeLinear11(PMBusMath.encodeLinear11(-16, -1024))
-            assert(
-              max.n === 15 && max.y === 1023,
-              'LINEAR11 上界错误',
-              `期待 N=15,Y=1023, 实际 N=${max.n},Y=${max.y}`,
-            )
-            assert(
-              min.n === -16 && min.y === -1024,
-              'LINEAR11 下界错误',
-              `期待 N=-16,Y=-1024, 实际 N=${min.n},Y=${min.y}`,
-            )
-            return '验证 11-bit mantissa 与 5-bit exponent 双补码极值'
-          })
-
           test('LINEAR11 自动选 N 覆盖 12V 场景', () => {
             const best = PMBusMath.findBestLinear11(12)
             assert(best.n >= -16 && best.n <= 15, 'N 越界', `N=${best.n}`)
@@ -2844,41 +2724,53 @@
             const direct = PMBusMath.parseVoutMode(0x40)
             const half = PMBusMath.parseVoutMode(0x60)
             const relHalf = PMBusMath.parseVoutMode(0xe0)
-            assert(vid.mode === 1, '0x20 应为 VID', `mode=${vid.mode}`)
+            assert(
+              vid.mode === 1 && vid.modeName === 'VID',
+              '0x20 应为 VID',
+              `mode=${vid.mode} (${vid.modeName})`,
+            )
             assert(vid.linearExponent === null, 'VID 不应生成线性指数', `N=${vid.linearExponent}`)
-            assert(direct.mode === 2, '0x40 应为 DIRECT', `mode=${direct.mode}`)
+            assert(
+              direct.mode === 2 && direct.modeName === 'DIRECT',
+              '0x40 应为 DIRECT',
+              `mode=${direct.mode} (${direct.modeName})`,
+            )
             assert(direct.linearExponent === null, 'DIRECT 不应生成线性指数', `N=${direct.linearExponent}`)
             assert(half.mode === 3, '0x60 应为 IEEE Half Float', `mode=${half.mode}`)
             assert(half.linearExponent === 'IEEE Half', '0x60 应为 IEEE Half 指数语义', `N=${half.linearExponent}`)
-            assert(relHalf.isRelative === true, '0xE0 应为 relative IEEE Half', `relative=${relHalf.isRelative}`)
+            assert(
+              relHalf.mode === half.mode && relHalf.linearExponent === half.linearExponent && relHalf.isRelative,
+              '0xE0 应为相对 IEEE Half',
+              `mode=${relHalf.modeName}, relative=${relHalf.isRelative}`,
+            )
             return '0x98/0x20/0x40/0x60/0xE0 位域解析正确'
           })
 
-          test('Y=1023/-1024 是合法 L11 边界编码，checkSpecial 不报警', () => {
-            assert(
-              PMBusMath.checkSpecial(0x7fff, 'L11') === null,
-              'N=15,Y=1023 不应被标记为溢出',
-              JSON.stringify(PMBusMath.checkSpecial(0x7fff, 'L11')),
-            )
-            assert(
-              PMBusMath.checkSpecial(0xffff, 'L11') === null,
-              'N=15,Y=-1024 不应被标记为溢出',
-              JSON.stringify(PMBusMath.checkSpecial(0xffff, 'L11')),
-            )
-            return '边界编码不再当作饱和/溢出标记'
-          })
-
-          test('VOUT_MODE 保留/非线性模式不会误生效', () => {
-            const vid = PMBusMath.parseVoutMode(0x20)
-            const direct = PMBusMath.parseVoutMode(0x40)
-            assert(vid.modeName === 'VID', '0x20 应解析为 VID', `mode=${vid.modeName}`)
-            assert(
-              vid.linearExponent === null,
-              'VID 不应生成线性指数',
-              `linearExponent=${vid.linearExponent}`,
-            )
-            assert(direct.modeName === 'DIRECT', '0x40 应解析为 DIRECT', `mode=${direct.modeName}`)
-            return 'VID/DIRECT 不误当成 LINEAR16 指数'
+          test('LINEAR11 合法边界可以换算且不提示溢出', () => {
+            const cases = [
+              [15, 1023, 0x7bff],
+              [15, -1024, 0x7c00],
+              [-16, -1024, 0x8400],
+            ]
+            for (const [n, y, raw] of cases) {
+              const decoded = PMBusMath.decodeLinear11(raw)
+              assert(
+                decoded.n === n && decoded.y === y,
+                'LINEAR11 边界解码错误',
+                `N=${decoded.n}, Y=${decoded.y}`,
+              )
+              assert(
+                PMBusMath.encodeLinear11(n, y) === raw,
+                'LINEAR11 边界编码错误',
+                `N=${n}, Y=${y}`,
+              )
+              assert(
+                PMBusMath.checkSpecial(raw, 'L11') === null,
+                '合法边界不应被标记为溢出',
+                `Raw=0x${hex4(raw)}`,
+              )
+            }
+            return cases.map(([, , raw]) => '0x' + hex4(raw)).join(' / ')
           })
 
           test('DIRECT 往返编码在 16-bit 有符号范围内稳定', () => {
@@ -2895,7 +2787,7 @@
             return '验证 encode/decode 及超范围钳位'
           })
 
-          test('IEEE Half 特殊值符合 Part I 7.6 / IEEE-754', () => {
+          test('IEEE Half 特殊值符合 Part II §7.6 / IEEE 754', () => {
             assert(
               PMBusMath.encodeHalf(NaN) === 0x7e00,
               'NaN 编码错误',
@@ -2920,73 +2812,6 @@
             const pec = PMBusMath.calculatePEC([0x21, 0x00, 0x30])
             assert(pec === 0xb8, 'PEC 样例错误', `PEC=0x${hex2(pec)}`)
             return '0x21 0x00 0x30 -> 0xB8'
-          })
-
-          test('命令元数据符合 Part II 命令类型', () => {
-            assert(
-              getCommandConfig('READ_VOUT').type === 'scalar16',
-              'READ_VOUT 类型错误',
-              getCommandConfig('READ_VOUT').type,
-            )
-            assert(
-              getCommandConfig('STATUS_WORD').type === 'statusWord',
-              'STATUS_WORD 类型错误',
-              getCommandConfig('STATUS_WORD').type,
-            )
-            assert(
-              getCommandConfig('READ_EIN').type === 'blockRead',
-              'READ_EIN 类型错误',
-              getCommandConfig('READ_EIN').type,
-            )
-            return '标量/状态字/块读已区分'
-          })
-
-          test('STATUS_WORD 提示用户这是状态位而非物理量', () => {
-            selectCommand('STATUS_WORD')
-            assert(
-              currentCommand === 'STATUS_WORD',
-              '命令未切换到 STATUS_WORD',
-              `currentCommand=${currentCommand}`,
-            )
-            assert(
-              $('specialWarn').className.includes('show'),
-              '未显示提示',
-              $('specialWarn').className,
-            )
-            assert(
-              $('specialWarn').textContent.includes('状态位摘要'),
-              '提示内容缺少状态字说明',
-              $('specialWarn').textContent,
-            )
-            assert(
-              $('specialWarn').textContent.includes('0x0100') &&
-                $('specialWarn').textContent.includes('UNKNOWN'),
-              'STATUS_WORD 说明缺少 0x0100 特殊写入语义',
-              $('specialWarn').textContent,
-            )
-            return $('specialWarn').textContent
-          })
-
-          test('READ_EIN 提示 Block Read 不是单个 16-bit 标量', () => {
-            selectCommand('READ_EIN')
-            assert(
-              currentCommand === 'READ_EIN',
-              '命令未切换到 READ_EIN',
-              `currentCommand=${currentCommand}`,
-            )
-            assert(
-              $('specialWarn').textContent.includes('Block Read'),
-              '缺少 Block Read 提示',
-              $('specialWarn').textContent,
-            )
-            assert(
-              $('specialWarn').textContent.includes('规范内部存在字节数冲突') &&
-                $('specialWarn').textContent.includes('6 个数据字节') &&
-                $('specialWarn').textContent.includes('列为 5'),
-              'READ_EIN 说明缺少 6/5 字节规范冲突',
-              $('specialWarn').textContent,
-            )
-            return $('specialWarn').textContent
           })
 
           test('DIRECT 模式显示不再引用未定义 unsigned', () => {
@@ -3173,7 +2998,7 @@
             return `bitButtons=${bitButtons.length}, directBitButtons=${directBitButtons.length}`
           })
         } finally {
-          currentMode = savedState.currentMode
+          switchMode(savedState.currentMode)
           rawInt = savedState.rawInt
           byteOrder = savedState.byteOrder
           directY = savedState.directY
@@ -3187,33 +3012,30 @@
             else localStorage.setItem(key, value)
           })
           syncPreferenceButtons()
+          syncAutoNButton()
           Object.entries(savedState.fields).forEach(([id, value]) => {
-            const el = $(id)
-            if (el) el.value = value
+            $(id).value = value
           })
-          switchMode(savedState.currentMode)
-          updateAll(savedState.currentMode === 'DIRECT' ? 'directY' : 'init')
-          const note = getCommandNote(savedState.currentCommand)
-          if (note) {
-            $('specialWarn').textContent = note
-            $('specialWarn').className = 'warn-banner show'
-          }
+          applyModeLabels(currentMode)
+          renderCommandNote(savedState.fields.commandSelect)
+          updateAll('init')
+          // 重绘按原始字换算，再恢复用户输入的目标值和对应误差。
+          $('inputValue').value = savedState.fields.inputValue
+          $('deltaError').innerHTML = savedState.deltaHtml
+          $('deltaError').style.display = savedState.deltaDisplay
         }
 
         const passCount = results.filter((r) => r.status === 'PASS').length
         const failCount = results.length - passCount
         let html =
           '<div style="background:var(--hover-bg);border:1px solid var(--border);padding:14px;border-radius:10px;margin:12px 0;font-size:12.5px;line-height:1.5">'
-        html += `<strong style="color:${failCount ? 'var(--rd)' : 'var(--gn)'}">${failCount ? '❌' : '✅'} 边界测试完成</strong> `
-        html += `<span style="color:var(--text-secondary)">PASS ${passCount} / ${results.length}${failCount ? `，FAIL ${failCount}` : ''}</span><br><br>`
+        html += `<strong style="color:${failCount ? 'var(--rd)' : 'var(--gn)'}">边界测试完成</strong> `
+        html += `<span style="color:var(--text-secondary)">${passCount} 项通过，${failCount} 项失败</span><br><br>`
         results.forEach((r) => {
           const color = r.status === 'PASS' ? 'var(--gn)' : 'var(--rd)'
           html += `<span style="color:${color}">[${r.status}]</span> ${r.title}: ${r.details}<br>`
         })
-        html +=
-          '<br><small style="color:var(--text-muted)">依据：PMBus Part II §8.3 的 VOUT_MODE 位域与数据格式语义、Part II 的命令类型与 STATUS_WORD / READ_EIN 语义，以及 SMBus 3.0 PEC CRC-8 规则。本文件为历史离线兼容。</small></div>'
-
-        setDebugOutput(html)
+        $('debugOutput').innerHTML = html + '</div>'
 
         if (failures.length) {
           console.error('Boundary tests failed:', failures)

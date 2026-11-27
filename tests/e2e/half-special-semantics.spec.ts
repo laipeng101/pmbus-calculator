@@ -1,5 +1,4 @@
 import { test, expect, type Page } from '@playwright/test'
-import { appUrl } from './helpers/app-url'
 
 async function setRaw(page: Page, hex: string) {
   const input = page.locator('#raw-hex-input')
@@ -21,15 +20,13 @@ async function expandDetails(page: Page) {
   await expect(page.getByTestId('calculation-steps')).toBeVisible()
 }
 
-test.describe('HALF special values in PMBus', () => {
+test.describe('HALF 特殊值说明', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(appUrl())
+    await page.goto('./')
     await page.getByRole('tab', { name: /HALF/ }).click()
   })
 
-  test('NaN via raw decode: card lists invalid-data write and unavailable read', async ({
-    page,
-  }) => {
+  test('NaN 解码分别说明写入无效数据和返回值不可用', async ({ page }) => {
     await setRaw(page, '7E00')
 
     const card = page.getByRole('note', { name: 'NaN（非数值）' })
@@ -49,21 +46,7 @@ test.describe('HALF special values in PMBus', () => {
     await expect(page.getByTestId('calculation-steps')).toContainText('NaN')
   })
 
-  test('NaN via value encode: same card on the value path, raw canonical 0x7E00', async ({
-    page,
-  }) => {
-    await setValue(page, 'NaN')
-
-    const card = page.getByTestId('half-special-semantics')
-    await expect(card).toBeVisible()
-    await expect(card).toHaveAttribute('data-kind', 'half-nan')
-    await expect(page.getByTestId('result-value')).toContainText('NaN')
-    await expect(page.locator('#raw-hex-input')).toHaveValue('7E00')
-  })
-
-  test('+Infinity / -Infinity: full-scale write and saturation read semantics', async ({
-    page,
-  }) => {
+  test('无穷值按符号说明满量程请求与饱和读数', async ({ page }) => {
     await setRaw(page, '7C00')
     const pos = page.getByTestId('half-special-semantics')
     await expect(pos).toHaveAttribute('data-kind', 'half-positive-infinity')
@@ -71,44 +54,44 @@ test.describe('HALF special values in PMBus', () => {
     await expect(pos).toContainText('正方向饱和')
     await expect(page.getByTestId('result-value')).toContainText('+Infinity')
 
-    await setRaw(page, 'FC00')
+    await setValue(page, '-Infinity')
+    await expect(page.locator('#raw-hex-input')).toHaveValue('FC00')
+    await expect(page.locator('#value-input')).not.toHaveAttribute('aria-invalid', 'true')
     const neg = page.getByTestId('half-special-semantics')
     await expect(neg).toHaveAttribute('data-kind', 'half-negative-infinity')
     await expect(neg).toContainText('负满量程')
     await expect(neg).toContainText('负方向饱和')
     await expect(page.getByTestId('result-value')).toContainText('-Infinity')
-  })
-
-  test('finite values never show the card, and a raw edit clears it without staleness', async ({
-    page,
-  }) => {
-    await setRaw(page, '7E00')
-    await expect(page.getByTestId('half-special-semantics')).toBeVisible()
 
     await setRaw(page, '3C00')
     await expect(page.getByTestId('half-special-semantics')).toHaveCount(0)
-    await expect(page.getByTestId('result-value')).toContainText('1')
-
-    await setValue(page, '2')
-    await expect(page.getByTestId('half-special-semantics')).toHaveCount(0)
+    await expect(page.getByTestId('result-value')).toHaveText('1')
   })
 
-  test('finite 65520 keeps its overflow/error readout beside the encoded-word card', async ({
-    page,
-  }) => {
+  test('有限输入溢出时同时显示编码告警和无穷值说明', async ({ page }) => {
     await setValue(page, '65520')
 
     const delta = page.getByTestId('quantization-error')
     await expect(delta).toContainText('65520')
     await expect(delta).toContainText('+Infinity')
     await expect(delta).toContainText('溢出')
+    await expect(delta).toHaveAttribute('data-kind', 'error')
 
     const card = page.getByTestId('half-special-semantics')
     await expect(card).toHaveAttribute('data-kind', 'half-positive-infinity')
     await expect(card).toContainText('正满量程')
+
+    // 半精度最小非零值的一半舍入为零，绝对误差仍非零。
+    await setValue(page, '2.9802322387695312e-8')
+    await expect(card).toHaveCount(0)
+    await expect(delta).toContainText('+2.98023223877e-8 (100.0000%)')
+    await expect(delta).toHaveAttribute('data-kind', 'warn')
+
+    await setRaw(page, '3C05')
+    await expect(delta).toHaveCount(0)
   })
 
-  test('no horizontal overflow at 1280/390/360 with the NaN card active', async ({ page }) => {
+  test('NaN 说明在桌面和窄屏内完整布局', async ({ page }) => {
     await setRaw(page, '7E00')
     await expandDetails(page)
     for (const viewport of [

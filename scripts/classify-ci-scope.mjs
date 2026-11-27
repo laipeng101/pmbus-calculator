@@ -13,6 +13,39 @@ const docs = new Set([
   '.github/pull_request_template.md',
 ])
 
+const pagesOverlayInputs = new Set([
+  '.github/workflows/ci.yml',
+  '.github/workflows/release.yml',
+  '.node-version',
+  'index.html',
+  'package-lock.json',
+  'package.json',
+  'playwright.deployment.config.ts',
+  'playwright.pages-overlay.config.ts',
+  'playwright.shared.ts',
+  'scripts/apply-pages-overlay.mjs',
+  'scripts/classify-ci-scope.mjs',
+  'scripts/pages-network-policy.mjs',
+  'scripts/pages-overlay-contract.mjs',
+  'scripts/pages-overlay.css',
+  'scripts/prepare-pages-overlay-test.mjs',
+  'scripts/prepare-release-assets.mjs',
+  'scripts/release-artifact-contract.mjs',
+  'scripts/release-zip.py',
+  'scripts/verify-pages-asset-references.mjs',
+  'scripts/verify-pages-overlay.mjs',
+  'src/App.tsx',
+  'src/components/feedback/ThemeToggle.tsx',
+  'src/components/layout/AppHeader.tsx',
+  'src/main.tsx',
+  'src/styles/tokens.css',
+  'tests/e2e/deployment.spec.ts',
+  'tests/e2e/helpers/browser-resources.ts',
+  'tests/e2e/helpers/pages-contract.ts',
+  'tests/e2e/pages-overlay.spec.ts',
+  'vite.config.ts',
+])
+
 /** @param {string} file */
 function isDocumentation(file) {
   return (
@@ -24,7 +57,7 @@ function isDocumentation(file) {
 
 /** @param {string[]} paths */
 export function classifyChanges(paths) {
-  if (paths.length === 0) return 'browser'
+  if (paths.length === 0 || paths.some((file) => pagesOverlayInputs.has(file))) return 'pages'
   const code = paths.filter((file) => !isDocumentation(file))
   if (code.length === 0) return 'docs'
   if (
@@ -38,17 +71,20 @@ export function classifyChanges(paths) {
 }
 
 if (import.meta.main) {
-  // Check the merge commit against its target parent, including both sides of renames.
-  const changed = execFileSync('git', [
-    'diff',
-    '--name-only',
-    '--no-renames',
-    '-z',
-    'HEAD^1',
-    'HEAD',
-    '--',
-  ])
-  const scope = classifyChanges(changed.toString().split('\0').filter(Boolean))
+  let scope = 'pages'
+  if (process.env.GITHUB_EVENT_NAME !== 'workflow_dispatch') {
+    // Include both sides of renames in the PR merge commit's diff from the target parent.
+    const changed = execFileSync('git', [
+      'diff',
+      '--name-only',
+      '--no-renames',
+      '-z',
+      'HEAD^1',
+      'HEAD',
+      '--',
+    ])
+    scope = classifyChanges(changed.toString().split('\0').filter(Boolean))
+  }
   console.log(`CI scope: ${scope}`)
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT, `scope=${scope}\n`)

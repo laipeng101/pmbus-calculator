@@ -3,6 +3,7 @@ export const CLOUDFLARE_BEACON_URL = 'https://static.cloudflareinsights.com/beac
 export const CLOUDFLARE_RUM_URL = 'https://cloudflareinsights.com/cdn-cgi/rum'
 export const CLOUDFLARE_RUM_ORIGIN = new URL(CLOUDFLARE_RUM_URL).origin
 export const PAGES_REPOSITORY = 'laipeng101/pmbus-calculator'
+export const PAGES_BASE_PATH = `/${PAGES_REPOSITORY.split('/')[1]}/`
 export const PAGES_REPOSITORY_URL = `https://github.com/${PAGES_REPOSITORY}`
 export const PAGES_REPOSITORY_NAME = '在 GitHub 查看项目源码'
 

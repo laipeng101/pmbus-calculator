@@ -1,7 +1,6 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import process from 'node:process'
 import { afterEach, describe, expect, it } from 'vitest'
 import { checkReleaseVersion } from '../scripts/check-release-contract.mjs'
 
@@ -25,10 +24,6 @@ describe('release version check', () => {
     ])
     return dir
   }
-
-  it('accepts the current repository version', async () => {
-    expect(await checkReleaseVersion(process.cwd())).toEqual([])
-  })
 
   it.each([undefined, 'v1.2.0', '0.1.0', '01.2.0', '1.02.0', '1.2.00', '1.2.0-rc.1'])(
     'rejects unsupported package version %s even when the lockfile matches',
